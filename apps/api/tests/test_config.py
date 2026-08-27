@@ -39,7 +39,15 @@ class TestModelsYaml:
         with _MODELS_YAML.open() as f:
             data = yaml.safe_load(f)
 
-        required = ["llm", "embedding", "verification", "retrieval", "reliability", "recovery", "runtime"]
+        required = [
+            "llm",
+            "embedding",
+            "verification",
+            "retrieval",
+            "reliability",
+            "recovery",
+            "runtime",
+        ]
         for section in required:
             assert section in data, f"Missing required section '{section}' in models.yaml"
 
@@ -58,8 +66,7 @@ class TestModelsYaml:
         ]
         for pattern in forbidden_patterns:
             assert pattern not in content, (
-                f"Potential secret found in models.yaml: '{pattern}'. "
-                "Secrets belong in .env only."
+                f"Potential secret found in models.yaml: '{pattern}'. Secrets belong in .env only."
             )
 
     def test_embedding_dimensionality_is_positive_int(self) -> None:
@@ -93,6 +100,7 @@ class TestModelConfig:
 
     def _make_config(self):
         from app.core.config import ModelConfig
+
         with _MODELS_YAML.open() as f:
             data = yaml.safe_load(f)
         return ModelConfig(data)
@@ -129,6 +137,7 @@ class TestModelConfig:
 
     def test_missing_required_key_raises(self) -> None:
         from app.core.config import ModelConfig
+
         incomplete = {"runtime": {"config_version": "1.0"}}
         cfg = ModelConfig(incomplete)
         with pytest.raises(KeyError):
@@ -174,16 +183,19 @@ class TestSettings:
 
     def test_short_jwt_secret_rejected(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError, match="JWT_SECRET must be at least"):
             self._make_settings(jwt_secret="short")
 
     def test_invalid_app_env_rejected(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             self._make_settings(app_env="invalid")
 
     def test_invalid_log_level_rejected(self) -> None:
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             self._make_settings(log_level="VERBOSE")
 

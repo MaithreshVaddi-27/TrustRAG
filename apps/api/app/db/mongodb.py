@@ -163,9 +163,7 @@ async def create_indexes() -> None:
     await db[Collections.CLAIMS].create_index(
         [("analysis_id", pymongo.ASCENDING)], name="claim_analysis"
     )
-    await db[Collections.CLAIMS].create_index(
-        [("status", pymongo.ASCENDING)], name="claim_status"
-    )
+    await db[Collections.CLAIMS].create_index([("status", pymongo.ASCENDING)], name="claim_status")
 
     # ── evidence ───────────────────────────────────────────────────────────
     await db[Collections.EVIDENCE].create_index(

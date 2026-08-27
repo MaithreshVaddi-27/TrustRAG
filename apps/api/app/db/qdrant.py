@@ -43,7 +43,7 @@ def get_collection_name(kb_id: str) -> str:
 async def init_kb_collection(kb_id: str) -> None:
     """
     Initialize a vector collection for the given knowledge base ID.
-    
+
     Creates a collection with:
       - Dense vector parameters: Cosine distance, 384 dimensions (HuggingFace)
       - Sparse vector parameters: BM25/keyword sparse query configuration
@@ -62,7 +62,7 @@ async def init_kb_collection(kb_id: str) -> None:
         logger.info(
             "Creating Qdrant collection",
             collection=collection_name,
-            dense_dim=cfg.embedding_dimensionality
+            dense_dim=cfg.embedding_dimensionality,
         )
 
         client.create_collection(
@@ -74,17 +74,14 @@ async def init_kb_collection(kb_id: str) -> None:
             # Setup sparse vectors indexing (sparse query matching/BM25)
             sparse_vectors_config={
                 "sparse-text": models.SparseVectorParams(
-                    index=models.SparseIndexParams(
-                        on_disk=True
-                    )
+                    index=models.SparseIndexParams(on_disk=True)
                 )
-            }
+            },
         )
         logger.info("Qdrant collection created successfully", collection=collection_name)
     except Exception as exc:
         raise VectorStoreError(
-            f"Failed to initialize Qdrant collection '{collection_name}'",
-            detail=str(exc)
+            f"Failed to initialize Qdrant collection '{collection_name}'", detail=str(exc)
         ) from exc
 
 
@@ -100,6 +97,5 @@ async def delete_kb_collection(kb_id: str) -> None:
             logger.info("Qdrant collection dropped", collection=collection_name)
     except Exception as exc:
         raise VectorStoreError(
-            f"Failed to drop Qdrant collection '{collection_name}'",
-            detail=str(exc)
+            f"Failed to drop Qdrant collection '{collection_name}'", detail=str(exc)
         ) from exc

@@ -30,7 +30,7 @@ def serialize_user(user_doc: Mapping[str, Any]) -> UserResponse:
 async def register_user(schema: UserRegister) -> UserResponse:
     """
     Register a new user account.
-    
+
     Raises ConflictError if the email already exists.
     """
     users_coll = get_collection(Collections.USERS)
@@ -50,13 +50,15 @@ async def register_user(schema: UserRegister) -> UserResponse:
         user_doc["_id"] = result.inserted_id
         return serialize_user(user_doc)
     except DuplicateKeyError as exc:
-        raise ConflictError("User registration failed", detail="An account with this email already exists") from exc
+        raise ConflictError(
+            "User registration failed", detail="An account with this email already exists"
+        ) from exc
 
 
 async def authenticate_user(email: str, password: str) -> tuple[str, UserResponse]:
     """
     Verify login credentials and generate access token.
-    
+
     Raises AuthenticationError on bad credentials.
     """
     users_coll = get_collection(Collections.USERS)

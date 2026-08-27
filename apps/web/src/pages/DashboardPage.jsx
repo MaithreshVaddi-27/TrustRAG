@@ -1,4 +1,4 @@
-import { BarChart3, Brain, Database, FileSearch, GitMerge, Zap } from 'lucide-react'
+import { Brain, Database, GitMerge, Zap } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import AppLayout from '@/layouts/AppLayout'
 import { ReliabilityBadge } from '@/components/workbench/ReliabilityBadge'

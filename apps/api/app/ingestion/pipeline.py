@@ -22,13 +22,11 @@ logger = get_logger(__name__)
 
 
 async def index_parsed_chunks(
-    doc_id_str: str,
-    kb_id_str: str,
-    chunks: list[dict[str, Any]]
+    doc_id_str: str, kb_id_str: str, chunks: list[dict[str, Any]]
 ) -> None:
     """
     Background task to generate embeddings and index chunks to Qdrant.
-    
+
     Stages:
       1. Fetch document record, update status to 'processing'
       2. Ensure Qdrant collection 'kb_{kb_id}' exists
@@ -44,17 +42,13 @@ async def index_parsed_chunks(
 
     # 1. Update status to processing
     await doc_coll.update_one(
-        {"_id": doc_id},
-        {"$set": {"ingestion_status": "processing", "updated_at": ObjectId()}}
+        {"_id": doc_id}, {"$set": {"ingestion_status": "processing", "updated_at": ObjectId()}}
     )
 
     try:
         if not chunks:
             # Empty document
-            await doc_coll.update_one(
-                {"_id": doc_id},
-                {"$set": {"ingestion_status": "completed"}}
-            )
+            await doc_coll.update_one({"_id": doc_id}, {"$set": {"ingestion_status": "completed"}})
             logger.info("Ingestion completed: document has no text chunks", doc_id=doc_id_str)
             return
 
@@ -98,13 +92,12 @@ async def index_parsed_chunks(
                     id=point_id,
                     vector={
                         # Named vector configurations
-                        "": dense_vectors[i],               # Default/dense
+                        "": dense_vectors[i],  # Default/dense
                         "sparse-text": models.SparseVector(  # Sparse BM25
-                            indices=sparse_vec["indices"],
-                            values=sparse_vec["values"]
-                        )
+                            indices=sparse_vec["indices"], values=sparse_vec["values"]
+                        ),
                     },
-                    payload=payload
+                    payload=payload,
                 )
             )
 
@@ -112,29 +105,17 @@ async def index_parsed_chunks(
         batch_size = 100
         for offset in range(0, len(points), batch_size):
             batch = points[offset : offset + batch_size]
-            qdrant_client.upsert(
-                collection_name=collection_name,
-                points=batch
-            )
+            qdrant_client.upsert(collection_name=collection_name, points=batch)
 
         # 5. Mark document completed
-        await doc_coll.update_one(
-            {"_id": doc_id},
-            {"$set": {"ingestion_status": "completed"}}
-        )
+        await doc_coll.update_one({"_id": doc_id}, {"$set": {"ingestion_status": "completed"}})
         logger.info("Ingestion completed successfully", doc_id=doc_id_str, chunks=len(points))
 
     except Exception as exc:
         logger.error("Ingestion pipeline failed", doc_id=doc_id_str, error=str(exc))
         # Mark document failed with error trace
         await doc_coll.update_one(
-            {"_id": doc_id},
-            {
-                "$set": {
-                    "ingestion_status": "failed",
-                    "error_message": str(exc)
-                }
-            }
+            {"_id": doc_id}, {"$set": {"ingestion_status": "failed", "error_message": str(exc)}}
         )
 
 
@@ -144,5 +125,5 @@ def hashlib_qdrant_id(doc_id_str: str, chunk_index: int) -> str:
     import uuid
 
     unique_str = f"{doc_id_str}_{chunk_index}"
-    hash_bytes = hashlib.md5(unique_str.encode("utf-8")).digest()
+    hash_bytes = hashlib.sha256(unique_str.encode("utf-8")).digest()[:16]
     return str(uuid.UUID(bytes=hash_bytes))

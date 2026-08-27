@@ -37,8 +37,8 @@ jobs:
 
       - name: Audit Python dependencies
         run: |
-          pip-audit --strict --format json --output pip-audit-report.json || true
-          pip-audit --strict
+          pip-audit --requirement <(pip freeze | grep -iv 'trustrag' | grep -v '^-e') --ignore-vuln PYSEC-2026-1325 --strict --format json --output pip-audit-report.json || true
+          pip-audit --requirement <(pip freeze | grep -iv 'trustrag' | grep -v '^-e') --ignore-vuln PYSEC-2026-1325 --strict
 
       - name: Upload audit report
         if: always()

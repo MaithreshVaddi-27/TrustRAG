@@ -31,10 +31,7 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify plain password against hashed password."""
     try:
-        return bcrypt.checkpw(
-            plain_password.encode("utf-8"),
-            hashed_password.encode("utf-8")
-        )
+        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
     except Exception:
         return False
 
@@ -42,7 +39,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:
     """
     Generate a signed JWT access token.
-    
+
     subject: Typically the user's ID as a string or unique email.
     """
     settings = get_settings()
@@ -51,11 +48,7 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
     else:
         expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_expiry_minutes)
 
-    to_encode = {
-        "exp": expire,
-        "sub": str(subject),
-        "iat": datetime.now(UTC)
-    }
+    to_encode = {"exp": expire, "sub": str(subject), "iat": datetime.now(UTC)}
 
     encoded_jwt = jwt.encode(to_encode, settings.jwt_secret, algorithm=ALGORITHM)
     return encoded_jwt

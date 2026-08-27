@@ -1,7 +1,7 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
 import {
-  BarChart3, BookOpen, Brain, Database, FileSearch,
+  Brain, Database, FileSearch,
   FlaskConical, GitMerge, LayoutDashboard, LogOut,
   Settings, Swords, Terminal, Zap,
 } from 'lucide-react'

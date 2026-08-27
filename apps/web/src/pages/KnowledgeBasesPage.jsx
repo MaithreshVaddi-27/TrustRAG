@@ -1,4 +1,4 @@
-import { Database, FolderPlus, MoreHorizontal, Plus, Upload } from 'lucide-react'
+import { Database, FolderPlus, Plus, Upload } from 'lucide-react'
 import AppLayout from '@/layouts/AppLayout'
 
 export default function KnowledgeBasesPage() {

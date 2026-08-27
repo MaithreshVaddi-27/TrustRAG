@@ -119,7 +119,7 @@ async def create_analysis(schema: AnalysisCreate, user_id_str: str) -> AnalysisR
     await add_trace_event(
         analysis_id_str=str(result.inserted_id),
         event="analysis.started",
-        data={"message": "Analysis run initiated"}
+        data={"message": "Analysis run initiated"},
     )
 
     return serialize_analysis(analysis_doc)
@@ -157,7 +157,9 @@ async def get_analysis_claims(analysis_id_str: str, user_id_str: str) -> list[Cl
 
     claims_coll = get_collection(Collections.CLAIMS)
     results = []
-    async for c in claims_coll.find({"analysis_id": ObjectId(analysis_id_str)}).sort("created_at", 1):
+    async for c in claims_coll.find({"analysis_id": ObjectId(analysis_id_str)}).sort(
+        "created_at", 1
+    ):
         results.append(serialize_claim(c))
     return results
 
@@ -168,7 +170,9 @@ async def get_analysis_evidence(analysis_id_str: str, user_id_str: str) -> list[
 
     evidence_coll = get_collection(Collections.EVIDENCE)
     results = []
-    async for e in evidence_coll.find({"analysis_id": ObjectId(analysis_id_str)}).sort("created_at", 1):
+    async for e in evidence_coll.find({"analysis_id": ObjectId(analysis_id_str)}).sort(
+        "created_at", 1
+    ):
         results.append(serialize_evidence(e))
     return results
 
@@ -201,11 +205,13 @@ async def add_trace_event(
     return serialize_trace(evt_doc)
 
 
-async def sse_event_generator(analysis_id_str: str, user_id_str: str) -> AsyncGenerator[dict[str, Any], None]:
+async def sse_event_generator(
+    analysis_id_str: str, user_id_str: str
+) -> AsyncGenerator[dict[str, Any], None]:
     """
     Generator yielding trace events as Server-Sent Events (SSE).
     Frontend relies on this for real-time trace logging.
-    
+
     If the connection drops, trace history is fully stored in MongoDB
     and retrieved via the get_analysis_trace function.
     """
@@ -228,7 +234,7 @@ async def sse_event_generator(analysis_id_str: str, user_id_str: str) -> AsyncGe
             yield {
                 "event": doc["event"],
                 "timestamp": doc["timestamp"].isoformat(),
-                "data": doc.get("data", {})
+                "data": doc.get("data", {}),
             }
 
             # Terminal event checks

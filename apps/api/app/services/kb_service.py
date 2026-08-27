@@ -60,7 +60,7 @@ async def create_kb(schema: KBCreate, user_id: str) -> KBResponse:
 async def get_kb(kb_id_str: str, user_id_str: str) -> KBResponse:
     """
     Retrieve knowledge base by ID and verify ownership.
-    
+
     Raises NotFoundError or AuthorizationError on security check failure.
     """
     try:
@@ -98,7 +98,7 @@ async def list_kbs(user_id_str: str) -> list[KBResponse]:
 async def delete_kb(kb_id_str: str, user_id_str: str) -> None:
     """
     Delete a knowledge base and all associated documents.
-    
+
     Verifies ownership before deleting.
     """
     # Ensure KB exists and belongs to the user

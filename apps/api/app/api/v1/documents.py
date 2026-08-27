@@ -19,14 +19,9 @@ from app.services.kb_service import get_kb
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-@router.get(
-    "/{doc_id}",
-    response_model=DocResponse,
-    summary="Get document details"
-)
+@router.get("/{doc_id}", response_model=DocResponse, summary="Get document details")
 async def get_document_endpoint(
-    doc_id: str,
-    current_user: Mapping[str, Any] = Depends(get_current_user)
+    doc_id: str, current_user: Mapping[str, Any] = Depends(get_current_user)
 ) -> DocResponse:
     """Fetch details of a specific document, validating user ownership of the parent KB."""
     try:
@@ -42,4 +37,5 @@ async def get_document_endpoint(
     await get_kb(str(doc["knowledge_base_id"]), str(current_user["_id"]))
 
     from app.services.kb_service import serialize_doc
+
     return serialize_doc(doc)

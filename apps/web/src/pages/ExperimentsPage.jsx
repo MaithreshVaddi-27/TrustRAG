@@ -1,5 +1,5 @@
 import AppLayout from '@/layouts/AppLayout'
-import { BarChart3, FlaskConical, Plus } from 'lucide-react'
+import { FlaskConical, Plus } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 const EXPERIMENT_CONFIGS = [

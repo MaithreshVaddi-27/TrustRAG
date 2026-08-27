@@ -110,9 +110,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
         return _error_response(status.HTTP_403_FORBIDDEN, "FORBIDDEN", exc.message)
 
     @app.exception_handler(NotFoundError)
-    async def not_found_error_handler(
-        request: Request, exc: NotFoundError
-    ) -> JSONResponse:
+    async def not_found_error_handler(request: Request, exc: NotFoundError) -> JSONResponse:
         return _error_response(status.HTTP_404_NOT_FOUND, "NOT_FOUND", exc.message)
 
     @app.exception_handler(AnalysisNotFoundError)
@@ -122,9 +120,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
         return _error_response(status.HTTP_404_NOT_FOUND, "NOT_FOUND", exc.message)
 
     @app.exception_handler(ConflictError)
-    async def conflict_error_handler(
-        request: Request, exc: ConflictError
-    ) -> JSONResponse:
+    async def conflict_error_handler(request: Request, exc: ConflictError) -> JSONResponse:
         return _error_response(status.HTTP_409_CONFLICT, "CONFLICT", exc.message)
 
     @app.exception_handler(UnsupportedFormatError)
@@ -136,17 +132,13 @@ def _register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(FileTooLargeError)
-    async def file_too_large_handler(
-        request: Request, exc: FileTooLargeError
-    ) -> JSONResponse:
+    async def file_too_large_handler(request: Request, exc: FileTooLargeError) -> JSONResponse:
         return _error_response(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "FILE_TOO_LARGE", exc.message
         )
 
     @app.exception_handler(InputValidationError)
-    async def input_validation_handler(
-        request: Request, exc: InputValidationError
-    ) -> JSONResponse:
+    async def input_validation_handler(request: Request, exc: InputValidationError) -> JSONResponse:
         return _error_response(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", exc.message
         )
@@ -163,9 +155,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(DatabaseError)
-    async def database_error_handler(
-        request: Request, exc: DatabaseError
-    ) -> JSONResponse:
+    async def database_error_handler(request: Request, exc: DatabaseError) -> JSONResponse:
         logger.error("Database error", error=exc.message)
         return _error_response(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -174,9 +164,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(VectorStoreError)
-    async def vector_store_error_handler(
-        request: Request, exc: VectorStoreError
-    ) -> JSONResponse:
+    async def vector_store_error_handler(request: Request, exc: VectorStoreError) -> JSONResponse:
         logger.error("Vector store error", error=exc.message)
         return _error_response(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -185,9 +173,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(TrustRAGError)
-    async def trustrag_error_handler(
-        request: Request, exc: TrustRAGError
-    ) -> JSONResponse:
+    async def trustrag_error_handler(request: Request, exc: TrustRAGError) -> JSONResponse:
         logger.error("Unhandled domain error", error=exc.message, exc_info=True)
         return _error_response(
             status.HTTP_500_INTERNAL_SERVER_ERROR,

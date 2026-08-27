@@ -25,7 +25,7 @@ oauth2_scheme = OAuth2PasswordBearer(
 async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> Mapping[str, Any]:
     """
     Validate incoming JWT token and return the current user's document.
-    
+
     Raises AuthenticationError (which maps to 401) on failures.
     """
     if not token:

@@ -96,7 +96,7 @@ class Settings(BaseSettings):
         if len(v) < 32:
             raise ValueError(
                 "JWT_SECRET must be at least 32 characters. "
-                "Generate with: python -c \"import secrets; print(secrets.token_hex(64))\""
+                'Generate with: python -c "import secrets; print(secrets.token_hex(64))"'
             )
         return v
 

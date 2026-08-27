@@ -14,7 +14,7 @@ def chunk_text(
 ) -> list[dict[str, Any]]:
     """
     Split page texts into overlapping character chunks.
-    
+
     Each chunk records:
       - text: string content of the chunk
       - page: page number it belongs to
@@ -40,12 +40,14 @@ def chunk_text(
             chunk_content = text[start:end].strip()
 
             if chunk_content:
-                chunks.append({
-                    "text": chunk_content,
-                    "page": page_num,
-                    "chunk_index": chunk_index,
-                    "character_offset": start
-                })
+                chunks.append(
+                    {
+                        "text": chunk_content,
+                        "page": page_num,
+                        "chunk_index": chunk_index,
+                        "character_offset": start,
+                    }
+                )
                 chunk_index += 1
 
             # Check termination
@@ -53,6 +55,6 @@ def chunk_text(
                 break
 
             # Slide by step size (size - overlap)
-            start += (chunk_size - chunk_overlap)
+            start += chunk_size - chunk_overlap
 
     return chunks

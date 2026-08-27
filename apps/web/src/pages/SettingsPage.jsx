@@ -1,5 +1,4 @@
 import AppLayout from '@/layouts/AppLayout'
-import { Settings } from 'lucide-react'
 
 export default function SettingsPage() {
   return (

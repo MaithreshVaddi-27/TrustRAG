@@ -24,7 +24,7 @@ def mock_user_doc():
         "hashed_password": "hashed-stuff",
         "full_name": "Test User",
         "is_active": True,
-        "created_at": "2026-08-27T10:00:00Z"
+        "created_at": "2026-08-27T10:00:00Z",
     }
 
 
@@ -35,7 +35,7 @@ def mock_kb_doc():
         "name": "Refund Policies",
         "description": "Standard refund schedules",
         "user_id": ObjectId("64ee39d09c6292376e191981"),
-        "created_at": "2026-08-27T10:00:00Z"
+        "created_at": "2026-08-27T10:00:00Z",
     }
 
 
@@ -50,7 +50,7 @@ def mock_analysis_doc():
         "answer": None,
         "reliability": {"score": None, "status": "PENDING"},
         "diagnosis": {"type": None, "failures": []},
-        "created_at": "2026-08-27T10:00:00Z"
+        "created_at": "2026-08-27T10:00:00Z",
     }
 
 
@@ -68,14 +68,18 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
     # Mock kb ownership check inside analysis_service
     with patch("app.services.analysis_service.get_kb", return_value=mock_kb_doc):
         mock_collection = MagicMock()
-        mock_collection.insert_one = AsyncMock(return_value=MagicMock(inserted_id=ObjectId("64ee39d09c6292376e191983")))
+        mock_collection.insert_one = AsyncMock(
+            return_value=MagicMock(inserted_id=ObjectId("64ee39d09c6292376e191983"))
+        )
 
         with patch("app.services.analysis_service.get_collection", return_value=mock_collection):
             # Mock trace event insert
-            with patch("app.services.analysis_service.add_trace_event", AsyncMock()) as mock_add_trace:
+            with patch(
+                "app.services.analysis_service.add_trace_event", AsyncMock()
+            ) as mock_add_trace:
                 payload = {
                     "knowledge_base_id": "64ee39d09c6292376e191982",
-                    "query": "Is there a 45 days policy?"
+                    "query": "Is there a 45 days policy?",
                 }
                 response = client.post("/api/v1/analyses", json=payload)
 
@@ -87,5 +91,5 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
                 mock_add_trace.assert_called_once_with(
                     analysis_id_str="64ee39d09c6292376e191983",
                     event="analysis.started",
-                    data={"message": "Analysis run initiated"}
+                    data={"message": "Analysis run initiated"},
                 )

@@ -63,10 +63,7 @@ def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
         doc = fitz.open(stream=stream.read(), filetype="pdf")
         for i, page in enumerate(doc):
             text = page.get_text()
-            pages.append({
-                "page": i + 1,
-                "text": text.strip()
-            })
+            pages.append({"page": i + 1, "text": text.strip()})
         return pages
     except Exception as exc:
         raise IngestionError("Failed to parse PDF document", detail=str(exc)) from exc
@@ -90,12 +87,13 @@ def parse_txt_or_md(stream: BinaryIO) -> list[dict[str, Any]]:
         return [{"page": 1, "text": text.strip()}]
     except Exception as exc:
         raise IngestionError(
-            f"Failed to decode text file using encoding '{encoding}'",
-            detail=str(exc)
+            f"Failed to decode text file using encoding '{encoding}'", detail=str(exc)
         ) from exc
 
 
-def parse_document(filename: str, stream: BinaryIO) -> tuple[list[dict[str, Any]], datetime | None, datetime | None]:
+def parse_document(
+    filename: str, stream: BinaryIO
+) -> tuple[list[dict[str, Any]], datetime | None, datetime | None]:
     """
     Determine format and parse document bytes.
     Extracts temporal validity metadata if present.

@@ -16,7 +16,7 @@ from app.ingestion.sparse_vector import generate_sparse_vector, tokenize
 def test_chunking_strategy():
     pages = [
         {"page": 1, "text": "This is page one text. " * 30},  # ~660 chars
-        {"page": 2, "text": "Short page."}
+        {"page": 2, "text": "Short page."},
     ]
     chunks = chunk_text(pages, chunk_size=200, chunk_overlap=20)
 
@@ -35,7 +35,7 @@ def test_date_extraction():
     TRUSTRAG Policy Document
     Effective from: 2026-08-01
     Effective until: 2027-08-01
-    
+
     This document outlines the standard return window of 30 days.
     """
     eff_from, eff_until = extract_dates(text_with_dates)
@@ -85,7 +85,9 @@ def test_sparse_vectorizer_generation():
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
 @pytest.mark.asyncio
-async def test_indexing_pipeline_execution(mock_create_indexes, mock_connect, mock_embed, mock_qdrant):
+async def test_indexing_pipeline_execution(
+    mock_create_indexes, mock_connect, mock_embed, mock_qdrant
+):
     # Mock Qdrant client
     mock_client = MagicMock()
     mock_client.collection_exists = MagicMock(return_value=True)
@@ -105,13 +107,13 @@ async def test_indexing_pipeline_execution(mock_create_indexes, mock_connect, mo
 
         chunks = [
             {"text": "chunk 1", "page": 1, "chunk_index": 0, "character_offset": 0},
-            {"text": "chunk 2", "page": 1, "chunk_index": 1, "character_offset": 100}
+            {"text": "chunk 2", "page": 1, "chunk_index": 1, "character_offset": 100},
         ]
 
         await index_parsed_chunks(
             doc_id_str="64ee39d09c6292376e191983",
             kb_id_str="64ee39d09c6292376e191982",
-            chunks=chunks
+            chunks=chunks,
         )
 
         # Asserts status updates

@@ -24,7 +24,7 @@ def mock_user_doc():
         "hashed_password": "hashed-stuff",
         "full_name": "Test User",
         "is_active": True,
-        "created_at": "2026-08-27T10:00:00Z"
+        "created_at": "2026-08-27T10:00:00Z",
     }
 
 
@@ -35,7 +35,7 @@ def mock_kb_doc():
         "name": "Refund Policies",
         "description": "Standard refund schedules",
         "user_id": ObjectId("64ee39d09c6292376e191981"),
-        "created_at": "2026-08-27T10:00:00Z"
+        "created_at": "2026-08-27T10:00:00Z",
     }
 
 
@@ -52,13 +52,12 @@ def setup_dependency_override(mock_user_doc):
 def test_create_kb(mock_create_indexes, mock_connect):
     # Mock database call
     mock_collection = MagicMock()
-    mock_collection.insert_one = AsyncMock(return_value=MagicMock(inserted_id=ObjectId("64ee39d09c6292376e191982")))
+    mock_collection.insert_one = AsyncMock(
+        return_value=MagicMock(inserted_id=ObjectId("64ee39d09c6292376e191982"))
+    )
 
     with patch("app.services.kb_service.get_collection", return_value=mock_collection):
-        payload = {
-            "name": "Refund Policies",
-            "description": "Standard refund schedules"
-        }
+        payload = {"name": "Refund Policies", "description": "Standard refund schedules"}
         response = client.post("/api/v1/knowledge-bases", json=payload)
 
         assert response.status_code == 201

@@ -11,7 +11,9 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 class UserRegister(BaseModel):
     email: EmailStr
-    password: str = Field(..., min_length=8, description="Password must be at least 8 characters long.")
+    password: str = Field(
+        ..., min_length=8, description="Password must be at least 8 characters long."
+    )
     full_name: str = Field(..., min_length=1, description="Full name cannot be empty.")
 
 
@@ -32,5 +34,5 @@ class UserResponse(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    token_type: str = "bearer"
+    token_type: str = "bearer"  # noqa: S105
     user: UserResponse

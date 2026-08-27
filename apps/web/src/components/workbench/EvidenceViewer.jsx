@@ -1,4 +1,3 @@
-import { clsx } from 'clsx'
 import { BookOpen, Calendar, ExternalLink, Hash, Shield, ShieldAlert } from 'lucide-react'
 
 /**
