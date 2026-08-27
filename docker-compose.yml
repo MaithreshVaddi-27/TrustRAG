@@ -30,13 +30,14 @@ services:
     environment:
       QDRANT__SERVICE__HTTP_PORT: 6333
     healthcheck:
-      # qdrant/qdrant image does NOT include curl — use wget instead.
-      # /readyz returns 200 when Qdrant is ready to serve requests.
-      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/readyz || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+      # qdrant/qdrant has no curl or wget — use bash /dev/tcp for a pure TCP check.
+      # bash is available in the image (/bin/bash exists).
+      # This opens a TCP connection to port 6333; exits 0 if port is listening.
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' 2>/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 10s
     restart: unless-stopped
 
   # ── FastAPI backend ────────────────────────────────────────────────────────
