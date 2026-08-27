@@ -35,4 +35,6 @@ class DocResponse(BaseModel):
     content_hash: str
     ingestion_status: str  # pending, processing, completed, failed
     error_message: str | None = None
+    effective_from: datetime | None = None
+    effective_until: datetime | None = None
     created_at: datetime

@@ -37,6 +37,8 @@ def serialize_doc(doc_doc: Mapping[str, Any]) -> DocResponse:
         content_hash=doc_doc["content_hash"],
         ingestion_status=doc_doc.get("ingestion_status", "pending"),
         error_message=doc_doc.get("error_message"),
+        effective_from=doc_doc.get("effective_from"),
+        effective_until=doc_doc.get("effective_until"),
         created_at=doc_doc["created_at"],
     )
 
@@ -113,7 +115,13 @@ async def delete_kb(kb_id_str: str, user_id_str: str) -> None:
 
 
 async def add_document(
-    kb_id_str: str, filename: str, file_size: int, content_hash: str, user_id_str: str
+    kb_id_str: str,
+    filename: str,
+    file_size: int,
+    content_hash: str,
+    user_id_str: str,
+    effective_from: datetime | None = None,
+    effective_until: datetime | None = None,
 ) -> DocResponse:
     """
     Add a document metadata record. Verifies KB ownership first.
@@ -129,6 +137,8 @@ async def add_document(
         "content_hash": content_hash,
         "ingestion_status": "pending",
         "error_message": None,
+        "effective_from": effective_from,
+        "effective_until": effective_until,
         "created_at": datetime.now(UTC),
     }
 

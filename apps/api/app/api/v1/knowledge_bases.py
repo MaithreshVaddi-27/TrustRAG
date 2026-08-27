@@ -5,14 +5,19 @@ TRUSTRAG API — Knowledge Base routes.
 from __future__ import annotations
 
 import hashlib
+import io
 from collections.abc import Mapping
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile, status
 
 from app.api.deps import get_current_user
 from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
+from app.core.config import get_model_config
 from app.core.exceptions import FileTooLargeError, UnsupportedFormatError
+from app.ingestion.chunker import chunk_text
+from app.ingestion.parser import parse_document
+from app.ingestion.pipeline import index_parsed_chunks
 from app.services import kb_service
 
 router = APIRouter(prefix="/knowledge-bases", tags=["knowledge-bases"])
@@ -94,6 +99,7 @@ async def list_documents_endpoint(
 )
 async def upload_document_endpoint(
     kb_id: str,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user: Mapping[str, Any] = Depends(get_current_user)
 ) -> DocResponse:
@@ -101,7 +107,8 @@ async def upload_document_endpoint(
     Upload and parse a document.
     
     Accepts PDF, TXT, or MD files up to 20MB.
-    Enforces format validation and registers document for parsing.
+    Enforces format validation, parses content immediately,
+    and runs dense/sparse embedding indexing in background.
     """
     # Verify file extension
     filename = file.filename or "unknown"
@@ -125,14 +132,32 @@ async def upload_document_endpoint(
     # Compute content hash
     content_hash = hashlib.sha256(content).hexdigest()
 
-    # Save to MongoDB
+    # Parse document immediately to extract pages and dates
+    # Wrap bytes in a StringIO/BytesIO stream
+    stream = io.BytesIO(content)
+    pages, eff_from, eff_until = parse_document(filename, stream)
+
+    # Chunk text
+    cfg = get_model_config()
+    chunks = chunk_text(pages, chunk_size=cfg.chunk_size, chunk_overlap=cfg.chunk_overlap)
+
+    # Save metadata record in MongoDB
     doc = await kb_service.add_document(
         kb_id_str=kb_id,
         filename=filename,
         file_size=file_size,
         content_hash=content_hash,
-        user_id_str=str(current_user["_id"])
+        user_id_str=str(current_user["_id"]),
+        effective_from=eff_from,
+        effective_until=eff_until
     )
 
-    # In Phase 5: Trigger asynchronous parsing task
+    # Trigger background indexing
+    background_tasks.add_task(
+        index_parsed_chunks,
+        doc_id_str=doc.id,
+        kb_id_str=kb_id,
+        chunks=chunks
+    )
+
     return doc
