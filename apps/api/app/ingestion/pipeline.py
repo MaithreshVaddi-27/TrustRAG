@@ -47,10 +47,28 @@ async def index_parsed_chunks(
 
     try:
         if not chunks:
-            # Empty document
             await doc_coll.update_one({"_id": doc_id}, {"$set": {"ingestion_status": "completed"}})
             logger.info("Ingestion completed: document has no text chunks", doc_id=doc_id_str)
             return
+
+        # Store chunks in MongoDB for future integrity audits
+        import hashlib
+
+        chunks_coll = get_collection("document_chunks")
+        mongo_chunks = []
+        for c in chunks:
+            mongo_chunks.append(
+                {
+                    "document_id": doc_id,
+                    "chunk_index": c["chunk_index"],
+                    "text": c["text"],
+                    "page": c["page"],
+                    "character_offset": c["character_offset"],
+                    "text_hash": hashlib.sha256(c["text"].encode("utf-8")).hexdigest(),
+                }
+            )
+        if mongo_chunks:
+            await chunks_coll.insert_many(mongo_chunks)
 
         # 2. Ensure Qdrant collection is initialized
         await init_kb_collection(kb_id_str)

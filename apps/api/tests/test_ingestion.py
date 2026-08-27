@@ -101,6 +101,7 @@ async def test_indexing_pipeline_execution(
     # Mock MongoDB updates
     mock_collection = MagicMock()
     mock_collection.update_one = AsyncMock()
+    mock_collection.insert_many = AsyncMock()
 
     with patch("app.ingestion.pipeline.get_collection", return_value=mock_collection):
         from app.ingestion.pipeline import index_parsed_chunks

@@ -29,6 +29,7 @@ from app.generation.generator import generate_grounded_answer
 from app.retrieval.reranker import rerank_candidate_chunks
 from app.retrieval.retriever import retrieve_hybrid_chunks
 from app.services.kb_service import get_kb
+from app.verification.integrity import audit_evidence_integrity
 from app.verification.verifier import execute_claim_verification
 
 logger = get_logger(__name__)
@@ -303,25 +304,53 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
 
         top_chunks = rerank_candidate_chunks(query, candidates)
 
-        # 3. Persist Evidence & emit retrieval completed event
+        # 3. Evidence Integrity Audit
+        await add_trace_event(
+            analysis_id_str,
+            "integrity.started",
+            {"message": "Auditing retrieved evidence segments"},
+        )
+
+        audited_chunks = await audit_evidence_integrity(top_chunks)
+        verified_chunks = [c for c in audited_chunks if c.get("integrity_status") == "VERIFIED"]
+        corrupted_count = len(audited_chunks) - len(verified_chunks)
+
+        if corrupted_count > 0:
+            await add_trace_event(
+                analysis_id_str,
+                "integrity.failed",
+                {"message": f"Excluded {corrupted_count} corrupted or tampered segments"},
+            )
+        else:
+            await add_trace_event(
+                analysis_id_str,
+                "integrity.completed",
+                {"message": "All retrieved segments passed integrity audit successfully"},
+            )
+
+        # 4. Persist Evidence & emit retrieval completed event
         await add_trace_event(
             analysis_id_str,
             "retrieval.completed",
             {
-                "message": f"Selected {len(top_chunks)} context segments",
+                "message": (
+                    f"Selected {len(verified_chunks)} verified segments "
+                    f"out of {len(top_chunks)} retrieved"
+                ),
                 "segments": [
                     {
                         "filename": c.get("filename") or "unknown_doc",
                         "page": c.get("page", 1),
                         "score": c.get("rerank_score") or c.get("rrf_score", 0.0),
                     }
-                    for c in top_chunks
+                    for c in verified_chunks
                 ],
             },
         )
 
         evidence_ids = []
-        for c in top_chunks:
+        verified_evidence_ids = []
+        for c in audited_chunks:
             doc_id = ObjectId(c["document_id"]) if c.get("document_id") else None
             evt_doc = {
                 "analysis_id": analysis_id,
@@ -332,22 +361,24 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
                 "fusion_score": c.get("rrf_score", 0.0),
                 "rerank_score": c.get("rerank_score"),
                 "method": "hybrid",
-                "integrity_status": "PENDING",
+                "integrity_status": c.get("integrity_status", "CORRUPTED"),
                 "effective_from": c.get("effective_from"),
                 "effective_until": c.get("effective_until"),
                 "created_at": datetime.now(UTC),
             }
             res = await evidence_coll.insert_one(evt_doc)
             evidence_ids.append(res.inserted_id)
+            if c.get("integrity_status") == "VERIFIED":
+                verified_evidence_ids.append(res.inserted_id)
 
-        # 4. Generate Grounded Answer
+        # 5. Generate Grounded Answer (on verified segments only)
         await add_trace_event(
             analysis_id_str,
             "generation.started",
             {"message": "Invoking Gemini model for grounded answer generation"},
         )
 
-        answer = await generate_grounded_answer(query, top_chunks)
+        answer = await generate_grounded_answer(query, verified_chunks)
 
         if answer == "ABSTAIN":
             await add_trace_event(
@@ -363,7 +394,7 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
                 {"message": "Answer generation completed successfully"},
             )
 
-            # 5. Claims Verification
+            # 6. Claims Verification (on verified segments only)
             await add_trace_event(
                 analysis_id_str,
                 "claims.started",
@@ -373,8 +404,8 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
             claims = await execute_claim_verification(
                 analysis_id_str=analysis_id_str,
                 answer=answer,
-                chunks=top_chunks,
-                evidence_ids=evidence_ids,
+                chunks=verified_chunks,
+                evidence_ids=verified_evidence_ids,
             )
 
             supported = sum(1 for c in claims if c["state"] == "SUPPORTED")
