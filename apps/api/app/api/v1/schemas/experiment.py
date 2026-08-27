@@ -13,6 +13,9 @@ from pydantic import BaseModel, ConfigDict, Field
 class ExperimentCreate(BaseModel):
     config_name: str = Field(..., description="Configuration being evaluated")
     description: str = Field("", description="A short summary of the experiment objective")
+    metrics: dict[str, Any] = Field(
+        default_factory=dict, description="Custom evaluation metric scores"
+    )
 
 
 class ExperimentResponse(BaseModel):

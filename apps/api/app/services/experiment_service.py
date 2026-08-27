@@ -34,7 +34,7 @@ async def create_experiment(schema: ExperimentCreate, user_id_str: str) -> Exper
         "user_id": ObjectId(user_id_str),
         "config_name": schema.config_name.strip(),
         "description": schema.description.strip(),
-        "metrics": {},  # Populated after validation runs
+        "metrics": schema.metrics,
         "created_at": datetime.now(UTC),
     }
 
