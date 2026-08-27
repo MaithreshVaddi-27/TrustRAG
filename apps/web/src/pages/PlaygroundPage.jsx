@@ -1,69 +1,114 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Database, Loader2, Zap } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { ReliabilityBadge, StatusDot } from '@/components/workbench/ReliabilityBadge'
 import { ClaimInspector } from '@/components/workbench/ClaimInspector'
 import { EvidenceViewer } from '@/components/workbench/EvidenceViewer'
 import { ExecutionTrace, RecoveryTimeline } from '@/components/workbench/ExecutionTrace'
-
-/**
- * PlaygroundPage — the core TRUSTRAG workbench UI.
- * Shows the full pipeline: Query → Evidence → Answer → Claims → Verification
- * → Reliability → Diagnosis → Recovery → Final Decision.
- *
- * Phase 6+ wires this to the real analysis API + SSE stream.
- * For Phase 2, the UI structure and components are fully built with mock state.
- */
-
-const MOCK_ANALYSIS = {
-  status: 'completed',
-  query: 'What is the refund policy and how long does processing take?',
-  answer: 'Refunds are available for 45 days from the purchase date. Processing typically takes 7 business days.',
-  reliability: { score: 0.78, status: 'TRUSTED' },
-  diagnosis: { type: null, failures: [] },
-  claims: [
-    { id: 'c1', text: 'Refunds are available for 45 days from the purchase date.', state: 'SUPPORTED', explanation: 'Policy v4 explicitly states 45-day window.', evidence_ids: ['e1'] },
-    { id: 'c2', text: 'Processing typically takes 7 business days.', state: 'UNSUPPORTED', explanation: 'No evidence found for processing time.', evidence_ids: [] },
-  ],
-  evidence: [
-    { id: 'e1', text: 'Customers may request a refund within 45 days of purchase. Refund eligibility is subject to product condition review.', filename: 'refund-policy-v4.pdf', retrieval_score: 0.921, fusion_score: 0.887, method: 'hybrid', integrity_status: 'ok' },
-    { id: 'e2', text: 'All return requests must be submitted through the customer portal.', filename: 'returns-guide.pdf', retrieval_score: 0.743, fusion_score: 0.651, method: 'dense', integrity_status: 'ok' },
-  ],
-  trace: [
-    { event: 'analysis.started',     timestamp: new Date().toISOString(), data: {} },
-    { event: 'retrieval.completed',  timestamp: new Date().toISOString(), data: { message: '20 chunks retrieved' } },
-    { event: 'generation.completed', timestamp: new Date().toISOString(), data: { latency_ms: 1240 } },
-    { event: 'claims.extracted',     timestamp: new Date().toISOString(), data: { message: '2 claims' } },
-    { event: 'verification.completed', timestamp: new Date().toISOString(), data: {} },
-    { event: 'analysis.completed',   timestamp: new Date().toISOString(), data: {} },
-  ],
-}
+import { kbService, analysisService } from '@/services/api'
+import { openAnalysisStream } from '@/lib/api'
 
 export default function PlaygroundPage() {
-  const [query,      setQuery]      = useState('')
-  const [kbId,       setKbId]       = useState('')
-  const [loading,    setLoading]    = useState(false)
-  const [analysis,   setAnalysis]   = useState(null)
-  const [activeTab,  setActiveTab]  = useState('answer')
+  const [query, setQuery] = useState('')
+  const [kbId, setKbId] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [analysis, setAnalysis] = useState(null)
+  const [traceEvents, setTraceEvents] = useState([])
+  const [activeTab, setActiveTab] = useState('trace')
+  
+  const streamRef = useRef(null)
+
+  // Fetch KBs for the dropdown
+  const { data: knowledgeBases } = useQuery({
+    queryKey: ['knowledgeBases'],
+    queryFn: kbService.list
+  })
+
+  // Cleanup stream on unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.close()
+      }
+    }
+  }, [])
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!query.trim()) return
+    if (!query.trim() || !kbId) return
+    
     setLoading(true)
     setAnalysis(null)
-    // Phase 6: replace with real API call + SSE stream
-    await new Promise(r => setTimeout(r, 1500))
-    setAnalysis(MOCK_ANALYSIS)
-    setLoading(false)
-    setActiveTab('answer')
+    setTraceEvents([])
+    setActiveTab('trace') // Default to trace while running so user sees progress
+
+    try {
+      // 1. Create analysis run
+      const analysisCreated = await analysisService.create({ 
+        knowledge_base_id: kbId, 
+        query 
+      })
+
+      // 2. Connect to SSE stream
+      streamRef.current = openAnalysisStream(analysisCreated.id, {
+        onEvent: (eventData) => {
+          setTraceEvents(prev => [...prev, eventData])
+        },
+        onError: async () => {
+          // If SSE fails, wait a bit then fetch final state anyway
+          await fetchFinalAnalysis(analysisCreated.id)
+        },
+        onComplete: async () => {
+          await fetchFinalAnalysis(analysisCreated.id)
+        }
+      })
+    } catch (err) {
+      console.error("Failed to start analysis:", err)
+      setLoading(false)
+      alert(err.message || "Failed to start analysis")
+    }
+  }
+
+  async function fetchFinalAnalysis(analysisId) {
+    try {
+      const [finalAnalysis, claims, evidence, trace] = await Promise.all([
+        analysisService.get(analysisId),
+        analysisService.claims(analysisId),
+        analysisService.evidence(analysisId),
+        analysisService.trace(analysisId)
+      ])
+
+      setAnalysis({
+        ...finalAnalysis,
+        claims: claims || [],
+        evidence: evidence || [],
+        trace: trace || []
+      })
+      // If completed successfully, switch to answer tab automatically
+      if (finalAnalysis.status === 'completed') {
+        setActiveTab('answer')
+      }
+    } catch (err) {
+      console.error("Failed to fetch final analysis data:", err)
+    } finally {
+      setLoading(false)
+      if (streamRef.current) {
+        streamRef.current.close()
+        streamRef.current = null
+      }
+    }
   }
 
   const TABS = [
     { id: 'answer',    label: 'Answer' },
-    { id: 'evidence',  label: `Evidence ${analysis ? `(${analysis.evidence.length})` : ''}` },
-    { id: 'claims',    label: `Claims ${analysis ? `(${analysis.claims.length})` : ''}` },
+    { id: 'evidence',  label: `Evidence ${analysis ? `(${analysis.evidence?.length || 0})` : ''}` },
+    { id: 'claims',    label: `Claims ${analysis ? `(${analysis.claims?.length || 0})` : ''}` },
     { id: 'trace',     label: 'Trace' },
   ]
+
+  // Determine which trace events to show (live during load, or fetched after)
+  const currentTraceEvents = loading ? traceEvents : (analysis?.trace || traceEvents)
 
   return (
     <AppLayout>
@@ -88,9 +133,12 @@ export default function PlaygroundPage() {
                   value={kbId}
                   onChange={e => setKbId(e.target.value)}
                   className="w-full bg-surface-800 border border-slate-700 rounded-lg pl-8 pr-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500/50 appearance-none"
+                  disabled={loading}
                 >
                   <option value="">— select a KB —</option>
-                  {/* Populated from API in Phase 3 */}
+                  {knowledgeBases?.map(kb => (
+                    <option key={kb.id} value={kb.id}>{kb.name}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -105,12 +153,13 @@ export default function PlaygroundPage() {
                 placeholder="Ask a question about your documents…"
                 rows={5}
                 className="flex-1 min-h-[120px] bg-surface-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-600 transition-colors"
+                disabled={loading}
               />
             </div>
 
             <button
               type="submit"
-              disabled={loading || !query.trim()}
+              disabled={loading || !query.trim() || !kbId}
               id="run-analysis"
               className="btn-primary w-full flex items-center justify-center gap-2"
             >
@@ -142,11 +191,11 @@ export default function PlaygroundPage() {
                 <StatusDot status="running" />
                 <span className="text-sm text-slate-400">Running TRUSTRAG pipeline…</span>
               </div>
-              <ExecutionTrace events={[]} isLive={true} />
+              <ExecutionTrace events={currentTraceEvents} isLive={true} />
             </div>
           )}
 
-          {analysis && (
+          {analysis && !loading && (
             <>
               {/* Reliability header */}
               <div className="shrink-0 p-4 border-b border-slate-800 flex items-center justify-between gap-4 bg-surface-900/30">
@@ -154,11 +203,13 @@ export default function PlaygroundPage() {
                   <StatusDot status={analysis.status} />
                   <p className="text-sm text-slate-300 truncate font-medium">{analysis.query}</p>
                 </div>
-                <ReliabilityBadge
-                  score={analysis.reliability.score}
-                  status={analysis.reliability.status}
-                  size="md"
-                />
+                {analysis.reliability && (
+                  <ReliabilityBadge
+                    score={analysis.reliability.score}
+                    status={analysis.reliability.status}
+                    size="md"
+                  />
+                )}
               </div>
 
               {/* Tabs */}
@@ -182,13 +233,23 @@ export default function PlaygroundPage() {
               <div className="flex-1 overflow-y-auto p-5">
                 {activeTab === 'answer' && (
                   <div className="space-y-5">
-                    <div className="glass-card p-4">
-                      <p className="section-heading">Generated Answer</p>
-                      <p className="text-slate-200 text-sm leading-relaxed">{analysis.answer}</p>
-                    </div>
+                    {analysis.status === 'failed' && (
+                       <div className="rounded-lg border border-red-800/40 bg-red-950/20 px-4 py-3">
+                         <p className="text-sm font-medium text-red-400">
+                           Analysis failed: {analysis.diagnosis?.failures?.[0] || 'Unknown error occurred'}
+                         </p>
+                       </div>
+                    )}
+                    
+                    {analysis.answer && (
+                      <div className="glass-card p-4">
+                        <p className="section-heading">Generated Answer</p>
+                        <p className="text-slate-200 text-sm leading-relaxed">{analysis.answer}</p>
+                      </div>
+                    )}
 
-                    {analysis.claims.some(c => c.state === 'UNSUPPORTED' || c.state === 'CONTRADICTED') && (
-                      <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-4 py-3">
+                    {analysis.claims?.some(c => c.state === 'UNSUPPORTED' || c.state === 'CONTRADICTED') && (
+                      <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-4 py-3 mt-4">
                         <p className="text-sm font-medium text-amber-400">
                           ⚠ Some claims could not be verified. Inspect the Claims tab.
                         </p>
@@ -200,15 +261,15 @@ export default function PlaygroundPage() {
                 )}
 
                 {activeTab === 'evidence' && (
-                  <EvidenceViewer chunks={analysis.evidence} />
+                  <EvidenceViewer chunks={analysis.evidence || []} />
                 )}
 
                 {activeTab === 'claims' && (
-                  <ClaimInspector claims={analysis.claims} />
+                  <ClaimInspector claims={analysis.claims || []} />
                 )}
 
                 {activeTab === 'trace' && (
-                  <ExecutionTrace events={analysis.trace} isLive={false} />
+                  <ExecutionTrace events={currentTraceEvents} isLive={false} />
                 )}
               </div>
             </>
