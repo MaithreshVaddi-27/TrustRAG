@@ -30,11 +30,13 @@ services:
     environment:
       QDRANT__SERVICE__HTTP_PORT: 6333
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      # qdrant/qdrant image does NOT include curl — use wget instead.
+      # /readyz returns 200 when Qdrant is ready to serve requests.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/readyz || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 10s
+      retries: 10
+      start_period: 20s
     restart: unless-stopped
 
   # ── FastAPI backend ────────────────────────────────────────────────────────
@@ -69,11 +71,12 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      # python:slim includes wget; use it for consistency with Qdrant healthcheck.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/api/v1/health || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 60s     # Extra time for model download on first start
+      start_period: 90s     # Extra time for sentence-transformer model download on first start
     restart: unless-stopped
 
 volumes:
