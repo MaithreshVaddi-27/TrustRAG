@@ -12,7 +12,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class AnalysisCreate(BaseModel):
     knowledge_base_id: str = Field(..., description="Target knowledge base")
-    query: str = Field(..., min_length=1, description="User question")
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="User question (max 2000 characters to bound token cost)",
+    )
 
 
 class ReliabilitySummary(BaseModel):

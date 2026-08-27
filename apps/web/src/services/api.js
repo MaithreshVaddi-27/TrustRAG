@@ -21,7 +21,7 @@ export const kbService = {
   },
 
   listDocuments: (kbId) =>
-    api.get(`/api/v1/documents?knowledge_base_id=${kbId}`).then(r => r.data),
+    api.get(`/api/v1/knowledge-bases/${kbId}/documents`).then(r => r.data),
 }
 
 // ── Analyses ──────────────────────────────────────────────────────────────

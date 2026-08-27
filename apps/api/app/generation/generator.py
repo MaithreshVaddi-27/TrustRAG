@@ -36,6 +36,13 @@ Strict Constraints:
 """
 
 
+def _sanitize_label(value: str, max_len: int = 80) -> str:
+    """Strip control characters and truncate label to prevent context boundary injection."""
+    # Remove newlines, tabs, and other control chars that could break segment delimiters
+    sanitized = "".join(ch for ch in value if ch.isprintable() and ch not in "\n\r\t")
+    return sanitized[:max_len]
+
+
 def format_context(chunks: list[dict[str, Any]]) -> str:
     """Format evidence segments into a clear structured block."""
     if not chunks:
@@ -43,8 +50,10 @@ def format_context(chunks: list[dict[str, Any]]) -> str:
 
     formatted = []
     for i, c in enumerate(chunks, start=1):
-        filename = c.get("filename") or "unknown_doc"
-        page = c.get("page") or 1
+        # Sanitize source labels from untrusted chunk metadata to prevent
+        # segment boundary injection (a crafted filename could escape delimiters)
+        filename = _sanitize_label(c.get("filename") or "unknown_doc")
+        page = int(c.get("page") or 1)
         text = c.get("text", "").strip()
         formatted.append(f"--- Segment {i} [Source: {filename}, Page {page}] ---\n{text}")
 

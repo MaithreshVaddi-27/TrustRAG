@@ -35,6 +35,7 @@ class Collections:
     USERS = "users"
     KNOWLEDGE_BASES = "knowledge_bases"
     DOCUMENTS = "documents"
+    DOCUMENT_CHUNKS = "document_chunks"
     ANALYSES = "analyses"
     CLAIMS = "claims"
     EVIDENCE = "evidence"

@@ -7,10 +7,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 
 from app.api.deps import get_current_user
 from app.api.v1.schemas.auth import TokenResponse, UserLogin, UserRegister, UserResponse
+from app.core.config import get_settings
+from app.core.rate_limiter import limiter
 from app.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -22,13 +24,15 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user account",
 )
-async def register(schema: UserRegister) -> UserResponse:
+@limiter.limit(lambda: f"{get_settings().rate_limit_auth_per_minute}/minute")
+async def register(request: Request, schema: UserRegister) -> UserResponse:
     """Register user details and return profile info."""
     return await auth_service.register_user(schema)
 
 
 @router.post("/login", response_model=TokenResponse, summary="User login session generation")
-async def login(schema: UserLogin) -> TokenResponse:
+@limiter.limit(lambda: f"{get_settings().rate_limit_auth_per_minute}/minute")
+async def login(request: Request, schema: UserLogin) -> TokenResponse:
     """Verify credentials and return access JWT token."""
     token, user = await auth_service.authenticate_user(schema.email, schema.password)
     return TokenResponse(access_token=token, user=user)

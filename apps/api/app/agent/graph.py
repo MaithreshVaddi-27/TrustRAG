@@ -241,18 +241,23 @@ async def recovery_node(state: AgentState) -> AgentState:
         missing_claims = [c["text"] for c in state["claims"] if c["state"] != "SUPPORTED"]
         missing_str = "\n".join(f"- {c}" for c in missing_claims)
 
+        # Use explicit delimiters to prevent prompt injection via untrusted
+        # user queries or LLM-generated answer content being interpreted as
+        # instructions by the rewrite model.
         rewrite_prompt = f"""You are a query expansion assistant.
 Your task is to rewrite the original user query to search for the missing
 factual details listed below.
 Combine the original query with context requirements. Generate a single,
 concise search query.
 
-Original Query: {state["query"]}
-Current Answer: {state["answer"]}
-Missing Claims to Verify:
-{missing_str}
-
 Output only the expanded search query string. Do not include markdown headers or commentary.
+
+<ORIGINAL_QUERY>
+{state["query"]}
+</ORIGINAL_QUERY>
+<MISSING_CLAIMS>
+{missing_str}
+</MISSING_CLAIMS>
 """
         try:
             model = get_verification_model()
@@ -316,29 +321,36 @@ def should_recover(state: AgentState) -> str:
 
 # ─── Graph Construction ────────────────────────────────────────────────────────
 
+# Module-level compiled graph singleton — built once, reused per request.
+_compiled_graph: Any = None
+
 
 def build_agent_graph() -> Any:
-    """Assemble LangGraph State Graph workflow."""
-    builder = StateGraph(AgentState)
+    """Assemble and compile LangGraph State Graph workflow (cached singleton)."""
+    global _compiled_graph
+    if _compiled_graph is None:
+        builder = StateGraph(AgentState)
 
-    # Register nodes
-    builder.add_node("retrieval", retrieval_node)
-    builder.add_node("generation", generation_node)
-    builder.add_node("verification", verification_node)
-    builder.add_node("recovery", recovery_node)
+        # Register nodes
+        builder.add_node("retrieval", retrieval_node)
+        builder.add_node("generation", generation_node)
+        builder.add_node("verification", verification_node)
+        builder.add_node("recovery", recovery_node)
 
-    # Map edges
-    builder.set_entry_point("retrieval")
-    builder.add_edge("retrieval", "generation")
-    builder.add_edge("generation", "verification")
+        # Map edges
+        builder.set_entry_point("retrieval")
+        builder.add_edge("retrieval", "generation")
+        builder.add_edge("generation", "verification")
 
-    builder.add_conditional_edges(
-        "verification", should_recover, {"recover": "recovery", "end": END}
-    )
+        builder.add_conditional_edges(
+            "verification", should_recover, {"recover": "recovery", "end": END}
+        )
 
-    builder.add_edge("recovery", "retrieval")
+        builder.add_edge("recovery", "retrieval")
 
-    return builder.compile()
+        _compiled_graph = builder.compile()
+        logger.info("LangGraph agent graph compiled and cached")
+    return _compiled_graph
 
 
 # ─── Coordinator Run ──────────────────────────────────────────────────────────

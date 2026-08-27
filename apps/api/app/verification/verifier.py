@@ -146,10 +146,11 @@ async def verify_claim_nli(claim: str, chunks: list[dict[str, Any]]) -> dict[str
     except Exception as exc:
         logger.error("NLI verification failed", claim=claim, error=str(exc))
         # Default to NEUTRAL on exception for safety
+        # Do NOT expose raw exception details — log internally only
         return {
             "verdict": "NEUTRAL",
             "supporting_segments": [],
-            "explanation": f"Verification failed due to error: {exc!s}",
+            "explanation": "Verification could not be completed.",
         }
 
 

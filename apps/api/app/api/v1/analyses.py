@@ -8,7 +8,7 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_user
@@ -19,7 +19,9 @@ from app.api.v1.schemas.analysis import (
     EvidenceResponse,
     TraceEventResponse,
 )
+from app.core.config import get_settings
 from app.core.exceptions import AuthenticationError
+from app.core.rate_limiter import limiter
 from app.services import analysis_service
 
 router = APIRouter(prefix="/analyses", tags=["analyses"])
@@ -31,7 +33,9 @@ router = APIRouter(prefix="/analyses", tags=["analyses"])
     status_code=status.HTTP_201_CREATED,
     summary="Initiate analysis run",
 )
+@limiter.limit(lambda: f"{get_settings().rate_limit_analyses_per_minute}/minute")
 async def create_analysis_endpoint(
+    request: Request,
     schema: AnalysisCreate,
     background_tasks: BackgroundTasks,
     current_user: Mapping[str, Any] = Depends(get_current_user),

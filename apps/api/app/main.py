@@ -22,10 +22,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from slowapi.util import get_remote_address
 
 from app.api.router import api_router
 from app.core.config import get_settings
@@ -44,6 +43,7 @@ from app.core.exceptions import (
     VectorStoreError,
 )
 from app.core.logging import configure_logging, get_logger
+from app.core.rate_limiter import limiter
 from app.db.mongodb import connect_db, create_indexes, disconnect_db
 
 logger = get_logger(__name__)
@@ -81,8 +81,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 # ─── Rate limiter ─────────────────────────────────────────────────────────────
-
-limiter = Limiter(key_func=get_remote_address)
+# Import shared limiter (defined in app.core.rate_limiter to avoid circular imports)
 
 
 # ─── Exception handlers ───────────────────────────────────────────────────────

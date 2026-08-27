@@ -7,6 +7,7 @@ and updates document ingestion status in MongoDB.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from bson import ObjectId
@@ -42,7 +43,8 @@ async def index_parsed_chunks(
 
     # 1. Update status to processing
     await doc_coll.update_one(
-        {"_id": doc_id}, {"$set": {"ingestion_status": "processing", "updated_at": ObjectId()}}
+        {"_id": doc_id},
+        {"$set": {"ingestion_status": "processing", "updated_at": datetime.now(UTC)}},
     )
 
     try:
@@ -54,7 +56,7 @@ async def index_parsed_chunks(
         # Store chunks in MongoDB for future integrity audits
         import hashlib
 
-        chunks_coll = get_collection("document_chunks")
+        chunks_coll = get_collection(Collections.DOCUMENT_CHUNKS)
         mongo_chunks = []
         for c in chunks:
             mongo_chunks.append(

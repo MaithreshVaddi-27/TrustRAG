@@ -79,16 +79,29 @@ def reciprocal_rank_fusion(
     """
     fusion_map: dict[str, dict[str, Any]] = {}
 
-    # Rank dense results (1-based index)
+    # Rank dense results (1-based index), capture score per-list
     for rank, point in enumerate(dense_results, start=1):
-        fusion_map[point.id] = {"point": point, "dense_rank": rank, "sparse_rank": None}
+        fusion_map[point.id] = {
+            "point": point,
+            "dense_rank": rank,
+            "sparse_rank": None,
+            "dense_score": float(point.score),
+            "sparse_score": 0.0,
+        }
 
-    # Rank sparse results
+    # Rank sparse results — overwrite point reference only if not seen in dense
     for rank, point in enumerate(sparse_results, start=1):
         if point.id in fusion_map:
             fusion_map[point.id]["sparse_rank"] = rank
+            fusion_map[point.id]["sparse_score"] = float(point.score)
         else:
-            fusion_map[point.id] = {"point": point, "dense_rank": None, "sparse_rank": rank}
+            fusion_map[point.id] = {
+                "point": point,
+                "dense_rank": None,
+                "sparse_rank": rank,
+                "dense_score": 0.0,
+                "sparse_score": float(point.score),
+            }
 
     fused_results = []
     for pid, entry in fusion_map.items():
@@ -112,8 +125,8 @@ def reciprocal_rank_fusion(
                 "chunk_index": payload.get("chunk_index", 0),
                 "document_id": payload.get("document_id"),
                 "knowledge_base_id": payload.get("knowledge_base_id"),
-                "dense_score": float(point.score) if dr is not None else 0.0,
-                "sparse_score": float(point.score) if sr is not None else 0.0,
+                "dense_score": entry["dense_score"],
+                "sparse_score": entry["sparse_score"],
                 "rrf_score": rrf_score,
             }
         )

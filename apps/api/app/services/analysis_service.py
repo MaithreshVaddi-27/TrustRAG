@@ -325,7 +325,8 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
         await add_trace_event(
             analysis_id_str,
             "analysis.failed",
-            {"message": f"Execution failed: {exc!s}"},
+            # Do NOT expose raw exception details to users — log internally only
+            {"message": "Analysis execution failed. Check server logs for details."},
         )
 
         await analyses_coll.update_one(
