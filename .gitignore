@@ -5,6 +5,8 @@
 *.pem
 *.key
 *.p12
+*.cert
+*.crt
 secrets/
 
 # ─── Python ───────────────────────────────────────────────────────────────────
@@ -81,6 +83,9 @@ dmypy.json
 cython_debug/
 poetry.lock
 
+# ─── Ruff cache ───────────────────────────────────────────────────────────────
+.ruff_cache/
+
 # ─── Node / Frontend ──────────────────────────────────────────────────────────
 node_modules/
 npm-debug.log*
@@ -116,6 +121,8 @@ build/
 .settings/
 *.sublime-project
 *.sublime-workspace
+.cursor/
+.windsurf/
 
 # ─── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
@@ -126,19 +133,24 @@ build/
 ehthumbs.db
 Thumbs.db
 desktop.ini
+.AppleDouble
+.LSOverride
 
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
 logs/
 *.out
+*.err
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
 .docker/
 
 # ─── Qdrant local data ────────────────────────────────────────────────────────
 qdrant_storage/
+qdrant_data/
 
-# ─── ML / Model artifacts (local sentence-transformer cache) ──────────────────
+# ─── ML / Model cache (sentence-transformers, HuggingFace Hub) ────────────────
+.cache/
 .cache/huggingface/
 .model_cache/
 apps/api/.model_cache/
@@ -146,13 +158,28 @@ models/
 *.bin
 *.pt
 *.ckpt
+*.safetensors
+.huggingface/
 
 # ─── Test output ──────────────────────────────────────────────────────────────
 .pytest_cache/
 htmlcov/
 .coverage
+.coverage.*
+coverage.xml
+test-results/
+junit.xml
 
-# ─── Temporary ────────────────────────────────────────────────────────────────
+# ─── Temporary / scratch ──────────────────────────────────────────────────────
 tmp/
 temp/
 scratch/
+*.tmp
+*.bak
+*.orig
+
+# ─── Security scan output ─────────────────────────────────────────────────────
+bandit-report.json
+safety-report.json
+trivy-report.json
+semgrep-report.json
