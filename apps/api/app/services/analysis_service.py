@@ -29,6 +29,7 @@ from app.generation.generator import generate_grounded_answer
 from app.retrieval.reranker import rerank_candidate_chunks
 from app.retrieval.retriever import retrieve_hybrid_chunks
 from app.services.kb_service import get_kb
+from app.verification.verifier import execute_claim_verification
 
 logger = get_logger(__name__)
 
@@ -319,6 +320,7 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
             },
         )
 
+        evidence_ids = []
         for c in top_chunks:
             doc_id = ObjectId(c["document_id"]) if c.get("document_id") else None
             evt_doc = {
@@ -335,7 +337,8 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
                 "effective_until": c.get("effective_until"),
                 "created_at": datetime.now(UTC),
             }
-            await evidence_coll.insert_one(evt_doc)
+            res = await evidence_coll.insert_one(evt_doc)
+            evidence_ids.append(res.inserted_id)
 
         # 4. Generate Grounded Answer
         await add_trace_event(
@@ -356,9 +359,41 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
         else:
             await add_trace_event(
                 analysis_id_str,
-                "analysis.completed",
+                "generation.completed",
                 {"message": "Answer generation completed successfully"},
             )
+
+            # 5. Claims Verification
+            await add_trace_event(
+                analysis_id_str,
+                "claims.started",
+                {"message": "Decomposing answer and executing NLI verification checks"},
+            )
+
+            claims = await execute_claim_verification(
+                analysis_id_str=analysis_id_str,
+                answer=answer,
+                chunks=top_chunks,
+                evidence_ids=evidence_ids,
+            )
+
+            supported = sum(1 for c in claims if c["state"] == "SUPPORTED")
+            contradicted = sum(1 for c in claims if c["state"] == "CONTRADICTED")
+            neutral = sum(1 for c in claims if c["state"] == "NEUTRAL")
+
+            await add_trace_event(
+                analysis_id_str,
+                "claims.verified",
+                {
+                    "message": f"Verified {len(claims)} atomic claims",
+                    "stats": {
+                        "supported": supported,
+                        "contradicted": contradicted,
+                        "neutral": neutral,
+                    },
+                },
+            )
+
             status_value = "completed"
 
         # Update final state in database
