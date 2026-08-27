@@ -94,3 +94,26 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
                     event="analysis.started",
                     data={"message": "Analysis run initiated"},
                 )
+
+
+@patch("app.api.v1.analyses.get_current_user")
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_stream_trace_endpoint(mock_create_indexes, mock_connect, mock_get_current_user):
+    mock_get_current_user.return_value = {"_id": ObjectId("64ee39d09c6292376e191981")}
+
+    # Mock sse_event_generator
+    async def mock_generator(analysis_id, user_id_str):
+        yield {"event": "retrieval.started", "timestamp": "2026-08-27T10:00:00Z", "data": {}}
+        yield {"event": "analysis.completed", "timestamp": "2026-08-27T10:00:05Z", "data": {}}
+
+    with patch("app.services.analysis_service.sse_event_generator", side_effect=mock_generator):
+        response = client.get(
+            "/api/v1/analyses/64ee39d09c6292376e191983/stream?token=test-mock-token-minimum-32-chars-long"
+        )
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+        lines = response.content.decode("utf-8").split("\n\n")
+        assert len(lines) >= 2
+        assert "retrieval.started" in lines[0]
+        assert "analysis.completed" in lines[1]

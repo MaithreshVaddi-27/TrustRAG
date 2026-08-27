@@ -235,15 +235,18 @@ async def sse_event_generator(
     last_seen_id = None
     trace_coll = get_collection(Collections.TRACE_EVENTS)
 
-    # Simple polling loop yielding newly created trace events.
-    # In Phase 9, this streams active agent execution steps from the LangGraph execution.
-    for _ in range(30):  # Scaffolding: timeout after ~30 seconds of inactivity
+    # Loop until terminal event or 120 seconds of no new trace events
+    no_event_ticks = 0
+    while no_event_ticks < 120:
         query = {"analysis_id": ObjectId(analysis_id_str)}
         if last_seen_id:
             query["_id"] = {"$gt": last_seen_id}
 
         cursor = trace_coll.find(query).sort("timestamp", 1)
+        has_new = False
         async for doc in cursor:
+            has_new = True
+            no_event_ticks = 0
             last_seen_id = doc["_id"]
             yield {
                 "event": doc["event"],
@@ -254,6 +257,9 @@ async def sse_event_generator(
             # Terminal event checks
             if doc["event"] in ["analysis.completed", "analysis.abstained", "analysis.failed"]:
                 return
+
+        if not has_new:
+            no_event_ticks += 1
 
         await asyncio.sleep(1.0)
 
