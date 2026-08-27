@@ -32,7 +32,7 @@ _SENSITIVE_KEYS = frozenset(
 )
 
 
-def _scrub_sensitive(event_dict: dict[str, Any], **_: Any) -> dict[str, Any]:
+def _scrub_sensitive(logger: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
     """Structlog processor: replace sensitive values with [REDACTED]."""
     for key in list(event_dict.keys()):
         if any(sensitive in key.lower() for sensitive in _SENSITIVE_KEYS):
