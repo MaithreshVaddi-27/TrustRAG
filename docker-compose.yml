@@ -1,0 +1,83 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# TRUSTRAG — Local Development docker-compose
+# ─────────────────────────────────────────────────────────────────────────────
+# Provides:
+#   - FastAPI backend (with hot-reload)
+#   - Qdrant vector store (local, free)
+#
+# MongoDB Atlas is NOT run locally — use the cloud M0 free tier.
+# Gemini API is accessed remotely — requires GEMINI_API_KEY in .env.
+#
+# Usage:
+#   cp .env.example .env        # Fill in GEMINI_API_KEY and MONGODB_URI
+#   docker compose up
+#
+# For local Qdrant, QDRANT_URL should be: http://qdrant:6333 (container network)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── Qdrant vector store ───────────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.10.1
+    container_name: trustrag_qdrant
+    ports:
+      # Host port 6335 avoids conflict with other Qdrant instances on 6333.
+      # The API container uses http://qdrant:6333 (Docker network) — unaffected.
+      - "6335:6333"
+      - "6336:6334"   # gRPC (optional)
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── FastAPI backend ────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      target: builder          # Use builder stage for dev (includes dev tools)
+    container_name: trustrag_api
+    working_dir: /build
+    command: >
+      sh -c "PYTHONPATH=/build uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /build/app
+      --log-level info"
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source for hot-reload
+      - ./apps/api/app:/build/app:ro
+      - ./apps/api/config:/build/config:ro
+      # Persist model cache across restarts (sentence-transformers download)
+      - model_cache:/build/.model_cache
+    env_file:
+      - .env
+    environment:
+      # Override QDRANT_URL to use docker network
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s     # Extra time for model download on first start
+    restart: unless-stopped
+
+volumes:
+  qdrant_storage:
+    driver: local
+  model_cache:
+    driver: local

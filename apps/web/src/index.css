@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Custom base styles ──────────────────────────────────────────────────── */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-surface-900 text-slate-100 font-sans antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  /* Focus ring — accessible and consistent */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary-400 ring-offset-2 ring-offset-surface-900;
+  }
+
+  /* Scrollbar styling (dark theme) */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-surface-800;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-600 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-500;
+  }
+}
+
+/* ── Component utilities ─────────────────────────────────────────────────── */
+@layer components {
+  /* Glassmorphism card */
+  .glass-card {
+    @apply bg-surface-800/60 backdrop-blur-sm border border-slate-700/50 rounded-xl;
+  }
+
+  /* Claim state badges */
+  .badge-supported {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium
+           bg-green-900/40 text-green-300 border border-green-700/50;
+  }
+  .badge-contradicted {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium
+           bg-red-900/40 text-red-300 border border-red-700/50;
+  }
+  .badge-unsupported {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium
+           bg-amber-900/40 text-amber-300 border border-amber-700/50;
+  }
+  .badge-unknown {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium
+           bg-slate-700/60 text-slate-400 border border-slate-600/50;
+  }
+
+  /* Reliability score band */
+  .reliability-high   { @apply text-trust-high; }
+  .reliability-medium { @apply text-trust-medium; }
+  .reliability-low    { @apply text-trust-low; }
+
+  /* Primary button */
+  .btn-primary {
+    @apply px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white text-sm font-medium
+           rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Secondary button */
+  .btn-secondary {
+    @apply px-4 py-2 bg-surface-800 hover:bg-surface-800/80 text-slate-300 text-sm font-medium
+           rounded-lg border border-slate-700 transition-colors duration-150;
+  }
+
+  /* Code/mono text block */
+  .code-block {
+    @apply font-mono text-sm bg-surface-950 rounded-lg p-4 overflow-x-auto
+           border border-slate-700/50 text-slate-300;
+  }
+
+  /* Live trace event row */
+  .trace-event {
+    @apply flex items-start gap-3 py-2 px-3 rounded-lg hover:bg-surface-800/50 transition-colors;
+  }
+
+  /* Section heading */
+  .section-heading {
+    @apply text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3;
+  }
+}
+
+/* ── Utility overrides ───────────────────────────────────────────────────── */
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary-400 to-indigo-300 bg-clip-text text-transparent;
+  }
+
+  .border-glow {
+    box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.3),
+                0 0 16px rgba(99, 102, 241, 0.1);
+  }
+
+  /* SSE stream pulse indicator */
+  .stream-pulse {
+    @apply relative;
+  }
+  .stream-pulse::before {
+    content: '';
+    @apply absolute inset-0 rounded-full bg-primary-400 animate-ping opacity-30;
+  }
+}

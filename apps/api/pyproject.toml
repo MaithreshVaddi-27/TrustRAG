@@ -1,0 +1,104 @@
+[project]
+name = "trustrag-api"
+version = "0.1.0"
+description = "TRUSTRAG — AI Reliability Workbench backend"
+# readme intentionally omitted: README.md lives at the repo root,
+# not inside apps/api/ — hatchling would fail to find it in the Docker build context.
+requires-python = ">=3.11"
+
+dependencies = [
+    # ── Web framework ────────────────────────────────────────────────────────
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-multipart>=0.0.12",   # File uploads
+
+    # ── Configuration & settings ─────────────────────────────────────────────
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    "pyyaml>=6.0.1",
+
+    # ── Database ─────────────────────────────────────────────────────────────
+    "pymongo[srv]>=4.7.0",
+    "motor>=3.4.0",               # Async MongoDB driver
+
+    # ── LangChain ecosystem ──────────────────────────────────────────────────
+    "langchain>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-community>=0.3.0",
+    "langchain-google-genai>=2.0.0",
+    "langgraph>=0.2.0",
+
+    # ── Embeddings (local, free, no API key required) ────────────────────────
+    "sentence-transformers>=3.0.0",
+    "langchain-huggingface>=0.1.0",
+
+    # ── Vector store ─────────────────────────────────────────────────────────
+    "qdrant-client>=1.10.0",
+    "langchain-qdrant>=0.2.0",
+
+    # ── Document processing ──────────────────────────────────────────────────
+    "pymupdf>=1.24.0",            # PDF parsing (fitz) — open source
+    "chardet>=5.2.0",             # Encoding detection for text files
+
+    # ── Security ─────────────────────────────────────────────────────────────
+    "python-jose[cryptography]>=3.3.0",  # JWT
+    "passlib[bcrypt]>=1.7.4",            # Password hashing
+    "slowapi>=0.1.9",                    # Rate limiting for FastAPI
+
+    # ── Observability ────────────────────────────────────────────────────────
+    "structlog>=24.1.0",          # Structured JSON logging
+
+    # ── HTTP ─────────────────────────────────────────────────────────────────
+    "httpx>=0.27.0",              # Async HTTP client (for SSE, health checks)
+
+    # ── Utilities ────────────────────────────────────────────────────────────
+    "python-dateutil>=2.9.0",
+    "xxhash>=3.4.1",              # Fast hashing for content deduplication
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+    "httpx>=0.27.0",              # TestClient
+    "ruff>=0.4.0",                # Linter + formatter
+    "mypy>=1.10.0",
+    "types-pyyaml",
+    "types-python-jose",
+    "types-passlib",
+]
+
+[build-system]
+# setuptools handles both regular and editable installs reliably in Docker.
+# hatchling requires the readme file to exist during editable builds,
+# which fails when apps/api/ is the Docker build context (README.md is at repo root).
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+select = ["E", "W", "F", "I", "N", "UP", "S", "B", "A", "C4", "RUF"]
+ignore = [
+    "S101",   # Use of assert (allowed in tests)
+    "S104",   # Binding to 0.0.0.0 (needed for Docker)
+]
+
+[tool.ruff.per-file-ignores]
+"tests/*" = ["S", "N"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--cov=app --cov-report=term-missing -v"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
