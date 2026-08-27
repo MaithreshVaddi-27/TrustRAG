@@ -8,6 +8,8 @@ on:
   # Weekly scan for new CVEs even without code changes
   schedule:
     - cron: "0 6 * * 1"
+  # Enable manual runs of this workflow
+  workflow_dispatch:
 
 jobs:
   # ── Python dependency audit ────────────────────────────────────────────────
@@ -19,18 +21,22 @@ jobs:
         working-directory: apps/api
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install pip-audit
-        run: pip install pip-audit
+      - name: Install pip-audit and dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit
+          pip install .[dev]
 
       - name: Audit Python dependencies
         run: |
-          pip install -e ".[dev]"
           pip-audit --strict --format json --output pip-audit-report.json || true
           pip-audit --strict
 
@@ -51,9 +57,11 @@ jobs:
         working-directory: apps/web
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
 
@@ -61,7 +69,6 @@ jobs:
         run: npm install
 
       - name: Audit NPM dependencies
-        # --audit-level=high: fail only on high/critical severity
         run: npm audit --audit-level=high
 
   # ── Secret scanning ────────────────────────────────────────────────────────
@@ -70,9 +77,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0    # Full history for complete scan
+          fetch-depth: 0
 
       - name: Check for committed .env files
         run: |
@@ -94,14 +102,14 @@ jobs:
       - name: Check models.yaml for secrets
         run: |
           python3 -c "
-content = open('apps/api/config/models.yaml').read()
-patterns = ['api_key', 'API_KEY', 'password', 'secret', 'mongodb+srv', 'AIza', 'sk-']
-found = [p for p in patterns if p in content]
-if found:
-    print('FAIL: Possible secrets in models.yaml:', found)
-    exit(1)
-print('models.yaml clean — OK')
-"
+          content = open('apps/api/config/models.yaml').read()
+          patterns = ['api_key', 'API_KEY', 'password', 'secret', 'mongodb+srv', 'AIza', 'sk-']
+          found = [p for p in patterns if p in content]
+          if found:
+              print('FAIL: Possible secrets in models.yaml:', found)
+              import sys; sys.exit(1)
+          print('models.yaml clean — OK')
+          "
 
   # ── SAST (static analysis) ────────────────────────────────────────────────
   sast:
@@ -112,9 +120,11 @@ print('models.yaml clean — OK')
         working-directory: apps/api
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -122,7 +132,6 @@ print('models.yaml clean — OK')
         run: pip install bandit[toml]
 
       - name: Run Bandit
-        # Fail on HIGH severity findings; ignore B104 (bind 0.0.0.0 — needed for Docker)
         run: bandit -r app/ -ll -ii --skip B104 -f json -o bandit-report.json || bandit -r app/ -ll -ii --skip B104
 
       - name: Upload SAST report

@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -56,16 +57,17 @@ jobs:
 
       - name: Validate configuration
         # Ensures models.yaml is valid YAML and has required sections
-        run: python -c "
-from app.core.config import _load_models_yaml, ModelConfig
-data = _load_models_yaml()
-cfg = ModelConfig(data)
-print('config_version:', cfg.config_version)
-print('llm_model:', cfg.llm_model)
-print('embedding_model:', cfg.embedding_model)
-print('embedding_dimensionality:', cfg.embedding_dimensionality)
-print('OK')
-"
+        run: |
+          python -c "
+          from app.core.config import _load_models_yaml, ModelConfig
+          data = _load_models_yaml()
+          cfg = ModelConfig(data)
+          print('config_version:', cfg.config_version)
+          print('llm_model:', cfg.llm_model)
+          print('embedding_model:', cfg.embedding_model)
+          print('embedding_dimensionality:', cfg.embedding_dimensionality)
+          print('OK')
+          "
 
       - name: Run tests
         # Tests that don't require live services (MongoDB, Qdrant, Gemini)
@@ -96,24 +98,25 @@ print('OK')
         run: pip install pyyaml
 
       - name: Validate models.yaml schema
-        run: python -c "
-import yaml, sys
-with open('config/models.yaml') as f:
-    data = yaml.safe_load(f)
-required = ['llm', 'embedding', 'verification', 'reranker', 'retrieval', 'reliability', 'recovery', 'cost_controls', 'runtime']
-missing = [k for k in required if k not in data]
-if missing:
-    print('FAIL: Missing sections:', missing)
-    sys.exit(1)
-# Check no secrets
-content = open('config/models.yaml').read()
-forbidden = ['api_key', 'password', 'secret', 'mongodb+srv', 'AIza']
-for f in forbidden:
-    if f in content:
-        print(f'FAIL: Potential secret found: {f}')
-        sys.exit(1)
-print('models.yaml validation passed')
-"
+        run: |
+          python -c "
+          import yaml, sys
+          with open('config/models.yaml') as f:
+              data = yaml.safe_load(f)
+          required = ['llm', 'embedding', 'verification', 'reranker', 'retrieval', 'reliability', 'recovery', 'cost_controls', 'runtime']
+          missing = [k for k in required if k not in data]
+          if missing:
+              print('FAIL: Missing sections:', missing)
+              sys.exit(1)
+          # Check no secrets
+          content = open('config/models.yaml').read()
+          forbidden = ['api_key', 'password', 'secret', 'mongodb+srv', 'AIza']
+          for f in forbidden:
+              if f in content:
+                  print('FAIL: Potential secret found:', f)
+                  sys.exit(1)
+          print('models.yaml validation passed')
+          "
 
   # ── Frontend ──────────────────────────────────────────────────────────────
   frontend-lint:
