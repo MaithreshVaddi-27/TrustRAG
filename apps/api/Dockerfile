@@ -19,6 +19,7 @@ WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Create isolated venv
@@ -60,8 +61,9 @@ RUN mkdir -p /app/.model_cache && chown trustrag:trustrag /app/.model_cache
 USER trustrag
 
 # Health check — Docker will mark container unhealthy if this fails
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+# Use wget since it's available in python:slim and avoids curl dependency issues
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD wget -qO- http://localhost:8000/api/v1/health || exit 1
 
 EXPOSE 8000
 
