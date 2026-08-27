@@ -9,21 +9,31 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1 import health as health_module
+from app.api.v1 import (
+    health as health_module,
+    auth as auth_module,
+    knowledge_bases as kb_module,
+    documents as doc_module,
+    analyses as analysis_module,
+    experiments as experiment_module,
+)
 
 api_router = APIRouter(prefix="/api/v1")
 
 # ── Health ─────────────────────────────────────────────────────────────────
 api_router.include_router(health_module.router)
 
-# Future phases will register here:
-# from app.api.v1 import auth, knowledge_bases, documents, analyses, ...
-# api_router.include_router(auth.router, prefix="/auth")
-# api_router.include_router(knowledge_bases.router, prefix="/knowledge-bases")
-# api_router.include_router(documents.router, prefix="/documents")
-# api_router.include_router(analyses.router, prefix="/analyses")
-# api_router.include_router(claims.router, prefix="/claims")
-# api_router.include_router(evidence.router, prefix="/evidence")
-# api_router.include_router(traces.router, prefix="/traces")
-# api_router.include_router(conflicts.router, prefix="/conflicts")
-# api_router.include_router(experiments.router, prefix="/experiments")
+# ── Auth & Users ───────────────────────────────────────────────────────────
+api_router.include_router(auth_module.router)
+
+# ── Knowledge Bases ────────────────────────────────────────────────────────
+api_router.include_router(kb_module.router)
+
+# ── Documents ──────────────────────────────────────────────────────────────
+api_router.include_router(doc_module.router)
+
+# ── Analyses ───────────────────────────────────────────────────────────────
+api_router.include_router(analysis_module.router)
+
+# ── Experiments ────────────────────────────────────────────────────────────
+api_router.include_router(experiment_module.router)

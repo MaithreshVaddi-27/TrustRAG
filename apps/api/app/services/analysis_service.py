@@ -1,0 +1,233 @@
+"""
+TRUSTRAG — Analysis runs, claims, evidence, and execution trace service.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timezone
+from typing import Any, AsyncGenerator, Mapping
+
+from bson import ObjectId
+
+from app.api.v1.schemas.analysis import (
+    AnalysisCreate,
+    AnalysisResponse,
+    ClaimResponse,
+    EvidenceResponse,
+    ReliabilitySummary,
+    DiagnosisSummary,
+    TraceEventResponse,
+)
+from app.core.config import get_model_config
+from app.core.exceptions import AuthorizationError, NotFoundError
+from app.db.mongodb import Collections, get_collection
+from app.services.kb_service import get_kb
+
+
+def serialize_analysis(doc: Mapping[str, Any]) -> AnalysisResponse:
+    """Helper to convert MongoDB Analysis document to Pydantic AnalysisResponse."""
+    rel = doc.get("reliability", {})
+    diag = doc.get("diagnosis", {})
+    return AnalysisResponse(
+        id=str(doc["_id"]),
+        user_id=str(doc["user_id"]),
+        knowledge_base_id=str(doc["knowledge_base_id"]),
+        query=doc["query"],
+        status=doc.get("status", "pending"),
+        answer=doc.get("answer"),
+        reliability=ReliabilitySummary(
+            score=rel.get("score"),
+            status=rel.get("status", "PENDING"),
+        ),
+        diagnosis=DiagnosisSummary(
+            type=diag.get("type"),
+            failures=diag.get("failures", []),
+        ),
+        created_at=doc["created_at"],
+        config_snapshot=doc.get("config_snapshot"),
+    )
+
+
+def serialize_claim(doc: Mapping[str, Any]) -> ClaimResponse:
+    """Helper to convert MongoDB Claim document to Pydantic ClaimResponse."""
+    return ClaimResponse(
+        id=str(doc["_id"]),
+        analysis_id=str(doc["analysis_id"]),
+        text=doc["text"],
+        state=doc.get("state", "UNKNOWN"),
+        explanation=doc.get("explanation"),
+        evidence_ids=[str(eid) for eid in doc.get("evidence_ids", [])],
+        created_at=doc["created_at"],
+    )
+
+
+def serialize_evidence(doc: Mapping[str, Any]) -> EvidenceResponse:
+    """Helper to convert MongoDB Evidence document to Pydantic EvidenceResponse."""
+    return EvidenceResponse(
+        id=str(doc["_id"]),
+        analysis_id=str(doc["analysis_id"]),
+        text=doc["text"],
+        document_id=str(doc["document_id"]),
+        filename=doc.get("filename"),
+        retrieval_score=doc.get("retrieval_score"),
+        fusion_score=doc.get("fusion_score"),
+        rerank_score=doc.get("rerank_score"),
+        method=doc.get("method"),
+        integrity_status=doc.get("integrity_status"),
+        effective_from=doc.get("effective_from"),
+        effective_until=doc.get("effective_until"),
+        created_at=doc["created_at"],
+    )
+
+
+def serialize_trace(doc: Mapping[str, Any]) -> TraceEventResponse:
+    """Helper to convert MongoDB TraceEvent document to Pydantic TraceEventResponse."""
+    return TraceEventResponse(
+        event=doc["event"],
+        timestamp=doc["timestamp"],
+        data=doc.get("data", {}),
+    )
+
+
+async def create_analysis(schema: AnalysisCreate, user_id_str: str) -> AnalysisResponse:
+    """
+    Initiate an analysis run.
+    Verifies that target KB exists and is owned by the user.
+    """
+    # Verify owner & existence of KB
+    await get_kb(schema.knowledge_base_id, user_id_str)
+
+    cfg = get_model_config()
+    analysis_doc = {
+        "user_id": ObjectId(user_id_str),
+        "knowledge_base_id": ObjectId(schema.knowledge_base_id),
+        "query": schema.query.strip(),
+        "status": "pending",
+        "answer": None,
+        "reliability": {"score": None, "status": "PENDING"},
+        "diagnosis": {"type": None, "failures": []},
+        "created_at": datetime.now(timezone.utc),
+        "config_snapshot": cfg.as_snapshot(),
+    }
+
+    result = await get_collection(Collections.ANALYSES).insert_one(analysis_doc)
+    analysis_doc["_id"] = result.inserted_id
+
+    # Emit initial started trace event
+    await add_trace_event(
+        analysis_id_str=str(result.inserted_id),
+        event="analysis.started",
+        data={"message": "Analysis run initiated"}
+    )
+
+    return serialize_analysis(analysis_doc)
+
+
+async def get_analysis(analysis_id_str: str, user_id_str: str) -> AnalysisResponse:
+    """Get analysis run detail, enforcing ownership verification."""
+    try:
+        analysis_id = ObjectId(analysis_id_str)
+    except Exception as exc:
+        raise NotFoundError("Analysis not found", detail=str(exc)) from exc
+
+    analysis = await get_collection(Collections.ANALYSES).find_one({"_id": analysis_id})
+    if not analysis:
+        raise NotFoundError("Analysis not found")
+
+    if str(analysis["user_id"]) != user_id_str:
+        raise AuthorizationError("Access denied", detail="You do not own this analysis record")
+
+    return serialize_analysis(analysis)
+
+
+async def list_analyses(user_id_str: str) -> list[AnalysisResponse]:
+    """List analysis runs for the authenticated user."""
+    analyses_coll = get_collection(Collections.ANALYSES)
+    results = []
+    async for a in analyses_coll.find({"user_id": ObjectId(user_id_str)}).sort("created_at", -1):
+        results.append(serialize_analysis(a))
+    return results
+
+
+async def get_analysis_claims(analysis_id_str: str, user_id_str: str) -> list[ClaimResponse]:
+    """Fetch verified claims generated for an analysis."""
+    await get_analysis(analysis_id_str, user_id_str)
+
+    claims_coll = get_collection(Collections.CLAIMS)
+    results = []
+    async for c in claims_coll.find({"analysis_id": ObjectId(analysis_id_str)}).sort("created_at", 1):
+        results.append(serialize_claim(c))
+    return results
+
+
+async def get_analysis_evidence(analysis_id_str: str, user_id_str: str) -> list[EvidenceResponse]:
+    """Fetch evidence chunks associated with an analysis."""
+    await get_analysis(analysis_id_str, user_id_str)
+
+    evidence_coll = get_collection(Collections.EVIDENCE)
+    results = []
+    async for e in evidence_coll.find({"analysis_id": ObjectId(analysis_id_str)}).sort("created_at", 1):
+        results.append(serialize_evidence(e))
+    return results
+
+
+async def get_analysis_trace(analysis_id_str: str, user_id_str: str) -> list[TraceEventResponse]:
+    """Fetch execution trace events for audit/recovery inspection."""
+    await get_analysis(analysis_id_str, user_id_str)
+
+    trace_coll = get_collection(Collections.TRACE_EVENTS)
+    results = []
+    async for t in trace_coll.find({"analysis_id": ObjectId(analysis_id_str)}).sort("timestamp", 1):
+        results.append(serialize_trace(t))
+    return results
+
+
+async def add_trace_event(analysis_id_str: str, event: str, data: dict[str, Any] = {}) -> TraceEventResponse:
+    """Insert a new trace event into MongoDB."""
+    trace_coll = get_collection(Collections.TRACE_EVENTS)
+    evt_doc = {
+        "analysis_id": ObjectId(analysis_id_str),
+        "event": event,
+        "timestamp": datetime.now(timezone.utc),
+        "data": data,
+    }
+    await trace_coll.insert_one(evt_doc)
+    return serialize_trace(evt_doc)
+
+
+async def sse_event_generator(analysis_id_str: str, user_id_str: str) -> AsyncGenerator[dict[str, Any], None]:
+    """
+    Generator yielding trace events as Server-Sent Events (SSE).
+    Frontend relies on this for real-time trace logging.
+    
+    If the connection drops, trace history is fully stored in MongoDB
+    and retrieved via the get_analysis_trace function.
+    """
+    # Verify access permission first
+    await get_analysis(analysis_id_str, user_id_str)
+
+    last_seen_id = None
+    trace_coll = get_collection(Collections.TRACE_EVENTS)
+
+    # Simple polling loop yielding newly created trace events.
+    # In Phase 9, this streams active agent execution steps from the LangGraph execution.
+    for _ in range(30):  # Scaffolding: timeout after ~30 seconds of inactivity
+        query = {"analysis_id": ObjectId(analysis_id_str)}
+        if last_seen_id:
+            query["_id"] = {"$gt": last_seen_id}
+
+        cursor = trace_coll.find(query).sort("timestamp", 1)
+        async for doc in cursor:
+            last_seen_id = doc["_id"]
+            yield {
+                "event": doc["event"],
+                "timestamp": doc["timestamp"].isoformat(),
+                "data": doc.get("data", {})
+            }
+
+            # Terminal event checks
+            if doc["event"] in ["analysis.completed", "analysis.abstained", "analysis.failed"]:
+                return
+
+        await asyncio.sleep(1.0)

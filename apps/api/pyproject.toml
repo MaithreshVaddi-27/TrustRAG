@@ -44,6 +44,7 @@ dependencies = [
     "python-jose[cryptography]>=3.3.0",  # JWT
     "passlib[bcrypt]>=1.7.4",            # Password hashing
     "slowapi>=0.1.9",                    # Rate limiting for FastAPI
+    "email-validator>=2.0.0",            # Email format validation for Pydantic EmailStr
 
     # ── Observability ────────────────────────────────────────────────────────
     "structlog>=24.1.0",          # Structured JSON logging
