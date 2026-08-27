@@ -98,6 +98,10 @@ JWT_SECRET=<at-least-32-chars-random-string>
 # From: https://aistudio.google.com/app/apikey
 GEMINI_API_KEY=<your-gemini-api-key>
 
+# Optional: Speeds up initial embedding model downloads and prevents rate limits
+# From: https://huggingface.co/settings/tokens
+HF_TOKEN=<your-huggingface-token>
+
 # From MongoDB Atlas → Connect → Drivers
 MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/
 ```
