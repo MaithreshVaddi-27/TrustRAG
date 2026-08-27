@@ -5,12 +5,13 @@ TRUSTRAG API — Knowledge Base routes.
 from __future__ import annotations
 
 import hashlib
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, UploadFile, status
 
 from app.api.deps import get_current_user
-from app.api.v1.schemas.kb import KBCreate, KBResponse, DocResponse
+from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
 from app.core.exceptions import FileTooLargeError, UnsupportedFormatError
 from app.services import kb_service
 

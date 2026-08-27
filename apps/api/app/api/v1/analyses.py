@@ -5,7 +5,8 @@ TRUSTRAG API — Analysis routes.
 from __future__ import annotations
 
 import json
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse

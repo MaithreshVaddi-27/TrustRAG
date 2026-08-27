@@ -4,15 +4,15 @@ TRUSTRAG — Authentication business logic service.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Mapping
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Any
 
-from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
 from app.api.v1.schemas.auth import UserRegister, UserResponse
 from app.core.exceptions import AuthenticationError, ConflictError
-from app.core.security import hash_password, verify_password, create_access_token
+from app.core.security import create_access_token, hash_password, verify_password
 from app.db.mongodb import Collections, get_collection
 
 
@@ -42,7 +42,7 @@ async def register_user(schema: UserRegister) -> UserResponse:
         "hashed_password": hash_password(schema.password),
         "full_name": schema.full_name.strip(),
         "is_active": True,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
 
     try:

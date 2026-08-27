@@ -11,7 +11,6 @@ Separation of concerns:
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -19,7 +18,6 @@ from typing import Any
 import yaml
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -120,7 +118,7 @@ class Settings(BaseSettings):
         return v_upper
 
     @model_validator(mode="after")
-    def production_must_have_qdrant_key(self) -> "Settings":
+    def production_must_have_qdrant_key(self) -> Settings:
         if self.app_env == "production" and not self.qdrant_api_key:
             raise ValueError("QDRANT_API_KEY must be set in production")
         return self

@@ -4,12 +4,13 @@ TRUSTRAG — Knowledge Base and Document management business logic.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Mapping
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Any
 
 from bson import ObjectId
 
-from app.api.v1.schemas.kb import KBCreate, KBResponse, DocResponse
+from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
 from app.core.exceptions import AuthorizationError, NotFoundError
 from app.db.mongodb import Collections, get_collection
 
@@ -47,7 +48,7 @@ async def create_kb(schema: KBCreate, user_id: str) -> KBResponse:
         "name": schema.name.strip(),
         "description": schema.description.strip(),
         "user_id": ObjectId(user_id),
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
     result = await kb_coll.insert_one(kb_doc)
     kb_doc["_id"] = result.inserted_id
@@ -128,7 +129,7 @@ async def add_document(
         "content_hash": content_hash,
         "ingestion_status": "pending",
         "error_message": None,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
 
     result = await doc_coll.insert_one(doc_doc)

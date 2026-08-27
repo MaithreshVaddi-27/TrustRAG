@@ -4,14 +4,15 @@ TRUSTRAG API — Document metadata retrieval routes.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
 from app.api.v1.schemas.kb import DocResponse
-from app.core.exceptions import AuthorizationError, NotFoundError
+from app.core.exceptions import NotFoundError
 from app.db.mongodb import Collections, get_collection
 from app.services.kb_service import get_kb
 

@@ -5,6 +5,7 @@ Unit tests for Analysis runs and execution trace routes.
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from bson import ObjectId
 from fastapi.testclient import TestClient
@@ -68,7 +69,7 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
     with patch("app.services.analysis_service.get_kb", return_value=mock_kb_doc):
         mock_collection = MagicMock()
         mock_collection.insert_one = AsyncMock(return_value=MagicMock(inserted_id=ObjectId("64ee39d09c6292376e191983")))
-        
+
         with patch("app.services.analysis_service.get_collection", return_value=mock_collection):
             # Mock trace event insert
             with patch("app.services.analysis_service.add_trace_event", AsyncMock()) as mock_add_trace:
@@ -77,7 +78,7 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
                     "query": "Is there a 45 days policy?"
                 }
                 response = client.post("/api/v1/analyses", json=payload)
-                
+
                 assert response.status_code == 201
                 data = response.json()
                 assert data["query"] == "Is there a 45 days policy?"

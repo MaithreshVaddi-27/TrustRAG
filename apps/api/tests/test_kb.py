@@ -5,6 +5,7 @@ Unit tests for Knowledge Bases and document attachment routes.
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from bson import ObjectId
 from fastapi.testclient import TestClient
@@ -52,14 +53,14 @@ def test_create_kb(mock_create_indexes, mock_connect):
     # Mock database call
     mock_collection = MagicMock()
     mock_collection.insert_one = AsyncMock(return_value=MagicMock(inserted_id=ObjectId("64ee39d09c6292376e191982")))
-    
+
     with patch("app.services.kb_service.get_collection", return_value=mock_collection):
         payload = {
             "name": "Refund Policies",
             "description": "Standard refund schedules"
         }
         response = client.post("/api/v1/knowledge-bases", json=payload)
-        
+
         assert response.status_code == 201
         data = response.json()
         assert data["name"] == "Refund Policies"
@@ -73,19 +74,19 @@ def test_list_kbs(mock_create_indexes, mock_connect, mock_kb_doc):
     # Mock async iterator for cursor.find()
     mock_cursor = MagicMock()
     mock_cursor.sort = MagicMock(return_value=mock_cursor)
-    
+
     async def mock_async_gen():
         yield mock_kb_doc
 
     mock_cursor.__aiter__ = MagicMock(side_effect=mock_async_gen)
-    
+
     mock_collection = MagicMock()
     mock_collection.find = MagicMock(return_value=mock_cursor)
     mock_collection.count_documents = AsyncMock(return_value=2)  # document_count
-    
+
     with patch("app.services.kb_service.get_collection", return_value=mock_collection):
         response = client.get("/api/v1/knowledge-bases")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 1

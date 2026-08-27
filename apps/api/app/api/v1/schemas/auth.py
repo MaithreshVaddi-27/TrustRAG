@@ -5,7 +5,8 @@ Pydantic schemas for authentication and user management.
 from __future__ import annotations
 
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class UserRegister(BaseModel):

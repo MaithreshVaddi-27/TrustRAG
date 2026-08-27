@@ -13,7 +13,7 @@ Used by Docker healthchecks, load balancers, and CI smoke tests.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter
 
@@ -42,7 +42,7 @@ async def health() -> dict:
 
     return {
         "status": overall_status,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "app": "TRUSTRAG",
         "version": "0.1.0",
         "services": services,

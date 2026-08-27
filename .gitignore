@@ -140,6 +140,8 @@ qdrant_storage/
 
 # ─── ML / Model artifacts (local sentence-transformer cache) ──────────────────
 .cache/huggingface/
+.model_cache/
+apps/api/.model_cache/
 models/
 *.bin
 *.pt

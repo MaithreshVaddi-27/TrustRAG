@@ -8,7 +8,7 @@ Handles:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import bcrypt
@@ -47,14 +47,14 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
     """
     settings = get_settings()
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expiry_minutes)
+        expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_expiry_minutes)
 
     to_encode = {
         "exp": expire,
         "sub": str(subject),
-        "iat": datetime.now(timezone.utc)
+        "iat": datetime.now(UTC)
     }
 
     encoded_jwt = jwt.encode(to_encode, settings.jwt_secret, algorithm=ALGORITHM)

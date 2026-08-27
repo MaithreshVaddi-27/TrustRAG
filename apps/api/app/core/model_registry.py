@@ -33,7 +33,7 @@ logger = get_logger(__name__)
 
 
 @lru_cache(maxsize=1)
-def get_llm() -> "BaseChatModel":
+def get_llm() -> BaseChatModel:
     """
     Return the primary LLM for answer generation.
 
@@ -73,7 +73,7 @@ def get_llm() -> "BaseChatModel":
 
 
 @lru_cache(maxsize=1)
-def get_verification_model() -> "BaseChatModel":
+def get_verification_model() -> BaseChatModel:
     """
     Return the verification LLM for claim-level structured verification.
 
@@ -111,7 +111,7 @@ def get_verification_model() -> "BaseChatModel":
 
 
 @lru_cache(maxsize=1)
-def get_embedding_model() -> "Embeddings":
+def get_embedding_model() -> Embeddings:
     """
     Return the embedding model.
 

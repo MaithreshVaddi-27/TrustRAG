@@ -5,8 +5,9 @@ TRUSTRAG — Analysis runs, claims, evidence, and execution trace service.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Mapping
+from collections.abc import AsyncGenerator, Mapping
+from datetime import UTC, datetime
+from typing import Any
 
 from bson import ObjectId
 
@@ -14,9 +15,9 @@ from app.api.v1.schemas.analysis import (
     AnalysisCreate,
     AnalysisResponse,
     ClaimResponse,
+    DiagnosisSummary,
     EvidenceResponse,
     ReliabilitySummary,
-    DiagnosisSummary,
     TraceEventResponse,
 )
 from app.core.config import get_model_config
@@ -107,7 +108,7 @@ async def create_analysis(schema: AnalysisCreate, user_id_str: str) -> AnalysisR
         "answer": None,
         "reliability": {"score": None, "status": "PENDING"},
         "diagnosis": {"type": None, "failures": []},
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
         "config_snapshot": cfg.as_snapshot(),
     }
 
@@ -183,13 +184,17 @@ async def get_analysis_trace(analysis_id_str: str, user_id_str: str) -> list[Tra
     return results
 
 
-async def add_trace_event(analysis_id_str: str, event: str, data: dict[str, Any] = {}) -> TraceEventResponse:
+async def add_trace_event(
+    analysis_id_str: str, event: str, data: dict[str, Any] | None = None
+) -> TraceEventResponse:
     """Insert a new trace event into MongoDB."""
+    if data is None:
+        data = {}
     trace_coll = get_collection(Collections.TRACE_EVENTS)
     evt_doc = {
         "analysis_id": ObjectId(analysis_id_str),
         "event": event,
-        "timestamp": datetime.now(timezone.utc),
+        "timestamp": datetime.now(UTC),
         "data": data,
     }
     await trace_coll.insert_one(evt_doc)

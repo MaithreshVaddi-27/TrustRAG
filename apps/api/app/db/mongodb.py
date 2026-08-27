@@ -102,7 +102,7 @@ def get_database() -> AsyncIOMotorDatabase:
     return _database
 
 
-def get_collection(name: str) -> "AsyncIOMotorCollection":
+def get_collection(name: str) -> AsyncIOMotorCollection:
     """Return a named collection from the active database."""
     return get_database()[name]
 

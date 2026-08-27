@@ -4,12 +4,13 @@ TRUSTRAG API — Authentication routes.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from fastapi import APIRouter, Depends, status
 
 from app.api.deps import get_current_user
-from app.api.v1.schemas.auth import UserLogin, UserRegister, TokenResponse, UserResponse
+from app.api.v1.schemas.auth import TokenResponse, UserLogin, UserRegister, UserResponse
 from app.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])

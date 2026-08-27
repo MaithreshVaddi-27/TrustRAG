@@ -4,8 +4,9 @@ TRUSTRAG — Evaluation Experiment tracking and serialization.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Mapping
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Any
 
 from bson import ObjectId
 
@@ -34,7 +35,7 @@ async def create_experiment(schema: ExperimentCreate, user_id_str: str) -> Exper
         "config_name": schema.config_name.strip(),
         "description": schema.description.strip(),
         "metrics": {},  # Populated after validation runs
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
     }
 
     result = await exp_coll.insert_one(exp_doc)

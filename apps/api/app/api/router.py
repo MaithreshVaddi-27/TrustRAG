@@ -10,12 +10,22 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.v1 import (
-    health as health_module,
-    auth as auth_module,
-    knowledge_bases as kb_module,
-    documents as doc_module,
     analyses as analysis_module,
+)
+from app.api.v1 import (
+    auth as auth_module,
+)
+from app.api.v1 import (
+    documents as doc_module,
+)
+from app.api.v1 import (
     experiments as experiment_module,
+)
+from app.api.v1 import (
+    health as health_module,
+)
+from app.api.v1 import (
+    knowledge_bases as kb_module,
 )
 
 api_router = APIRouter(prefix="/api/v1")
