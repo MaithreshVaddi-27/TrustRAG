@@ -25,12 +25,7 @@ from app.core.config import get_model_config
 from app.core.exceptions import AuthorizationError, NotFoundError
 from app.core.logging import get_logger
 from app.db.mongodb import Collections, get_collection
-from app.generation.generator import generate_grounded_answer
-from app.retrieval.reranker import rerank_candidate_chunks
-from app.retrieval.retriever import retrieve_hybrid_chunks
 from app.services.kb_service import get_kb
-from app.verification.integrity import audit_evidence_integrity
-from app.verification.verifier import execute_claim_verification
 
 logger = get_logger(__name__)
 
@@ -277,7 +272,6 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
     """
     analysis_id = ObjectId(analysis_id_str)
     analyses_coll = get_collection(Collections.ANALYSES)
-    evidence_coll = get_collection(Collections.EVIDENCE)
 
     try:
         # Mark status as processing
@@ -286,145 +280,27 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
             {"$set": {"status": "processing", "updated_at": datetime.now(UTC)}},
         )
 
-        # 1. Hybrid Retrieval (dense + sparse search)
-        await add_trace_event(
-            analysis_id_str,
-            "retrieval.started",
-            {"message": "Performing hybrid dense + sparse retrieval"},
+        # 1. Execute Agentic LangGraph workflow (retrieval, NLI verify, and recovery loop)
+        from app.agent.graph import execute_agentic_rag_flow
+
+        final_state = await execute_agentic_rag_flow(
+            analysis_id_str=analysis_id_str, kb_id_str=kb_id_str, query=query
         )
 
-        candidates = await retrieve_hybrid_chunks(query, kb_id_str)
-
-        # 2. Rerank
-        await add_trace_event(
-            analysis_id_str,
-            "rerank.started",
-            {"message": f"Reranking {len(candidates)} candidate segments"},
-        )
-
-        top_chunks = rerank_candidate_chunks(query, candidates)
-
-        # 3. Evidence Integrity Audit
-        await add_trace_event(
-            analysis_id_str,
-            "integrity.started",
-            {"message": "Auditing retrieved evidence segments"},
-        )
-
-        audited_chunks = await audit_evidence_integrity(top_chunks)
-        verified_chunks = [c for c in audited_chunks if c.get("integrity_status") == "VERIFIED"]
-        corrupted_count = len(audited_chunks) - len(verified_chunks)
-
-        if corrupted_count > 0:
-            await add_trace_event(
-                analysis_id_str,
-                "integrity.failed",
-                {"message": f"Excluded {corrupted_count} corrupted or tampered segments"},
-            )
-        else:
-            await add_trace_event(
-                analysis_id_str,
-                "integrity.completed",
-                {"message": "All retrieved segments passed integrity audit successfully"},
-            )
-
-        # 4. Persist Evidence & emit retrieval completed event
-        await add_trace_event(
-            analysis_id_str,
-            "retrieval.completed",
-            {
-                "message": (
-                    f"Selected {len(verified_chunks)} verified segments "
-                    f"out of {len(top_chunks)} retrieved"
-                ),
-                "segments": [
-                    {
-                        "filename": c.get("filename") or "unknown_doc",
-                        "page": c.get("page", 1),
-                        "score": c.get("rerank_score") or c.get("rrf_score", 0.0),
-                    }
-                    for c in verified_chunks
-                ],
-            },
-        )
-
-        evidence_ids = []
-        verified_evidence_ids = []
-        for c in audited_chunks:
-            doc_id = ObjectId(c["document_id"]) if c.get("document_id") else None
-            evt_doc = {
-                "analysis_id": analysis_id,
-                "text": c["text"],
-                "document_id": doc_id,
-                "filename": c.get("filename"),
-                "retrieval_score": c.get("dense_score", 0.0),
-                "fusion_score": c.get("rrf_score", 0.0),
-                "rerank_score": c.get("rerank_score"),
-                "method": "hybrid",
-                "integrity_status": c.get("integrity_status", "CORRUPTED"),
-                "effective_from": c.get("effective_from"),
-                "effective_until": c.get("effective_until"),
-                "created_at": datetime.now(UTC),
-            }
-            res = await evidence_coll.insert_one(evt_doc)
-            evidence_ids.append(res.inserted_id)
-            if c.get("integrity_status") == "VERIFIED":
-                verified_evidence_ids.append(res.inserted_id)
-
-        # 5. Generate Grounded Answer (on verified segments only)
-        await add_trace_event(
-            analysis_id_str,
-            "generation.started",
-            {"message": "Invoking Gemini model for grounded answer generation"},
-        )
-
-        answer = await generate_grounded_answer(query, verified_chunks)
-
+        answer = final_state["answer"]
         if answer == "ABSTAIN":
             await add_trace_event(
                 analysis_id_str,
                 "analysis.abstained",
-                {"message": "LLM abstained due to insufficient context info"},
+                {"message": "Agent reasoning resulted in abstention"},
             )
             status_value = "abstained"
         else:
             await add_trace_event(
                 analysis_id_str,
-                "generation.completed",
+                "analysis.completed",
                 {"message": "Answer generation completed successfully"},
             )
-
-            # 6. Claims Verification (on verified segments only)
-            await add_trace_event(
-                analysis_id_str,
-                "claims.started",
-                {"message": "Decomposing answer and executing NLI verification checks"},
-            )
-
-            claims = await execute_claim_verification(
-                analysis_id_str=analysis_id_str,
-                answer=answer,
-                chunks=verified_chunks,
-                evidence_ids=verified_evidence_ids,
-            )
-
-            supported = sum(1 for c in claims if c["state"] == "SUPPORTED")
-            contradicted = sum(1 for c in claims if c["state"] == "CONTRADICTED")
-            neutral = sum(1 for c in claims if c["state"] == "NEUTRAL")
-
-            await add_trace_event(
-                analysis_id_str,
-                "claims.verified",
-                {
-                    "message": f"Verified {len(claims)} atomic claims",
-                    "stats": {
-                        "supported": supported,
-                        "contradicted": contradicted,
-                        "neutral": neutral,
-                    },
-                },
-            )
-
             status_value = "completed"
 
         # Update final state in database

@@ -193,7 +193,10 @@ async def apply_temporal_filtering(
 
 
 async def retrieve_hybrid_chunks(
-    query: str, kb_id: str, reference_time: datetime | None = None
+    query: str,
+    kb_id: str,
+    reference_time: datetime | None = None,
+    top_k_override: int | None = None,
 ) -> list[dict[str, Any]]:
     """
     Primary hybrid dense + sparse retrieval coordinator.
@@ -203,12 +206,15 @@ async def retrieve_hybrid_chunks(
     """
     cfg = get_model_config()
 
+    dense_top = top_k_override if top_k_override is not None else cfg.dense_top_k
+    sparse_top = top_k_override if top_k_override is not None else cfg.sparse_top_k
+
     # Run searches in parallel
-    dense_res = await dense_search(query, kb_id, top_k=cfg.retrieval_top_k)
-    sparse_res = await sparse_search(query, kb_id, top_k=cfg.retrieval_top_k)
+    dense_res = await dense_search(query, kb_id, top_k=dense_top)
+    sparse_res = await sparse_search(query, kb_id, top_k=sparse_top)
 
     # Fuse ranks
-    fused = reciprocal_rank_fusion(dense_res, sparse_res, k=cfg.retrieval_rrf_k)
+    fused = reciprocal_rank_fusion(dense_res, sparse_res, k=cfg.rrf_k)
 
     # Apply temporal document boundaries
     filtered = await apply_temporal_filtering(fused, reference_time)

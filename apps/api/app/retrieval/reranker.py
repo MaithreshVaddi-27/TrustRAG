@@ -16,7 +16,9 @@ from app.core.model_registry import get_reranker
 logger = get_logger(__name__)
 
 
-def rerank_candidate_chunks(query: str, chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def rerank_candidate_chunks(
+    query: str, chunks: list[dict[str, Any]], max_context_override: int | None = None
+) -> list[dict[str, Any]]:
     """
     Rerank candidate chunks using the CrossEncoder model configured in models.yaml.
 
@@ -24,7 +26,9 @@ def rerank_candidate_chunks(query: str, chunks: list[dict[str, Any]]) -> list[di
     sliced by maximum context limits.
     """
     cfg = get_model_config()
-    max_context = cfg.retrieval_max_context_chunks
+    max_context = (
+        max_context_override if max_context_override is not None else cfg.max_context_chunks
+    )
 
     if not chunks:
         return []
