@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, BinaryIO
 
 import chardet
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF — replaces deprecated 'import fitz'
 
 from app.core.exceptions import IngestionError, UnsupportedFormatError
 from app.core.logging import get_logger

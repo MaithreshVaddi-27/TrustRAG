@@ -329,12 +329,14 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
             {"message": "Analysis execution failed. Check server logs for details."},
         )
 
+        # Store generic error type — NOT str(exc) which leaks internal details
+        error_type = type(exc).__name__
         await analyses_coll.update_one(
             {"_id": analysis_id},
             {
                 "$set": {
                     "status": "failed",
-                    "error_message": str(exc),
+                    "error_message": f"Pipeline error ({error_type}). See server logs.",
                     "updated_at": datetime.now(UTC),
                 }
             },

@@ -3,25 +3,30 @@
 > **Retrieve. Verify. Diagnose. Recover.**  
 > Production-oriented RAG reliability pipeline with claim verification, failure diagnosis, and adaptive recovery.
 
-![Python](https://img.shields.io/badge/Python-3.11-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-latest-green) ![React](https://img.shields.io/badge/React-18-61DAFB) ![LangGraph](https://img.shields.io/badge/LangGraph-agentic-orange) ![Qdrant](https://img.shields.io/badge/Qdrant-hybrid--RAG-red)
+![Python](https://img.shields.io/badge/Python-3.11-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green) ![React](https://img.shields.io/badge/React-18-61DAFB) ![LangGraph](https://img.shields.io/badge/LangGraph-agentic-orange) ![Qdrant](https://img.shields.io/badge/Qdrant-hybrid--RAG-red) ![CI](https://github.com/MaithreshVaddi-27/TrustRAG/actions/workflows/ci.yml/badge.svg)
 
 ---
 
 ## What TRUSTRAG Does
 
-Standard RAG pipelines fail silently — they retrieve irrelevant evidence, generate unsupported claims, and cite documents that don't actually say what's claimed.
+Standard RAG pipelines fail silently — they retrieve irrelevant evidence, generate unsupported claims, and cite documents that don't say what's claimed.
 
-TRUSTRAG implements a structured reliability loop:
+TRUSTRAG implements a **structured reliability loop**:
 
 ```
-Query → Retrieve (dense + sparse hybrid) → Rerank
-      → Generate (Gemini grounded) → Decompose Claims
-      → Verify Claims (NLI) → Analyze Evidence Integrity (SHA-256)
-      → Diagnose Failure → Adaptive Recovery (LangGraph)
-      → Re-verify → Grounded Answer / ABSTAIN
+Query
+  → Hybrid Retrieve (dense + sparse + RRF)
+  → Generate (Gemini, grounded in evidence)
+  → Decompose Claims (LLM)
+  → Verify Claims (NLI per-claim)
+  → Audit Evidence Integrity (SHA-256)
+  → Score Reliability
+  → [if low] Diagnose Failure → Adaptive Recovery (LangGraph)
+    → Query Rewrite → Re-retrieve → Re-verify
+  → Grounded Answer  OR  ABSTAIN
 ```
 
-The portfolio differentiator is the **reliability → diagnosis → recovery loop**. When a reliability threshold fails, TRUSTRAG diagnoses the specific failure type (retrieval gap, evidence conflict, low coverage) and applies a targeted recovery strategy — query rewrite or expanded re-retrieval — rather than just warning the user.
+The differentiator: **diagnosis → recovery loop**. When reliability drops below threshold, TRUSTRAG diagnoses the failure type and applies the cheapest targeted recovery — rather than silently returning a bad answer.
 
 ---
 
@@ -29,16 +34,16 @@ The portfolio differentiator is the **reliability → diagnosis → recovery loo
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 18 + Vite 6 + Tailwind CSS + React Router + TanStack Query + Recharts |
+| Frontend | React 18 + Vite 6 + Tailwind CSS + TanStack Query + Recharts |
 | Backend | FastAPI + Python 3.11 + Pydantic v2 + Motor (async MongoDB) |
-| LLM | Google Gemini Flash (via `langchain-google-genai`) |
-| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` · local, free, no API key |
-| Agentic Workflow | LangGraph (StateGraph — retrieval → generation → verification → recovery) |
-| Vector Store | Qdrant — dense + sparse/BM25 + hybrid RRF fusion |
-| Database | MongoDB Atlas (M0 free tier) |
+| LLM | Google Gemini 2.5 Flash Lite (configurable in `models.yaml`) |
+| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` — local, free, no API key |
+| Agentic | LangGraph `StateGraph` — retrieval → generation → verification → recovery |
+| Vector Store | Qdrant — dense + BM25 sparse + hybrid RRF fusion |
+| Database | MongoDB Atlas M0 (free tier) |
 | Streaming | Server-Sent Events (SSE) for live execution traces |
-| Auth | JWT (HS256) + bcrypt password hashing |
-| Rate Limiting | SlowAPI (per-IP, configurable per endpoint) |
+| Auth | JWT HS256 + bcrypt (12 rounds) |
+| Rate Limiting | SlowAPI per-IP on analysis, login, register endpoints |
 
 **All services are free-tier compatible. No paid dependencies required.**
 
@@ -48,91 +53,275 @@ The portfolio differentiator is the **reliability → diagnosis → recovery loo
 
 | Phase | Status | Description |
 |-------|--------|-------------|
-| 0 — Architecture | ✅ Complete | ADRs, threat model, system design docs |
-| 1 — Foundation | ✅ Complete | Monorepo, centralized config, Docker, CI/security workflows |
-| 2 — Frontend | ✅ Complete | React shell, workbench design system, all 11 pages |
-| 3 — Backend | ✅ Complete | FastAPI CRUD routes, MongoDB Atlas, analysis lifecycle |
-| 4 — Security | ✅ Complete | JWT auth, bcrypt, IDOR prevention, rate limiting |
-| 5 — Ingestion | ✅ Complete | Document processing (PDF/TXT/MD), Qdrant hybrid indexing |
-| 6 — Baseline RAG | ✅ Complete | LangChain + Gemini + hybrid dense/sparse retrieval + RRF fusion |
-| 7 — Verification | ✅ Complete | Claim decomposition, NLI verification, evidence matching |
-| 8 — Integrity | ✅ Complete | Provenance, SHA-256 integrity, temporal validity filtering |
-| 9 — Recovery | ✅ Complete | LangGraph agentic adaptive recovery (query rewrite + re-retrieval) |
-| 10 — Observability | ✅ Complete | SSE live traces, persisted trace events, inactivity timeout |
-| 11 — Evaluation | ✅ Complete | Experiment configs, custom metrics, ablation runs |
-| 12 — Production | ✅ Complete | Cost controls, error hardening, security audit, CI/CD |
+| 0 — Architecture | ✅ | ADRs, threat model, system design |
+| 1 — Foundation | ✅ | Monorepo, centralized config, Docker, CI/CD |
+| 2 — Frontend | ✅ | React workbench design system, all 11 pages |
+| 3 — Backend | ✅ | FastAPI CRUD, MongoDB Atlas, analysis lifecycle |
+| 4 — Security | ✅ | JWT auth, bcrypt, IDOR prevention, rate limiting |
+| 5 — Ingestion | ✅ | PDF/TXT/MD parsing, Qdrant hybrid indexing |
+| 6 — Baseline RAG | ✅ | LangChain + Gemini + hybrid dense/sparse + RRF |
+| 7 — Verification | ✅ | Claim decomposition, NLI verification |
+| 8 — Integrity | ✅ | SHA-256 provenance, temporal validity |
+| 9 — Recovery | ✅ | LangGraph agentic adaptive recovery |
+| 10 — Observability | ✅ | SSE live traces, persisted trace events |
+| 11 — Evaluation | ✅ | Experiment configs, custom metrics, ablations |
+| 12 — Production | ✅ | Cost controls, error hardening, security audit |
 
 ---
 
-## Quick Start
+## Prerequisites
 
-### Prerequisites
-
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for local API + Qdrant)
-- [Node.js 20+](https://nodejs.org/) (for frontend dev server)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) ≥ v4.x
+- [Node.js](https://nodejs.org/) ≥ 20 (for frontend dev server)
+- [Python](https://python.org/) ≥ 3.11 (for local non-Docker run)
 - [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) free M0 cluster
 - [Google Gemini API key](https://aistudio.google.com/app/apikey) (free tier)
 
-### 1. Clone
+---
+
+## ⚡ Quick Start
+
+### 1. Clone & Configure
 
 ```bash
 git clone https://github.com/MaithreshVaddi-27/TrustRAG
 cd TrustRAG
-```
-
-### 2. Configure `.env`
-
-```bash
 cp .env.example .env
 ```
 
-Edit `.env` and fill in these values:
+Edit `.env`:
 
 ```env
-JWT_SECRET=<generate with: python -c "import secrets; print(secrets.token_hex(64))">
-GEMINI_API_KEY=<your Gemini API key>
+# Generate: python -c "import secrets; print(secrets.token_hex(64))"
+JWT_SECRET=<at-least-32-chars-random-string>
+
+# From: https://aistudio.google.com/app/apikey
+GEMINI_API_KEY=<your-gemini-api-key>
+
+# From MongoDB Atlas → Connect → Drivers
 MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/
 ```
 
-> [!IMPORTANT]
-> The `MONGODB_URI` must be a valid MongoDB Atlas connection string.
-> The `JWT_SECRET` must be at least 32 characters long.
+---
 
-### 3. Start Backend + Qdrant (Docker)
+## 🐳 Running with Docker (Recommended)
+
+Docker runs the FastAPI backend + local Qdrant in containers. The React frontend runs separately.
 
 ```bash
+# Start backend + Qdrant
 docker compose up
+
+# In a second terminal — start frontend
+cd apps/web && npm install && npm run dev
 ```
 
-> **First run takes ~2 minutes** — the API container downloads the sentence-transformer embedding model (~90MB).
+**First run:** the API container downloads the sentence-transformer embedding model (~90MB). Wait ~2 minutes for `trustrag_api` to become healthy.
 
-Wait for both containers to be healthy:
 ```bash
-# Qdrant health
-curl http://localhost:6335/readyz
-
-# API health
+# Verify both services are healthy
 curl http://localhost:8000/api/v1/health
+# Expected: {"status":"ok","services":{"mongodb":"ok"}, ...}
+
+curl http://localhost:6335/readyz
+# Expected: all shards are ready
 ```
 
-### 4. Start Frontend
+Then open **http://localhost:5173**.
+
+> [!IMPORTANT]
+> **Port mapping**: Qdrant is exposed on host port `6335` (not 6333) to avoid conflicts with any local Qdrant instance. The API container connects to Qdrant on `qdrant:6333` via Docker's internal network — this is automatic.
+
+---
+
+## 💻 Running Without Docker (Local Venv)
+
+Run the backend directly using Python's virtual environment. Requires Qdrant running locally or via Docker.
+
+### Step 1 — Start Qdrant only
+
+```bash
+# Spin up just Qdrant in Docker (background)
+docker run -d -p 6333:6333 --name qdrant qdrant/qdrant:v1.10.1
+```
+
+Or download the [Qdrant binary](https://qdrant.tech/documentation/quick-start/) and run it directly.
+
+### Step 2 — Set up Python environment
+
+```bash
+cd apps/api
+python -m venv .venv
+source .venv/bin/activate          # On Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+```
+
+### Step 3 — Run the API
+
+```bash
+# From the repository root
+set -a && source .env && set +a    # Load .env variables into shell
+PYTHONPATH=apps/api uvicorn app.main:app \
+  --host 0.0.0.0 --port 8000 \
+  --reload --reload-dir apps/api/app \
+  --log-level info
+```
+
+### Step 4 — Start Frontend
 
 ```bash
 cd apps/web
 npm install
 npm run dev
-# Open http://localhost:5173
 ```
 
-### 5. Verify end-to-end
+Open **http://localhost:5173**.
 
-1. Open `http://localhost:5173`
-2. Register a new account → Login
-3. Create a Knowledge Base → Upload a PDF/TXT/MD document
-4. Wait for ingestion to complete (check document status)
-5. Run an Analysis on the knowledge base
-6. View live execution trace via SSE stream
-7. Inspect Claims, Evidence, and Reliability score
+---
+
+## 🧪 Manual Testing with Sample Input
+
+### Register & Login
+
+```bash
+BASE=http://localhost:8000/api/v1
+
+# Register
+curl -s -X POST $BASE/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"demo@example.com","password":"Demo1234!","full_name":"Demo User"}' \
+  | python3 -m json.tool
+
+# Login → get JWT token
+TOKEN=$(curl -s -X POST $BASE/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"demo@example.com","password":"Demo1234!"}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+
+echo "Token: ${TOKEN:0:40}..."
+```
+
+### Create a Knowledge Base
+
+```bash
+KB=$(curl -s -X POST $BASE/knowledge-bases \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Demo KB","description":"Test knowledge base"}')
+
+KB_ID=$(echo $KB | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+echo "KB ID: $KB_ID"
+```
+
+### Upload a Sample Document
+
+Create a sample text file:
+
+```bash
+cat > /tmp/sample_doc.txt << 'EOF'
+TrustRAG implements a structured reliability loop for RAG pipelines.
+The system decomposes LLM-generated answers into atomic claims.
+Each claim is verified against retrieved evidence using Natural Language Inference.
+When reliability drops below the configured threshold (default 0.50), the system
+enters an adaptive recovery phase using LangGraph.
+Recovery strategies include query rewriting and expanded evidence retrieval.
+If recovery fails after max_recovery_attempts (default 2), the system abstains.
+Abstention is safer than returning an unreliable answer.
+EOF
+
+# Upload to your KB
+DOC=$(curl -s -X POST $BASE/knowledge-bases/$KB_ID/documents \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@/tmp/sample_doc.txt;type=text/plain")
+
+DOC_ID=$(echo $DOC | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+echo "Doc ID: $DOC_ID | Status: $(echo $DOC | python3 -c "import json,sys; print(json.load(sys.stdin)['ingestion_status'])")"
+```
+
+### Run an Analysis
+
+```bash
+# Wait ~5s for ingestion to complete, then:
+ANALYSIS=$(curl -s -X POST $BASE/analyses \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"What happens when reliability is low?\"}")
+
+ANALYSIS_ID=$(echo $ANALYSIS | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+echo "Analysis ID: $ANALYSIS_ID"
+```
+
+### Stream Live Execution Trace (SSE)
+
+```bash
+# Stream the live trace (runs in foreground until analysis completes)
+curl -N "$BASE/analyses/$ANALYSIS_ID/stream?token=$TOKEN"
+```
+
+### Fetch Results
+
+```bash
+# Answer + status
+curl -s $BASE/analyses/$ANALYSIS_ID \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+
+# Verified claims
+curl -s $BASE/analyses/$ANALYSIS_ID/claims \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+
+# Retrieved evidence segments
+curl -s $BASE/analyses/$ANALYSIS_ID/evidence \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+
+# Persisted trace events
+curl -s $BASE/analyses/$ANALYSIS_ID/trace \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+```
+
+### Test Abstention Behavior
+
+Upload conflicting or out-of-scope content and ask a query it can't answer reliably:
+
+```bash
+ANALYSIS2=$(curl -s -X POST $BASE/analyses \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"What is the capital of France?\"}")
+echo $ANALYSIS2 | python3 -m json.tool
+# Should eventually show status: "abstained" since this info isn't in the KB
+```
+
+### Test Input Validation
+
+```bash
+# Empty query → 422
+curl -s -o /dev/null -w "Empty query: %{http_code}\n" \
+  -X POST $BASE/analyses \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"\"}"
+
+# Query > 2000 chars → 422
+LONG=$(python3 -c "print('A'*2001)")
+curl -s -o /dev/null -w "Long query: %{http_code}\n" \
+  -X POST $BASE/analyses \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"$LONG\"}"
+
+# Wrong password → 401
+curl -s -o /dev/null -w "Bad creds: %{http_code}\n" \
+  -X POST $BASE/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"demo@example.com","password":"WRONGPASSWORD"}'
+
+# Invalid file type → 422
+echo "bad" > /tmp/bad.exe
+curl -s -o /dev/null -w "Bad upload: %{http_code}\n" \
+  -X POST $BASE/knowledge-bases/$KB_ID/documents \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@/tmp/bad.exe;type=application/octet-stream"
+```
 
 ---
 
@@ -141,128 +330,114 @@ npm run dev
 ```
 TRUSTRAG/
 ├── apps/
-│   ├── web/                        # React + Vite frontend
+│   ├── web/                          # React + Vite frontend
 │   │   └── src/
-│   │       ├── components/
-│   │       │   ├── ui/             # Design system primitives
-│   │       │   └── workbench/      # TRUSTRAG-specific components
-│   │       │       ├── ReliabilityBadge.jsx
-│   │       │       ├── ClaimInspector.jsx
-│   │       │       ├── EvidenceViewer.jsx
-│   │       │       └── ExecutionTrace.jsx
-│   │       ├── pages/              # All 11 pages
-│   │       ├── layouts/            # AppLayout + AuthLayout
-│   │       ├── services/           # API service modules
-│   │       ├── store/              # Auth state (Zustand)
-│   │       └── lib/api.js          # Axios client + SSE helper
+│   │       ├── components/workbench/ # ReliabilityBadge, ClaimInspector, EvidenceViewer
+│   │       ├── pages/                # 11 pages (Dashboard, KB, Upload, Analysis, etc.)
+│   │       ├── services/             # api.js (Axios client + SSE) + auth.js
+│   │       └── store/                # Auth state (Zustand)
 │   │
-│   └── api/                        # FastAPI backend
+│   └── api/                          # FastAPI backend
 │       ├── app/
-│       │   ├── core/               # Config, ModelRegistry, Logging, Exceptions, Rate Limiter
-│       │   ├── db/                 # MongoDB client + Qdrant client
-│       │   ├── api/v1/             # REST routes + Pydantic schemas
-│       │   ├── services/           # Business logic (auth, KB, analysis)
-│       │   ├── ingestion/          # Document pipeline (parse, chunk, embed, index)
-│       │   ├── retrieval/          # Hybrid retrieval (dense + sparse + RRF + rerank)
-│       │   ├── generation/         # Grounded answer generation (Gemini)
-│       │   ├── verification/       # Claim decomposition + NLI verification
-│       │   ├── integrity/          # Evidence integrity audit (SHA-256)
-│       │   ├── reliability/        # Reliability scoring engine
-│       │   ├── recovery/           # Adaptive recovery strategies
-│       │   ├── agent/              # LangGraph StateGraph workflow
-│       │   └── evaluation/         # Experiment runner
+│       │   ├── core/                 # Config, ModelRegistry, Logging, Exceptions, rate_limiter
+│       │   ├── db/                   # MongoDB (motor) + Qdrant clients
+│       │   ├── api/v1/               # REST routes + Pydantic schemas
+│       │   ├── services/             # Business logic (auth, KB, analysis, experiment)
+│       │   ├── ingestion/            # parser.py → chunker.py → sparse_vector.py → pipeline.py
+│       │   ├── retrieval/            # retriever.py (dense+sparse+RRF) + reranker.py
+│       │   ├── generation/           # generator.py (Gemini grounded generation)
+│       │   ├── verification/         # verifier.py (NLI) + integrity.py (SHA-256)
+│       │   ├── reliability/          # engine.py (reliability scoring)
+│       │   ├── recovery/             # strategies.py
+│       │   └── agent/                # graph.py (LangGraph StateGraph)
 │       ├── config/
-│       │   └── models.yaml         # Centralized AI configuration
-│       └── tests/                  # 54 unit tests (pytest)
+│       │   └── models.yaml           # ALL AI config lives here — no model IDs in code
+│       └── tests/                    # 54 unit tests (pytest)
 │
 ├── docs/
-│   ├── architecture/               # System design + ADRs
-│   ├── audits/                     # Security audit logs (audit.md, audit-v2.md)
-│   └── deployment/                 # Deployment guides
+│   ├── architecture/                 # System design + ADRs
+│   ├── audits/                       # audit-v2.md — security audit log
+│   └── ROADMAP.md                    # Remaining steps + deployment checklist
 │
-├── .github/workflows/              # CI + security scanning workflows
-├── docker-compose.yml              # Local dev (API + Qdrant)
-├── .env.example                    # Template (copy to .env)
-└── TRUSTRAG_specs.md               # Full project specification
+├── .github/workflows/                # CI (lint+test+build) + security (Bandit+pip-audit)
+├── docker-compose.yml                # Local dev: API + Qdrant
+├── .env.example                      # Template — copy to .env
+└── TRUSTRAG_specs.md                 # Full project specification
 ```
 
 ---
 
 ## Configuration
 
-**All AI model IDs, thresholds, and tuning parameters live in `apps/api/config/models.yaml`.**  
-No model IDs appear in Python or JavaScript source code. Changing the LLM or embedding model requires only a `models.yaml` update.
-
-Secrets (API keys, URIs) stay in `.env` only — never in code or `models.yaml`.
+**All AI config lives in [`apps/api/config/models.yaml`](apps/api/config/models.yaml). Never in code.**
 
 ```yaml
-# models.yaml excerpt
 llm:
-  model: gemini-2.5-flash
+  model: gemini-2.5-flash-lite    # Change LLM here only
   temperature: 0.2
   max_output_tokens: 2048
 
 embedding:
   model: sentence-transformers/all-MiniLM-L6-v2
-  output_dimensionality: 384      # Must match Qdrant collection size
+  output_dimensionality: 384      # Must match Qdrant collection vector size
 
 reliability:
-  abstain_below: 0.50             # Reliability score → ABSTAIN threshold
-  minimum_evidence_coverage: 0.60 # Min fraction of claims that must be SUPPORTED
-  maximum_contradiction_rate: 0.20
+  abstain_below: 0.50             # Score below this → ABSTAIN
+  minimum_evidence_coverage: 0.60
 
 recovery:
   max_recovery_attempts: 2        # Hard ceiling — prevents infinite loops
-  strategy_priority:
-    - query_rewrite
-    - re_retrieve
 ```
+
+> [!WARNING]
+> **Valid Gemini model IDs (as of 2026-08):**  
+> `gemini-2.5-flash` (best quality) | `gemini-2.5-flash-lite` (faster, lower cost)  
+> Model IDs like `gemini-3.5-flash-lite` **do not exist** and will cause runtime errors.
+
+Secrets stay in `.env` only — never in `models.yaml` or code.
 
 ---
 
-## TRUSTRAG Reliability Pipeline
+## API Reference
 
-```
-Claim States:    SUPPORTED | CONTRADICTED | NEUTRAL
-Failure Types:   RETRIEVAL_FAILURE | EVIDENCE_CONFLICT | LOW_COVERAGE
-Recovery:        query_rewrite | re_retrieve
-Answer States:   Grounded Answer | ABSTAIN
-```
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/v1/health` | No | System health check |
+| `POST` | `/api/v1/auth/register` | No | Register new user |
+| `POST` | `/api/v1/auth/login` | No | Login → JWT token |
+| `GET` | `/api/v1/auth/me` | Yes | Current user profile |
+| `POST` | `/api/v1/knowledge-bases` | Yes | Create knowledge base |
+| `GET` | `/api/v1/knowledge-bases` | Yes | List your knowledge bases |
+| `DELETE` | `/api/v1/knowledge-bases/{id}` | Yes | Delete KB + all documents |
+| `POST` | `/api/v1/knowledge-bases/{id}/documents` | Yes | Upload document (PDF/TXT/MD, ≤20MB) |
+| `GET` | `/api/v1/knowledge-bases/{id}/documents` | Yes | List documents in KB |
+| `POST` | `/api/v1/analyses` | Yes | Run analysis (rate-limited: 10/min/IP) |
+| `GET` | `/api/v1/analyses` | Yes | List analysis history |
+| `GET` | `/api/v1/analyses/{id}` | Yes | Get analysis result |
+| `GET` | `/api/v1/analyses/{id}/stream` | Token param | SSE live trace stream |
+| `GET` | `/api/v1/analyses/{id}/claims` | Yes | Verified claims list |
+| `GET` | `/api/v1/analyses/{id}/evidence` | Yes | Retrieved evidence segments |
+| `GET` | `/api/v1/analyses/{id}/trace` | Yes | Persisted trace events |
+| `POST` | `/api/v1/experiments` | Yes | Record evaluation experiment |
+| `GET` | `/api/v1/experiments` | Yes | List experiments |
 
-Recovery is bounded by `max_recovery_attempts` to prevent infinite loops and token cost explosion.
-
----
-
-## API Reference (key endpoints)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/v1/auth/register` | Register new user |
-| `POST` | `/api/v1/auth/login` | Login → JWT token |
-| `POST` | `/api/v1/knowledge-bases` | Create knowledge base |
-| `POST` | `/api/v1/knowledge-bases/{id}/documents` | Upload document (PDF/TXT/MD, max 20MB) |
-| `POST` | `/api/v1/analyses` | Run analysis (rate-limited) |
-| `GET`  | `/api/v1/analyses/{id}/stream` | SSE live trace stream |
-| `GET`  | `/api/v1/analyses/{id}/claims` | Verified claims list |
-| `GET`  | `/api/v1/analyses/{id}/evidence` | Retrieved evidence |
-| `GET`  | `/api/v1/health` | System health check |
-
-Full OpenAPI docs available at `http://localhost:8000/docs` (development mode only).
+Full interactive docs at `http://localhost:8000/docs` (**development only** — disabled in production).
 
 ---
 
-## Security Highlights
+## Security
 
 - JWT HS256 tokens with configurable expiry (default 60 min)
 - bcrypt password hashing (12 rounds)
-- All resources protected by server-side ownership validation (IDOR prevention)
-- Rate limiting on analysis, login, and register endpoints (SlowAPI)
-- Prompt injection defense — system/context delimiters, untrusted label sanitization
-- Raw exceptions never sent to clients — logged server-side only
-- Docs endpoints (`/docs`, `/openapi.json`) disabled in production
+- Server-side resource ownership validation — IDOR prevented on all endpoints
+- Rate limiting on `/analyses` (10/min), `/auth/login` and `/auth/register` (20/min)
+- Prompt injection defense: XML delimiters isolate untrusted content in prompts
+- Sanitized context labels: filenames/page numbers stripped of control characters before embedding
+- Raw exceptions never returned to clients — only logged server-side
+- `/docs` and `/openapi.json` disabled when `APP_ENV=production`
 - CORS locked to configured origin allowlist
 
-See [`docs/audits/audit-v2.md`](docs/audits/audit-v2.md) for the full security audit report.
+See [`docs/audits/audit-v2.md`](docs/audits/audit-v2.md) for the full independent security audit.
 
 ---
 
@@ -272,26 +447,40 @@ See [`docs/audits/audit-v2.md`](docs/audits/audit-v2.md) for the full security a
 
 ```bash
 cd apps/api
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+source .venv/bin/activate
 
 # Run tests
 pytest tests/ -v
 
-# Lint + format
+# Lint
 ruff check app/ tests/
 ruff format app/ tests/
+
+# Type check
+mypy app/
 ```
 
 ### Frontend
 
 ```bash
 cd apps/web
-npm install
-npm run dev       # Dev server with HMR
-npm run build     # Production bundle
+npm run dev       # Dev server with HMR at :5173
 npm run lint      # ESLint check
+npm run build     # Production bundle → dist/
 ```
+
+---
+
+## Reliability Pipeline States
+
+```
+Claim States:    SUPPORTED | CONTRADICTED | NEUTRAL
+Failure Types:   RETRIEVAL_FAILURE | EVIDENCE_CONFLICT | LOW_COVERAGE
+Recovery:        query_rewrite → re_retrieve → re_verify
+Answer States:   Grounded Answer  |  ABSTAIN
+```
+
+Recovery is bounded by `max_recovery_attempts` (default: 2) to prevent infinite loops and token cost explosion.
 
 ---
 
