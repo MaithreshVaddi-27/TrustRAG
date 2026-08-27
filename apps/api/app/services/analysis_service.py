@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from bson import ObjectId
+from fastapi import BackgroundTasks
 
 from app.api.v1.schemas.analysis import (
     AnalysisCreate,
@@ -22,8 +23,14 @@ from app.api.v1.schemas.analysis import (
 )
 from app.core.config import get_model_config
 from app.core.exceptions import AuthorizationError, NotFoundError
+from app.core.logging import get_logger
 from app.db.mongodb import Collections, get_collection
+from app.generation.generator import generate_grounded_answer
+from app.retrieval.reranker import rerank_candidate_chunks
+from app.retrieval.retriever import retrieve_hybrid_chunks
 from app.services.kb_service import get_kb
+
+logger = get_logger(__name__)
 
 
 def serialize_analysis(doc: Mapping[str, Any]) -> AnalysisResponse:
@@ -91,7 +98,9 @@ def serialize_trace(doc: Mapping[str, Any]) -> TraceEventResponse:
     )
 
 
-async def create_analysis(schema: AnalysisCreate, user_id_str: str) -> AnalysisResponse:
+async def create_analysis(
+    schema: AnalysisCreate, user_id_str: str, background_tasks: BackgroundTasks
+) -> AnalysisResponse:
     """
     Initiate an analysis run.
     Verifies that target KB exists and is owned by the user.
@@ -120,6 +129,14 @@ async def create_analysis(schema: AnalysisCreate, user_id_str: str) -> AnalysisR
         analysis_id_str=str(result.inserted_id),
         event="analysis.started",
         data={"message": "Analysis run initiated"},
+    )
+
+    # Queue background RAG execution pipeline
+    background_tasks.add_task(
+        run_analysis_pipeline,
+        analysis_id_str=str(result.inserted_id),
+        kb_id_str=schema.knowledge_base_id,
+        query=schema.query.strip(),
     )
 
     return serialize_analysis(analysis_doc)
@@ -242,3 +259,134 @@ async def sse_event_generator(
                 return
 
         await asyncio.sleep(1.0)
+
+
+async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str) -> None:
+    """
+    Execute RAG retrieval and generation pipeline in the background.
+
+    Phases:
+      1. Retrieve segments using hybrid (dense + sparse) matching
+      2. Apply temporal filters using parent document dates
+      3. Rerank top matches using CrossEncoder
+      4. Persist segments as Evidence models in MongoDB
+      5. Generate answer using Gemini, grounded in retrieved context
+      6. Update status and save answer in MongoDB
+    """
+    analysis_id = ObjectId(analysis_id_str)
+    analyses_coll = get_collection(Collections.ANALYSES)
+    evidence_coll = get_collection(Collections.EVIDENCE)
+
+    try:
+        # Mark status as processing
+        await analyses_coll.update_one(
+            {"_id": analysis_id},
+            {"$set": {"status": "processing", "updated_at": datetime.now(UTC)}},
+        )
+
+        # 1. Hybrid Retrieval (dense + sparse search)
+        await add_trace_event(
+            analysis_id_str,
+            "retrieval.started",
+            {"message": "Performing hybrid dense + sparse retrieval"},
+        )
+
+        candidates = await retrieve_hybrid_chunks(query, kb_id_str)
+
+        # 2. Rerank
+        await add_trace_event(
+            analysis_id_str,
+            "rerank.started",
+            {"message": f"Reranking {len(candidates)} candidate segments"},
+        )
+
+        top_chunks = rerank_candidate_chunks(query, candidates)
+
+        # 3. Persist Evidence & emit retrieval completed event
+        await add_trace_event(
+            analysis_id_str,
+            "retrieval.completed",
+            {
+                "message": f"Selected {len(top_chunks)} context segments",
+                "segments": [
+                    {
+                        "filename": c.get("filename") or "unknown_doc",
+                        "page": c.get("page", 1),
+                        "score": c.get("rerank_score") or c.get("rrf_score", 0.0),
+                    }
+                    for c in top_chunks
+                ],
+            },
+        )
+
+        for c in top_chunks:
+            doc_id = ObjectId(c["document_id"]) if c.get("document_id") else None
+            evt_doc = {
+                "analysis_id": analysis_id,
+                "text": c["text"],
+                "document_id": doc_id,
+                "filename": c.get("filename"),
+                "retrieval_score": c.get("dense_score", 0.0),
+                "fusion_score": c.get("rrf_score", 0.0),
+                "rerank_score": c.get("rerank_score"),
+                "method": "hybrid",
+                "integrity_status": "PENDING",
+                "effective_from": c.get("effective_from"),
+                "effective_until": c.get("effective_until"),
+                "created_at": datetime.now(UTC),
+            }
+            await evidence_coll.insert_one(evt_doc)
+
+        # 4. Generate Grounded Answer
+        await add_trace_event(
+            analysis_id_str,
+            "generation.started",
+            {"message": "Invoking Gemini model for grounded answer generation"},
+        )
+
+        answer = await generate_grounded_answer(query, top_chunks)
+
+        if answer == "ABSTAIN":
+            await add_trace_event(
+                analysis_id_str,
+                "analysis.abstained",
+                {"message": "LLM abstained due to insufficient context info"},
+            )
+            status_value = "abstained"
+        else:
+            await add_trace_event(
+                analysis_id_str,
+                "analysis.completed",
+                {"message": "Answer generation completed successfully"},
+            )
+            status_value = "completed"
+
+        # Update final state in database
+        await analyses_coll.update_one(
+            {"_id": analysis_id},
+            {"$set": {"status": status_value, "answer": answer, "updated_at": datetime.now(UTC)}},
+        )
+
+    except Exception as exc:
+        logger.error(
+            "Analysis background execution pipeline failed",
+            analysis_id=analysis_id_str,
+            error=str(exc),
+        )
+
+        await add_trace_event(
+            analysis_id_str,
+            "analysis.failed",
+            {"message": f"Execution failed: {exc!s}"},
+        )
+
+        await analyses_coll.update_one(
+            {"_id": analysis_id},
+            {
+                "$set": {
+                    "status": "failed",
+                    "error_message": str(exc),
+                    "updated_at": datetime.now(UTC),
+                }
+            },
+        )

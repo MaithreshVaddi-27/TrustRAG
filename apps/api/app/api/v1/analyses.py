@@ -8,7 +8,7 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_user
@@ -32,10 +32,14 @@ router = APIRouter(prefix="/analyses", tags=["analyses"])
     summary="Initiate analysis run",
 )
 async def create_analysis_endpoint(
-    schema: AnalysisCreate, current_user: Mapping[str, Any] = Depends(get_current_user)
+    schema: AnalysisCreate,
+    background_tasks: BackgroundTasks,
+    current_user: Mapping[str, Any] = Depends(get_current_user),
 ) -> AnalysisResponse:
     """Create a new analysis run, verify KB access, and queue execution."""
-    return await analysis_service.create_analysis(schema, str(current_user["_id"]))
+    return await analysis_service.create_analysis(
+        schema, str(current_user["_id"]), background_tasks
+    )
 
 
 @router.get("", response_model=list[AnalysisResponse], summary="List analysis history")

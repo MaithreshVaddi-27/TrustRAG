@@ -62,6 +62,7 @@ def setup_dependency_override(mock_user_doc):
     app.dependency_overrides.clear()
 
 
+@patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
 def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
