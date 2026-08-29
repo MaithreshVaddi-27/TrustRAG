@@ -40,22 +40,6 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # ── Local MongoDB ───────────────────────────────────────────────────────────
-  mongodb:
-    image: mongo:7.0
-    container_name: trustrag_mongodb
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-    healthcheck:
-      test: ["CMD-SHELL", "mongosh --eval 'db.adminCommand(\"ping\")' || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 5s
-    restart: unless-stopped
-
   # ── FastAPI backend ────────────────────────────────────────────────────────
   api:
     build:
@@ -73,6 +57,8 @@ services:
       --log-level info"
     ports:
       - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # Mount source for hot-reload
       - ./apps/api/app:/build/app:ro
@@ -83,13 +69,12 @@ services:
     env_file:
       - .env
     environment:
-      # Override QDRANT_URL and MONGODB_URI to use docker network
+      # Override QDRANT_URL to use docker network
       QDRANT_URL: http://qdrant:6333
-      MONGODB_URI: mongodb://mongodb:27017/trustrag_db
+      # Connect to local mongodb-community running on host machine
+      MONGODB_URI: mongodb://host.docker.internal:27017/trustrag_db
     depends_on:
       qdrant:
-        condition: service_healthy
-      mongodb:
         condition: service_healthy
     healthcheck:
       # python:slim includes wget; use it for consistency with Qdrant healthcheck.
@@ -106,8 +91,6 @@ volumes:
   qdrant_storage:
     driver: local
   model_cache:
-    driver: local
-  mongodb_data:
     driver: local
 
 

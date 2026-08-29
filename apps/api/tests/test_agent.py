@@ -178,3 +178,39 @@ async def test_recovery_node_rewrite(mock_model, mock_collection):
     assert res["current_query"] == "rewritten search query"
     assert res["recovery_strategy"] == "query_rewrite"
     mock_db.insert_one.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_verification_node_abstain_triggers_recovery():
+    state = {
+        "analysis_id": "64ee39d09c6292376e191983",
+        "answer": "ABSTAIN",
+        "chunks": [{"text": "some context"}],
+        "evidence_ids": [],
+        "verdict_status": "FAIL",
+        "claims": [],
+        "attempts": 0,
+    }
+
+    res = await verification_node(state)
+    assert res["verdict_status"] == "FAIL"
+    assert res["diagnosis_type"] == "RETRIEVAL_FAILURE"
+    assert "insufficient information" in res["diagnosis_failures"][0].lower()
+
+
+@pytest.mark.asyncio
+async def test_verification_node_abstain_max_attempts_passes():
+    state = {
+        "analysis_id": "64ee39d09c6292376e191983",
+        "answer": "ABSTAIN",
+        "chunks": [],
+        "evidence_ids": [],
+        "verdict_status": "FAIL",
+        "claims": [],
+        "attempts": 2,  # Reached max_recovery_attempts (2)
+    }
+
+    res = await verification_node(state)
+    assert res["verdict_status"] == "PASS"
+    assert res["diagnosis_type"] == "RETRIEVAL_FAILURE"
+

@@ -59,9 +59,9 @@ def test_sparse_vectorizer_tokenize():
     text = "This is a simple query, test query!"
     tokens = tokenize(text)
 
-    # "simple", "query", "test", "query" (stopwords like "this", "is", "a" are removed)
-    assert "query" in tokens
-    assert "simple" in tokens
+    # Stemmed tokens: "simple" -> "simpl", "query" -> "queri", "test" -> "test" (stopwords removed)
+    assert "queri" in tokens
+    assert "simpl" in tokens
     assert "test" in tokens
     assert "this" not in tokens
 

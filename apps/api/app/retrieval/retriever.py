@@ -56,8 +56,8 @@ async def sparse_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
         client = get_qdrant_client()
         collection_name = get_collection_name(kb_id)
 
-        # Generate token weights
-        sparse_rep = generate_sparse_vector(query)
+        # Generate token weights with query-noise stopword filtering
+        sparse_rep = generate_sparse_vector(query, is_query=True)
         if not sparse_rep["indices"]:
             return []
 

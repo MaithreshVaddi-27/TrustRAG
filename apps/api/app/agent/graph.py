@@ -56,11 +56,17 @@ async def retrieval_node(state: AgentState) -> AgentState:
 
     # 1. Hybrid Retrieval
     top_k_override = None
+    max_context_override = None
     if state["recovery_strategy"] == "re_retrieve":
         # Double the retrieval search size to fetch more context
         cfg = get_model_config()
         top_k_override = cfg.dense_top_k * 2
-        logger.info("Recovery: expanded search retrieval size triggered", top_k=top_k_override)
+        max_context_override = cfg.max_context_chunks * 2
+        logger.info(
+            "Recovery: expanded search retrieval size triggered",
+            top_k=top_k_override,
+            max_context=max_context_override,
+        )
 
         await add_trace_event(
             state["analysis_id"],
@@ -73,7 +79,9 @@ async def retrieval_node(state: AgentState) -> AgentState:
     )
 
     # 2. Rerank
-    top_chunks = rerank_candidate_chunks(state["current_query"], candidates)
+    top_chunks = rerank_candidate_chunks(
+        state["current_query"], candidates, max_context_override=max_context_override
+    )
 
     # 3. Evidence Integrity Audit
     audited_chunks = await audit_evidence_integrity(top_chunks)
@@ -158,17 +166,28 @@ async def verification_node(state: AgentState) -> AgentState:
     logger.info("Agent Verification Node starting")
 
     answer = state["answer"]
+    cfg = get_model_config()
+
     if not answer or answer == "ABSTAIN":
-        # Abstain or empty results automatically bypass recovery verification checks
-        state["verdict_status"] = "PASS"
         state["claims"] = []
         state["reliability_score"] = None
-        if not state["chunks"]:
-            state["diagnosis_type"] = "RETRIEVAL_FAILURE"
-            state["diagnosis_failures"] = ["No relevant evidence segments were retrieved"]
+        state["diagnosis_type"] = "RETRIEVAL_FAILURE"
+        state["diagnosis_failures"] = (
+            ["No relevant evidence segments were retrieved"]
+            if not state["chunks"]
+            else ["Retrieved segments contained insufficient information to answer the query"]
+        )
+        attempts = state.get("attempts", 0)
+        if attempts < cfg.max_recovery_attempts:
+            state["verdict_status"] = "FAIL"
+            logger.info(
+                "Generation abstained due to insufficient context, triggering adaptive recovery",
+                attempt=attempts + 1,
+                max_attempts=cfg.max_recovery_attempts,
+            )
         else:
-            state["diagnosis_type"] = None
-            state["diagnosis_failures"] = []
+            state["verdict_status"] = "PASS"
+            logger.info("Generation abstained and maximum recovery attempts reached")
         return state
 
     await add_trace_event(
@@ -208,7 +227,6 @@ async def verification_node(state: AgentState) -> AgentState:
     )
 
     # Evaluate reliability thresholds
-    cfg = get_model_config()
     coverage = supported / total
     contradiction_rate = contradicted / total
 
@@ -269,12 +287,9 @@ async def recovery_node(state: AgentState) -> AgentState:
     if strategy == "query_rewrite":
         # Invoke Gemini to rewrite the query targeting the missing facts
         missing_claims = [c["text"] for c in state["claims"] if c["state"] != "SUPPORTED"]
-        missing_str = "\n".join(f"- {c}" for c in missing_claims)
-
-        # Use explicit delimiters to prevent prompt injection via untrusted
-        # user queries or LLM-generated answer content being interpreted as
-        # instructions by the rewrite model.
-        rewrite_prompt = f"""You are a query expansion assistant.
+        if missing_claims:
+            missing_str = "\n".join(f"- {c}" for c in missing_claims)
+            rewrite_prompt = f"""You are a query expansion assistant.
 Your task is to rewrite the original user query to search for the missing
 factual details listed below.
 Combine the original query with context requirements. Generate a single,
@@ -288,6 +303,18 @@ Output only the expanded search query string. Do not include markdown headers or
 <MISSING_CLAIMS>
 {missing_str}
 </MISSING_CLAIMS>
+"""
+        else:
+            # Query rewrite triggered because generation abstained / insufficient context
+            rewrite_prompt = f"""You are a search query expansion assistant for an information retrieval system.
+The original query did not return sufficient information to answer the question.
+Your task is to rewrite and expand the user query by incorporating synonyms, section headers, or conceptual topics that could be present in the document.
+
+Output only the expanded search query string. Do not include markdown headers or commentary.
+
+<ORIGINAL_QUERY>
+{state["query"]}
+</ORIGINAL_QUERY>
 """
         try:
             model = get_verification_model()

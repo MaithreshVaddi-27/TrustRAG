@@ -39,9 +39,12 @@ def chunk_text(
         )
         step = max(1, chunk_size)
 
+    from app.ingestion.preprocessor import detect_chunk_zone, normalize_text
+
     for page_obj in pages:
         page_num = page_obj["page"]
-        text = page_obj["text"]
+        raw_text = page_obj.get("text", "")
+        text = normalize_text(raw_text)
 
         if not text.strip():
             continue
@@ -55,12 +58,14 @@ def chunk_text(
             chunk_content = text[start:end].strip()
 
             if chunk_content:
+                zone = detect_chunk_zone(chunk_content, page=page_num)
                 chunks.append(
                     {
                         "text": chunk_content,
                         "page": page_num,
                         "chunk_index": chunk_index,
                         "character_offset": start,
+                        "zone": zone,
                     }
                 )
                 chunk_index += 1

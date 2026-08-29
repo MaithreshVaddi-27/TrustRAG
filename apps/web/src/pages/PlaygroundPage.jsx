@@ -242,6 +242,17 @@ export default function PlaygroundPage() {
                          </p>
                        </div>
                     )}
+
+                    {(analysis.status === 'abstained' || analysis.reliability?.status === 'ABSTAINED') && (
+                      <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-4 py-3">
+                        <p className="text-sm font-medium text-amber-400">
+                          ⊘ The agent abstained from answering because the retrieved document segments did not contain sufficient factual evidence to answer this question reliably without hallucinating.
+                        </p>
+                        <p className="text-xs text-amber-400/80 mt-1">
+                          Tip: Try phrasing your question using specific topic names, section headings, or asking for an overview of topics covered in the document.
+                        </p>
+                      </div>
+                    )}
                     
                     {analysis.answer && (
                       <div className="glass-card p-4">

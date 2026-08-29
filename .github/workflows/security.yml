@@ -93,7 +93,7 @@ jobs:
 
       - name: Check .gitignore covers .env
         run: |
-          if ! grep -q "^\.env$" .gitignore; then
+          if ! grep -qE "^\.env\r?$" .gitignore; then
             echo "ERROR: .env is not in .gitignore root"
             exit 1
           fi

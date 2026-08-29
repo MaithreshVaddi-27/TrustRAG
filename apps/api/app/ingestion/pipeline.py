@@ -66,6 +66,7 @@ async def index_parsed_chunks(
                     "text": c["text"],
                     "page": c["page"],
                     "character_offset": c["character_offset"],
+                    "zone": c.get("zone", "body"),
                     "text_hash": hashlib.sha256(c["text"].encode("utf-8")).hexdigest(),
                 }
             )
@@ -91,19 +92,21 @@ async def index_parsed_chunks(
         # 4. Construct Qdrant points
         points = []
         for i, chunk in enumerate(chunks):
-            # Compute sparse TF vector
-            sparse_vec = generate_sparse_vector(chunk["text"])
+            # Compute sparse TF vector with zone weighting
+            chunk_zone = chunk.get("zone", "body")
+            sparse_vec = generate_sparse_vector(chunk["text"], zone=chunk_zone)
 
             # Unique deterministic ID for Qdrant point (based on doc ID and chunk index)
             point_id = hashlib_qdrant_id(doc_id_str, chunk["chunk_index"])
 
-            # Payload contains metadata + text
+            # Payload contains metadata + text + zone
             payload = {
                 "document_id": doc_id_str,
                 "knowledge_base_id": kb_id_str,
                 "chunk_index": chunk["chunk_index"],
                 "page": chunk["page"],
                 "character_offset": chunk["character_offset"],
+                "zone": chunk_zone,
                 "text": chunk["text"],
             }
 

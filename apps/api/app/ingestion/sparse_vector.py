@@ -194,37 +194,50 @@ STOPWORDS = {
 VOCAB_SIZE_LIMIT = 1_000_000
 
 
+from app.ingestion.preprocessor import ZONE_WEIGHT_BOOSTS, lexical_analyze
+
+
 def tokenize(text: str) -> list[str]:
-    """Clean, lowercase, and tokenize text into words, removing stopwords."""
-    text_clean = text.lower()
-    # Replace punctuation with spaces
-    words = re.findall(r"\b[a-z0-9]{2,}\b", text_clean)
-    return [w for w in words if w not in STOPWORDS]
+    """
+    Clean, normalize, tokenize, filter stopwords, and stem words using Porter Stemmer.
+
+    Ensures consistent morphological root alignment between document indexing and query retrieval.
+    """
+    return lexical_analyze(text, stem=True)
 
 
-def generate_sparse_vector(text: str) -> dict[str, list[Any]]:
+def generate_sparse_vector(
+    text: str,
+    zone: str = "body",
+    is_query: bool = False,
+) -> dict[str, list[Any]]:
     """
     Generate sparse vector indices and values for the input text.
 
-    Uses xxhash to deterministically map words to consistent 32-bit indices
-    within a VOCAB_SIZE_LIMIT range, ensuring stateless alignment.
-    Values represent simple term frequency (TF) weights.
+    Incorporates:
+      - Text normalization, de-hyphenation, and contraction expansion
+      - Conversational query noise filtering when is_query=True
+      - Porter Stemming
+      - Document Zoning boost: terms appearing in TITLE or HEADER zones receive
+        amplified weights (e.g. 2.0x for Title, 1.5x for Header)
     """
-    tokens = tokenize(text)
+    tokens = lexical_analyze(text, stem=True, is_query=is_query)
     if not tokens:
         return {"indices": [], "values": []}
 
-    freqs: dict[int, int] = {}
+    # Apply document zone weight multiplier
+    zone_boost = ZONE_WEIGHT_BOOSTS.get(zone, 1.0)
+
+    freqs: dict[int, float] = {}
     for token in tokens:
-        # Generate consistent 32-bit hash index
         idx = xxhash.xxh32(token.encode("utf-8")).intdigest() % VOCAB_SIZE_LIMIT
-        freqs[idx] = freqs.get(idx, 0) + 1
+        freqs[idx] = freqs.get(idx, 0.0) + zone_boost
 
     total_tokens = len(tokens)
 
     # Sort indices for predictability
     sorted_indices = sorted(freqs.keys())
-    # Values normalized by document length (Term Frequency)
+    # Normalized by token count, reflecting zone-weighted term frequency
     values = [float(freqs[idx]) / total_tokens for idx in sorted_indices]
 
     return {"indices": sorted_indices, "values": values}

@@ -91,19 +91,19 @@ async def test_verify_claim_contradicted(mock_get_model):
     assert res["supporting_segments"] == [1]
 
 
-@patch("app.verification.verifier.verify_claim_nli")
+@patch("app.verification.verifier.batch_verify_claims_nli")
 @patch("app.verification.verifier.decompose_answer_to_claims")
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
 @pytest.mark.asyncio
 async def test_execute_claim_verification(
-    mock_create_indexes, mock_connect, mock_decompose, mock_verify
+    mock_create_indexes, mock_connect, mock_decompose, mock_batch_verify
 ):
     mock_decompose.return_value = ["Claim 1", "Claim 2"]
-    mock_verify.side_effect = [
-        {"verdict": "SUPPORTED", "supporting_segments": [1], "explanation": "Ok"},
-        {"verdict": "NEUTRAL", "supporting_segments": [], "explanation": "Missing"},
-    ]
+    mock_batch_verify.return_value = {
+        1: {"verdict": "SUPPORTED", "supporting_segments": [1], "explanation": "Ok"},
+        2: {"verdict": "NEUTRAL", "supporting_segments": [], "explanation": "Missing"},
+    }
 
     mock_collection = MagicMock()
     mock_collection.insert_one = AsyncMock(
