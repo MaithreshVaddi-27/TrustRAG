@@ -250,7 +250,7 @@ export default function KnowledgeBasesPage() {
                     type="file" 
                     ref={el => fileInputRefs.current[kb.id] = el} 
                     className="hidden" 
-                    accept=".pdf,.txt,.md"
+                    accept=".pdf,.txt,.md,.docx,.csv,.json,.html,.htm"
                     onChange={(e) => handleFileChange(e, kb.id)}
                   />
                 </div>
@@ -263,7 +263,7 @@ export default function KnowledgeBasesPage() {
         <div className="glass-card p-5 mt-8 border-l-4 border-l-primary-500/50">
           <p className="font-semibold text-slate-200 mb-3">Supported Document Formats</p>
           <div className="flex gap-3 flex-wrap">
-            {['PDF', 'TXT', 'Markdown (.md)'].map(fmt => (
+            {['PDF (.pdf)', 'Word (.docx)', 'Markdown (.md)', 'Text (.txt)', 'CSV (.csv)', 'JSON (.json)', 'HTML (.html, .htm)'].map(fmt => (
               <div key={fmt} className="flex items-center gap-2 px-3 py-1.5 bg-surface-800 rounded-lg border border-slate-700 text-sm text-slate-300 shadow-sm">
                 <File size={14} className="text-primary-400" /> {fmt}
               </div>

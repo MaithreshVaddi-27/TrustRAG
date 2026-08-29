@@ -14,6 +14,7 @@ from app.verification.verifier import (
     NLIVerdict,
     decompose_answer_to_claims,
     execute_claim_verification,
+    extract_claim_triple_heuristic,
     verify_claim_nli,
 )
 
@@ -126,3 +127,25 @@ async def test_execute_claim_verification(
         assert claims[0]["evidence_ids"] == [evidence_ids[0]]
         assert claims[1]["state"] == "NEUTRAL"
         assert claims[1]["evidence_ids"] == []
+
+
+def test_extract_claim_triple_heuristics():
+    # Standard predicate match
+    subj, pred, obj = extract_claim_triple_heuristic(
+        "The refund policy allows returns within 30 days."
+    )
+    assert subj == "The refund policy"
+    assert pred == "allows"
+    assert obj == "returns within 30 days"
+
+    # Positional 4-word split
+    s2, p2, o2 = extract_claim_triple_heuristic("Antigravity engine emits photon")
+    assert s2 == "Antigravity engine"
+    assert p2 == "emits"
+    assert o2 == "photon"
+
+    # Edge cases
+    assert extract_claim_triple_heuristic("") == (None, None, None)
+    assert extract_claim_triple_heuristic("   ") == (None, None, None)
+    assert extract_claim_triple_heuristic("Warning") == ("Warning", None, None)
+

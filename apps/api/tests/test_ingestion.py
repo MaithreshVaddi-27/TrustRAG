@@ -4,13 +4,22 @@ Unit tests for the Knowledge Ingestion pipeline components.
 
 from __future__ import annotations
 
+import io
+import zipfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from bson import ObjectId
 
 from app.ingestion.chunker import chunk_text
-from app.ingestion.parser import extract_dates
+from app.ingestion.parser import (
+    extract_dates,
+    parse_csv,
+    parse_document,
+    parse_docx,
+    parse_html,
+    parse_json,
+)
 from app.ingestion.sparse_vector import generate_sparse_vector, tokenize
 
 
@@ -128,3 +137,60 @@ async def test_indexing_pipeline_execution(
         assert mock_collection.update_one.call_count == 2
         # Verify Qdrant client was called for upsert
         mock_client.upsert.assert_called_once()
+
+
+def test_parse_csv():
+    csv_data = b"Plan,Price,Window\nAnnual,1200,30 days\nMonthly,120,None"
+    stream = io.BytesIO(csv_data)
+    pages = parse_csv(stream)
+
+    assert len(pages) == 1
+    assert "Plan: Annual" in pages[0]["text"]
+    assert "Price: 1200" in pages[0]["text"]
+
+
+def test_parse_json():
+    json_data = b'{"platform": "TRUSTRAG", "specs": {"max_size": 20}}'
+    stream = io.BytesIO(json_data)
+    pages = parse_json(stream)
+
+    assert len(pages) == 1
+    assert '"platform": "TRUSTRAG"' in pages[0]["text"]
+
+
+def test_parse_html():
+    html_data = (
+        b"<html><body><h2>Service Terms</h2>"
+        b"<p>All contracts include 30-day trial.</p></body></html>"
+    )
+    stream = io.BytesIO(html_data)
+    pages = parse_html(stream)
+
+    assert len(pages) == 1
+    assert "Service Terms" in pages[0]["text"]
+    assert "All contracts include 30-day trial." in pages[0]["text"]
+
+
+def test_parse_docx():
+    bio = io.BytesIO()
+    with zipfile.ZipFile(bio, "w") as zf:
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            '<w:body><w:p><w:t>Corporate Policy Document in DOCX</w:t></w:p></w:body>'
+            '</w:document>'
+        )
+        zf.writestr("word/document.xml", xml)
+    bio.seek(0)
+
+    pages = parse_docx(bio)
+    assert len(pages) == 1
+    assert pages[0]["text"] == "Corporate Policy Document in DOCX"
+
+
+def test_parse_document_routing():
+    stream = io.BytesIO(b'{"key": "value"}')
+    pages, _, _ = parse_document("config.json", stream)
+    assert len(pages) == 1
+    assert '"key": "value"' in pages[0]["text"]
+

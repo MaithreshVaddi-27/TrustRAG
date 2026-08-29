@@ -9,7 +9,7 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-FF6F00)](https://langchain-ai.github.io/langgraph/)
 [![Qdrant](https://img.shields.io/badge/Qdrant-Hybrid_Vector-DC2626?logo=qdrant&logoColor=white)](https://qdrant.tech)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Community_&_Atlas-47A248?logo=mongodb&logoColor=white)](https://mongodb.com)
-[![Tests](https://img.shields.io/badge/Tests-71%20Passing-brightgreen)](apps/api/tests)
+[![Tests](https://img.shields.io/badge/Tests-79%20Passing-brightgreen)](apps/api/tests)
 [![Bandit](https://img.shields.io/badge/Bandit%20SAST-0%20Issues-brightgreen)](docs/audits/final-audit-report.md)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
@@ -134,13 +134,13 @@ TrustRAG/
 │       │   ├── core/                 # App config, logging, rate limiting, security, model registry
 │       │   ├── db/                   # MongoDB (Motor async driver) & Qdrant vector database clients
 │       │   ├── generation/           # Context-grounded generation prompts and LLM invocation
-│       │   ├── ingestion/            # PDF/TXT/MD parsers, Porter stemmer, chunker, sparse vectors
+│       │   ├── ingestion/            # Multi-format parsers (PDF/DOCX/TXT/MD/CSV/JSON/HTML), Porter stemmer, chunker
 │       │   ├── retrieval/            # Dense search, sparse search, RRF fusion, CrossEncoder reranking
 │       │   ├── services/             # Business logic: analysis runs, KB, auth, experiments
 │       │   └── verification/         # Batch NLI verifier & SHA-256 evidence integrity auditor
 │       ├── config/
 │       │   └── models.yaml           # Centralized configuration registry for models and thresholds
-│       └── tests/                    # 69 automated unit & integration test suites (100% pass)
+│       └── tests/                    # 79 automated unit & integration test suites (100% pass)
 │
 ├── docs/                             # Engineering documentation repository
 │   ├── architecture/                 # End-to-end design specifications and ADRs

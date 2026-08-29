@@ -79,11 +79,16 @@ retrieval:
 ingestion:
   chunk_size: 512           # Characters per chunk (approx. 128 tokens)
   chunk_overlap: 64
-  # Supported MVP formats — do NOT add formats without clear value
+  # Supported document formats
   supported_formats:
     - pdf
     - txt
     - md
+    - docx
+    - csv
+    - json
+    - html
+    - htm
   max_file_size_mb: 20
   # Maximum file size for processing (deny-of-wallet defense)
   max_total_tokens_per_doc: 200000

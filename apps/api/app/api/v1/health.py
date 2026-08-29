@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter
 
+from app.core.config import get_model_config, get_settings
 from app.core.model_registry import registry_status
 from app.db.mongodb import health_check as mongo_health_check
 from app.db.qdrant import health_check as qdrant_health_check
@@ -43,11 +44,16 @@ async def health() -> dict:
 
     overall_status = "ok" if all(v == "ok" for v in services.values()) else "degraded"
 
+    cfg = get_model_config()
+    settings = get_settings()
+
     return {
         "status": overall_status,
         "timestamp": datetime.now(UTC).isoformat(),
         "app": "TRUSTRAG",
         "version": "0.1.0",
+        "environment": settings.app_env,
         "services": services,
         "models": registry_status(),
+        "supported_formats": cfg.supported_formats,
     }

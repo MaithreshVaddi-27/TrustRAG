@@ -55,3 +55,8 @@ export const claimService = {
 export const conflictService = {
   list: () => api.get('/api/v1/conflicts').then(r => r.data),
 }
+
+// ── Health & Diagnostics ──────────────────────────────────────────────────
+export const healthService = {
+  get: () => api.get('/api/v1/health').then(r => r.data),
+}
