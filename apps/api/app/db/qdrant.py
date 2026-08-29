@@ -99,3 +99,14 @@ async def delete_kb_collection(kb_id: str) -> None:
         raise VectorStoreError(
             f"Failed to drop Qdrant collection '{collection_name}'", detail=str(exc)
         ) from exc
+
+
+def health_check() -> bool:
+    """Verify connectivity to Qdrant cluster."""
+    try:
+        client = get_qdrant_client()
+        client.get_collections()
+        return True
+    except Exception as exc:
+        logger.warning("Qdrant health check failed", error=str(exc))
+        return False

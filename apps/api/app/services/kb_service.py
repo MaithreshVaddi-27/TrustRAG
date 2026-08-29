@@ -9,11 +9,15 @@ from datetime import UTC, datetime
 from typing import Any
 
 from bson import ObjectId
+from qdrant_client.http import models
 
 from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
 from app.core.exceptions import AuthorizationError, NotFoundError
+from app.core.logging import get_logger
 from app.db.mongodb import Collections, get_collection
-from app.db.qdrant import delete_kb_collection
+from app.db.qdrant import delete_kb_collection, get_collection_name, get_qdrant_client
+
+logger = get_logger(__name__)
 
 
 def serialize_kb(kb_doc: Mapping[str, Any], doc_count: int = 0) -> KBResponse:
@@ -109,10 +113,13 @@ async def delete_kb(kb_id_str: str, user_id_str: str) -> None:
     # 1. Delete associated documents in MongoDB
     await get_collection(Collections.DOCUMENTS).delete_many({"knowledge_base_id": kb_id})
 
-    # 2. Drop the associated Qdrant vector collection to avoid orphaned storage
+    # 2. Delete associated document chunks in MongoDB
+    await get_collection(Collections.DOCUMENT_CHUNKS).delete_many({"knowledge_base_id": kb_id})
+
+    # 3. Drop the associated Qdrant vector collection to avoid orphaned storage
     await delete_kb_collection(kb_id_str)
 
-    # 3. Delete the KB record itself
+    # 4. Delete the KB record itself
     await get_collection(Collections.KNOWLEDGE_BASES).delete_one({"_id": kb_id})
 
 
@@ -133,6 +140,7 @@ async def add_document(
 
     doc_coll = get_collection(Collections.DOCUMENTS)
     doc_doc = {
+        "user_id": ObjectId(user_id_str),
         "knowledge_base_id": ObjectId(kb_id_str),
         "filename": filename,
         "file_size": file_size,
@@ -159,3 +167,58 @@ async def list_kb_documents(kb_id_str: str, user_id_str: str) -> list[DocRespons
     async for d in doc_coll.find({"knowledge_base_id": ObjectId(kb_id_str)}).sort("created_at", -1):
         docs.append(serialize_doc(d))
     return docs
+
+
+async def delete_document(doc_id_str: str, user_id_str: str) -> None:
+    """
+    Delete a document, all its chunks, and associated Qdrant vector points.
+
+    Verifies ownership of the parent KB before deleting.
+    """
+    from app.core.exceptions import NotFoundError
+
+    try:
+        doc_id = ObjectId(doc_id_str)
+    except Exception as exc:
+        raise NotFoundError("Document not found", detail=str(exc)) from exc
+
+    doc_coll = get_collection(Collections.DOCUMENTS)
+    doc = await doc_coll.find_one({"_id": doc_id})
+    if not doc:
+        raise NotFoundError("Document not found")
+
+    # Verify ownership
+    kb_id_str = str(doc["knowledge_base_id"])
+    await get_kb(kb_id_str, user_id_str)
+
+    # 1. Delete chunks in MongoDB
+    await get_collection(Collections.DOCUMENT_CHUNKS).delete_many({"document_id": doc_id})
+
+    # 2. Delete points from Qdrant collection
+    client = get_qdrant_client()
+    collection_name = get_collection_name(kb_id_str)
+    try:
+        if client.collection_exists(collection_name):
+            client.delete(
+                collection_name=collection_name,
+                points_selector=models.FilterSelector(
+                    filter=models.Filter(
+                        must=[
+                            models.FieldCondition(
+                                key="document_id",
+                                match=models.MatchValue(value=doc_id_str),
+                            )
+                        ]
+                    )
+                ),
+            )
+    except Exception as exc:
+        logger.warning(
+            "Failed to delete Qdrant points for document",
+            doc_id=doc_id_str,
+            error=str(exc),
+        )
+
+    # 3. Delete document record itself
+    await doc_coll.delete_one({"_id": doc_id})
+    logger.info("Document deleted successfully", doc_id=doc_id_str, kb_id=kb_id_str)

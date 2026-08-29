@@ -19,6 +19,7 @@ from fastapi import APIRouter
 
 from app.core.model_registry import registry_status
 from app.db.mongodb import health_check as mongo_health_check
+from app.db.qdrant import health_check as qdrant_health_check
 
 router = APIRouter(tags=["health"])
 
@@ -33,9 +34,11 @@ async def health() -> dict:
     Individual service statuses are in `services`.
     """
     mongo_ok = await mongo_health_check()
+    qdrant_ok = qdrant_health_check()
 
     services = {
         "mongodb": "ok" if mongo_ok else "degraded",
+        "qdrant": "ok" if qdrant_ok else "degraded",
     }
 
     overall_status = "ok" if all(v == "ok" for v in services.values()) else "degraded"

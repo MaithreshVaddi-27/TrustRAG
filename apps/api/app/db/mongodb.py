@@ -202,6 +202,7 @@ async def create_indexes() -> None:
     await db[Collections.DOCUMENTS].create_index(
         [("content_hash", pymongo.ASCENDING)], name="doc_content_hash"
     )
+    await db[Collections.DOCUMENTS].create_index([("user_id", pymongo.ASCENDING)], name="doc_user")
     await db[Collections.DOCUMENTS].create_index(
         [("ingestion_status", pymongo.ASCENDING)], name="doc_ingestion_status"
     )
@@ -210,6 +211,12 @@ async def create_indexes() -> None:
     await db[Collections.DOCUMENT_CHUNKS].create_index(
         [("document_id", pymongo.ASCENDING), ("chunk_index", pymongo.ASCENDING)],
         name="chunk_doc_index",
+    )
+    await db[Collections.DOCUMENT_CHUNKS].create_index(
+        [("knowledge_base_id", pymongo.ASCENDING)], name="chunk_kb_id"
+    )
+    await db[Collections.DOCUMENT_CHUNKS].create_index(
+        [("user_id", pymongo.ASCENDING)], name="chunk_user"
     )
     await db[Collections.DOCUMENT_CHUNKS].create_index(
         [("text_hash", pymongo.ASCENDING)], name="chunk_text_hash"

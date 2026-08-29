@@ -53,6 +53,13 @@ async def index_parsed_chunks(
             logger.info("Ingestion completed: document has no text chunks", doc_id=doc_id_str)
             return
 
+        user_id = None
+        if hasattr(doc_coll, "find_one"):
+            doc_lookup = doc_coll.find_one({"_id": doc_id})
+            if hasattr(doc_lookup, "__await__"):
+                doc = await doc_lookup
+                user_id = doc.get("user_id") if doc else None
+
         # Store chunks in MongoDB for future integrity audits
         import hashlib
 
@@ -62,6 +69,8 @@ async def index_parsed_chunks(
             mongo_chunks.append(
                 {
                     "document_id": doc_id,
+                    "knowledge_base_id": ObjectId(kb_id_str),
+                    "user_id": user_id,
                     "chunk_index": c["chunk_index"],
                     "text": c["text"],
                     "page": c["page"],
@@ -103,6 +112,7 @@ async def index_parsed_chunks(
             payload = {
                 "document_id": doc_id_str,
                 "knowledge_base_id": kb_id_str,
+                "user_id": str(user_id) if user_id else "",
                 "chunk_index": chunk["chunk_index"],
                 "page": chunk["page"],
                 "character_offset": chunk["character_offset"],

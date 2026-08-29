@@ -39,3 +39,13 @@ async def get_document_endpoint(
     from app.services.kb_service import serialize_doc
 
     return serialize_doc(doc)
+
+
+@router.delete("/{doc_id}", status_code=204, summary="Delete a document")
+async def delete_document_endpoint(
+    doc_id: str, current_user: Mapping[str, Any] = Depends(get_current_user)
+) -> None:
+    """Delete a document, its chunks, and associated vectors, validating user ownership."""
+    from app.services.kb_service import delete_document
+
+    await delete_document(doc_id, str(current_user["_id"]))

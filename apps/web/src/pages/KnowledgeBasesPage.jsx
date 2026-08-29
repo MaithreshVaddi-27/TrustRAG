@@ -39,11 +39,17 @@ export default function KnowledgeBasesPage() {
     }
   })
 
+  const [deleteErrorMsg, setDeleteErrorMsg] = useState(null)
+
   // Delete KB Mutation
   const deleteKbMutation = useMutation({
     mutationFn: kbService.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['knowledgeBases'] })
+      setDeleteErrorMsg(null)
+    },
+    onError: (error) => {
+      setDeleteErrorMsg(error.message || 'Failed to delete knowledge base')
     }
   })
 
@@ -116,6 +122,20 @@ export default function KnowledgeBasesPage() {
             <Plus size={16} /> New Knowledge Base
           </button>
         </div>
+
+        {deleteErrorMsg && (
+          <div role="alert" className="p-3.5 bg-red-950/60 border border-red-800 rounded-xl text-xs text-red-300 flex items-center justify-between gap-2">
+            <span>{deleteErrorMsg}</span>
+            <button
+              type="button"
+              onClick={() => setDeleteErrorMsg(null)}
+              aria-label="Dismiss error"
+              className="text-red-400 hover:text-red-200 text-sm font-bold leading-none shrink-0"
+            >
+              &times;
+            </button>
+          </div>
+        )}
 
         {/* Loading State */}
         {isLoading && (

@@ -7,6 +7,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from bson import ObjectId
 
 from app.ingestion.chunker import chunk_text
 from app.ingestion.parser import extract_dates
@@ -100,6 +101,12 @@ async def test_indexing_pipeline_execution(
 
     # Mock MongoDB updates
     mock_collection = MagicMock()
+    mock_collection.find_one = AsyncMock(
+        return_value={
+            "_id": ObjectId("64ee39d09c6292376e191983"),
+            "user_id": ObjectId("64ee39d09c6292376e191981"),
+        }
+    )
     mock_collection.update_one = AsyncMock()
     mock_collection.insert_many = AsyncMock()
 

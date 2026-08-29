@@ -20,6 +20,7 @@ docs/
 │   ├── final-audit-report.md     # Final audit sign-off matrix (all findings FIXED / VERIFIED)
 │   ├── post-audit-fix-log.md     # Chronological execution log of all fixes and root causes
 │   ├── line-by-line-review.md    # Deep line-by-line inspection of critical agent & verification code
+│   ├── multi-tenant-isolation-audit.md # Multi-tenant isolation, cascade deletion & Qdrant health check
 │   └── audit-v3.md               # Historical baseline security and architectural audit report
 ├── security/
 │   ├── security-controls.md      # Authentication, IDOR isolation, rate limits, and defenses
@@ -45,6 +46,7 @@ docs/
 - [**Final Audit Report (`audits/final-audit-report.md`)**](audits/final-audit-report.md): Post-fix verification report confirming zero remaining defects across all categories.
 - [**Post-Audit Fix Log (`audits/post-audit-fix-log.md`)**](audits/post-audit-fix-log.md): Detailed chronological log of all code changes, root-cause analyses, and verification commands.
 - [**Line-by-Line Review (`audits/line-by-line-review.md`)**](audits/line-by-line-review.md): Component-level code walkthrough across graph transitions, NLI verification, and text preprocessors.
+- [**Multi-Tenant Isolation Audit (`audits/multi-tenant-isolation-audit.md`)**](audits/multi-tenant-isolation-audit.md): Deep inspection of user data partitioning, anti-IDOR tests, Qdrant health checks, and cascade deletion.
 
 ### 3. Security & Compliance
 - [**Security Controls (`security/security-controls.md`)**](security/security-controls.md): Specification of JWT tokens, bcrypt rounds, defensive HTTP response headers (`nosniff`, `DENY`), and prompt injection defenses.

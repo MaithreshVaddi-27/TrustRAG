@@ -1,567 +1,511 @@
-# TRUSTRAG — AI Reliability Workbench
+# TRUSTRAG — Production AI Reliability Workbench
 
 > **Retrieve. Verify. Diagnose. Recover.**  
-> Production-grade RAG reliability pipeline with claim verification, failure diagnosis, adaptive recovery, document zoning, and canonical stemming.
+> An open-source, multi-tenant AI reliability platform that detects hallucinations, audits evidence integrity, decomposes assertions into atomic claims, and self-heals low-confidence RAG responses using an adaptive LangGraph loop.
 
-![Python](https://img.shields.io/badge/Python-3.11-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green) ![React](https://img.shields.io/badge/React-18-61DAFB) ![LangGraph](https://img.shields.io/badge/LangGraph-agentic-orange) ![Qdrant](https://img.shields.io/badge/Qdrant-hybrid--RAG-red) ![Tests](https://img.shields.io/badge/Tests-67%20Passing-brightgreen) ![Security](https://img.shields.io/badge/Bandit%20SAST-0%20Issues-brightgreen) ![License](https://img.shields.io/badge/License-MIT-blue)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-FF6F00)](https://langchain-ai.github.io/langgraph/)
+[![Qdrant](https://img.shields.io/badge/Qdrant-Hybrid_Vector-DC2626?logo=qdrant&logoColor=white)](https://qdrant.tech)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Community_&_Atlas-47A248?logo=mongodb&logoColor=white)](https://mongodb.com)
+[![Tests](https://img.shields.io/badge/Tests-69%20Passing-brightgreen)](apps/api/tests)
+[![Bandit](https://img.shields.io/badge/Bandit%20SAST-0%20Issues-brightgreen)](docs/audits/final-audit-report.md)
+[![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 ---
 
-## What TRUSTRAG Does
+## 📑 Table of Contents
 
-Standard RAG pipelines fail silently — they retrieve irrelevant evidence, generate unsupported claims, and cite documents that don't say what's claimed.
+- [Overview](#-overview)
+- [Self-Healing Reliability Loop](#-self-healing-reliability-loop)
+- [System Architecture](#-system-architecture)
+- [Core Engineering Capabilities](#-core-engineering-capabilities)
+  - [1. Multi-Tenant User Isolation & Anti-IDOR](#1-multi-tenant-user-isolation--anti-idor)
+  - [2. Rule-Based Stemming & Document Zoning](#2-rule-based-stemming--document-zoning)
+  - [3. Hybrid Retrieval with RRF](#3-hybrid-retrieval-with-rrf)
+  - [4. Batch NLI Claim Verification](#4-batch-nli-claim-verification)
+  - [5. SHA-256 Provenance & Temporal Filtering](#5-sha-256-provenance--temporal-filtering)
+  - [6. Adaptive LangGraph Recovery Loop](#6-adaptive-langgraph-recovery-loop)
+- [Technology Stack](#-technology-stack)
+- [Getting Started](#-getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Environment Configuration](#1-environment-configuration)
+  - [Running with Docker (Recommended)](#option-a-running-with-docker-recommended)
+  - [Running Locally (Non-Docker)](#option-b-running-locally-non-docker)
+- [End-to-End Walkthrough via CLI](#-end-to-end-walkthrough-via-cli)
+- [API Reference](#-api-reference)
+- [Testing & Quality Assurance](#-testing--quality-assurance)
+- [Troubleshooting & FAQ](#-troubleshooting--faq)
+- [Documentation Index](#-documentation-index)
+- [License](#-license)
 
-TRUSTRAG implements an **active, self-healing reliability loop**:
+---
+
+## 🎯 Overview
+
+Standard RAG (Retrieval-Augmented Generation) systems fail silently. When dense embeddings retrieve tangential context or LLMs extrapolate unsupported claims, traditional applications present hallucinations as fact without warning or auditability.
+
+**TRUSTRAG transforms RAG into a verifiable, closed-loop reliability pipeline:**
+1. **Decomposes** generated responses into verifiable, atomic claims.
+2. **Validates** each assertion against retrieved context using high-throughput batch Natural Language Inference (NLI).
+3. **Audits** underlying chunks against cryptographic SHA-256 source hashes and temporal validity windows (`Effective from: YYYY-MM-DD`).
+4. **Self-Heals** when confidence is low — rewriting queries and expanding search parameters via an adaptive LangGraph state machine before choosing between a **Trusted Grounded Answer** or a **Safe Abstention**.
+
+---
+
+## 🔄 Self-Healing Reliability Loop
 
 ```
-Query
-  → Text Preprocessing (Unicode NFKD, de-hyphenation, query-noise stopword filtering)
-  → Document Zoning & Morphological Stemming (Porter Stemmer, bigrams)
-  → Hybrid Retrieve (dense + zone-weighted sparse BM25 + Reciprocal Rank Fusion)
-  → Generate (Gemini, grounded strictly in retrieved context)
-  → Decompose Claims (atomic assertion extraction)
-  → Batch NLI Verification (single-call structured NLI across all claims)
-  → Audit Evidence Integrity (SHA-256 content hashes & temporal validity)
-  → Score Reliability (coverage, contradiction rate, source reliability)
-  → [if below threshold] Diagnose Failure → Adaptive Recovery (LangGraph)
-    → Topical Query Expansion → Context Expansion → Re-verify
-  → Grounded Answer  OR  ABSTAIN
+                        User Query
+                            │
+                            ▼
+              ┌───────────────────────────┐
+              │ 1. Text Normalization     │ ── NFKD, de-hyphenation, query-noise removal
+              │    & Document Zoning      │ ── Porter Stemmer (5 steps), Title/Header weights
+              └─────────────┬─────────────┘
+                            │
+                            ▼
+              ┌───────────────────────────┐
+              │ 2. Hybrid Retrieval       │ ── Dense (all-MiniLM-L6-v2, 384d)
+              │    & Reciprocal Fusion    │ ── Sparse Token-Frequency BM25
+              └─────────────┬─────────────┘ ── RRF Scoring & Temporal Window Filter
+                            │
+                            ▼
+              ┌───────────────────────────┐
+              │ 3. Grounded Generation    │ ── Gemini 2.5/3.5, strictly conditioned
+              └─────────────┬─────────────┘
+                            │
+                            ▼
+              ┌───────────────────────────┐
+              │ 4. Claim Decomposition    │ ── Extracts atomic verifiable statements
+              │    & Batch NLI Verify     │ ── SUPPORTED | CONTRADICTED | NEUTRAL
+              └─────────────┬─────────────┘
+                            │
+                            ▼
+              ┌───────────────────────────┐
+              │ 5. SHA-256 Hash Audit     │ ── Tamper detection vs MongoDB document_chunks
+              │    & Reliability Scoring  │ ── Coverage & Contradiction Thresholds
+              └─────────────┬─────────────┘
+                            │
+             ┌──────────────┴──────────────┐
+             │                             │
+    [Meets Thresholds]            [Below Threshold]
+             │                             │
+             ▼                             ▼
+   ┌───────────────────┐        ┌──────────────────────────────────┐
+   │  Grounded Answer  │        │ 6. Adaptive LangGraph Recovery   │
+   │  + Evidence Cards │        │    Loop (Max 2 attempts)         │
+   │  + Citations Trace│        └─────────────────┬────────────────┘
+   └───────────────────┘                          │
+                         ┌────────────────────────┴────────────────────────┐
+                         │                                                 │
+                   [Recovered]                                    [Recovery Exhausted]
+                         │                                                 │
+                         ▼                                                 ▼
+               ┌───────────────────┐                             ┌───────────────────┐
+               │  Grounded Answer  │                             │   Safe ABSTAIN    │
+               │  (After Healing)  │                             │   (No Guessing)   │
+               └───────────────────┘                             └───────────────────┘
 ```
 
-The core differentiator is TRUSTRAG's **closed-loop diagnosis & recovery**. When evidence coverage drops or contradictions occur, TRUSTRAG diagnoses the exact failure type and applies targeted recovery rather than returning hallucinated or ungrounded responses.
+---
+
+## 🏛️ System Architecture
+
+TRUSTRAG is architected as a modular monorepo comprising a reactive frontend workbench and an asynchronous, domain-driven API service:
+
+```
+TrustRAG/
+├── apps/
+│   ├── web/                          # React 18 + Vite 6 Workbench Application
+│   │   ├── src/
+│   │   │   ├── components/workbench/ # ClaimInspector, EvidenceViewer, ExecutionTrace, ReliabilityBadge
+│   │   │   ├── layouts/              # Responsive AppLayout, Sidebar, and AuthGuard
+│   │   │   ├── pages/                # 11 Pages: Playground, KBs, Claims, Conflicts, Evidence, Trace...
+│   │   │   ├── services/             # Axios instance, Bearer interceptors, SSE streaming client
+│   │   │   └── index.css             # Glassmorphic dark design system with micro-animations
+│   │   └── package.json
+│   │
+│   └── api/                          # FastAPI Asynchronous Service
+│       ├── app/
+│       │   ├── agent/                # LangGraph StateGraph state machine & adaptive recovery loop
+│       │   ├── api/                  # FastAPI routers, dependency injection, and Pydantic v2 schemas
+│       │   ├── core/                 # App config, logging, rate limiting, security, model registry
+│       │   ├── db/                   # MongoDB (Motor async driver) & Qdrant vector database clients
+│       │   ├── generation/           # Context-grounded generation prompts and LLM invocation
+│       │   ├── ingestion/            # PDF/TXT/MD parsers, Porter stemmer, chunker, sparse vectors
+│       │   ├── retrieval/            # Dense search, sparse search, RRF fusion, CrossEncoder reranking
+│       │   ├── services/             # Business logic: analysis runs, KB, auth, experiments
+│       │   └── verification/         # Batch NLI verifier & SHA-256 evidence integrity auditor
+│       ├── config/
+│       │   └── models.yaml           # Centralized configuration registry for models and thresholds
+│       └── tests/                    # 69 automated unit & integration test suites (100% pass)
+│
+├── docs/                             # Engineering documentation repository
+│   ├── architecture/                 # End-to-end design specifications and ADRs
+│   ├── audits/                       # Quality audits, fix logs, and multi-tenant verification
+│   ├── security/                     # Security controls, threat modeling, and defense-in-depth
+│   ├── evaluation/                   # Reliability benchmark methodology and metric models
+│   └── deployment/                   # Docker deployment, scaling, and operations guides
+│
+├── docker-compose.yml                # Multi-service composition (FastAPI + Qdrant + MongoDB bridge)
+├── .env.example                      # Template for secrets and environment configuration
+└── TRUSTRAG_specs.md                 # Baseline architectural specification
+```
 
 ---
 
-## Engineering Stack
+## 💡 Core Engineering Capabilities
 
-| Layer | Technology | Key Capabilities |
-|-------|-----------|------------------|
-| Frontend | React 18 + Vite 6 + Tailwind CSS | Workbench design system, live SSE traces, claim inspector, 11 pages |
-| Backend | FastAPI + Python 3.11 + Pydantic v2 | Async Motor MongoDB driver, structured JSON logging, security middleware |
-| LLM | Google Gemini (configured in `models.yaml`) | Grounded reasoning, structured claim decomposition |
-| Verification | Batch NLI (Pydantic structured output) | Single API call verifies all assertions, eliminates 429 quota exhaustion |
-| Preprocessing | Porter Stemmer + Document Zoning | 5-step rule-based morphological root stemming, zone weighting (Title/Header 1.5–2x) |
-| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` | Local, free, zero API key dependency, 384-dimensional dense vectors |
-| Agentic Core | LangGraph `StateGraph` | State machine orchestrating retrieve → generate → verify → diagnose → recover |
-| Vector Store | Qdrant | Dense vectors + token-frequency sparse BM25 + hybrid RRF fusion |
-| Database | Local MongoDB Community / Atlas | Persistent document metadata, chunk integrity hashes, trace logs |
-| Security | JWT HS256 + Bcrypt + Defensive Headers | Strict IDOR verification, `nosniff`, `DENY`, CORS whitelist, SlowAPI rate limiting |
+### 1. Multi-Tenant User Isolation & Anti-IDOR
+- **Strict Database Scoping**: Every record (`knowledge_bases`, `documents`, `document_chunks`, `analyses`, `claims`, `evidence`) explicitly indexes and enforces `user_id`.
+- **Physical Vector Separation**: Qdrant partitions vectors into dedicated per-KB collections (`kb_{kb_id}`). Points also record `user_id` in their metadata payloads.
+- **Server-Side Ownership Verification**: Every request cryptographically extracts `current_user` from the verified JWT. Cross-tenant access is blocked with `403 Forbidden` or `404 Not Found`.
+- **Complete Cascade Cleanup**: Deleting a Knowledge Base or document automatically cleans up all associated chunks from MongoDB and points from Qdrant, preventing storage leaks or cross-tenant ghost data.
 
-**100% free-tier and local development compatible. Zero paid dependencies required.**
+### 2. Rule-Based Stemming & Document Zoning
+- **Deterministic 5-Step Porter Stemmer**: Zero external black-box NLP runtime dependencies; implements morphological suffix stripping rules (e.g., `policies` → `polici`, `retrieval` → `retriev`).
+- **Zone Weighting**: Document parser identifies `Title` (2.0x weight), `Header` (1.5x weight), and `Body` (1.0x weight) to boost structural keyword matching during lexical search.
+- **Stopword & Contraction Normalization**: Cleans conversational noise words (`"tell"`, `"explain"`, `"what is"`) and expands standard English contractions (`"can't"` → `"cannot"`).
 
-## Development Phases
+### 3. Hybrid Retrieval with RRF
+- **Dense Vectors**: 384-dimensional semantic embeddings generated locally via `sentence-transformers/all-MiniLM-L6-v2` (free, zero external API latency, zero rate limits).
+- **Sparse BM25 Keyword Vectors**: Term-frequency sparse vectors with sublinear scaling ($1 + \ln(\text{tf})$) and zone multipliers.
+- **Reciprocal Rank Fusion (RRF)**: Combines dense and sparse candidates using reciprocal rank scoring:
+  $$\text{RRF Score}(d) = \sum_{m \in \{\text{dense}, \text{sparse}\}} \frac{1}{60 + \text{rank}_m(d)}$$
 
-| Phase | Status | Description |
-|-------|--------|-------------|
-| 0 — Architecture | ✅ | ADRs, threat model, system design |
-| 1 — Foundation | ✅ | Monorepo, centralized config, Docker, CI/CD |
-| 2 — Frontend | ✅ | React workbench design system, all 11 pages |
-| 3 — Backend | ✅ | FastAPI CRUD, MongoDB Atlas, analysis lifecycle |
-| 4 — Security | ✅ | JWT auth, bcrypt, IDOR prevention, rate limiting |
-| 5 — Ingestion | ✅ | PDF/TXT/MD parsing, Qdrant hybrid indexing |
-| 6 — Baseline RAG | ✅ | LangChain + Gemini + hybrid dense/sparse + RRF |
-| 7 — Verification | ✅ | Claim decomposition, NLI verification |
-| 8 — Integrity | ✅ | SHA-256 provenance, temporal validity |
-| 9 — Recovery | ✅ | LangGraph agentic adaptive recovery |
-| 10 — Observability | ✅ | SSE live traces, persisted trace events |
-| 11 — Evaluation | ✅ | Experiment configs, custom metrics, ablations |
-| 12 — Production | ✅ | Cost controls, error hardening, security audit |
+### 4. Batch NLI Claim Verification
+- **Decomposition**: Parses responses into discrete, standalone factual claims.
+- **Batch Structured Verification**: Leverages Pydantic structured output in a single batch LLM invocation, preventing sequential 429 quota exhaustion.
+- **Strict Classification**: Claims are classified as `SUPPORTED`, `CONTRADICTED`, or `NEUTRAL` with citation evidence IDs attached.
 
----
+### 5. SHA-256 Provenance & Temporal Filtering
+- **Cryptographic Tamper Auditing**: Compares the SHA-256 hash of retrieved chunks against reference hashes in MongoDB `document_chunks` to verify content integrity.
+- **Temporal Validity**: Extracts ISO dates (`Effective from: YYYY-MM-DD` / `Effective until: YYYY-MM-DD`) and discards outdated or expired documentation.
 
-## Prerequisites
-
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) ≥ v4.x
-- [Node.js](https://nodejs.org/) ≥ 20 (for frontend dev server)
-- [Python](https://python.org/) ≥ 3.11 (for local non-Docker run)
-- [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) free M0 cluster
-- [Google Gemini API key](https://aistudio.google.com/app/apikey) (free tier)
+### 6. Adaptive LangGraph Recovery Loop
+When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contradiction rates exceed `maximum_contradiction_rate` (0.15):
+- **Attempt 1**: Decomposes failure and rewrites the query targeting the missing concepts.
+- **Attempt 2**: Doubles candidate retrieval limits (`top_k = 40`) and repeats hybrid search.
+- **Bound Ceiling**: After 2 attempts (`max_recovery_attempts`), the system safely transitions to `ABSTAIN` rather than returning unverified hallucinations.
 
 ---
 
-## ⚡ Quick Start
+## 🛠️ Technology Stack
 
-### 1. Clone & Configure
+| Layer | Component | Version / Specification | Role in TRUSTRAG |
+|---|---|---|---|
+| **Frontend** | React + Vite | React 18, Vite 6, Tailwind CSS | High-performance glassmorphic UI, responsive tables, Recharts |
+| **Telemetry** | Server-Sent Events (SSE) | EventSource protocol | Real-time agent execution graph streaming to the workbench UI |
+| **Backend** | FastAPI | Python 3.11, Pydantic v2 | High-throughput asynchronous REST API, custom middleware |
+| **State Machine** | LangGraph | `StateGraph` | Multi-node deterministic agent state machine |
+| **Primary Database** | MongoDB Community | v7.0+ (Local Host / Docker Bridge) | Permanent storage of metadata, chunks, claims, and execution traces |
+| **Vector Engine** | Qdrant | v1.10.1 (HTTP & gRPC) | Hybrid dense and sparse vector storage, payload filtering |
+| **Embeddings** | HuggingFace Local | `sentence-transformers/all-MiniLM-L6-v2` | 384-dimensional dense vectors running locally in container |
+| **Reasoning LLM** | Google Gemini | `gemini-2.5-flash-lite` / `gemini-3.5-flash-lite` | Grounded reasoning, claim extraction, and batch NLI verification |
+| **Security Suite** | JWT + Bcrypt + SlowAPI | HS256, 12 Bcrypt rounds, IP rate limits | Authentication, timing-attack protection, defensive HTTP headers |
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** ≥ v4.x
+- **[Node.js](https://nodejs.org/)** ≥ 20.x (with npm)
+- **[MongoDB Community Edition](https://www.mongodb.com/try/download/community)** running locally on port `27017` (or a MongoDB Atlas connection string)
+- **[Google Gemini API Key](https://aistudio.google.com/app/apikey)** (Free tier available)
+
+---
+
+### 1. Environment Configuration
+
+Clone the repository and create your local environment file:
 
 ```bash
-git clone https://github.com/MaithreshVaddi-27/TrustRAG
+git clone https://github.com/MaithreshVaddi-27/TrustRAG.git
 cd TrustRAG
 cp .env.example .env
 ```
 
-Edit `.env`:
+Open `.env` in your editor and configure your variables:
 
-```env
-# Generate: python -c "import secrets; print(secrets.token_hex(64))"
-JWT_SECRET=<at-least-32-chars-random-string>
+```ini
+# Application Environment
+APP_ENV=development
+LOG_LEVEL=INFO
 
-# From: https://aistudio.google.com/app/apikey
-GEMINI_API_KEY=<your-gemini-api-key>
+# Security (generate with: python3 -c "import secrets; print(secrets.token_hex(32))")
+JWT_SECRET=replace_with_a_secure_random_64_character_hex_string
+JWT_EXPIRY_MINUTES=60
 
-# Optional: Speeds up initial embedding model downloads and prevents rate limits
-# From: https://huggingface.co/settings/tokens
-HF_TOKEN=<your-huggingface-token>
+# Google Gemini API
+GEMINI_API_KEY=your_gemini_api_key_here
 
-# From MongoDB Atlas → Connect → Drivers
-MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/
+# MongoDB Connection
+# Option 1: Local MongoDB Community (Recommended for permanent local storage):
+MONGODB_URI=mongodb://host.docker.internal:27017/trustrag_db
+# Option 2: MongoDB Atlas Cloud:
+# MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/trustrag_db?retryWrites=true&w=majority
+
+# Qdrant Vector Store
+# In Docker compose, container communicates via internal network:
+QDRANT_URL=http://qdrant:6333
 ```
 
 ---
 
-## 🐳 Running with Docker (Recommended)
+### Option A: Running with Docker (Recommended)
 
-Docker runs the FastAPI backend + local Qdrant in containers. The React frontend runs separately.
+1. **Start Backend & Vector Store**:
+   ```bash
+   # Start FastAPI backend and Qdrant in detached mode
+   docker compose up -d
+   ```
 
-```bash
-# Start backend + Qdrant
-docker compose up
+2. **Verify Multi-Service Health**:
+   ```bash
+   curl -s http://localhost:8000/api/v1/health | jq
+   ```
+   *Expected Response:*
+   ```json
+   {
+     "status": "ok",
+     "app": "TRUSTRAG",
+     "version": "0.1.0",
+     "services": {
+       "mongodb": "ok",
+       "qdrant": "ok"
+     }
+   }
+   ```
 
-# In a second terminal — start frontend
-cd apps/web && npm install && npm run dev
-```
+3. **Start Frontend Workbench**:
+   ```bash
+   cd apps/web
+   npm install
+   npm run dev
+   ```
 
-**First run:** the API container downloads the sentence-transformer embedding model (~90MB). Wait ~2 minutes for `trustrag_api` to become healthy.
-
-```bash
-# Verify both services are healthy
-curl http://localhost:8000/api/v1/health
-# Expected: {"status":"ok","services":{"mongodb":"ok"}, ...}
-
-curl http://localhost:6335/readyz
-# Expected: all shards are ready
-```
-
-Then open **http://localhost:5173**.
-
-> [!IMPORTANT]
-> **Port mapping**: Qdrant is exposed on host port `6335` (not 6333) to avoid conflicts with any local Qdrant instance. The API container connects to Qdrant on `qdrant:6333` via Docker's internal network — this is automatic.
-
----
-
-## 💻 Running Without Docker (Local Venv)
-
-Run the backend directly using Python's virtual environment. Requires Qdrant running locally or via Docker.
-
-### Step 1 — Start Qdrant only
-
-```bash
-# Spin up just Qdrant in Docker (background)
-docker run -d -p 6333:6333 --name qdrant qdrant/qdrant:v1.10.1
-```
-
-Or download the [Qdrant binary](https://qdrant.tech/documentation/quick-start/) and run it directly.
-
-### Step 2 — Set up Python environment
-
-```bash
-cd apps/api
-python -m venv .venv
-source .venv/bin/activate          # On Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-```
-
-### Step 3 — Run the API
-
-```bash
-# From the repository root
-set -a && source .env && set +a    # Load .env variables into shell
-PYTHONPATH=apps/api uvicorn app.main:app \
-  --host 0.0.0.0 --port 8000 \
-  --reload --reload-dir apps/api/app \
-  --log-level info
-```
-
-### Step 4 — Start Frontend
-
-```bash
-cd apps/web
-npm install
-npm run dev
-```
-
-Open **http://localhost:5173**.
+   Open your browser at **http://localhost:5173**.
 
 ---
 
-## 🧪 Manual Testing with Sample Input
+### Option B: Running Locally (Non-Docker)
 
-### Register & Login
+1. **Start Qdrant**:
+   ```bash
+   docker run -d -p 6333:6333 -p 6334:6334 --name qdrant qdrant/qdrant:v1.10.1
+   ```
+
+2. **Start Backend Service**:
+   ```bash
+   cd apps/api
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -e ".[dev]"
+
+   # Load environment variables and launch Uvicorn
+   set -a && source ../../.env && set +a
+   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+3. **Start Frontend**:
+   ```bash
+   cd apps/web
+   npm install
+   npm run dev
+   ```
+
+---
+
+## 💻 End-to-End Walkthrough via CLI
+
+You can interact with TRUSTRAG directly using `curl`:
+
+### Step 1: Register & Authenticate
 
 ```bash
 BASE=http://localhost:8000/api/v1
 
-# Register
+# 1. Register account
 curl -s -X POST $BASE/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"demo@example.com","password":"Demo1234!","full_name":"Demo User"}' \
-  | python3 -m json.tool
+  -d '{"email":"engineer@company.com","password":"Password123!","full_name":"Lead Engineer"}' | jq
 
-# Login → get JWT token
+# 2. Authenticate and obtain JWT
 TOKEN=$(curl -s -X POST $BASE/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"demo@example.com","password":"Demo1234!"}' \
+  -d '{"email":"engineer@company.com","password":"Password123!"}' \
   | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
 
-echo "Token: ${TOKEN:0:40}..."
+echo "Authenticated JWT: ${TOKEN:0:28}..."
 ```
 
-### Create a Knowledge Base
+### Step 2: Create a Knowledge Base
 
 ```bash
-KB=$(curl -s -X POST $BASE/knowledge-bases \
+KB_RESPONSE=$(curl -s -X POST $BASE/knowledge-bases \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name":"Demo KB","description":"Test knowledge base"}')
+  -d '{"name":"Service Policies","description":"Customer policy agreements"}')
 
-KB_ID=$(echo $KB | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
-echo "KB ID: $KB_ID"
+KB_ID=$(echo $KB_RESPONSE | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+echo "Knowledge Base ID: $KB_ID"
 ```
 
-### Upload a Sample Document
+### Step 3: Ingest a Document
 
-Create a sample text file:
+Create sample documentation with temporal validity metadata:
 
 ```bash
-cat > /tmp/sample_doc.txt << 'EOF'
-TrustRAG implements a structured reliability loop for RAG pipelines.
-The system decomposes LLM-generated answers into atomic claims.
-Each claim is verified against retrieved evidence using Natural Language Inference.
-When reliability drops below the configured threshold (default 0.50), the system
-enters an adaptive recovery phase using LangGraph.
-Recovery strategies include query rewriting and expanded evidence retrieval.
-If recovery fails after max_recovery_attempts (default 2), the system abstains.
-Abstention is safer than returning an unreliable answer.
+cat << 'EOF' > /tmp/sample_policy.txt
+Effective from: 2026-01-01
+Effective until: 2026-12-31
+
+# Enterprise Refund Policy
+Customers on an Annual Contract are eligible for a full refund within 30 days of purchase.
+Monthly subscriptions can be canceled at any time with immediate effect.
+Data backups are retained for 90 days following account deactivation.
 EOF
 
-# Upload to your KB
-DOC=$(curl -s -X POST $BASE/knowledge-bases/$KB_ID/documents \
+# Upload document
+DOC_RESPONSE=$(curl -s -X POST $BASE/knowledge-bases/$KB_ID/documents \
   -H "Authorization: Bearer $TOKEN" \
-  -F "file=@/tmp/sample_doc.txt;type=text/plain")
+  -F "file=@/tmp/sample_policy.txt;type=text/plain")
 
-DOC_ID=$(echo $DOC | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
-echo "Doc ID: $DOC_ID | Status: $(echo $DOC | python3 -c "import json,sys; print(json.load(sys.stdin)['ingestion_status'])")"
+DOC_ID=$(echo $DOC_RESPONSE | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+echo "Document Uploaded. ID: $DOC_ID"
 ```
 
-### Run an Analysis
+### Step 4: Execute Agentic Analysis
 
 ```bash
-# Wait ~5s for ingestion to complete, then:
+# Allow ~3s for embedding and indexing
+sleep 3
+
+# Submit query to the LangGraph reliability loop
 ANALYSIS=$(curl -s -X POST $BASE/analyses \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"What happens when reliability is low?\"}")
+  -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"What is the refund policy for annual contracts?\"}")
 
 ANALYSIS_ID=$(echo $ANALYSIS | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
-echo "Analysis ID: $ANALYSIS_ID"
+echo "Analysis Run Initiated. ID: $ANALYSIS_ID"
 ```
 
-### Stream Live Execution Trace (SSE)
+### Step 5: Stream Live Execution Telemetry
 
 ```bash
-# Stream the live trace (runs in foreground until analysis completes)
+# Connect to live Server-Sent Events stream
 curl -N "$BASE/analyses/$ANALYSIS_ID/stream?token=$TOKEN"
 ```
 
-### Fetch Results
+### Step 6: Inspect Results & Provenance
 
 ```bash
-# Answer + status
-curl -s $BASE/analyses/$ANALYSIS_ID \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+# 1. Fetch grounded answer and reliability verdict
+curl -s $BASE/analyses/$ANALYSIS_ID -H "Authorization: Bearer $TOKEN" | jq
 
-# Verified claims
-curl -s $BASE/analyses/$ANALYSIS_ID/claims \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+# 2. Inspect verified claims
+curl -s $BASE/analyses/$ANALYSIS_ID/claims -H "Authorization: Bearer $TOKEN" | jq
 
-# Retrieved evidence segments
-curl -s $BASE/analyses/$ANALYSIS_ID/evidence \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
-
-# Persisted trace events
-curl -s $BASE/analyses/$ANALYSIS_ID/trace \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+# 3. View retrieved evidence and SHA-256 integrity status
+curl -s $BASE/analyses/$ANALYSIS_ID/evidence -H "Authorization: Bearer $TOKEN" | jq
 ```
 
-### Test Abstention Behavior
+---
 
-Upload conflicting or out-of-scope content and ask a query it can't answer reliably:
+## 📡 API Reference
+
+All protected endpoints require `Authorization: Bearer <JWT>`.
+
+| Method | Path | Access | Description |
+|---|---|---|---|
+| `GET` | `/api/v1/health` | Public | Live readiness probe checking MongoDB and Qdrant vector store |
+| `POST` | `/api/v1/auth/register` | Public | User registration (rate-limited: 20/min) |
+| `POST` | `/api/v1/auth/login` | Public | Credential verification & JWT issuance |
+| `GET` | `/api/v1/auth/me` | User | Fetch authenticated user profile |
+| `GET` | `/api/v1/knowledge-bases` | User | List all Knowledge Bases owned by current user |
+| `POST` | `/api/v1/knowledge-bases` | User | Create a new Knowledge Base |
+| `DELETE` | `/api/v1/knowledge-bases/{id}` | User | Cascade-delete a Knowledge Base, all its documents, chunks, and vectors |
+| `POST` | `/api/v1/knowledge-bases/{id}/documents` | User | Upload document (`.pdf`, `.txt`, `.md`, ≤20MB) for chunking and vector indexing |
+| `GET` | `/api/v1/knowledge-bases/{id}/documents` | User | List documents in a Knowledge Base |
+| `GET` | `/api/v1/documents/{id}` | User | Fetch single document metadata |
+| `DELETE` | `/api/v1/documents/{id}` | User | Delete single document, associated MongoDB chunks, and Qdrant points |
+| `POST` | `/api/v1/analyses` | User | Trigger LangGraph agentic analysis pipeline (rate-limited: 10/min) |
+| `GET` | `/api/v1/analyses` | User | List analysis history for authenticated user |
+| `GET` | `/api/v1/analyses/{id}` | User | Fetch analysis details, answer, reliability score, and diagnosis |
+| `GET` | `/api/v1/analyses/{id}/stream` | User | Server-Sent Events (SSE) live telemetry stream |
+| `GET` | `/api/v1/analyses/{id}/claims` | User | Fetch decomposed claims and NLI verification states |
+| `GET` | `/api/v1/analyses/{id}/evidence` | User | Fetch retrieved evidence chunks with provenance and integrity status |
+| `GET` | `/api/v1/conflicts` | User | Fetch all claim contradictions and compromised evidence for the user |
+| `GET` | `/api/v1/experiments` | User | List objective RAG benchmark evaluation experiments |
+| `POST` | `/api/v1/experiments` | User | Record an evaluation experiment run |
+
+Interactive Swagger documentation is available at `http://localhost:8000/docs` in development mode.
+
+---
+
+## 🧪 Testing & Quality Assurance
+
+TRUSTRAG enforces automated quality checks across both backend and frontend layers:
 
 ```bash
-ANALYSIS2=$(curl -s -X POST $BASE/analyses \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"What is the capital of France?\"}")
-echo $ANALYSIS2 | python3 -m json.tool
-# Should eventually show status: "abstained" since this info isn't in the KB
-```
+# 1. Run complete pytest test suite (69 tests covering agent, NLI, auth, and IDOR)
+docker exec trustrag_api pytest -v
 
-### Test Input Validation
+# 2. Run backend static analysis and style formatting
+docker exec trustrag_api ruff check app/ tests/
 
-```bash
-# Empty query → 422
-curl -s -o /dev/null -w "Empty query: %{http_code}\n" \
-  -X POST $BASE/analyses \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"\"}"
-
-# Query > 2000 chars → 422
-LONG=$(python3 -c "print('A'*2001)")
-curl -s -o /dev/null -w "Long query: %{http_code}\n" \
-  -X POST $BASE/analyses \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"$LONG\"}"
-
-# Wrong password → 401
-curl -s -o /dev/null -w "Bad creds: %{http_code}\n" \
-  -X POST $BASE/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"demo@example.com","password":"WRONGPASSWORD"}'
-
-# Invalid file type → 422
-echo "bad" > /tmp/bad.exe
-curl -s -o /dev/null -w "Bad upload: %{http_code}\n" \
-  -X POST $BASE/knowledge-bases/$KB_ID/documents \
-  -H "Authorization: Bearer $TOKEN" \
-  -F "file=@/tmp/bad.exe;type=application/octet-stream"
-```
-
----
-
-## Repository Structure
-
-```
-TRUSTRAG/
-├── apps/
-│   ├── web/                          # React + Vite frontend
-│   │   └── src/
-│   │       ├── components/workbench/ # ReliabilityBadge, ClaimInspector, EvidenceViewer
-│   │       ├── pages/                # 11 pages (Dashboard, KB, Upload, Analysis, etc.)
-│   │       ├── lib/                  # api.js — Axios client + SSE trace stream helper
-│   │       ├── services/             # api.js (KB/analysis/experiment calls) + auth.js
-│   │       └── store/                # authStore.js — lightweight pub/sub auth state
-│   │
-│   └── api/                          # FastAPI backend
-│       ├── app/
-│       │   ├── core/                 # Config, ModelRegistry, Logging, Exceptions, rate_limiter
-│       │   ├── db/                   # MongoDB (motor) + Qdrant clients
-│       │   ├── api/v1/               # REST routes + Pydantic schemas
-│       │   ├── services/             # Business logic (auth, KB, analysis, experiment)
-│       │   ├── ingestion/            # parser.py → chunker.py → sparse_vector.py → pipeline.py
-│       │   ├── retrieval/            # retriever.py (dense+sparse+RRF) + reranker.py
-│       │   ├── generation/           # generator.py (Gemini grounded generation)
-│       │   ├── verification/         # verifier.py (NLI) + integrity.py (SHA-256)
-│       │   ├── reliability/          # engine.py (reliability scoring)
-│       │   ├── recovery/             # strategies.py
-│       │   └── agent/                # graph.py (LangGraph StateGraph)
-│       ├── config/
-│       │   └── models.yaml           # ALL AI config lives here — no model IDs in code
-│       └── tests/                    # 54 unit tests (pytest)
-│
-├── docs/
-│   ├── architecture/                 # System design + ADRs
-│   ├── audits/                       # audit-v2.md — security audit log
-│   └── ROADMAP.md                    # Remaining steps + deployment checklist
-│
-├── .github/workflows/                # CI (lint+test+build) + security (Bandit+pip-audit)
-├── docker-compose.yml                # Local dev: API + Qdrant
-├── .env.example                      # Template — copy to .env
-└── TRUSTRAG_specs.md                 # Full project specification
-```
-
----
-
-## Configuration
-
-**All AI config lives in [`apps/api/config/models.yaml`](apps/api/config/models.yaml). Never in code.**
-
-```yaml
-llm:
-  model: gemini-3.5-flash-lite    # Change LLM here only — never in code
-  temperature: 0.2
-  max_output_tokens: 2048
-
-embedding:
-  model: sentence-transformers/all-MiniLM-L6-v2
-  output_dimensionality: 384      # Must match Qdrant collection vector size
-
-reliability:
-  abstain_below: 0.50             # Score below this → ABSTAIN
-  minimum_evidence_coverage: 0.60
-
-recovery:
-  max_recovery_attempts: 2        # Hard ceiling — prevents infinite loops
-```
-
-> [!WARNING]
-> **Valid Gemini model IDs (as of 2026-08):**  
-> `gemini-2.5-flash` (best quality) | `gemini-2.5-flash-lite` (faster, lower cost)  
-> Model IDs like `gemini-3.5-flash-lite` **do not exist** and will cause runtime errors.
-
-Secrets stay in `.env` only — never in `models.yaml` or code.
-
----
-
-## API Reference
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/api/v1/health` | No | System health check |
-| `POST` | `/api/v1/auth/register` | No | Register new user |
-| `POST` | `/api/v1/auth/login` | No | Login → JWT token |
-| `GET` | `/api/v1/auth/me` | Yes | Current user profile |
-| `POST` | `/api/v1/knowledge-bases` | Yes | Create knowledge base |
-| `GET` | `/api/v1/knowledge-bases` | Yes | List your knowledge bases |
-| `DELETE` | `/api/v1/knowledge-bases/{id}` | Yes | Delete KB + all documents |
-| `POST` | `/api/v1/knowledge-bases/{id}/documents` | Yes | Upload document (PDF/TXT/MD, ≤20MB) |
-| `GET` | `/api/v1/knowledge-bases/{id}/documents` | Yes | List documents in KB |
-| `POST` | `/api/v1/analyses` | Yes | Run analysis (rate-limited: 10/min/IP) |
-| `GET` | `/api/v1/analyses` | Yes | List analysis history |
-| `GET` | `/api/v1/analyses/{id}` | Yes | Get analysis result |
-| `GET` | `/api/v1/analyses/{id}/stream` | Token param | SSE live trace stream |
-| `GET` | `/api/v1/analyses/{id}/claims` | Yes | Verified claims list |
-| `GET` | `/api/v1/analyses/{id}/evidence` | Yes | Retrieved evidence segments |
-| `GET` | `/api/v1/analyses/{id}/trace` | Yes | Persisted trace events |
-| `GET` | `/api/v1/evidence` | Yes | All evidence across all user analyses |
-| `GET` | `/api/v1/claims` | Yes | All claims across all user analyses |
-| `GET` | `/api/v1/conflicts` | Yes | All contradictions & integrity flags |
-| `POST` | `/api/v1/experiments` | Yes | Record evaluation experiment |
-| `GET` | `/api/v1/experiments` | Yes | List experiments |
-
-Full interactive docs at `http://localhost:8000/docs` (**development only** — disabled in production).
-
----
-
-## Security
-
-- JWT HS256 tokens with configurable expiry (default 60 min)
-- bcrypt password hashing (12 rounds)
-- Server-side resource ownership validation — IDOR prevented on all endpoints
-- Rate limiting on `/analyses` (10/min), `/auth/login` and `/auth/register` (20/min)
-- Prompt injection defense: XML delimiters isolate untrusted content in prompts
-- Sanitized context labels: filenames/page numbers stripped of control characters before embedding
-- Raw exceptions never returned to clients — only logged server-side
-- `/docs` and `/openapi.json` disabled when `APP_ENV=production`
-- CORS locked to configured origin allowlist
-
-See [`docs/audits/audit-v2.md`](docs/audits/audit-v2.md) for the full independent security audit.
-
----
-
-## Post-Audit Fix Log (2026-08-28)
-
-A follow-up pass caught issues that both prior audits (`audit.md`, `audit-v2.md`) missed
-because they relied on mocked collections and never exercised the real
-build/runtime paths:
-
-| Issue | Root Cause | Fix |
-|-------|-----------|-----|
-| **Frontend build broken** | `apps/web/src/lib/api.js` was imported by `services/api.js`, `services/auth.js`, and `PlaygroundPage.jsx` but never existed in the repo | Added the file: Axios instance with JWT auth interceptor + 401 auto-logout, and `openAnalysisStream()` SSE helper |
-| **Temporal filtering crash** | `parser.py` produced naive `datetime` values for `effective_from`/`effective_until`; `retriever.py` compares them against `datetime.now(UTC)` (aware) — naive/aware comparison raises `TypeError`, silently caught and reported as a generic pipeline failure | Parser now attaches `tzinfo=UTC`; Mongo client now sets `tz_aware=True` so dates round-trip as aware |
-| **`document_chunks` bypassing collection registry** | `audit-v2.md` (V2-011) claimed this was fixed everywhere, but `integrity.py` still used the raw string `"document_chunks"` | Now uses `Collections.DOCUMENT_CHUNKS` |
-| **Dead Mongo index** | `create_indexes()` indexed `claims.status`, but claim documents only ever store the verdict under `state` | Index now targets `state` |
-
-54/54 backend tests still pass after these fixes. Existing tests didn't catch the
-temporal-filtering bug because they mock the database and hand-construct
-timezone-aware datetimes directly, bypassing the real parser/driver code path.
-
-## Line-by-Line Review Pass (2026-08-28, cont.)
-
-A full line-by-line pass of every backend and frontend file caught further issues,
-none of which surfaced in either automated audit or the fix log above:
-
-| Issue | Root Cause | Fix |
-|-------|-----------|-----|
-| **Reliability score/diagnosis never populated** | `verification_node` computed `coverage`/`contradiction_rate` but discarded them; `reliability.score` and `diagnosis` stayed `null`/`PENDING` forever regardless of outcome, and the `abstain_below` config value was read but never used anywhere | Wired score computation, diagnosis type/failure detection, and persistence into `run_analysis_pipeline`; `abstain_below` now actually gates the `UNCERTAIN` vs `FAILED` verdict |
-| **Timing-attack mitigation silently broken** | The dummy bcrypt hash used to equalize login timing for nonexistent users was malformed (38 chars, not the required 60) — `bcrypt.checkpw` failed fast instead of doing the real cost-12 computation, reopening the exact timing side-channel it was meant to close | Replaced with a valid dummy hash |
-| **Ingestion chunker infinite loop** | `chunk_overlap >= chunk_size` zeroes/negates the slide step, hanging the chunking loop forever | Added a minimum-step guard with a warning log |
-| **Internal error leakage** | `index_parsed_chunks` stored raw `str(exc)` into the document's user-facing `error_message` field, inconsistent with the sanitization used everywhere else in the codebase | Now stores a generic `type(exc).__name__`-based message |
-| **Orphaned Qdrant collections** | `delete_kb` deleted MongoDB records but never called the already-existing `delete_kb_collection()`, leaking vector storage on every KB deletion | Wired it in |
-| **Upload limits hardcoded** | The document upload route hardcoded `MAX_FILE_SIZE`/`ALLOWED_EXTENSIONS` instead of reading `models.yaml`, contradicting that file's own "never hardcode" rule | Now reads `cfg.max_file_size_mb` / `cfg.supported_formats` |
-| **Retriever not actually parallel** | Comment claimed dense + sparse search ran in parallel; both were sequential `await`s | Now uses `asyncio.gather` |
-| **Frontend/backend claim-state contract mismatch** | Backend only ever emits `SUPPORTED`/`CONTRADICTED`/`NEUTRAL`, but the frontend's badges, filters, and styling everywhere referenced `UNSUPPORTED`/`UNKNOWN` — every `NEUTRAL` claim rendered as a generic "Unknown" | Fixed in `ReliabilityBadge.jsx`, `index.css`, `ClaimInspector.jsx`, `ClaimsPage.jsx`, `PlaygroundPage.jsx` |
-| **False integrity warnings** | `EvidenceViewer.jsx` checked `integrity_status === 'ok'`, but the backend only ever sets `VERIFIED`/`CORRUPTED` — every legitimately verified chunk showed a tamper-warning icon | Fixed the comparison |
-| **Execution trace showed almost nothing** | `ExecutionTrace.jsx`'s event-to-label map was built from event names that don't exist in the backend (`retrieval.started`, `claims.extracted`, `recovery.started`, etc.); the actual emitted events (`claims.started`, `claims.verified`, `recovery.rewrite`, `recovery.re_retrieve`, `integrity.failed`) had no entry and fell back to generic gray styling | Rebuilt the map from the real event names emitted by `graph.py`/`analysis_service.py` |
-| **Trace page never loaded data** | `TracePage.jsx` hardcoded `events={[]}` and never called the trace API despite the analysis `id` being available in the route | Wired it to `analysisService.trace(id)` via `useQuery` |
-| **Generic error messages on login/register** | Axios's default `err.message` is `"Request failed with status code NNN"`, not the backend's actual JSON error message, so failed logins always showed a generic string instead of e.g. "Invalid email or password" | Added a response interceptor in `lib/api.js` that promotes `error.response.data.error.message` onto `err.message` |
-| **Diagnosis never actually shown** | `PlaygroundPage.jsx` only displayed `diagnosis.failures` when `analysis.status === 'failed'` (pipeline crash), but the diagnosis populated above lives under `reliability.status === 'FAILED'` while `status` stays `'completed'` | Broadened the condition to cover both cases |
-| **Wrong model name displayed** | `SettingsPage.jsx` hardcoded the LLM as `gemini-2.5-flash`; `models.yaml` actually configures `gemini-2.5-flash-lite` for the main LLM (`gemini-2.5-flash` is the verification model) | Corrected the displayed value |
-| Stale doc comments | `ClaimResponse.state` and `EvidenceResponse.integrity_status` schema comments listed states that don't match what the code actually emits | Corrected to `SUPPORTED/CONTRADICTED/NEUTRAL` and `VERIFIED/CORRUPTED` |
-
-Verified after this pass: 54/54 backend tests pass, `ruff`/`pyflakes` clean, frontend
-`npm run build` and `npm run lint` both clean with zero warnings.
-
-## Post-Audit Fix Log (2026-08-29)
-
-A full backend audit (v3) was performed covering all route modules, service layer, and data pipeline:
-
-| Issue | Root Cause | Fix |
-|-------|-----------|-----|
-| **`/evidence`, `/claims`, `/conflicts` startup crash** | All three newly added aggregate route modules imported `get_current_user` from `app.api.v1.auth` — a module that does not export that function. `app.api.deps` is the correct source. Python raised `ImportError` at module load, crashing FastAPI route registration before any request could be served. | Fixed all three imports to `from app.api.deps import get_current_user` |
-| **Evidence `document_id` serialized as `"None"` string** | `serialize_evidence()` called `str(doc["document_id"])` unconditionally. When a chunk has no traceable source document, `document_id` is `None` in MongoDB — `str(None)` produces the literal string `"None"`, corrupting every evidence API response for such records. | Added null guard: `str(doc["document_id"]) if doc.get("document_id") else ""` |
-| **Conflicts text always shows `"..."` truncation marker** | `list_all_user_conflicts()` truncated evidence text to 200 chars then *always* appended `"..."`, even for strings far shorter than 200 characters, corrupting displayed text. | Made ellipsis conditional: only append when `len(text) > 200` |
-
-See the historical audit report at [`docs/audits/audit-v3.md`](docs/audits/audit-v3.md).
-
----
-
-## Comprehensive Security & Quality Audits
-
-TRUSTRAG adheres to a zero-compromise security, testing, and static analysis verification lifecycle. Full audit documentation is available in the [**Documentation Directory (`docs/`)**](docs/README.md):
-
-- 📋 [**Audit Plan (`docs/audits/audit-plan.md`)**](docs/audits/audit-plan.md) — Evaluation standards, tooling matrix, and rules of engagement across all 13 project dimensions.
-- 🔍 [**Audit Findings (`docs/audits/audit-findings.md`)**](docs/audits/audit-findings.md) — Baseline 23-finding matrix categorized by P0–P3 severity levels.
-- 🛠️ [**Remediation Plan (`docs/audits/fix-plan.md`)**](docs/audits/fix-plan.md) — Prioritized phased fixes for linting, type-safety, HTTP security headers, and DB indexing.
-- ✅ [**Final Verification Report (`docs/audits/final-audit-report.md`)**](docs/audits/final-audit-report.md) — Full resolution status: 0 open P0/P1/P2/P3 defects, 67/67 passing tests, Bandit SAST clean, zero NPM vulnerabilities.
-- 📝 [**Post-Audit Fix Log (`docs/audits/post-audit-fix-log.md`)**](docs/audits/post-audit-fix-log.md) — Chronological execution log of all fixes, root causes, and verification commands.
-- 🔬 [**Line-by-Line Technical Review (`docs/audits/line-by-line-review.md`)**](docs/audits/line-by-line-review.md) — In-depth architectural inspection across LangGraph, claim verification, text zoning, and security primitives.
-
----
-
-## Development
-
-### Backend
-
-```bash
-cd apps/api
-source .venv/bin/activate
-
-# Run tests
-pytest tests/ -v
-
-# Lint
-ruff check app/ tests/
-ruff format app/ tests/
-
-# Type check
-mypy app/
-```
-
-### Frontend
-
-```bash
+# 3. Run frontend code linting and production bundle compilation
 cd apps/web
-npm run dev       # Dev server with HMR at :5173
-npm run lint      # ESLint check
-npm run build     # Production bundle → dist/
+npm run lint
+npm run build
 ```
 
 ---
 
-## Reliability Pipeline States
+## ❓ Troubleshooting & FAQ
 
-```
-Claim States:    SUPPORTED | CONTRADICTED | NEUTRAL
-Failure Types:   RETRIEVAL_FAILURE | EVIDENCE_CONFLICT | LOW_COVERAGE
-Recovery:        query_rewrite → re_retrieve → re_verify
-Answer States:   Grounded Answer  |  ABSTAIN
-```
+### 1. MongoDB connectivity errors
+- **Issue**: `ServerSelectionTimeoutError: host.docker.internal:27017`
+- **Solution**: Ensure local MongoDB community is running on macOS:
+  ```bash
+  brew services list
+  brew services start mongodb-community
+  ```
+  Check that MongoDB listens on `127.0.0.1:27017` in `/opt/homebrew/etc/mongod.conf`.
 
-Recovery is bounded by `max_recovery_attempts` (default: 2) to prevent infinite loops and token cost explosion.
+### 2. Qdrant port mappings
+- **Issue**: Port `6333` conflict on host.
+- **Solution**: In `docker-compose.yml`, Qdrant exposes host port `6335:6333`. Connect from host tools at `http://localhost:6335`. Inside the Docker network, containers communicate directly via `http://qdrant:6333`.
+
+### 3. Gemini API 429 Quota Exhaustion
+- **Issue**: `RESOURCE_EXHAUSTED` error during high-frequency testing.
+- **Solution**: TRUSTRAG employs single-pass batch verification (`batch_verify_claims_nli`), reducing LLM calls from $O(N)$ claims to a single prompt. If running bulk experiments on the free tier, stay within Gemini's 15 RPM limit.
+
+### 4. Embedding model initial container startup
+- **Issue**: First container boot takes ~90 seconds.
+- **Solution**: On the first start, the API container downloads the local embedding model (`all-MiniLM-L6-v2`, ~90MB) and caches it in the `model_cache` volume. Subsequent container boots are instantaneous.
 
 ---
 
-## License
+## 📚 Documentation Index
 
-MIT — see [LICENSE](LICENSE)
+Detailed engineering documentation is located in [**`docs/`**](docs/README.md):
+
+- 🏛️ [**System Architecture (`docs/architecture/architecture.md`)**](docs/architecture/architecture.md) — Comprehensive technical design of the LangGraph state machine, hybrid search, and claim decomposition.
+- 📐 [**Decision Log (`docs/architecture/decision-log.md`)**](docs/architecture/decision-log.md) — Architectural Decision Records (ADRs) explaining technology selections and tradeoffs.
+- 🛡️ [**Security Controls (`docs/security/security-controls.md`)**](docs/security/security-controls.md) — Deep dive into JWT authentication, anti-IDOR validation, and defensive headers.
+- 🔒 [**Threat Model (`docs/security/threat-model.md`)**](docs/security/threat-model.md) — STRIDE threat modeling, attack surface analysis, and countermeasure matrix.
+- 🔍 [**Multi-Tenant Isolation Audit (`docs/audits/multi-tenant-isolation-audit.md`)**](docs/audits/multi-tenant-isolation-audit.md) — Independent audit validating tenant data scoping and cascade deletion.
+- 📋 [**Quality Audit Dossier (`docs/audits/final-audit-report.md`)**](docs/audits/final-audit-report.md) — Formal quality sign-off verifying 0 open defects across P0–P3 categories.
+- 🗺️ [**Product Roadmap (`docs/ROADMAP.md`)**](docs/ROADMAP.md) — Milestones, completed phases, and future releases.
+
+---
+
+## 📄 License
+
+This project is licensed under the terms of the [MIT License](LICENSE).

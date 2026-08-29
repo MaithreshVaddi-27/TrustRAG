@@ -91,3 +91,59 @@ def test_list_kbs(mock_create_indexes, mock_connect, mock_kb_doc):
         assert len(data) == 1
         assert data[0]["name"] == "Refund Policies"
         assert data[0]["document_count"] == 2
+
+
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_delete_document_success(mock_create_indexes, mock_connect):
+    doc_id = "64ee39d09c6292376e191999"
+    kb_id = "64ee39d09c6292376e191982"
+
+    mock_doc = {
+        "_id": ObjectId(doc_id),
+        "knowledge_base_id": ObjectId(kb_id),
+        "filename": "policy.pdf",
+    }
+    mock_kb = {
+        "_id": ObjectId(kb_id),
+        "user_id": ObjectId("64ee39d09c6292376e191981"),
+        "name": "Refund Policies",
+        "created_at": "2026-08-27T10:00:00Z",
+    }
+
+    mock_coll = MagicMock()
+    mock_coll.find_one = AsyncMock(side_effect=[mock_doc, mock_kb])
+    mock_coll.count_documents = AsyncMock(return_value=1)
+    mock_coll.delete_many = AsyncMock()
+    mock_coll.delete_one = AsyncMock()
+
+    mock_qdrant = MagicMock()
+    mock_qdrant.collection_exists.return_value = False
+
+    with (
+        patch("app.services.kb_service.get_collection", return_value=mock_coll),
+        patch("app.services.kb_service.get_qdrant_client", return_value=mock_qdrant),
+        patch("app.db.mongodb.get_collection", return_value=mock_coll),
+    ):
+        response = client.delete(f"/api/v1/documents/{doc_id}")
+        assert response.status_code == 204
+
+
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_multi_tenant_cross_user_access_blocked(mock_create_indexes, mock_connect):
+    # KB owned by a DIFFERENT user (User B)
+    other_kb = {
+        "_id": ObjectId("64ee39d09c6292376e191999"),
+        "name": "User B Private Data",
+        "user_id": ObjectId("64ee39d09c6292376e191900"),  # Different user
+    }
+
+    mock_coll = MagicMock()
+    mock_coll.find_one = AsyncMock(return_value=other_kb)
+
+    with patch("app.services.kb_service.get_collection", return_value=mock_coll):
+        # User A attempts to access User B's KB
+        response = client.get("/api/v1/knowledge-bases/64ee39d09c6292376e191999")
+        # Anti-IDOR: raises AuthorizationError -> 403 Forbidden
+        assert response.status_code == 403
