@@ -13,7 +13,7 @@ from typing import Any
 from bson import ObjectId
 
 from app.core.logging import get_logger
-from app.db.mongodb import get_collection
+from app.db.mongodb import Collections, get_collection
 
 logger = get_logger(__name__)
 
@@ -49,7 +49,7 @@ async def audit_evidence_integrity(chunks: list[dict[str, Any]]) -> list[dict[st
 
     # Fetch reference hashes from MongoDB document_chunks
     if chunk_keys:
-        chunks_coll = get_collection("document_chunks")
+        chunks_coll = get_collection(Collections.DOCUMENT_CHUNKS)
         query = {"$or": chunk_keys}
 
         async for ref in chunks_coll.find(query):

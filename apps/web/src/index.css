@@ -50,7 +50,7 @@
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium
            bg-red-900/40 text-red-300 border border-red-700/50;
   }
-  .badge-unsupported {
+  .badge-neutral {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium
            bg-amber-900/40 text-amber-300 border border-amber-700/50;
   }

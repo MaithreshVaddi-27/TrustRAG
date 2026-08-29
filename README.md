@@ -338,8 +338,9 @@ TRUSTRAG/
 │   │   └── src/
 │   │       ├── components/workbench/ # ReliabilityBadge, ClaimInspector, EvidenceViewer
 │   │       ├── pages/                # 11 pages (Dashboard, KB, Upload, Analysis, etc.)
-│   │       ├── services/             # api.js (Axios client + SSE) + auth.js
-│   │       └── store/                # Auth state (Zustand)
+│   │       ├── lib/                  # api.js — Axios client + SSE trace stream helper
+│   │       ├── services/             # api.js (KB/analysis/experiment calls) + auth.js
+│   │       └── store/                # authStore.js — lightweight pub/sub auth state
 │   │
 │   └── api/                          # FastAPI backend
 │       ├── app/
@@ -442,6 +443,51 @@ Full interactive docs at `http://localhost:8000/docs` (**development only** — 
 - CORS locked to configured origin allowlist
 
 See [`docs/audits/audit-v2.md`](docs/audits/audit-v2.md) for the full independent security audit.
+
+---
+
+## Post-Audit Fix Log (2026-08-28)
+
+A follow-up pass caught issues that both prior audits (`audit.md`, `audit-v2.md`) missed
+because they relied on mocked collections and never exercised the real
+build/runtime paths:
+
+| Issue | Root Cause | Fix |
+|-------|-----------|-----|
+| **Frontend build broken** | `apps/web/src/lib/api.js` was imported by `services/api.js`, `services/auth.js`, and `PlaygroundPage.jsx` but never existed in the repo | Added the file: Axios instance with JWT auth interceptor + 401 auto-logout, and `openAnalysisStream()` SSE helper |
+| **Temporal filtering crash** | `parser.py` produced naive `datetime` values for `effective_from`/`effective_until`; `retriever.py` compares them against `datetime.now(UTC)` (aware) — naive/aware comparison raises `TypeError`, silently caught and reported as a generic pipeline failure | Parser now attaches `tzinfo=UTC`; Mongo client now sets `tz_aware=True` so dates round-trip as aware |
+| **`document_chunks` bypassing collection registry** | `audit-v2.md` (V2-011) claimed this was fixed everywhere, but `integrity.py` still used the raw string `"document_chunks"` | Now uses `Collections.DOCUMENT_CHUNKS` |
+| **Dead Mongo index** | `create_indexes()` indexed `claims.status`, but claim documents only ever store the verdict under `state` | Index now targets `state` |
+
+54/54 backend tests still pass after these fixes. Existing tests didn't catch the
+temporal-filtering bug because they mock the database and hand-construct
+timezone-aware datetimes directly, bypassing the real parser/driver code path.
+
+## Line-by-Line Review Pass (2026-08-28, cont.)
+
+A full line-by-line pass of every backend and frontend file caught further issues,
+none of which surfaced in either automated audit or the fix log above:
+
+| Issue | Root Cause | Fix |
+|-------|-----------|-----|
+| **Reliability score/diagnosis never populated** | `verification_node` computed `coverage`/`contradiction_rate` but discarded them; `reliability.score` and `diagnosis` stayed `null`/`PENDING` forever regardless of outcome, and the `abstain_below` config value was read but never used anywhere | Wired score computation, diagnosis type/failure detection, and persistence into `run_analysis_pipeline`; `abstain_below` now actually gates the `UNCERTAIN` vs `FAILED` verdict |
+| **Timing-attack mitigation silently broken** | The dummy bcrypt hash used to equalize login timing for nonexistent users was malformed (38 chars, not the required 60) — `bcrypt.checkpw` failed fast instead of doing the real cost-12 computation, reopening the exact timing side-channel it was meant to close | Replaced with a valid dummy hash |
+| **Ingestion chunker infinite loop** | `chunk_overlap >= chunk_size` zeroes/negates the slide step, hanging the chunking loop forever | Added a minimum-step guard with a warning log |
+| **Internal error leakage** | `index_parsed_chunks` stored raw `str(exc)` into the document's user-facing `error_message` field, inconsistent with the sanitization used everywhere else in the codebase | Now stores a generic `type(exc).__name__`-based message |
+| **Orphaned Qdrant collections** | `delete_kb` deleted MongoDB records but never called the already-existing `delete_kb_collection()`, leaking vector storage on every KB deletion | Wired it in |
+| **Upload limits hardcoded** | The document upload route hardcoded `MAX_FILE_SIZE`/`ALLOWED_EXTENSIONS` instead of reading `models.yaml`, contradicting that file's own "never hardcode" rule | Now reads `cfg.max_file_size_mb` / `cfg.supported_formats` |
+| **Retriever not actually parallel** | Comment claimed dense + sparse search ran in parallel; both were sequential `await`s | Now uses `asyncio.gather` |
+| **Frontend/backend claim-state contract mismatch** | Backend only ever emits `SUPPORTED`/`CONTRADICTED`/`NEUTRAL`, but the frontend's badges, filters, and styling everywhere referenced `UNSUPPORTED`/`UNKNOWN` — every `NEUTRAL` claim rendered as a generic "Unknown" | Fixed in `ReliabilityBadge.jsx`, `index.css`, `ClaimInspector.jsx`, `ClaimsPage.jsx`, `PlaygroundPage.jsx` |
+| **False integrity warnings** | `EvidenceViewer.jsx` checked `integrity_status === 'ok'`, but the backend only ever sets `VERIFIED`/`CORRUPTED` — every legitimately verified chunk showed a tamper-warning icon | Fixed the comparison |
+| **Execution trace showed almost nothing** | `ExecutionTrace.jsx`'s event-to-label map was built from event names that don't exist in the backend (`retrieval.started`, `claims.extracted`, `recovery.started`, etc.); the actual emitted events (`claims.started`, `claims.verified`, `recovery.rewrite`, `recovery.re_retrieve`, `integrity.failed`) had no entry and fell back to generic gray styling | Rebuilt the map from the real event names emitted by `graph.py`/`analysis_service.py` |
+| **Trace page never loaded data** | `TracePage.jsx` hardcoded `events={[]}` and never called the trace API despite the analysis `id` being available in the route | Wired it to `analysisService.trace(id)` via `useQuery` |
+| **Generic error messages on login/register** | Axios's default `err.message` is `"Request failed with status code NNN"`, not the backend's actual JSON error message, so failed logins always showed a generic string instead of e.g. "Invalid email or password" | Added a response interceptor in `lib/api.js` that promotes `error.response.data.error.message` onto `err.message` |
+| **Diagnosis never actually shown** | `PlaygroundPage.jsx` only displayed `diagnosis.failures` when `analysis.status === 'failed'` (pipeline crash), but the diagnosis populated above lives under `reliability.status === 'FAILED'` while `status` stays `'completed'` | Broadened the condition to cover both cases |
+| **Wrong model name displayed** | `SettingsPage.jsx` hardcoded the LLM as `gemini-2.5-flash`; `models.yaml` actually configures `gemini-2.5-flash-lite` for the main LLM (`gemini-2.5-flash` is the verification model) | Corrected the displayed value |
+| Stale doc comments | `ClaimResponse.state` and `EvidenceResponse.integrity_status` schema comments listed states that don't match what the code actually emits | Corrected to `SUPPORTED/CONTRADICTED/NEUTRAL` and `VERIFIED/CORRUPTED` |
+
+Verified after this pass: 54/54 backend tests pass, `ruff`/`pyflakes` clean, frontend
+`npm run build` and `npm run lint` both clean with zero warnings.
 
 ---
 

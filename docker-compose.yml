@@ -40,6 +40,22 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # ── Local MongoDB ───────────────────────────────────────────────────────────
+  mongodb:
+    image: mongo:7.0
+    container_name: trustrag_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --eval 'db.adminCommand(\"ping\")' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
   # ── FastAPI backend ────────────────────────────────────────────────────────
   api:
     build:
@@ -61,15 +77,19 @@ services:
       # Mount source for hot-reload
       - ./apps/api/app:/build/app:ro
       - ./apps/api/config:/build/config:ro
+      - ./apps/api/tests:/build/tests:ro
       # Persist model cache across restarts (sentence-transformers download)
       - model_cache:/build/.model_cache
     env_file:
       - .env
     environment:
-      # Override QDRANT_URL to use docker network
+      # Override QDRANT_URL and MONGODB_URI to use docker network
       QDRANT_URL: http://qdrant:6333
+      MONGODB_URI: mongodb://mongodb:27017/trustrag_db
     depends_on:
       qdrant:
+        condition: service_healthy
+      mongodb:
         condition: service_healthy
     healthcheck:
       # python:slim includes wget; use it for consistency with Qdrant healthcheck.
@@ -77,7 +97,9 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 90s     # Extra time for sentence-transformer model download on first start
+      start_period: 180s   # Extra time: Mongo connect retries (~2.5 min worst case)
+                            # to ride out Atlas M0 auto-resume, plus first-run
+                            # sentence-transformer model download.
     restart: unless-stopped
 
 volumes:
@@ -85,3 +107,7 @@ volumes:
     driver: local
   model_cache:
     driver: local
+  mongodb_data:
+    driver: local
+
+

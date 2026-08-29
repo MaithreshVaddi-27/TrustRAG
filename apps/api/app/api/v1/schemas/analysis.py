@@ -51,7 +51,7 @@ class ClaimResponse(BaseModel):
     id: str
     analysis_id: str
     text: str
-    state: str  # SUPPORTED, CONTRADICTED, UNSUPPORTED, UNKNOWN
+    state: str  # SUPPORTED, CONTRADICTED, NEUTRAL
     explanation: str | None = None
     evidence_ids: list[str] = []
     created_at: datetime
@@ -69,7 +69,7 @@ class EvidenceResponse(BaseModel):
     fusion_score: float | None = None
     rerank_score: float | None = None
     method: str | None = None  # dense, sparse, hybrid
-    integrity_status: str | None = None  # ok, conflict, etc.
+    integrity_status: str | None = None  # VERIFIED, CORRUPTED
     effective_from: datetime | None = None
     effective_until: datetime | None = None
     created_at: datetime

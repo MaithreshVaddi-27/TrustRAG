@@ -7,7 +7,7 @@ Page-by-page extraction for PDFs (PyMuPDF) and encoding detection (chardet).
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, BinaryIO
 
 import chardet
@@ -38,14 +38,17 @@ def extract_dates(text: str) -> tuple[datetime | None, datetime | None]:
     match_from = DATE_PATTERN_FROM.search(header_snippet)
     if match_from:
         try:
-            eff_from = datetime.strptime(match_from.group(1), "%Y-%m-%d")
+            # Timezone-aware (UTC) — must match the aware `datetime.now(UTC)`
+            # reference time used for comparison during temporal filtering,
+            # or comparisons raise TypeError (naive vs aware).
+            eff_from = datetime.strptime(match_from.group(1), "%Y-%m-%d").replace(tzinfo=UTC)
         except ValueError:
             pass
 
     match_until = DATE_PATTERN_UNTIL.search(header_snippet)
     if match_until:
         try:
-            eff_until = datetime.strptime(match_until.group(1), "%Y-%m-%d")
+            eff_until = datetime.strptime(match_until.group(1), "%Y-%m-%d").replace(tzinfo=UTC)
         except ValueError:
             pass
 

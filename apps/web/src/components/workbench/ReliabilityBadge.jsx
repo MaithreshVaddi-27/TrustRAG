@@ -49,16 +49,15 @@ export function ReliabilityBadge({ score, status, size = 'md' }) {
 }
 
 /**
- * ClaimStateBadge — SUPPORTED | CONTRADICTED | UNSUPPORTED | UNKNOWN
+ * ClaimStateBadge — SUPPORTED | CONTRADICTED | NEUTRAL (backend claim states)
  */
 export function ClaimStateBadge({ state }) {
   const map = {
     SUPPORTED:    { cls: 'badge-supported',    label: 'Supported',    icon: '✓' },
     CONTRADICTED: { cls: 'badge-contradicted',  label: 'Contradicted', icon: '✗' },
-    UNSUPPORTED:  { cls: 'badge-unsupported',   label: 'Unsupported',  icon: '?' },
-    UNKNOWN:      { cls: 'badge-unknown',       label: 'Unknown',      icon: '~' },
+    NEUTRAL:      { cls: 'badge-neutral',       label: 'Neutral',      icon: '~' },
   }
-  const { cls, label, icon } = map[state] ?? map.UNKNOWN
+  const { cls, label, icon } = map[state] ?? { cls: 'badge-unknown', label: state ?? 'Unknown', icon: '?' }
   return (
     <span className={cls}>
       <span>{icon}</span>

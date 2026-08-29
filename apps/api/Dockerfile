@@ -38,8 +38,12 @@ FROM python:3.11-slim AS runtime
 WORKDIR /app
 
 # Runtime system dependencies (minimal)
+# ca-certificates is included so TLS handshakes to MongoDB Atlas / Gemini use
+# an up-to-date root store, not whatever shipped with the base image layer.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    ca-certificates \
+    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -62,7 +66,10 @@ USER trustrag
 
 # Health check — Docker will mark container unhealthy if this fails
 # Use wget since it's available in python:slim and avoids curl dependency issues
-HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+# start_period is generous because startup now retries the MongoDB Atlas
+# connection with backoff (up to ~2.5 min) to ride out M0 cluster auto-resume
+# instead of crashing on the first slow handshake — see app/db/mongodb.py.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
     CMD wget -qO- http://localhost:8000/api/v1/health || exit 1
 
 EXPOSE 8000

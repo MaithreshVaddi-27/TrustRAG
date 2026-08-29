@@ -133,9 +133,18 @@ async def index_parsed_chunks(
 
     except Exception as exc:
         logger.error("Ingestion pipeline failed", doc_id=doc_id_str, error=str(exc))
-        # Mark document failed with error trace
+        # Store a generic error type — NOT str(exc), which can leak internal details
+        # (file paths, connection strings, stack info) to the client via DocResponse
+        # (this field is returned as-is by the documents API).
+        error_type = type(exc).__name__
         await doc_coll.update_one(
-            {"_id": doc_id}, {"$set": {"ingestion_status": "failed", "error_message": str(exc)}}
+            {"_id": doc_id},
+            {
+                "$set": {
+                    "ingestion_status": "failed",
+                    "error_message": f"Ingestion error ({error_type}). See server logs.",
+                }
+            },
         )
 
 

@@ -19,7 +19,7 @@ export default function SettingsPage() {
           </p>
           <div className="space-y-2 font-mono text-xs">
             {[
-              ['LLM', 'gemini-2.5-flash (configurable)'],
+              ['LLM', 'gemini-2.5-flash-lite (configurable)'],
               ['Embeddings', 'sentence-transformers/all-MiniLM-L6-v2 · 384-dim'],
               ['Verification', 'gemini-2.5-flash · temp=0.0'],
               ['Reranker', 'disabled (configurable)'],

@@ -294,6 +294,9 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
         )
 
         answer = final_state["answer"]
+        score = final_state.get("reliability_score")
+        cfg = get_model_config()
+
         if answer == "ABSTAIN":
             await add_trace_event(
                 analysis_id_str,
@@ -301,6 +304,7 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
                 {"message": "Agent reasoning resulted in abstention"},
             )
             status_value = "abstained"
+            reliability_status = "ABSTAINED"
         else:
             await add_trace_event(
                 analysis_id_str,
@@ -308,11 +312,28 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
                 {"message": "Answer generation completed successfully"},
             )
             status_value = "completed"
+            if final_state["verdict_status"] == "PASS":
+                reliability_status = "TRUSTED"
+            elif score is not None and score >= cfg.abstain_below:
+                reliability_status = "UNCERTAIN"
+            else:
+                reliability_status = "FAILED"
 
         # Update final state in database
         await analyses_coll.update_one(
             {"_id": analysis_id},
-            {"$set": {"status": status_value, "answer": answer, "updated_at": datetime.now(UTC)}},
+            {
+                "$set": {
+                    "status": status_value,
+                    "answer": answer,
+                    "reliability": {"score": score, "status": reliability_status},
+                    "diagnosis": {
+                        "type": final_state.get("diagnosis_type"),
+                        "failures": final_state.get("diagnosis_failures", []),
+                    },
+                    "updated_at": datetime.now(UTC),
+                }
+            },
         )
 
     except Exception as exc:
@@ -341,3 +362,91 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
                 }
             },
         )
+
+
+async def list_all_user_evidence(user_id_str: str) -> list[EvidenceResponse]:
+    """Fetch all evidence chunks across all analyses for this user."""
+    analyses_coll = get_collection(Collections.ANALYSES)
+    user_analyses = await analyses_coll.find(
+        {"user_id": ObjectId(user_id_str)}, {"_id": 1}
+    ).to_list(1000)
+    analysis_ids = [a["_id"] for a in user_analyses]
+    if not analysis_ids:
+        return []
+
+    evidence_coll = get_collection(Collections.EVIDENCE)
+    results = []
+    async for e in evidence_coll.find({"analysis_id": {"$in": analysis_ids}}).sort(
+        "created_at", -1
+    ).limit(200):
+        results.append(serialize_evidence(e))
+    return results
+
+
+async def list_all_user_claims(user_id_str: str) -> list[ClaimResponse]:
+    """Fetch all verified claims across all analyses for this user."""
+    analyses_coll = get_collection(Collections.ANALYSES)
+    user_analyses = await analyses_coll.find(
+        {"user_id": ObjectId(user_id_str)}, {"_id": 1}
+    ).to_list(1000)
+    analysis_ids = [a["_id"] for a in user_analyses]
+    if not analysis_ids:
+        return []
+
+    claims_coll = get_collection(Collections.CLAIMS)
+    results = []
+    async for c in claims_coll.find({"analysis_id": {"$in": analysis_ids}}).sort(
+        "created_at", -1
+    ).limit(200):
+        results.append(serialize_claim(c))
+    return results
+
+
+async def list_all_user_conflicts(user_id_str: str) -> list[dict[str, Any]]:
+    """Fetch all detected conflicts across all analyses for this user."""
+    analyses_coll = get_collection(Collections.ANALYSES)
+    user_analyses = await analyses_coll.find(
+        {"user_id": ObjectId(user_id_str)}, {"_id": 1, "query": 1}
+    ).to_list(1000)
+    if not user_analyses:
+        return []
+
+    analysis_map = {str(a["_id"]): a.get("query", "") for a in user_analyses}
+    a_ids = [a["_id"] for a in user_analyses]
+
+    claims_coll = get_collection(Collections.CLAIMS)
+    evidence_coll = get_collection(Collections.EVIDENCE)
+
+    conflicts = []
+
+    # 1. Contradicted claims
+    async for c in claims_coll.find(
+        {"analysis_id": {"$in": a_ids}, "state": "CONTRADICTED"}
+    ).sort("created_at", -1).limit(50):
+        conflicts.append({
+            "id": str(c["_id"]),
+            "type": "claim_contradiction",
+            "title": "Claim Contradicted by Retrieved Evidence",
+            "claim": c["text"],
+            "explanation": c.get("explanation") or "Evidence contradicts this assertion.",
+            "analysis_id": str(c["analysis_id"]),
+            "query": analysis_map.get(str(c["analysis_id"]), ""),
+            "created_at": c["created_at"].isoformat() if hasattr(c["created_at"], "isoformat") else str(c["created_at"]),
+        })
+
+    # 2. Corrupted / compromised evidence
+    async for e in evidence_coll.find(
+        {"analysis_id": {"$in": a_ids}, "integrity_status": {"$nin": ["VERIFIED", None]}}
+    ).sort("created_at", -1).limit(50):
+        conflicts.append({
+            "id": str(e["_id"]),
+            "type": "integrity_compromise",
+            "title": f"Evidence Integrity Compromised: {e.get('integrity_status')}",
+            "claim": e["text"][:200] + "...",
+            "explanation": f"Integrity check flagged status: {e.get('integrity_status')}",
+            "analysis_id": str(e["analysis_id"]),
+            "query": analysis_map.get(str(e["analysis_id"]), ""),
+            "created_at": e["created_at"].isoformat() if hasattr(e["created_at"], "isoformat") else str(e["created_at"]),
+        })
+
+    return conflicts

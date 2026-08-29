@@ -4,6 +4,7 @@ TRUSTRAG — Hybrid dense + sparse search retriever with RRF and temporal filter
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -29,13 +30,21 @@ async def dense_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
         # Embed query text
         query_vector = embed_model.embed_query(query)
 
-        results = client.search(
-            collection_name=collection_name,
-            query_vector=query_vector,
-            limit=top_k,
-            with_payload=True,
-        )
-        return results
+        if hasattr(client, "query_points"):
+            response = client.query_points(
+                collection_name=collection_name,
+                query=query_vector,
+                limit=top_k,
+                with_payload=True,
+            )
+            return response.points
+        else:
+            return client.search(
+                collection_name=collection_name,
+                query_vector=query_vector,
+                limit=top_k,
+                with_payload=True,
+            )
     except Exception as exc:
         logger.error("Dense search failed", kb_id=kb_id, error=str(exc))
         return []
@@ -52,18 +61,29 @@ async def sparse_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
         if not sparse_rep["indices"]:
             return []
 
-        results = client.search(
-            collection_name=collection_name,
-            query_vector=models.NamedSparseVector(
-                name="sparse-text",
-                vector=models.SparseVector(
-                    indices=sparse_rep["indices"], values=sparse_rep["values"]
-                ),
-            ),
-            limit=top_k,
-            with_payload=True,
+        sparse_vec = models.SparseVector(
+            indices=sparse_rep["indices"], values=sparse_rep["values"]
         )
-        return results
+
+        if hasattr(client, "query_points"):
+            response = client.query_points(
+                collection_name=collection_name,
+                query=sparse_vec,
+                using="sparse-text",
+                limit=top_k,
+                with_payload=True,
+            )
+            return response.points
+        else:
+            return client.search(
+                collection_name=collection_name,
+                query_vector=models.NamedSparseVector(
+                    name="sparse-text",
+                    vector=sparse_vec,
+                ),
+                limit=top_k,
+                with_payload=True,
+            )
     except Exception as exc:
         logger.error("Sparse search failed", kb_id=kb_id, error=str(exc))
         return []
@@ -222,9 +242,11 @@ async def retrieve_hybrid_chunks(
     dense_top = top_k_override if top_k_override is not None else cfg.dense_top_k
     sparse_top = top_k_override if top_k_override is not None else cfg.sparse_top_k
 
-    # Run searches in parallel
-    dense_res = await dense_search(query, kb_id, top_k=dense_top)
-    sparse_res = await sparse_search(query, kb_id, top_k=sparse_top)
+    # Run dense + sparse searches concurrently
+    dense_res, sparse_res = await asyncio.gather(
+        dense_search(query, kb_id, top_k=dense_top),
+        sparse_search(query, kb_id, top_k=sparse_top),
+    )
 
     # Fuse ranks
     fused = reciprocal_rank_fusion(dense_res, sparse_res, k=cfg.rrf_k)

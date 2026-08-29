@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 def chunk_text(
     pages: list[dict[str, Any]], chunk_size: int = 512, chunk_overlap: int = 64
@@ -23,6 +27,17 @@ def chunk_text(
     """
     chunks = []
     chunk_index = 0
+
+    # Guard against a misconfigured chunk_overlap >= chunk_size, which would make
+    # the step size zero or negative and hang the loop below forever.
+    step = chunk_size - chunk_overlap
+    if step <= 0:
+        logger.warning(
+            "chunk_overlap >= chunk_size, forcing minimum step to avoid infinite loop",
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+        step = max(1, chunk_size)
 
     for page_obj in pages:
         page_num = page_obj["page"]
@@ -55,6 +70,6 @@ def chunk_text(
                 break
 
             # Slide by step size (size - overlap)
-            start += chunk_size - chunk_overlap
+            start += step
 
     return chunks

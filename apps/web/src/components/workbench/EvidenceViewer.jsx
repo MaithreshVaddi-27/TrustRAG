@@ -23,7 +23,7 @@ export function EvidenceViewer({ chunks = [] }) {
 }
 
 function EvidenceChunk({ chunk, rank }) {
-  const integrityOk = chunk.integrity_status === 'ok' || !chunk.integrity_status
+  const integrityOk = chunk.integrity_status === 'VERIFIED' || !chunk.integrity_status
 
   return (
     <div className="glass-card p-4 space-y-3 hover:border-slate-600/60 transition-colors">

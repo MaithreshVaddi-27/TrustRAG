@@ -233,10 +233,12 @@ export default function PlaygroundPage() {
               <div className="flex-1 overflow-y-auto p-5">
                 {activeTab === 'answer' && (
                   <div className="space-y-5">
-                    {analysis.status === 'failed' && (
+                    {(analysis.status === 'failed' || analysis.reliability?.status === 'FAILED') && (
                        <div className="rounded-lg border border-red-800/40 bg-red-950/20 px-4 py-3">
                          <p className="text-sm font-medium text-red-400">
-                           Analysis failed: {analysis.diagnosis?.failures?.[0] || 'Unknown error occurred'}
+                           {analysis.status === 'failed'
+                             ? `Analysis failed: ${analysis.diagnosis?.failures?.[0] || 'Unknown error occurred'}`
+                             : `Reliability check failed: ${analysis.diagnosis?.failures?.[0] || 'Thresholds not met'}`}
                          </p>
                        </div>
                     )}
@@ -248,7 +250,7 @@ export default function PlaygroundPage() {
                       </div>
                     )}
 
-                    {analysis.claims?.some(c => c.state === 'UNSUPPORTED' || c.state === 'CONTRADICTED') && (
+                    {analysis.claims?.some(c => c.state === 'NEUTRAL' || c.state === 'CONTRADICTED') && (
                       <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-4 py-3 mt-4">
                         <p className="text-sm font-medium text-amber-400">
                           ⚠ Some claims could not be verified. Inspect the Claims tab.

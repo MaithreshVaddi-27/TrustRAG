@@ -13,10 +13,13 @@ not the database layer.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import asyncio
+from typing import TYPE_CHECKING, Any
 
+import certifi
 import pymongo
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo.errors import PyMongoError
 
 from app.core.config import get_settings
 from app.core.exceptions import DatabaseError
@@ -26,6 +29,16 @@ if TYPE_CHECKING:
     from motor.motor_asyncio import AsyncIOMotorCollection
 
 logger = get_logger(__name__)
+
+# Retry policy for the initial connection. Atlas M0 (free tier) clusters
+# auto-pause when idle and take 30-90s to resume on the first request —
+# while resuming, in-flight TLS handshakes get reset/aborted, which is
+# indistinguishable on the wire from a network problem. A single 5s
+# attempt (the old behavior) can never survive that; retrying with
+# backoff for a couple of minutes does, with no user action needed.
+_CONNECT_MAX_ATTEMPTS = 12
+_CONNECT_INITIAL_BACKOFF_SECONDS = 3.0
+_CONNECT_MAX_BACKOFF_SECONDS = 20.0
 
 # ─── Collection name constants ────────────────────────────────────────────────
 # These names must never be scattered as string literals through the codebase.
@@ -55,32 +68,77 @@ async def connect_db() -> None:
     """
     Establish MongoDB connection.
     Called once during FastAPI lifespan startup.
+
+    Retries with exponential backoff instead of failing on the first
+    attempt — Atlas M0 clusters resuming from auto-pause, or a flaky
+    first handshake, both look like a hard failure to a single attempt
+    but succeed within a few retries.
     """
     global _client, _database
     settings = get_settings()
 
     logger.info(
-        "Connecting to MongoDB Atlas",
+        "Connecting to MongoDB",
         database=settings.mongodb_database,
     )
 
-    try:
-        _client = AsyncIOMotorClient(
-            settings.mongodb_uri,
-            serverSelectionTimeoutMS=5000,
-            connectTimeoutMS=5000,
-            socketTimeoutMS=30000,
-            # Recommended for Atlas
-            retryWrites=True,
-            w="majority",
-        )
-        _database = _client[settings.mongodb_database]
-        # Ping to verify connection before startup completes
-        await _database.command("ping")
-        logger.info("MongoDB connection established", database=settings.mongodb_database)
-    except Exception as exc:
-        logger.error("MongoDB connection failed", error=str(exc))
-        raise DatabaseError("Failed to connect to MongoDB Atlas", detail=str(exc)) from exc
+    backoff = _CONNECT_INITIAL_BACKOFF_SECONDS
+    last_exc: Exception | None = None
+
+    for attempt in range(1, _CONNECT_MAX_ATTEMPTS + 1):
+        try:
+            client_kwargs: dict[str, Any] = {
+                "serverSelectionTimeoutMS": 10000,
+                "connectTimeoutMS": 10000,
+                "socketTimeoutMS": 30000,
+                "retryWrites": True,
+                "w": "majority",
+                "tz_aware": True,
+            }
+            uri_lower = settings.mongodb_uri.lower()
+            if "mongodb+srv" in uri_lower or "tls=true" in uri_lower or "ssl=true" in uri_lower:
+                client_kwargs["tlsCAFile"] = certifi.where()
+
+            candidate_client: AsyncIOMotorClient = AsyncIOMotorClient(
+                settings.mongodb_uri,
+                **client_kwargs,
+            )
+            candidate_db = candidate_client[settings.mongodb_database]
+            # Ping to verify connection before startup completes
+            await candidate_db.command("ping")
+
+            _client = candidate_client
+            _database = candidate_db
+            logger.info(
+                "MongoDB connection established",
+                database=settings.mongodb_database,
+                attempt=attempt,
+            )
+            return
+        except PyMongoError as exc:
+            last_exc = exc
+            candidate_client.close()
+            if attempt == _CONNECT_MAX_ATTEMPTS:
+                break
+            logger.warning(
+                "MongoDB connection attempt failed, retrying",
+                attempt=attempt,
+                max_attempts=_CONNECT_MAX_ATTEMPTS,
+                retry_in_seconds=backoff,
+                error=str(exc),
+            )
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 1.5, _CONNECT_MAX_BACKOFF_SECONDS)
+
+    logger.error(
+        "MongoDB connection failed after all retries",
+        attempts=_CONNECT_MAX_ATTEMPTS,
+        error=str(last_exc),
+    )
+    raise DatabaseError(
+        "Failed to connect to MongoDB after repeated retries",
+        detail=str(last_exc),
+    ) from last_exc
 
 
 async def disconnect_db() -> None:
@@ -164,7 +222,9 @@ async def create_indexes() -> None:
     await db[Collections.CLAIMS].create_index(
         [("analysis_id", pymongo.ASCENDING)], name="claim_analysis"
     )
-    await db[Collections.CLAIMS].create_index([("status", pymongo.ASCENDING)], name="claim_status")
+    # Claim documents store verdict under "state" (SUPPORTED/CONTRADICTED/NEUTRAL),
+    # never "status" — index must match the actual field name to be useful.
+    await db[Collections.CLAIMS].create_index([("state", pymongo.ASCENDING)], name="claim_state")
 
     # ── evidence ───────────────────────────────────────────────────────────
     await db[Collections.EVIDENCE].create_index(

@@ -30,6 +30,9 @@ export default function KnowledgeBasesPage() {
       setIsCreateModalOpen(false)
       setNewKbName('')
       setNewKbDesc('')
+    },
+    onError: (error) => {
+      alert(error.message || 'Failed to create knowledge base')
     }
   })
 
@@ -41,14 +44,18 @@ export default function KnowledgeBasesPage() {
     }
   })
 
+  const [uploadErrorMsg, setUploadErrorMsg] = useState(null)
+
   // Upload Document Mutation
   const uploadDocMutation = useMutation({
     mutationFn: ({ kbId, file }) => kbService.uploadDocument(kbId, file),
     onMutate: ({ kbId }) => {
       setUploadingKbId(kbId)
       setUploadStatus(null)
+      setUploadErrorMsg(null)
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['knowledgeBases'] })
       setUploadStatus('success')
       // Clear status after 3s
       setTimeout(() => {
@@ -58,11 +65,14 @@ export default function KnowledgeBasesPage() {
     },
     onError: (error) => {
       console.error("Upload failed", error)
+      let detail = error.message || 'Upload failed'
+      setUploadErrorMsg(String(detail))
       setUploadStatus('error')
       setTimeout(() => {
         setUploadingKbId(null)
         setUploadStatus(null)
-      }, 5000)
+        setUploadErrorMsg(null)
+      }, 6000)
     }
   })
 
@@ -177,7 +187,7 @@ export default function KnowledgeBasesPage() {
                       {uploadStatus === 'success' ? (
                         <span className="text-green-400 flex items-center gap-1.5"><CheckCircle size={14} /> Uploaded!</span>
                       ) : uploadStatus === 'error' ? (
-                        <span className="text-red-400 flex items-center gap-1.5"><AlertCircle size={14} /> Failed</span>
+                        <span className="text-red-400 flex items-center gap-1.5 text-xs text-center line-clamp-1" title={typeof uploadErrorMsg === 'string' ? uploadErrorMsg : 'Failed'}><AlertCircle size={14} className="shrink-0" /> {typeof uploadErrorMsg === 'string' ? uploadErrorMsg : 'Failed'}</span>
                       ) : (
                         <span className="text-primary-400 flex items-center gap-1.5"><Loader2 size={14} className="animate-spin" /> Uploading...</span>
                       )}

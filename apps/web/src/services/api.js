@@ -16,7 +16,7 @@ export const kbService = {
     const form = new FormData()
     form.append('file', file)
     return api.post(`/api/v1/knowledge-bases/${kbId}/documents`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     }).then(r => r.data)
   },
 
@@ -39,4 +39,19 @@ export const experimentService = {
   list:   ()     => api.get('/api/v1/experiments').then(r => r.data),
   get:    (id)   => api.get(`/api/v1/experiments/${id}`).then(r => r.data),
   create: (body) => api.post('/api/v1/experiments', body).then(r => r.data),
+}
+
+// ── Evidence ──────────────────────────────────────────────────────────────
+export const evidenceService = {
+  list: () => api.get('/api/v1/evidence').then(r => r.data),
+}
+
+// ── Claims ────────────────────────────────────────────────────────────────
+export const claimService = {
+  list: () => api.get('/api/v1/claims').then(r => r.data),
+}
+
+// ── Conflicts ─────────────────────────────────────────────────────────────
+export const conflictService = {
+  list: () => api.get('/api/v1/conflicts').then(r => r.data),
 }

@@ -66,8 +66,11 @@ async def authenticate_user(email: str, password: str) -> tuple[str, UserRespons
 
     user = await users_coll.find_one({"email": email_clean})
     if not user:
-        # Prevent timing attacks by checking a dummy password hash
-        verify_password(password, "$2b$12$DUMMYHASHFORTIMINGATTACKSPREVENTIONSIG")
+        # Run a real bcrypt comparison against a valid dummy hash (same cost factor as
+        # real hashes) so this branch takes as long as the "wrong password" branch below.
+        # A malformed dummy hash would make bcrypt fail fast instead of doing the full
+        # cost-12 computation, reopening the exact timing side-channel this guards against.
+        verify_password(password, "$2b$12$Fhvxd2NUDtaI9Np/Ct9Tn.jCLcGFUPgwN5oMcPCk8PlX36lOm2iFO")
         raise AuthenticationError("Authentication failed", detail="Invalid email or password")
 
     if not verify_password(password, user["hashed_password"]):

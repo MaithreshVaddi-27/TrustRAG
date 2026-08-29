@@ -42,6 +42,9 @@ class AgentState(TypedDict):
     attempts: int
     verdict_status: str  # "PASS" | "FAIL"
     recovery_strategy: str | None  # "query_rewrite" | "re_retrieve" | None
+    reliability_score: float | None
+    diagnosis_type: str | None  # RETRIEVAL_FAILURE | EVIDENCE_CONFLICT | LOW_COVERAGE | None
+    diagnosis_failures: list[str]
 
 
 # ─── Graph Nodes ─────────────────────────────────────────────────────────────
@@ -159,6 +162,13 @@ async def verification_node(state: AgentState) -> AgentState:
         # Abstain or empty results automatically bypass recovery verification checks
         state["verdict_status"] = "PASS"
         state["claims"] = []
+        state["reliability_score"] = None
+        if not state["chunks"]:
+            state["diagnosis_type"] = "RETRIEVAL_FAILURE"
+            state["diagnosis_failures"] = ["No relevant evidence segments were retrieved"]
+        else:
+            state["diagnosis_type"] = None
+            state["diagnosis_failures"] = []
         return state
 
     await add_trace_event(
@@ -179,6 +189,9 @@ async def verification_node(state: AgentState) -> AgentState:
     total = len(claims)
     if total == 0:
         state["verdict_status"] = "PASS"
+        state["reliability_score"] = 1.0
+        state["diagnosis_type"] = None
+        state["diagnosis_failures"] = []
         return state
 
     supported = sum(1 for c in claims if c["state"] == "SUPPORTED")
@@ -216,6 +229,23 @@ async def verification_node(state: AgentState) -> AgentState:
     else:
         state["verdict_status"] = "FAIL"
         logger.info("Reliability thresholds check failed")
+
+    # Reliability score: coverage discounted by contradiction rate, clamped to [0, 1].
+    state["reliability_score"] = max(0.0, min(1.0, coverage * (1 - contradiction_rate)))
+
+    failures = []
+    if contradiction_rate > cfg.maximum_contradiction_rate:
+        failures.append(f"{contradicted}/{total} claims contradicted by evidence")
+    if coverage < cfg.minimum_evidence_coverage:
+        failures.append(f"Only {supported}/{total} claims supported by evidence")
+
+    if not failures:
+        state["diagnosis_type"] = None
+    elif contradiction_rate > cfg.maximum_contradiction_rate:
+        state["diagnosis_type"] = "EVIDENCE_CONFLICT"
+    else:
+        state["diagnosis_type"] = "LOW_COVERAGE"
+    state["diagnosis_failures"] = failures
 
     return state
 
@@ -265,7 +295,17 @@ Output only the expanded search query string. Do not include markdown headers or
             new_query = response.content
             if isinstance(new_query, bytes):
                 new_query = new_query.decode("utf-8")
-            new_query = new_query.strip()
+            elif isinstance(new_query, list):
+                parts = []
+                for item in new_query:
+                    if isinstance(item, dict) and "text" in item:
+                        parts.append(item["text"])
+                    elif isinstance(item, str):
+                        parts.append(item)
+                    elif hasattr(item, "text"):
+                        parts.append(getattr(item, "text"))
+                new_query = "".join(parts)
+            new_query = str(new_query).strip()
 
             logger.info(
                 "Query rewritten successfully", original=state["query"], rewritten=new_query
@@ -374,6 +414,9 @@ async def execute_agentic_rag_flow(
         "attempts": 0,
         "verdict_status": "FAIL",
         "recovery_strategy": None,
+        "reliability_score": None,
+        "diagnosis_type": None,
+        "diagnosis_failures": [],
     }
 
     logger.info("Executing Agentic RAG Flow graph", analysis_id=analysis_id_str)

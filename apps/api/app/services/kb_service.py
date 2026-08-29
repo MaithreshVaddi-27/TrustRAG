@@ -13,6 +13,7 @@ from bson import ObjectId
 from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
 from app.core.exceptions import AuthorizationError, NotFoundError
 from app.db.mongodb import Collections, get_collection
+from app.db.qdrant import delete_kb_collection
 
 
 def serialize_kb(kb_doc: Mapping[str, Any], doc_count: int = 0) -> KBResponse:
@@ -108,9 +109,10 @@ async def delete_kb(kb_id_str: str, user_id_str: str) -> None:
     # 1. Delete associated documents in MongoDB
     await get_collection(Collections.DOCUMENTS).delete_many({"knowledge_base_id": kb_id})
 
-    # Note: In Phase 5, we'll also delete vectors from Qdrant Cloud.
+    # 2. Drop the associated Qdrant vector collection to avoid orphaned storage
+    await delete_kb_collection(kb_id_str)
 
-    # 2. Delete the KB record itself
+    # 3. Delete the KB record itself
     await get_collection(Collections.KNOWLEDGE_BASES).delete_one({"_id": kb_id})
 
 

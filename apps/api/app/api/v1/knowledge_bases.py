@@ -22,9 +22,6 @@ from app.services import kb_service
 
 router = APIRouter(prefix="/knowledge-bases", tags=["knowledge-bases"])
 
-MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB as per specification
-ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md"}
-
 
 @router.post(
     "",
@@ -97,22 +94,28 @@ async def upload_document_endpoint(
     and runs dense/sparse embedding indexing in background.
     """
     # Verify file extension
+    cfg = get_model_config()
+    allowed_extensions = {ext if ext.startswith(".") else f".{ext}" for ext in cfg.supported_formats}
     filename = file.filename or "unknown"
     ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
-    if ext not in ALLOWED_EXTENSIONS:
+    if ext not in allowed_extensions:
         raise UnsupportedFormatError(
             f"Unsupported file format '{ext}'",
-            detail=f"Only the following formats are accepted: {list(ALLOWED_EXTENSIONS)}",
+            detail=f"Only the following formats are accepted: {sorted(allowed_extensions)}",
         )
 
     # Read content to check size and compute hash
     content = await file.read()
     file_size = len(content)
 
-    if file_size > MAX_FILE_SIZE:
+    max_file_size = cfg.max_file_size_mb * 1024 * 1024
+    if file_size > max_file_size:
         raise FileTooLargeError(
             "Document upload failed",
-            detail=f"File exceeds maximum limit of 20MB (got {file_size / (1024 * 1024):.2f}MB)",
+            detail=(
+                f"File exceeds maximum limit of {cfg.max_file_size_mb}MB "
+                f"(got {file_size / (1024 * 1024):.2f}MB)"
+            ),
         )
 
     # Compute content hash
@@ -124,7 +127,6 @@ async def upload_document_endpoint(
     pages, eff_from, eff_until = parse_document(filename, stream)
 
     # Chunk text
-    cfg = get_model_config()
     chunks = chunk_text(pages, chunk_size=cfg.chunk_size, chunk_overlap=cfg.chunk_overlap)
 
     # Save metadata record in MongoDB

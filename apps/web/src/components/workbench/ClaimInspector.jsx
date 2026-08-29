@@ -34,8 +34,7 @@ function ClaimRow({ claim, index }) {
       'rounded-lg border transition-colors',
       claim.state === 'SUPPORTED'    && 'border-green-800/40 bg-green-950/20',
       claim.state === 'CONTRADICTED' && 'border-red-800/40   bg-red-950/20',
-      claim.state === 'UNSUPPORTED'  && 'border-amber-800/40 bg-amber-950/20',
-      claim.state === 'UNKNOWN'      && 'border-slate-700/40 bg-slate-800/20',
+      claim.state === 'NEUTRAL'      && 'border-amber-800/40 bg-amber-950/20',
       !claim.state                   && 'border-slate-700/40 bg-slate-800/20',
     )}>
       <button

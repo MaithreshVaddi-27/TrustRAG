@@ -36,6 +36,7 @@ from app.core.exceptions import (
     ConflictError,
     DatabaseError,
     FileTooLargeError,
+    IngestionError,
     InputValidationError,
     NotFoundError,
     TrustRAGError,
@@ -134,6 +135,12 @@ def _register_exception_handlers(app: FastAPI) -> None:
     async def file_too_large_handler(request: Request, exc: FileTooLargeError) -> JSONResponse:
         return _error_response(
             status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "FILE_TOO_LARGE", exc.message
+        )
+
+    @app.exception_handler(IngestionError)
+    async def ingestion_error_handler(request: Request, exc: IngestionError) -> JSONResponse:
+        return _error_response(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "INGESTION_ERROR", exc.message
         )
 
     @app.exception_handler(InputValidationError)

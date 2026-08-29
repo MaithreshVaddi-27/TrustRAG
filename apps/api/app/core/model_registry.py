@@ -180,7 +180,7 @@ def get_reranker():  # type: ignore[return]
 # ─── Registry info ────────────────────────────────────────────────────────────
 
 
-def registry_status() -> dict[str, str | bool]:
+def registry_status() -> dict[str, str | bool | None]:
     """
     Return a safe summary of the active model configuration.
     Used by the health endpoint. Never includes secrets.
