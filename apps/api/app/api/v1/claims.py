@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from app.api.v1.auth import get_current_user
+from app.api.deps import get_current_user
 from app.api.v1.schemas.analysis import ClaimResponse
 from app.services import analysis_service
 

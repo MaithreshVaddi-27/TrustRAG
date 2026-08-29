@@ -2,6 +2,13 @@
 .env
 .env.*
 !.env.example
+.env.local
+.env.production
+.env.staging
+.env.development.local
+.env.test.local
+.env.production.local
+.env.staging.local
 *.pem
 *.key
 *.p12
@@ -183,3 +190,27 @@ bandit-report.json
 safety-report.json
 trivy-report.json
 semgrep-report.json
+
+# ─── Package manager lockfiles (keep one, ignore others) ──────────────────────
+# Uncomment the lockfile your project does NOT use to avoid conflicting locks:
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+bun.lockb
+
+# ─── AI / Agentic tool directories ────────────────────────────────────────────
+# IDE AI assistants and agent runtimes may write local config here
+.agents/
+.aider*
+.continue/
+*.aider.chat.history.md
+
+# ─── Jupyter / notebooks (if ever used for evaluation) ────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ─── Runtime / process files ──────────────────────────────────────────────────
+*.pid
+*.seed
+*.pid.lock
+.python-version

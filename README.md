@@ -378,7 +378,7 @@ TRUSTRAG/
 
 ```yaml
 llm:
-  model: gemini-2.5-flash-lite    # Change LLM here only
+  model: gemini-3.5-flash-lite    # Change LLM here only — never in code
   temperature: 0.2
   max_output_tokens: 2048
 
@@ -423,6 +423,9 @@ Secrets stay in `.env` only — never in `models.yaml` or code.
 | `GET` | `/api/v1/analyses/{id}/claims` | Yes | Verified claims list |
 | `GET` | `/api/v1/analyses/{id}/evidence` | Yes | Retrieved evidence segments |
 | `GET` | `/api/v1/analyses/{id}/trace` | Yes | Persisted trace events |
+| `GET` | `/api/v1/evidence` | Yes | All evidence across all user analyses |
+| `GET` | `/api/v1/claims` | Yes | All claims across all user analyses |
+| `GET` | `/api/v1/conflicts` | Yes | All contradictions & integrity flags |
 | `POST` | `/api/v1/experiments` | Yes | Record evaluation experiment |
 | `GET` | `/api/v1/experiments` | Yes | List experiments |
 
@@ -488,6 +491,18 @@ none of which surfaced in either automated audit or the fix log above:
 
 Verified after this pass: 54/54 backend tests pass, `ruff`/`pyflakes` clean, frontend
 `npm run build` and `npm run lint` both clean with zero warnings.
+
+## Post-Audit Fix Log (2026-08-29)
+
+A full backend audit (v3) was performed covering all route modules, service layer, and data pipeline:
+
+| Issue | Root Cause | Fix |
+|-------|-----------|-----|
+| **`/evidence`, `/claims`, `/conflicts` startup crash** | All three newly added aggregate route modules imported `get_current_user` from `app.api.v1.auth` — a module that does not export that function. `app.api.deps` is the correct source. Python raised `ImportError` at module load, crashing FastAPI route registration before any request could be served. | Fixed all three imports to `from app.api.deps import get_current_user` |
+| **Evidence `document_id` serialized as `"None"` string** | `serialize_evidence()` called `str(doc["document_id"])` unconditionally. When a chunk has no traceable source document, `document_id` is `None` in MongoDB — `str(None)` produces the literal string `"None"`, corrupting every evidence API response for such records. | Added null guard: `str(doc["document_id"]) if doc.get("document_id") else ""` |
+| **Conflicts text always shows `"..."` truncation marker** | `list_all_user_conflicts()` truncated evidence text to 200 chars then *always* appended `"..."`, even for strings far shorter than 200 characters, corrupting displayed text. | Made ellipsis conditional: only append when `len(text) > 200` |
+
+See the full audit report at [`docs/audits/audit-v3.md`](docs/audits/audit-v3.md).
 
 ---
 
