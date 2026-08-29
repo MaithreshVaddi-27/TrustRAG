@@ -1,41 +1,43 @@
 # TRUSTRAG — Project Roadmap & Remaining Steps
 
-> Last updated: 2026-08-27  
-> Current status: All 12 core phases complete. Below are the remaining improvement, deployment, and polish tasks.
+> Last updated: 2026-08-29  
+> Current status: All 12 core phases complete + post-launch audit cycle complete (v3). Active work below.
 
 ---
 
-## ✅ Completed Phases (1–12)
-
-All core phases from the spec are implemented and verified:
+## ✅ Completed Phases (1–12 + Post-Launch)
 
 | Phase | Description | Verification |
 |-------|-------------|--------------|
-| 0 | Architecture, ADRs, threat model | docs/architecture/ |
-| 1 | Monorepo, centralized config, Docker, CI/CD | .github/workflows/ |
-| 2 | React frontend — workbench design system, all 11 pages | apps/web/src/ |
-| 3 | FastAPI CRUD routes, MongoDB Atlas, analysis lifecycle | apps/api/app/api/ |
-| 4 | JWT auth, bcrypt, IDOR prevention, rate limiting | apps/api/app/core/security.py |
-| 5 | Document ingestion (PDF/TXT/MD), hybrid Qdrant indexing | apps/api/app/ingestion/ |
-| 6 | LangChain + Gemini + hybrid dense/sparse retrieval + RRF | apps/api/app/retrieval/ |
-| 7 | Claim decomposition + NLI verification | apps/api/app/verification/ |
-| 8 | SHA-256 evidence integrity + temporal validity | apps/api/app/integrity/ |
-| 9 | LangGraph agentic adaptive recovery | apps/api/app/agent/graph.py |
-| 10 | SSE live execution trace streams | apps/api/app/services/analysis_service.py |
-| 11 | Experiment configs, custom metrics, ablations | apps/api/app/evaluation/ |
-| 12 | Production hardening, cost controls, security audit | docs/audits/audit-v2.md |
+| 0 | Architecture, ADRs, threat model | `docs/architecture/` |
+| 1 | Monorepo, centralized config, Docker, CI/CD | `.github/workflows/` |
+| 2 | React frontend — workbench design system, all 11 pages | `apps/web/src/` |
+| 3 | FastAPI CRUD routes, MongoDB Atlas, analysis lifecycle | `apps/api/app/api/` |
+| 4 | JWT auth, bcrypt, IDOR prevention, rate limiting | `apps/api/app/core/security.py` |
+| 5 | Document ingestion (PDF/TXT/MD), hybrid Qdrant indexing | `apps/api/app/ingestion/` |
+| 6 | LangChain + Gemini + hybrid dense/sparse retrieval + RRF | `apps/api/app/retrieval/` |
+| 7 | Claim decomposition + NLI verification | `apps/api/app/verification/` |
+| 8 | SHA-256 evidence integrity + temporal validity | `apps/api/app/integrity/` |
+| 9 | LangGraph agentic adaptive recovery | `apps/api/app/agent/graph.py` |
+| 10 | SSE live execution trace streams | `apps/api/app/services/analysis_service.py` |
+| 11 | Experiment configs, custom metrics, ablations | `apps/api/app/evaluation/` |
+| 12 | Production hardening, cost controls | `docs/audits/audit-v3.md` |
+| **P-L** | **Audit v1 → v3 cycle**: 5 bugs found & fixed — 3 CRITICAL import crashes (`/evidence`, `/claims`, `/conflicts`), 2 HIGH data-integrity issues (null `document_id` serialization, truncation marker bug) | `docs/audits/audit-v3.md` |
+| **P-L** | **Global aggregate API routes** wired: `GET /api/v1/evidence`, `GET /api/v1/claims`, `GET /api/v1/conflicts` | `apps/api/app/api/v1/` |
+| **P-L** | **Evidence, Claims, Conflicts** frontend pages built and connected to live data | `apps/web/src/pages/` |
+| **P-L** | **LLM switched** to `gemini-3.5-flash-lite` for both generation and verification | `apps/api/config/models.yaml` |
+| **P-L** | **`.gitignore`** expanded with env variants, AI tool dirs, bun lockfile, runtime files | `.gitignore` |
+| **P-L** | **`.env.example`** rewritten with full per-variable documentation | `.env.example` |
 
 ---
 
-## 🔴 IMMEDIATE (Blocking)
+## 🔴 IMMEDIATE (Must Do Before Sharing / Demo)
 
-These must be done before the system can run end-to-end:
-
-- [ ] **Rotate MongoDB Atlas credentials** — Real credentials were found in `.env` and have been scrubbed. Go to MongoDB Atlas → Database Access → Edit User → reset password. Update your local `.env` with the new password.
-- [ ] **Set real values in `.env`** — The current `.env` contains placeholder values:
-  - `JWT_SECRET` → generate with `python -c "import secrets; print(secrets.token_hex(64))"`
-  - `GEMINI_API_KEY` → obtain at https://aistudio.google.com/app/apikey
-  - `MONGODB_URI` → paste your rotated Atlas connection string
+- [ ] **Set real values in `.env`** — copy `.env.example` → `.env` and fill in:
+  - `JWT_SECRET` → `python -c "import secrets; print(secrets.token_hex(64))"`
+  - `GEMINI_API_KEY` → https://aistudio.google.com/app/apikey
+  - `MONGODB_URI` → your MongoDB Atlas connection string
+- [ ] **Rotate MongoDB Atlas credentials** if the original `.env` credentials were ever committed or shared — Database Access → Edit User → Reset Password
 
 ---
 
@@ -43,104 +45,117 @@ These must be done before the system can run end-to-end:
 
 ### Deployment
 
-- [ ] **Deploy backend to a free host** — Options verified for free tier:
-  - [Render.com](https://render.com) — free web service tier (spins down after 15min idle)
-  - [Railway.app](https://railway.app) — $5 free credit/month
-  - [Fly.io](https://fly.io) — free tier with `flyctl deploy`
-  - Self-hosted with [Coolify](https://coolify.io)
-- [ ] **Deploy frontend to Vercel or Netlify** — both are free, just `npm run build` and push
-- [ ] **Set `APP_ENV=production` in deployment environment** — enables QDRANT_API_KEY enforcement, disables `/docs`
-- [ ] **Provision Qdrant Cloud** — free 1GB cluster at https://cloud.qdrant.io — set `QDRANT_URL` and `QDRANT_API_KEY` in prod env
+- [ ] **Backend** — Deploy to a free host:
+  - [Render.com](https://render.com) (spins down after 15min idle on free tier)
+  - [Railway.app](https://railway.app) — $5/month free credit
+  - [Fly.io](https://fly.io) — `flyctl deploy`
+  - Self-hosted via [Coolify](https://coolify.io)
+- [ ] **Frontend** — Deploy to [Vercel](https://vercel.com) or [Netlify](https://netlify.com) (both free), set `VITE_API_URL` env var
+- [ ] **Set `APP_ENV=production`** — disables `/docs`, enforces `QDRANT_API_KEY`
+- [ ] **Qdrant Cloud** — provision free 1 GB cluster at https://cloud.qdrant.io; set `QDRANT_URL` + `QDRANT_API_KEY`
 
 ### Testing
 
-- [ ] **Add integration tests** — tests that actually hit MongoDB + Qdrant (currently all mocked)
-- [ ] **Add end-to-end tests** — Playwright or Cypress for the React frontend flows
-- [ ] **Add test for rate limiting** — verify `@limiter.limit()` decorators actually block at threshold
-- [ ] **Add test for `_sanitize_label()`** — verify filename injection is blocked
-- [ ] **Add test for max_length=2000 query constraint** — verify 422 returned on overlong input
+- [ ] **Integration tests** for `/evidence`, `/claims`, `/conflicts` routes — currently no coverage for the new aggregate endpoints (see audit-v3 recommendation)
+- [ ] **Integration tests** against real MongoDB + Qdrant (all current tests use mocks)
+- [ ] **E2E tests** — Playwright or Cypress covering the Playground, Evidence, Claims, and Conflicts flows
+- [ ] **Rate limit test** — verify `@limiter.limit()` on `/analyses` and `/auth` blocks at threshold
+- [ ] **Sanitization test** — verify `_sanitize_label()` strips control characters from filenames
+
+### Data Layer (from audit-v3 recommendations)
+
+- [ ] **Pagination** on `/evidence`, `/claims`, `/conflicts` — currently hard-capped at 200 records; add `limit`/`offset` or cursor pagination
+- [ ] **Compound index** on `evidence` and `claims` collections for the `(user_id → analysis_id → created_at)` query path used by global aggregate endpoints
+- [ ] **Make `document_id` nullable** (`str | None`) in `EvidenceResponse` schema instead of returning empty string for orphaned evidence chunks
 
 ### Frontend Polish
 
-- [ ] **Add loading skeletons** for analysis list and KB document list pages
-- [ ] **Handle SSE `connection closed` gracefully** — show a reconnect button instead of blank trace
-- [ ] **Add document ingestion status polling** — show `processing` → `completed` transition without page refresh
-- [ ] **Add file drag-and-drop** to the document upload area
-- [ ] **Add analysis comparison view** — side-by-side reliability scores across experiments
+- [ ] **Loading skeletons** for analysis list, KB document list, Evidence, Claims pages
+- [ ] **SSE reconnect button** — show when `connection closed` instead of blank trace
+- [ ] **Document ingestion status polling** — `processing` → `completed` without page refresh
+- [ ] **File drag-and-drop** on upload area
+- [ ] **Analysis comparison view** — side-by-side reliability scores across experiments
 
 ---
 
-## 🟡 MEDIUM PRIORITY (Upcoming)
+## 🟡 MEDIUM PRIORITY
 
-### Architecture Improvements
+### Architecture
 
-- [ ] **Named Qdrant vectors** — migrate from implicit unnamed dense vector to explicit `NamedVectorParams`. Needed when adding multi-vector configurations (e.g., different embedding models per KB).
-- [ ] **Pagination** for analyses list, documents list, claims list — add `limit`/`offset` query params
-- [ ] **Background task queue** — replace FastAPI `BackgroundTasks` with Celery + Redis for production reliability (tasks survive restarts, can be monitored)
-- [ ] **Token counting before Gemini calls** — estimate input tokens and enforce `max_input_tokens` from `models.yaml` before calling the API
-- [ ] **Streaming generation** — pipe Gemini streaming output through SSE for faster perceived response
-- [ ] **SSE authentication upgrade** — consider a short-lived SSE ticket token (exchanged via authenticated REST call) to avoid passing the JWT in the URL query string
+- [ ] **Named Qdrant vectors** — migrate from implicit unnamed dense vector to `NamedVectorParams`
+- [ ] **Background task queue** — replace `BackgroundTasks` with Celery + Redis for production (survives restarts, monitorable)
+- [ ] **Token counting** before Gemini calls — enforce `max_input_tokens` from `models.yaml`
+- [ ] **Streaming generation** — pipe Gemini streaming through SSE for faster response perception
+- [ ] **SSE auth upgrade** — short-lived SSE ticket token instead of JWT in URL query param
 
 ### Observability
 
-- [ ] **Structured log aggregation** — ship structlog JSON output to Datadog, Loki, or Papertrail
-- [ ] **Sentry integration** — add Sentry SDK for error tracking and performance monitoring
-- [ ] **Prometheus metrics** — expose `/metrics` endpoint with request counts, latency histograms, and analysis pipeline stage durations
-- [ ] **Cost tracking** — log Gemini API token usage per analysis run; expose aggregated cost in experiment results
+- [ ] **Log aggregation** — ship structlog JSON to Datadog, Loki, or Papertrail
+- [ ] **Sentry** — error tracking and performance monitoring
+- [ ] **Prometheus `/metrics`** — request counts, latency histograms, pipeline stage durations
+- [ ] **Cost tracking** — log Gemini token usage per analysis; surface in experiment results
 
 ### Security
 
-- [ ] **Refresh tokens** — implement short-lived access tokens (15min) + long-lived refresh tokens (7 days) for better session security
-- [ ] **Account lockout** — lock account after N failed login attempts (e.g., 5 attempts → 15min lockout)
-- [ ] **Audit logging** — log all resource creation, deletion, and access events to a separate `audit_log` collection
-- [ ] **Content-Security-Policy headers** — add CSP, X-Frame-Options, and HSTS headers to the FastAPI responses
-- [ ] **File upload virus scanning** — integrate ClamAV or similar for uploaded PDFs before parsing
+- [ ] **Refresh tokens** — short-lived access (15 min) + long-lived refresh (7 days)
+- [ ] **Account lockout** — N failed logins → temporary lockout (e.g. 5 attempts → 15 min)
+- [ ] **Audit log collection** — log all resource creates, deletes, access to `audit_log` collection
+- [ ] **Security headers** — CSP, X-Frame-Options, HSTS on all FastAPI responses
+- [ ] **PDF virus scanning** — ClamAV or similar before parsing uploaded files
 
 ---
 
-## 🟢 LOW PRIORITY (Future Enhancements)
+## 🟢 LOW PRIORITY (Future)
 
 ### RAG Quality
 
-- [ ] **Upgrade embedding model** — evaluate `all-mpnet-base-v2` (768-dim) or `bge-small-en-v1.5` for better retrieval quality at comparable cost
-- [ ] **Cross-encoder reranker tuning** — evaluate different CrossEncoder models for the reranker step
-- [ ] **Query expansion pre-processing** — HyDE (Hypothetical Document Embeddings) or multi-query expansion before retrieval
-- [ ] **Chunk overlap tuning** — expose chunk_size and chunk_overlap as per-KB settings (currently global)
-- [ ] **Multi-language support** — add language detection to parser and use multilingual embedding model
+- [ ] **Upgrade embedding model** — evaluate `all-mpnet-base-v2` (768-dim) or `bge-small-en-v1.5`
+- [ ] **Reranker model tuning** — evaluate alternative CrossEncoder models
+- [ ] **Query expansion** — HyDE or multi-query before retrieval
+- [ ] **Per-KB chunk settings** — expose `chunk_size`/`chunk_overlap` per knowledge base
+- [ ] **Multi-language support** — language detection + multilingual embedding model
 
 ### Product Features
 
-- [ ] **Knowledge Base sharing** — allow KBs to be shared between users (requires team/org model)
-- [ ] **Scheduled analysis runs** — periodic re-verification of documents as knowledge base changes
-- [ ] **Webhook notifications** — notify external systems when analysis completes or reliability drops below threshold
-- [ ] **PDF annotation export** — export analysis results as annotated PDF with claim evidence highlighted
-- [ ] **LangSmith tracing** — integrate LangSmith for detailed LangGraph node execution tracing
+- [ ] **KB sharing** — share knowledge bases between users (requires org/team model)
+- [ ] **Scheduled re-verification** — periodic analysis runs as KB documents change
+- [ ] **Webhook notifications** — alert external systems on analysis completion or reliability drop
+- [ ] **PDF annotation export** — export annotated PDF with evidence highlights
+- [ ] **LangSmith tracing** — detailed LangGraph node execution traces
 
 ### Developer Experience
 
-- [ ] **Fix pyproject.toml Ruff deprecation warnings** — migrate `[tool.ruff]` `ignore`/`select`/`per-file-ignores` to `[tool.ruff.lint]` section
-- [ ] **Pre-commit hooks** — add `.pre-commit-config.yaml` running ruff + mypy + pytest --co
-- [ ] **Type stubs for motor** — add `motor-stubs` to improve type checking coverage
-- [ ] **Makefile** — add `make dev`, `make test`, `make lint`, `make build` shortcuts
+- [ ] **Ruff migration** — move `[tool.ruff]` `ignore`/`select` to `[tool.ruff.lint]` (deprecation warning)
+- [ ] **Pre-commit hooks** — `.pre-commit-config.yaml` with ruff + mypy + pytest --co
+- [ ] **motor type stubs** — add `motor-stubs` for better async type coverage
+- [ ] **Makefile** — `make dev`, `make test`, `make lint`, `make build` shortcuts
 
 ---
 
 ## Deployment Checklist
 
-Use this when deploying to production:
-
 ```
-☐ .env values set (JWT_SECRET, GEMINI_API_KEY, MONGODB_URI)
+☐ .env filled in (JWT_SECRET, GEMINI_API_KEY, MONGODB_URI)
 ☐ APP_ENV=production
-☐ QDRANT_URL pointing to Qdrant Cloud
+☐ QDRANT_URL → Qdrant Cloud endpoint
 ☐ QDRANT_API_KEY set
-☐ CORS_ORIGINS set to actual frontend domain
+☐ CORS_ORIGINS → actual frontend domain(s)
 ☐ MongoDB Atlas credentials rotated
-☐ Backend deployed and /api/v1/health returns 200
+☐ Backend /api/v1/health returns {"status":"ok"}
 ☐ Frontend built (npm run build) and deployed
-☐ Frontend VITE_API_URL set to backend URL
+☐ Frontend VITE_API_URL → backend URL
 ☐ CI/CD workflows passing on main branch
 ```
+
+---
+
+## Audit History
+
+| Version | Date | Findings | Status |
+|---------|------|----------|--------|
+| `audit-v3.md` | 2026-08-29 | 3 CRITICAL (import crashes), 2 HIGH (data integrity) | ✅ All fixed |
+
+> `audit.md` and `audit-v2.md` have been consolidated into `audit-v3.md` and removed.
 
 ---
 
