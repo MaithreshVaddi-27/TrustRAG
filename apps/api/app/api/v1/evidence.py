@@ -16,7 +16,11 @@ from app.services import analysis_service
 router = APIRouter(prefix="/evidence", tags=["evidence"])
 
 
-@router.get("", response_model=list[EvidenceResponse], summary="List all retrieved evidence records")
+@router.get(
+    "",
+    response_model=list[EvidenceResponse],
+    summary="List all retrieved evidence records",
+)
 async def list_all_evidence_endpoint(
     current_user: Mapping[str, Any] = Depends(get_current_user),
 ) -> list[EvidenceResponse]:

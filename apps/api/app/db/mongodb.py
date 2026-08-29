@@ -206,6 +206,15 @@ async def create_indexes() -> None:
         [("ingestion_status", pymongo.ASCENDING)], name="doc_ingestion_status"
     )
 
+    # ── document_chunks ────────────────────────────────────────────────────
+    await db[Collections.DOCUMENT_CHUNKS].create_index(
+        [("document_id", pymongo.ASCENDING), ("chunk_index", pymongo.ASCENDING)],
+        name="chunk_doc_index",
+    )
+    await db[Collections.DOCUMENT_CHUNKS].create_index(
+        [("text_hash", pymongo.ASCENDING)], name="chunk_text_hash"
+    )
+
     # ── analyses ───────────────────────────────────────────────────────────
     await db[Collections.ANALYSES].create_index(
         [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],

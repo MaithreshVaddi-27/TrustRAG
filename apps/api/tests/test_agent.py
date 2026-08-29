@@ -213,4 +213,3 @@ async def test_verification_node_abstain_max_attempts_passes():
     res = await verification_node(state)
     assert res["verdict_status"] == "PASS"
     assert res["diagnosis_type"] == "RETRIEVAL_FAILURE"
-

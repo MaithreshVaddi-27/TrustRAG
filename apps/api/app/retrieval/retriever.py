@@ -61,9 +61,7 @@ async def sparse_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
         if not sparse_rep["indices"]:
             return []
 
-        sparse_vec = models.SparseVector(
-            indices=sparse_rep["indices"], values=sparse_rep["values"]
-        )
+        sparse_vec = models.SparseVector(indices=sparse_rep["indices"], values=sparse_rep["values"])
 
         if hasattr(client, "query_points"):
             response = client.query_points(

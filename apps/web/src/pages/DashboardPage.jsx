@@ -1,4 +1,4 @@
-import { Brain, Database, GitMerge, Zap, ArrowRight, Clock, FileText } from 'lucide-react'
+import { Brain, Database, GitMerge, Zap, ArrowRight, Clock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'

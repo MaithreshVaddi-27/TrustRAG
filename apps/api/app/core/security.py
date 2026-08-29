@@ -13,6 +13,7 @@ from typing import Any
 
 import bcrypt
 from jose import jwt
+from jose.exceptions import ExpiredSignatureError, JWTError
 
 from app.core.config import get_settings
 from app.core.exceptions import AuthenticationError
@@ -63,7 +64,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
         return payload
-    except jwt.ExpiredSignatureError as exc:
+    except ExpiredSignatureError as exc:
         raise AuthenticationError("Token signature has expired", detail=str(exc)) from exc
-    except jwt.JWTError as exc:
+    except JWTError as exc:
         raise AuthenticationError("Invalid authentication token", detail=str(exc)) from exc

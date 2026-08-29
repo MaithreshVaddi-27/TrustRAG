@@ -22,6 +22,8 @@ export default function KnowledgeBasesPage() {
     queryFn: kbService.list
   })
 
+  const [createErrorMsg, setCreateErrorMsg] = useState(null)
+
   // Create KB Mutation
   const createKbMutation = useMutation({
     mutationFn: kbService.create,
@@ -30,9 +32,10 @@ export default function KnowledgeBasesPage() {
       setIsCreateModalOpen(false)
       setNewKbName('')
       setNewKbDesc('')
+      setCreateErrorMsg(null)
     },
     onError: (error) => {
-      alert(error.message || 'Failed to create knowledge base')
+      setCreateErrorMsg(error.message || 'Failed to create knowledge base')
     }
   })
 
@@ -243,6 +246,19 @@ export default function KnowledgeBasesPage() {
             </div>
             
             <form onSubmit={handleCreateSubmit} className="p-5 space-y-5">
+              {createErrorMsg && (
+                <div role="alert" className="p-3 bg-red-950/60 border border-red-800 rounded-xl text-xs text-red-300 flex items-start justify-between gap-2">
+                  <span>{createErrorMsg}</span>
+                  <button
+                    type="button"
+                    onClick={() => setCreateErrorMsg(null)}
+                    aria-label="Dismiss error"
+                    className="text-red-400 hover:text-red-200 text-sm font-bold leading-none shrink-0"
+                  >
+                    &times;
+                  </button>
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300">Name</label>
                 <input 

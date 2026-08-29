@@ -1,9 +1,9 @@
 # TRUSTRAG — AI Reliability Workbench
 
 > **Retrieve. Verify. Diagnose. Recover.**  
-> Production-oriented RAG reliability pipeline with claim verification, failure diagnosis, and adaptive recovery.
+> Production-grade RAG reliability pipeline with claim verification, failure diagnosis, adaptive recovery, document zoning, and canonical stemming.
 
-![Python](https://img.shields.io/badge/Python-3.11-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green) ![React](https://img.shields.io/badge/React-18-61DAFB) ![LangGraph](https://img.shields.io/badge/LangGraph-agentic-orange) ![Qdrant](https://img.shields.io/badge/Qdrant-hybrid--RAG-red) ![CI](https://github.com/MaithreshVaddi-27/TrustRAG/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/Python-3.11-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green) ![React](https://img.shields.io/badge/React-18-61DAFB) ![LangGraph](https://img.shields.io/badge/LangGraph-agentic-orange) ![Qdrant](https://img.shields.io/badge/Qdrant-hybrid--RAG-red) ![Tests](https://img.shields.io/badge/Tests-67%20Passing-brightgreen) ![Security](https://img.shields.io/badge/Bandit%20SAST-0%20Issues-brightgreen) ![License](https://img.shields.io/badge/License-MIT-blue)
 
 ---
 
@@ -11,43 +11,43 @@
 
 Standard RAG pipelines fail silently — they retrieve irrelevant evidence, generate unsupported claims, and cite documents that don't say what's claimed.
 
-TRUSTRAG implements a **structured reliability loop**:
+TRUSTRAG implements an **active, self-healing reliability loop**:
 
 ```
 Query
-  → Hybrid Retrieve (dense + sparse + RRF)
-  → Generate (Gemini, grounded in evidence)
-  → Decompose Claims (LLM)
-  → Verify Claims (NLI per-claim)
-  → Audit Evidence Integrity (SHA-256)
-  → Score Reliability
-  → [if low] Diagnose Failure → Adaptive Recovery (LangGraph)
-    → Query Rewrite → Re-retrieve → Re-verify
+  → Text Preprocessing (Unicode NFKD, de-hyphenation, query-noise stopword filtering)
+  → Document Zoning & Morphological Stemming (Porter Stemmer, bigrams)
+  → Hybrid Retrieve (dense + zone-weighted sparse BM25 + Reciprocal Rank Fusion)
+  → Generate (Gemini, grounded strictly in retrieved context)
+  → Decompose Claims (atomic assertion extraction)
+  → Batch NLI Verification (single-call structured NLI across all claims)
+  → Audit Evidence Integrity (SHA-256 content hashes & temporal validity)
+  → Score Reliability (coverage, contradiction rate, source reliability)
+  → [if below threshold] Diagnose Failure → Adaptive Recovery (LangGraph)
+    → Topical Query Expansion → Context Expansion → Re-verify
   → Grounded Answer  OR  ABSTAIN
 ```
 
-The differentiator: **diagnosis → recovery loop**. When reliability drops below threshold, TRUSTRAG diagnoses the failure type and applies the cheapest targeted recovery — rather than silently returning a bad answer.
+The core differentiator is TRUSTRAG's **closed-loop diagnosis & recovery**. When evidence coverage drops or contradictions occur, TRUSTRAG diagnoses the exact failure type and applies targeted recovery rather than returning hallucinated or ungrounded responses.
 
 ---
 
 ## Engineering Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 18 + Vite 6 + Tailwind CSS + TanStack Query + Recharts |
-| Backend | FastAPI + Python 3.11 + Pydantic v2 + Motor (async MongoDB) |
-| LLM | Google Gemini 2.5 Flash Lite (configurable in `models.yaml`) |
-| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` — local, free, no API key |
-| Agentic | LangGraph `StateGraph` — retrieval → generation → verification → recovery |
-| Vector Store | Qdrant — dense + BM25 sparse + hybrid RRF fusion |
-| Database | MongoDB Atlas M0 (free tier) |
-| Streaming | Server-Sent Events (SSE) for live execution traces |
-| Auth | JWT HS256 + bcrypt (12 rounds) |
-| Rate Limiting | SlowAPI per-IP on analysis, login, register endpoints |
+| Layer | Technology | Key Capabilities |
+|-------|-----------|------------------|
+| Frontend | React 18 + Vite 6 + Tailwind CSS | Workbench design system, live SSE traces, claim inspector, 11 pages |
+| Backend | FastAPI + Python 3.11 + Pydantic v2 | Async Motor MongoDB driver, structured JSON logging, security middleware |
+| LLM | Google Gemini (configured in `models.yaml`) | Grounded reasoning, structured claim decomposition |
+| Verification | Batch NLI (Pydantic structured output) | Single API call verifies all assertions, eliminates 429 quota exhaustion |
+| Preprocessing | Porter Stemmer + Document Zoning | 5-step rule-based morphological root stemming, zone weighting (Title/Header 1.5–2x) |
+| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` | Local, free, zero API key dependency, 384-dimensional dense vectors |
+| Agentic Core | LangGraph `StateGraph` | State machine orchestrating retrieve → generate → verify → diagnose → recover |
+| Vector Store | Qdrant | Dense vectors + token-frequency sparse BM25 + hybrid RRF fusion |
+| Database | Local MongoDB Community / Atlas | Persistent document metadata, chunk integrity hashes, trace logs |
+| Security | JWT HS256 + Bcrypt + Defensive Headers | Strict IDOR verification, `nosniff`, `DENY`, CORS whitelist, SlowAPI rate limiting |
 
-**All services are free-tier compatible. No paid dependencies required.**
-
----
+**100% free-tier and local development compatible. Zero paid dependencies required.**
 
 ## Development Phases
 
@@ -502,7 +502,20 @@ A full backend audit (v3) was performed covering all route modules, service laye
 | **Evidence `document_id` serialized as `"None"` string** | `serialize_evidence()` called `str(doc["document_id"])` unconditionally. When a chunk has no traceable source document, `document_id` is `None` in MongoDB — `str(None)` produces the literal string `"None"`, corrupting every evidence API response for such records. | Added null guard: `str(doc["document_id"]) if doc.get("document_id") else ""` |
 | **Conflicts text always shows `"..."` truncation marker** | `list_all_user_conflicts()` truncated evidence text to 200 chars then *always* appended `"..."`, even for strings far shorter than 200 characters, corrupting displayed text. | Made ellipsis conditional: only append when `len(text) > 200` |
 
-See the full audit report at [`docs/audits/audit-v3.md`](docs/audits/audit-v3.md).
+See the historical audit report at [`docs/audits/audit-v3.md`](docs/audits/audit-v3.md).
+
+---
+
+## Comprehensive Security & Quality Audits
+
+TRUSTRAG adheres to a zero-compromise security, testing, and static analysis verification lifecycle. Full audit documentation is available in the [**Documentation Directory (`docs/`)**](docs/README.md):
+
+- 📋 [**Audit Plan (`docs/audits/audit-plan.md`)**](docs/audits/audit-plan.md) — Evaluation standards, tooling matrix, and rules of engagement across all 13 project dimensions.
+- 🔍 [**Audit Findings (`docs/audits/audit-findings.md`)**](docs/audits/audit-findings.md) — Baseline 23-finding matrix categorized by P0–P3 severity levels.
+- 🛠️ [**Remediation Plan (`docs/audits/fix-plan.md`)**](docs/audits/fix-plan.md) — Prioritized phased fixes for linting, type-safety, HTTP security headers, and DB indexing.
+- ✅ [**Final Verification Report (`docs/audits/final-audit-report.md`)**](docs/audits/final-audit-report.md) — Full resolution status: 0 open P0/P1/P2/P3 defects, 67/67 passing tests, Bandit SAST clean, zero NPM vulnerabilities.
+- 📝 [**Post-Audit Fix Log (`docs/audits/post-audit-fix-log.md`)**](docs/audits/post-audit-fix-log.md) — Chronological execution log of all fixes, root causes, and verification commands.
+- 🔬 [**Line-by-Line Technical Review (`docs/audits/line-by-line-review.md`)**](docs/audits/line-by-line-review.md) — In-depth architectural inspection across LangGraph, claim verification, text zoning, and security primitives.
 
 ---
 

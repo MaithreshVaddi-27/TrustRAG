@@ -16,6 +16,7 @@ export default function PlaygroundPage() {
   const [analysis, setAnalysis] = useState(null)
   const [traceEvents, setTraceEvents] = useState([])
   const [activeTab, setActiveTab] = useState('trace')
+  const [errorMsg, setErrorMsg] = useState('')
   
   const streamRef = useRef(null)
 
@@ -41,6 +42,7 @@ export default function PlaygroundPage() {
     setLoading(true)
     setAnalysis(null)
     setTraceEvents([])
+    setErrorMsg('')
     setActiveTab('trace') // Default to trace while running so user sees progress
 
     try {
@@ -66,7 +68,7 @@ export default function PlaygroundPage() {
     } catch (err) {
       console.error("Failed to start analysis:", err)
       setLoading(false)
-      alert(err.message || "Failed to start analysis")
+      setErrorMsg(err.message || "Failed to start analysis")
     }
   }
 
@@ -123,6 +125,19 @@ export default function PlaygroundPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="p-4 space-y-4 flex-1 flex flex-col">
+            {errorMsg && (
+              <div role="alert" className="p-3 bg-red-950/60 border border-red-800/80 rounded-lg text-xs text-red-300 flex items-start justify-between gap-2">
+                <span>{errorMsg}</span>
+                <button
+                  type="button"
+                  onClick={() => setErrorMsg('')}
+                  aria-label="Dismiss error"
+                  className="text-red-400 hover:text-red-200 text-sm font-bold leading-none shrink-0"
+                >
+                  &times;
+                </button>
+              </div>
+            )}
             {/* KB selector */}
             <div className="space-y-1.5">
               <label className="section-heading" htmlFor="kb-select">Knowledge Base</label>

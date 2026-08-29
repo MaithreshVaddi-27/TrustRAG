@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from enum import Enum
+from enum import StrEnum
 
 # ─── Contraction Mapping ──────────────────────────────────────────────────────
 
@@ -33,35 +33,211 @@ CONTRACTIONS: dict[str, str] = {
 # ─── Standard IR & Query Noise Stopwords ─────────────────────────────────────
 
 CORE_STOPWORDS: set[str] = {
-    "a", "about", "above", "after", "again", "against", "all", "am", "an", "and",
-    "any", "are", "aren't", "as", "at", "be", "because", "been", "before", "being",
-    "below", "between", "both", "but", "by", "can", "can't", "cannot", "could",
-    "couldn't", "did", "didn't", "do", "does", "doesn't", "doing", "don't", "down",
-    "during", "each", "few", "for", "from", "further", "had", "hadn't", "has",
-    "hasn't", "have", "haven't", "having", "he", "he'd", "he'll", "he's", "her",
-    "here", "here's", "hers", "herself", "him", "himself", "his", "how", "how's",
-    "i", "i'd", "i'll", "i'm", "i've", "if", "in", "into", "is", "isn't", "it",
-    "it's", "its", "itself", "let's", "me", "more", "most", "mustn't", "my",
-    "myself", "no", "nor", "not", "of", "off", "on", "once", "only", "or", "other",
-    "ought", "our", "ours", "ourselves", "out", "over", "own", "same", "shan't",
-    "she", "she'd", "she'll", "she's", "should", "shouldn't", "so", "some", "such",
-    "than", "that", "that's", "the", "their", "theirs", "them", "themselves",
-    "then", "there", "there's", "these", "they", "they'd", "they'll", "they're",
-    "they've", "this", "those", "through", "to", "too", "under", "until", "up",
-    "very", "was", "wasn't", "we", "we'd", "we'll", "we're", "we've", "were",
-    "weren't", "what", "what's", "when", "when's", "where", "where's", "which",
-    "while", "who", "who's", "whom", "why", "why's", "with", "won't", "would",
-    "wouldn't", "you", "you'd", "you'll", "you're", "you've", "your", "yours",
-    "yourself", "yourselves",
+    "a",
+    "about",
+    "above",
+    "after",
+    "again",
+    "against",
+    "all",
+    "am",
+    "an",
+    "and",
+    "any",
+    "are",
+    "aren't",
+    "as",
+    "at",
+    "be",
+    "because",
+    "been",
+    "before",
+    "being",
+    "below",
+    "between",
+    "both",
+    "but",
+    "by",
+    "can",
+    "can't",
+    "cannot",
+    "could",
+    "couldn't",
+    "did",
+    "didn't",
+    "do",
+    "does",
+    "doesn't",
+    "doing",
+    "don't",
+    "down",
+    "during",
+    "each",
+    "few",
+    "for",
+    "from",
+    "further",
+    "had",
+    "hadn't",
+    "has",
+    "hasn't",
+    "have",
+    "haven't",
+    "having",
+    "he",
+    "he'd",
+    "he'll",
+    "he's",
+    "her",
+    "here",
+    "here's",
+    "hers",
+    "herself",
+    "him",
+    "himself",
+    "his",
+    "how",
+    "how's",
+    "i",
+    "i'd",
+    "i'll",
+    "i'm",
+    "i've",
+    "if",
+    "in",
+    "into",
+    "is",
+    "isn't",
+    "it",
+    "it's",
+    "its",
+    "itself",
+    "let's",
+    "me",
+    "more",
+    "most",
+    "mustn't",
+    "my",
+    "myself",
+    "no",
+    "nor",
+    "not",
+    "of",
+    "off",
+    "on",
+    "once",
+    "only",
+    "or",
+    "other",
+    "ought",
+    "our",
+    "ours",
+    "ourselves",
+    "out",
+    "over",
+    "own",
+    "same",
+    "shan't",
+    "she",
+    "she'd",
+    "she'll",
+    "she's",
+    "should",
+    "shouldn't",
+    "so",
+    "some",
+    "such",
+    "than",
+    "that",
+    "that's",
+    "the",
+    "their",
+    "theirs",
+    "them",
+    "themselves",
+    "then",
+    "there",
+    "there's",
+    "these",
+    "they",
+    "they'd",
+    "they'll",
+    "they're",
+    "they've",
+    "this",
+    "those",
+    "through",
+    "to",
+    "too",
+    "under",
+    "until",
+    "up",
+    "very",
+    "was",
+    "wasn't",
+    "we",
+    "we'd",
+    "we'll",
+    "we're",
+    "we've",
+    "were",
+    "weren't",
+    "what",
+    "what's",
+    "when",
+    "when's",
+    "where",
+    "where's",
+    "which",
+    "while",
+    "who",
+    "who's",
+    "whom",
+    "why",
+    "why's",
+    "with",
+    "won't",
+    "would",
+    "wouldn't",
+    "you",
+    "you'd",
+    "you'll",
+    "you're",
+    "you've",
+    "your",
+    "yours",
+    "yourself",
+    "yourselves",
 }
 
 # Conversational query fillers filtered out during query-time sparse search
 # so search weights focus on topical content words rather than conversational wrappers
 QUERY_NOISE_STOPWORDS: set[str] = {
-    "tell", "please", "explain", "describe", "show", "summary", "summarize",
-    "give", "detail", "details", "information", "document", "know", "like",
-    "help", "provide", "list", "find", "mean", "meaning", "regard", "regarding",
-    "discuss", "brief", "briefly",
+    "tell",
+    "please",
+    "explain",
+    "describe",
+    "show",
+    "summary",
+    "summarize",
+    "give",
+    "detail",
+    "details",
+    "information",
+    "document",
+    "know",
+    "like",
+    "help",
+    "provide",
+    "list",
+    "find",
+    "mean",
+    "meaning",
+    "regard",
+    "regarding",
+    "discuss",
+    "brief",
+    "briefly",
 }
 
 STOPWORDS = CORE_STOPWORDS  # Default backward-compatible reference
@@ -77,7 +253,7 @@ def get_stopwords(include_query_noise: bool = False) -> set[str]:
 # ─── Document Zoning ─────────────────────────────────────────────────────────
 
 
-class ZoneType(str, Enum):
+class ZoneType(StrEnum):
     """Document functional zones for Information Retrieval zone indexing and scoring."""
 
     TITLE = "title"
@@ -120,15 +296,17 @@ def detect_chunk_zone(text: str, page: int = 1) -> str:
         return ZoneType.TITLE.value
 
     # 2. Metadata Zone: Effective dates, citations, policy headers
-    if any(first_text.lower().startswith(p) for p in ("effective from", "effective until", "author:", "isbn:", "doi:")):
+    meta_prefixes = ("effective from", "effective until", "author:", "isbn:", "doi:")
+    if any(first_text.lower().startswith(p) for p in meta_prefixes):
         return ZoneType.METADATA.value
 
     # 3. Summary Zone
-    if any(first_text.lower().startswith(p) for p in ("summary:", "abstract:", "overview:", "executive summary:")):
+    summary_prefixes = ("summary:", "abstract:", "overview:", "executive summary:")
+    if any(first_text.lower().startswith(p) for p in summary_prefixes):
         return ZoneType.SUMMARY.value
 
     # 4. Header Zone: Markdown # headers or all-caps topic lines (e.g. DATA STRUCTURES)
-    if re.match(r"^(?:#+\s+|[A-Z0-9\s:–-]{4,50}\n)", text_stripped):
+    if re.match(r"^(?:#+\s+|[A-Z0-9\s:\--]{4,50}\n)", text_stripped):
         return ZoneType.HEADER.value
 
     return ZoneType.BODY.value
@@ -391,7 +569,8 @@ class PorterStemmer:
             if not (self._ends("able") or self._ends("ible")):
                 return
         elif c == "n":
-            if not (self._ends("ant") or self._ends("ement") or self._ends("ment") or self._ends("ent")):
+            n_suffixes = ("ant", "ement", "ment", "ent")
+            if not any(self._ends(s) for s in n_suffixes):
                 return
         elif c == "o":
             if self._ends("ion") and self.j >= self.k0 and self.b[self.j] in "st":
@@ -492,10 +671,7 @@ def lexical_analyze(
     stopwords = get_stopwords(include_query_noise=is_query)
 
     # Filter stopwords and very short noise (single character unless numeric/meaningful)
-    filtered = [
-        t for t in tokens
-        if t not in stopwords and (len(t) > 1 or t.isdigit())
-    ]
+    filtered = [t for t in tokens if t not in stopwords and (len(t) > 1 or t.isdigit())]
 
     stemmed = [_stemmer.stem(t) for t in filtered] if stem else filtered
 

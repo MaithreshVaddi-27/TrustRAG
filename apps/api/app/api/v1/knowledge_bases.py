@@ -95,7 +95,9 @@ async def upload_document_endpoint(
     """
     # Verify file extension
     cfg = get_model_config()
-    allowed_extensions = {ext if ext.startswith(".") else f".{ext}" for ext in cfg.supported_formats}
+    allowed_extensions = {
+        ext if ext.startswith(".") else f".{ext}" for ext in cfg.supported_formats
+    }
     filename = file.filename or "unknown"
     ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
     if ext not in allowed_extensions:

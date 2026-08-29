@@ -71,11 +71,11 @@ def test_lexical_analyze_pipeline():
 
     # Morphological roots
     assert "automat" in tokens  # automatic -> automat
-    assert "index" in tokens    # indexing -> index
-    assert "invert" in tokens   # inverted -> invert
-    assert "file" in tokens     # file -> file
-    assert "structur" in tokens # structures -> structur
-    assert "simpl" in tokens    # simple -> simpl
+    assert "index" in tokens  # indexing -> index
+    assert "invert" in tokens  # inverted -> invert
+    assert "file" in tokens  # file -> file
+    assert "structur" in tokens  # structures -> structur
+    assert "simpl" in tokens  # simple -> simpl
 
 
 def test_lexical_analyze_without_stemming():

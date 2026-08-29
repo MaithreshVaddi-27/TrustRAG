@@ -376,9 +376,9 @@ async def list_all_user_evidence(user_id_str: str) -> list[EvidenceResponse]:
 
     evidence_coll = get_collection(Collections.EVIDENCE)
     results = []
-    async for e in evidence_coll.find({"analysis_id": {"$in": analysis_ids}}).sort(
-        "created_at", -1
-    ).limit(200):
+    async for e in (
+        evidence_coll.find({"analysis_id": {"$in": analysis_ids}}).sort("created_at", -1).limit(200)
+    ):
         results.append(serialize_evidence(e))
     return results
 
@@ -395,9 +395,9 @@ async def list_all_user_claims(user_id_str: str) -> list[ClaimResponse]:
 
     claims_coll = get_collection(Collections.CLAIMS)
     results = []
-    async for c in claims_coll.find({"analysis_id": {"$in": analysis_ids}}).sort(
-        "created_at", -1
-    ).limit(200):
+    async for c in (
+        claims_coll.find({"analysis_id": {"$in": analysis_ids}}).sort("created_at", -1).limit(200)
+    ):
         results.append(serialize_claim(c))
     return results
 
@@ -420,33 +420,51 @@ async def list_all_user_conflicts(user_id_str: str) -> list[dict[str, Any]]:
     conflicts = []
 
     # 1. Contradicted claims
-    async for c in claims_coll.find(
-        {"analysis_id": {"$in": a_ids}, "state": "CONTRADICTED"}
-    ).sort("created_at", -1).limit(50):
-        conflicts.append({
-            "id": str(c["_id"]),
-            "type": "claim_contradiction",
-            "title": "Claim Contradicted by Retrieved Evidence",
-            "claim": c["text"],
-            "explanation": c.get("explanation") or "Evidence contradicts this assertion.",
-            "analysis_id": str(c["analysis_id"]),
-            "query": analysis_map.get(str(c["analysis_id"]), ""),
-            "created_at": c["created_at"].isoformat() if hasattr(c["created_at"], "isoformat") else str(c["created_at"]),
-        })
+    async for c in (
+        claims_coll.find({"analysis_id": {"$in": a_ids}, "state": "CONTRADICTED"})
+        .sort("created_at", -1)
+        .limit(50)
+    ):
+        conflicts.append(
+            {
+                "id": str(c["_id"]),
+                "type": "claim_contradiction",
+                "title": "Claim Contradicted by Retrieved Evidence",
+                "claim": c["text"],
+                "explanation": c.get("explanation") or "Evidence contradicts this assertion.",
+                "analysis_id": str(c["analysis_id"]),
+                "query": analysis_map.get(str(c["analysis_id"]), ""),
+                "created_at": (
+                    c["created_at"].isoformat()
+                    if hasattr(c["created_at"], "isoformat")
+                    else str(c["created_at"])
+                ),
+            }
+        )
 
     # 2. Corrupted / compromised evidence
-    async for e in evidence_coll.find(
-        {"analysis_id": {"$in": a_ids}, "integrity_status": {"$nin": ["VERIFIED", None]}}
-    ).sort("created_at", -1).limit(50):
-        conflicts.append({
-            "id": str(e["_id"]),
-            "type": "integrity_compromise",
-            "title": f"Evidence Integrity Compromised: {e.get('integrity_status')}",
-            "claim": (e["text"][:200] + "...") if len(e["text"]) > 200 else e["text"],
-            "explanation": f"Integrity check flagged status: {e.get('integrity_status')}",
-            "analysis_id": str(e["analysis_id"]),
-            "query": analysis_map.get(str(e["analysis_id"]), ""),
-            "created_at": e["created_at"].isoformat() if hasattr(e["created_at"], "isoformat") else str(e["created_at"]),
-        })
+    async for e in (
+        evidence_coll.find(
+            {"analysis_id": {"$in": a_ids}, "integrity_status": {"$nin": ["VERIFIED", None]}}
+        )
+        .sort("created_at", -1)
+        .limit(50)
+    ):
+        conflicts.append(
+            {
+                "id": str(e["_id"]),
+                "type": "integrity_compromise",
+                "title": f"Evidence Integrity Compromised: {e.get('integrity_status')}",
+                "claim": (e["text"][:200] + "...") if len(e["text"]) > 200 else e["text"],
+                "explanation": f"Integrity check flagged status: {e.get('integrity_status')}",
+                "analysis_id": str(e["analysis_id"]),
+                "query": analysis_map.get(str(e["analysis_id"]), ""),
+                "created_at": (
+                    e["created_at"].isoformat()
+                    if hasattr(e["created_at"], "isoformat")
+                    else str(e["created_at"])
+                ),
+            }
+        )
 
     return conflicts

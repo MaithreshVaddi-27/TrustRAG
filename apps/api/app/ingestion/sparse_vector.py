@@ -7,10 +7,11 @@ Used directly for Qdrant's sparse vector queries (BM25 fallback).
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 import xxhash
+
+from app.ingestion.preprocessor import ZONE_WEIGHT_BOOSTS, lexical_analyze
 
 # Minimal list of common English stopwords to filter out from sparse queries
 STOPWORDS = {
@@ -192,9 +193,6 @@ STOPWORDS = {
 }
 
 VOCAB_SIZE_LIMIT = 1_000_000
-
-
-from app.ingestion.preprocessor import ZONE_WEIGHT_BOOSTS, lexical_analyze
 
 
 def tokenize(text: str) -> list[str]:

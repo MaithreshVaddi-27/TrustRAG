@@ -306,9 +306,10 @@ Output only the expanded search query string. Do not include markdown headers or
 """
         else:
             # Query rewrite triggered because generation abstained / insufficient context
-            rewrite_prompt = f"""You are a search query expansion assistant for an information retrieval system.
+            rewrite_prompt = f"""You are a search query expansion assistant for an IR system.
 The original query did not return sufficient information to answer the question.
-Your task is to rewrite and expand the user query by incorporating synonyms, section headers, or conceptual topics that could be present in the document.
+Your task is to rewrite and expand the user query by incorporating synonyms,
+section headers, or conceptual topics that could be present in the document.
 
 Output only the expanded search query string. Do not include markdown headers or commentary.
 
@@ -330,7 +331,7 @@ Output only the expanded search query string. Do not include markdown headers or
                     elif isinstance(item, str):
                         parts.append(item)
                     elif hasattr(item, "text"):
-                        parts.append(getattr(item, "text"))
+                        parts.append(item.text)
                 new_query = "".join(parts)
             new_query = str(new_query).strip()
 

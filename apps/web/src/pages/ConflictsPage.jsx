@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { conflictService } from '@/services/api'
-import { AlertTriangle, GitMerge, Loader2, ShieldAlert, CheckCircle } from 'lucide-react'
+import { AlertTriangle, Loader2, ShieldAlert, CheckCircle } from 'lucide-react'
 
 export default function ConflictsPage() {
   const { data: conflicts = [], isLoading, error } = useQuery({

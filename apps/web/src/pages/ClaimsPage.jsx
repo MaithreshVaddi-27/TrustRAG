@@ -2,9 +2,8 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { ClaimInspector } from '@/components/workbench/ClaimInspector'
-import { ClaimStateBadge } from '@/components/workbench/ReliabilityBadge'
 import { claimService } from '@/services/api'
-import { Brain, Filter, Loader2, Search } from 'lucide-react'
+import { Brain, Loader2, Search } from 'lucide-react'
 
 export default function ClaimsPage() {
   const [search, setSearch] = useState('')

@@ -139,9 +139,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(IngestionError)
     async def ingestion_error_handler(request: Request, exc: IngestionError) -> JSONResponse:
-        return _error_response(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "INGESTION_ERROR", exc.message
-        )
+        return _error_response(status.HTTP_422_UNPROCESSABLE_ENTITY, "INGESTION_ERROR", exc.message)
 
     @app.exception_handler(InputValidationError)
     async def input_validation_handler(request: Request, exc: InputValidationError) -> JSONResponse:
@@ -259,6 +257,18 @@ def create_app() -> FastAPI:
 
     # ── Request ID ────────────────────────────────────────────────────────
     app.middleware("http")(request_id_middleware)
+
+    # ── Defensive Security Headers ────────────────────────────────────────
+    @app.middleware("http")
+    async def security_headers_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+        if settings.is_production():
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
 
     # ── Exception handlers ────────────────────────────────────────────────
     _register_exception_handlers(app)
