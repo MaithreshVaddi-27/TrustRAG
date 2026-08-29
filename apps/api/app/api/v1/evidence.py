@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import get_current_user
 from app.api.v1.schemas.analysis import EvidenceResponse
@@ -22,7 +22,11 @@ router = APIRouter(prefix="/evidence", tags=["evidence"])
     summary="List all retrieved evidence records",
 )
 async def list_all_evidence_endpoint(
+    limit: int = Query(50, ge=1, le=200, description="Max records to return"),
+    skip: int = Query(0, ge=0, description="Records to skip for pagination"),
     current_user: Mapping[str, Any] = Depends(get_current_user),
 ) -> list[EvidenceResponse]:
-    """Retrieve all evidence chunks retrieved across analyses for the authenticated user."""
-    return await analysis_service.list_all_user_evidence(str(current_user["_id"]))
+    """Retrieve all evidence chunks for the authenticated user with pagination."""
+    return await analysis_service.list_all_user_evidence(
+        str(current_user["_id"]), limit=limit, skip=skip
+    )

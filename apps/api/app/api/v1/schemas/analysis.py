@@ -51,6 +51,9 @@ class ClaimResponse(BaseModel):
     id: str
     analysis_id: str
     text: str
+    subject: str | None = None
+    predicate: str | None = None
+    object: str | None = None
     state: str  # SUPPORTED, CONTRADICTED, NEUTRAL
     explanation: str | None = None
     evidence_ids: list[str] = []

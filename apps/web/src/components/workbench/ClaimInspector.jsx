@@ -54,6 +54,16 @@ function ClaimRow({ claim, index }) {
 
       {open && (
         <div className="px-3 pb-3 space-y-2 animate-fade-in">
+          {(claim.subject || claim.predicate || claim.object) && (
+            <div className="flex items-center gap-1.5 text-xs text-slate-300 bg-surface-900/60 border border-slate-800 rounded px-2.5 py-1.5 font-mono">
+              <span className="text-slate-500 font-sans text-[11px] font-medium mr-1">Triple:</span>
+              <span className="text-primary-300">({claim.subject || '—'}</span>
+              <span className="text-slate-500">→</span>
+              <span className="text-amber-300">{claim.predicate || '—'}</span>
+              <span className="text-slate-500">→</span>
+              <span className="text-indigo-300">{claim.object || '—'})</span>
+            </div>
+          )}
           {claim.explanation && (
             <div className="flex gap-2 text-xs text-slate-400 bg-surface-800/50 rounded p-2">
               <Quote size={12} className="shrink-0 mt-0.5 text-slate-500" />

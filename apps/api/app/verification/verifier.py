@@ -23,6 +23,34 @@ logger = get_logger(__name__)
 # ─── Pydantic Schemas for Structured LLM Mappings ─────────────────────────────
 
 
+def extract_claim_triple_heuristic(text: str) -> tuple[str | None, str | None, str | None]:
+    """
+    Extract basic Open Knowledge subject-predicate-object heuristics from a claim assertion.
+    """
+    if not text or not text.strip():
+        return None, None, None
+
+    predicates = [
+        "allows", "requires", "provides", "contains", "includes", "excludes",
+        "is", "are", "was", "were", "has", "have", "must", "should", "can",
+        "cannot", "takes", "retains", "stores", "deletes", "refunds", "processes",
+        "supports", "guarantees", "specifies", "covers"
+    ]
+
+    words = text.strip().rstrip(".").split()
+    for p in predicates:
+        for i, w in enumerate(words):
+            if w.lower() == p and i > 0 and i < len(words) - 1:
+                subject = " ".join(words[:i])
+                predicate = w
+                obj = " ".join(words[i + 1:])
+                return subject, predicate, obj
+
+    if len(words) >= 4:
+        return " ".join(words[:2]), words[2], " ".join(words[3:])
+    return (words[0] if words else None), None, None
+
+
 class ClaimDecomposition(BaseModel):
     """Schema to decompose text into atomic, checkable assertions."""
 
@@ -250,7 +278,11 @@ async def batch_verify_claims_nli(
 
 
 async def execute_claim_verification(
-    analysis_id_str: str, answer: str, chunks: list[dict[str, Any]], evidence_ids: list[ObjectId]
+    analysis_id_str: str,
+    answer: str,
+    chunks: list[dict[str, Any]],
+    evidence_ids: list[ObjectId],
+    user_id_str: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Decompose answer, execute NLI verifications, and save claims to MongoDB.
@@ -305,9 +337,14 @@ async def execute_claim_verification(
             if 0 < idx <= len(evidence_ids):
                 supporting_evidence_ids.append(evidence_ids[idx - 1])
 
+        subj, pred, obj = extract_claim_triple_heuristic(text)
         claim_doc = {
             "analysis_id": analysis_id,
+            "user_id": ObjectId(user_id_str) if user_id_str else None,
             "text": text,
+            "subject": subj,
+            "predicate": pred,
+            "object": obj,
             "state": nli_res.get("verdict", "NEUTRAL"),
             "explanation": nli_res.get("explanation", ""),
             "evidence_ids": supporting_evidence_ids,

@@ -238,6 +238,10 @@ async def create_indexes() -> None:
     await db[Collections.CLAIMS].create_index(
         [("analysis_id", pymongo.ASCENDING)], name="claim_analysis"
     )
+    await db[Collections.CLAIMS].create_index(
+        [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+        name="claim_user_time",
+    )
     # Claim documents store verdict under "state" (SUPPORTED/CONTRADICTED/NEUTRAL),
     # never "status" — index must match the actual field name to be useful.
     await db[Collections.CLAIMS].create_index([("state", pymongo.ASCENDING)], name="claim_state")
@@ -245,6 +249,10 @@ async def create_indexes() -> None:
     # ── evidence ───────────────────────────────────────────────────────────
     await db[Collections.EVIDENCE].create_index(
         [("analysis_id", pymongo.ASCENDING)], name="evidence_analysis"
+    )
+    await db[Collections.EVIDENCE].create_index(
+        [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+        name="evidence_user_time",
     )
     await db[Collections.EVIDENCE].create_index(
         [("document_id", pymongo.ASCENDING)], name="evidence_document"

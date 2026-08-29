@@ -32,6 +32,7 @@ logger = get_logger(__name__)
 
 class AgentState(TypedDict):
     analysis_id: str
+    user_id: str | None
     kb_id: str
     query: str
     current_query: str
@@ -119,6 +120,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
         doc_id = ObjectId(c["document_id"]) if c.get("document_id") else None
         evt_doc = {
             "analysis_id": ObjectId(state["analysis_id"]),
+            "user_id": ObjectId(state["user_id"]) if state.get("user_id") else None,
             "text": c["text"],
             "document_id": doc_id,
             "filename": c.get("filename"),
@@ -201,6 +203,7 @@ async def verification_node(state: AgentState) -> AgentState:
         answer=answer,
         chunks=state["chunks"],
         evidence_ids=state["evidence_ids"],
+        user_id_str=state.get("user_id"),
     )
 
     state["claims"] = claims
@@ -425,13 +428,14 @@ def build_agent_graph() -> Any:
 
 
 async def execute_agentic_rag_flow(
-    analysis_id_str: str, kb_id_str: str, query: str
+    analysis_id_str: str, kb_id_str: str, query: str, user_id_str: str | None = None
 ) -> dict[str, Any]:
     """Compile and execute the full agent graph pipeline."""
     graph = build_agent_graph()
 
     initial_state: AgentState = {
         "analysis_id": analysis_id_str,
+        "user_id": user_id_str,
         "kb_id": kb_id_str,
         "query": query,
         "current_query": query,

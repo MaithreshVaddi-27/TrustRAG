@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Database, FolderPlus, Plus, Upload, Trash2, FileText, Loader2, File, CheckCircle, AlertCircle } from 'lucide-react'
+import { Database, FolderPlus, Plus, Upload, Trash2, FileText, Loader2, File, CheckCircle, AlertCircle, Search } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { kbService } from '@/services/api'
@@ -10,6 +10,7 @@ export default function KnowledgeBasesPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [newKbName, setNewKbName] = useState('')
   const [newKbDesc, setNewKbDesc] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   
   // File upload state per KB
   const fileInputRefs = useRef({})
@@ -137,6 +138,25 @@ export default function KnowledgeBasesPage() {
           </div>
         )}
 
+        {/* Search & Filter Bar */}
+        {!isLoading && knowledgeBases?.length > 0 && (
+          <div className="glass-card p-3 flex items-center justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search knowledge bases by name or description..."
+                className="w-full bg-surface-800/80 border border-slate-700/80 rounded-lg pl-9 pr-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40 transition-colors"
+              />
+            </div>
+            <span className="text-xs text-slate-500 font-mono shrink-0">
+              {knowledgeBases.filter(kb => !searchTerm || kb.name.toLowerCase().includes(searchTerm.toLowerCase()) || (kb.description && kb.description.toLowerCase().includes(searchTerm.toLowerCase()))).length} of {knowledgeBases.length} KBs
+            </span>
+          </div>
+        )}
+
         {/* Loading State */}
         {isLoading && (
           <div className="flex justify-center items-center p-12">
@@ -168,7 +188,9 @@ export default function KnowledgeBasesPage() {
         {/* Knowledge Bases Grid */}
         {!isLoading && knowledgeBases?.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {knowledgeBases.map((kb) => (
+            {knowledgeBases
+              .filter(kb => !searchTerm || kb.name.toLowerCase().includes(searchTerm.toLowerCase()) || (kb.description && kb.description.toLowerCase().includes(searchTerm.toLowerCase())))
+              .map((kb) => (
               <div key={kb.id} className="glass-card flex flex-col hover:border-primary-500/30 transition-all duration-300 group">
                 <div className="p-5 flex-1">
                   <div className="flex justify-between items-start mb-3">

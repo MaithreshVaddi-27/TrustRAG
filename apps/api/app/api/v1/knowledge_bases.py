@@ -106,19 +106,26 @@ async def upload_document_endpoint(
             detail=f"Only the following formats are accepted: {sorted(allowed_extensions)}",
         )
 
-    # Read content to check size and compute hash
-    content = await file.read()
-    file_size = len(content)
-
+    # Read content in 1MB chunks with streaming size guard to prevent OOM
     max_file_size = cfg.max_file_size_mb * 1024 * 1024
-    if file_size > max_file_size:
-        raise FileTooLargeError(
-            "Document upload failed",
-            detail=(
-                f"File exceeds maximum limit of {cfg.max_file_size_mb}MB "
-                f"(got {file_size / (1024 * 1024):.2f}MB)"
-            ),
-        )
+    chunk_size = 1024 * 1024
+    content_chunks = []
+    total_bytes = 0
+
+    while chunk := await file.read(chunk_size):
+        total_bytes += len(chunk)
+        if total_bytes > max_file_size:
+            raise FileTooLargeError(
+                "Document upload failed",
+                detail=(
+                    f"File exceeds maximum limit of {cfg.max_file_size_mb}MB "
+                    f"(stream halted after reading {total_bytes / (1024 * 1024):.2f}MB)"
+                ),
+            )
+        content_chunks.append(chunk)
+
+    content = b"".join(content_chunks)
+    file_size = len(content)
 
     # Compute content hash
     content_hash = hashlib.sha256(content).hexdigest()

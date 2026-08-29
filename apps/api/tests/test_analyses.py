@@ -117,3 +117,51 @@ def test_stream_trace_endpoint(mock_create_indexes, mock_connect, mock_get_curre
         assert len(lines) >= 2
         assert "retrieval.started" in lines[0]
         assert "analysis.completed" in lines[1]
+
+
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_export_analysis_endpoint_jsonld(mock_create_indexes, mock_connect, mock_analysis_doc):
+    mock_coll = MagicMock()
+    mock_coll.find_one = AsyncMock(return_value=mock_analysis_doc)
+
+    with (
+        patch("app.services.analysis_service.get_collection", return_value=mock_coll),
+        patch("app.services.analysis_service.get_analysis_claims", AsyncMock(return_value=[])),
+        patch("app.services.analysis_service.get_analysis_evidence", AsyncMock(return_value=[])),
+    ):
+        url = "/api/v1/analyses/64ee39d09c6292376e191983/export?format=jsonld"
+        response = client.get(url)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["@type"] == "Report"
+        assert "@context" in data
+        assert data["name"] == "TRUSTRAG Verification Audit — 64ee39d09c6292376e191983"
+
+
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_list_analyses_with_pagination(mock_create_indexes, mock_connect, mock_analysis_doc):
+    mock_coll = MagicMock()
+
+    # Mock cursor with skip and limit
+    mock_cursor = MagicMock()
+    mock_cursor.sort.return_value = mock_cursor
+    mock_cursor.skip.return_value = mock_cursor
+    mock_cursor.limit.return_value = mock_cursor
+
+    async def mock_aiter():
+        yield mock_analysis_doc
+
+    mock_cursor.__aiter__ = lambda self: mock_aiter()
+    mock_coll.find.return_value = mock_cursor
+
+    with patch("app.services.analysis_service.get_collection", return_value=mock_coll):
+        response = client.get("/api/v1/analyses?limit=10&skip=5")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["id"] == "64ee39d09c6292376e191983"
+        mock_cursor.skip.assert_called_once_with(5)
+        mock_cursor.limit.assert_called_once_with(10)
+

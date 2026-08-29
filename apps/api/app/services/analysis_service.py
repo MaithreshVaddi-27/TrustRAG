@@ -60,6 +60,9 @@ def serialize_claim(doc: Mapping[str, Any]) -> ClaimResponse:
         id=str(doc["_id"]),
         analysis_id=str(doc["analysis_id"]),
         text=doc["text"],
+        subject=doc.get("subject"),
+        predicate=doc.get("predicate"),
+        object=doc.get("object"),
         state=doc.get("state", "UNKNOWN"),
         explanation=doc.get("explanation"),
         evidence_ids=[str(eid) for eid in doc.get("evidence_ids", [])],
@@ -134,6 +137,7 @@ async def create_analysis(
         analysis_id_str=str(result.inserted_id),
         kb_id_str=schema.knowledge_base_id,
         query=schema.query.strip(),
+        user_id_str=user_id_str,
     )
 
     return serialize_analysis(analysis_doc)
@@ -156,11 +160,19 @@ async def get_analysis(analysis_id_str: str, user_id_str: str) -> AnalysisRespon
     return serialize_analysis(analysis)
 
 
-async def list_analyses(user_id_str: str) -> list[AnalysisResponse]:
-    """List analysis runs for the authenticated user."""
+async def list_analyses(
+    user_id_str: str, limit: int = 50, skip: int = 0
+) -> list[AnalysisResponse]:
+    """List analysis runs for the authenticated user with pagination."""
     analyses_coll = get_collection(Collections.ANALYSES)
     results = []
-    async for a in analyses_coll.find({"user_id": ObjectId(user_id_str)}).sort("created_at", -1):
+    cursor = (
+        analyses_coll.find({"user_id": ObjectId(user_id_str)})
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(min(limit, 200))
+    )
+    async for a in cursor:
         results.append(serialize_analysis(a))
     return results
 
@@ -264,7 +276,9 @@ async def sse_event_generator(
         await asyncio.sleep(1.0)
 
 
-async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str) -> None:
+async def run_analysis_pipeline(
+    analysis_id_str: str, kb_id_str: str, query: str, user_id_str: str | None = None
+) -> None:
     """
     Execute RAG retrieval and generation pipeline in the background.
 
@@ -290,7 +304,10 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
         from app.agent.graph import execute_agentic_rag_flow
 
         final_state = await execute_agentic_rag_flow(
-            analysis_id_str=analysis_id_str, kb_id_str=kb_id_str, query=query
+            analysis_id_str=analysis_id_str,
+            kb_id_str=kb_id_str,
+            query=query,
+            user_id_str=user_id_str,
         )
 
         answer = final_state["answer"]
@@ -364,46 +381,70 @@ async def run_analysis_pipeline(analysis_id_str: str, kb_id_str: str, query: str
         )
 
 
-async def list_all_user_evidence(user_id_str: str) -> list[EvidenceResponse]:
-    """Fetch all evidence chunks across all analyses for this user."""
-    analyses_coll = get_collection(Collections.ANALYSES)
-    user_analyses = await analyses_coll.find(
-        {"user_id": ObjectId(user_id_str)}, {"_id": 1}
-    ).to_list(1000)
-    analysis_ids = [a["_id"] for a in user_analyses]
-    if not analysis_ids:
-        return []
-
+async def list_all_user_evidence(
+    user_id_str: str, limit: int = 50, skip: int = 0
+) -> list[EvidenceResponse]:
+    """Fetch all evidence chunks across all analyses for this user with pagination."""
     evidence_coll = get_collection(Collections.EVIDENCE)
+    uid = ObjectId(user_id_str)
+
+    query_filter: dict[str, Any] = {"user_id": uid}
+    if await evidence_coll.count_documents(query_filter) == 0:
+        analyses_coll = get_collection(Collections.ANALYSES)
+        user_analyses = await analyses_coll.find(
+            {"user_id": uid}, {"_id": 1}
+        ).to_list(1000)
+        analysis_ids = [a["_id"] for a in user_analyses]
+        if not analysis_ids:
+            return []
+        query_filter = {"analysis_id": {"$in": analysis_ids}}
+
     results = []
-    async for e in (
-        evidence_coll.find({"analysis_id": {"$in": analysis_ids}}).sort("created_at", -1).limit(200)
-    ):
+    cursor = (
+        evidence_coll.find(query_filter)
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(min(limit, 200))
+    )
+    async for e in cursor:
         results.append(serialize_evidence(e))
     return results
 
 
-async def list_all_user_claims(user_id_str: str) -> list[ClaimResponse]:
-    """Fetch all verified claims across all analyses for this user."""
-    analyses_coll = get_collection(Collections.ANALYSES)
-    user_analyses = await analyses_coll.find(
-        {"user_id": ObjectId(user_id_str)}, {"_id": 1}
-    ).to_list(1000)
-    analysis_ids = [a["_id"] for a in user_analyses]
-    if not analysis_ids:
-        return []
-
+async def list_all_user_claims(
+    user_id_str: str, limit: int = 50, skip: int = 0
+) -> list[ClaimResponse]:
+    """Fetch all verified claims across all analyses for this user with pagination."""
     claims_coll = get_collection(Collections.CLAIMS)
+    uid = ObjectId(user_id_str)
+
+    query_filter: dict[str, Any] = {"user_id": uid}
+    if await claims_coll.count_documents(query_filter) == 0:
+        analyses_coll = get_collection(Collections.ANALYSES)
+        user_analyses = await analyses_coll.find(
+            {"user_id": uid}, {"_id": 1}
+        ).to_list(1000)
+        analysis_ids = [a["_id"] for a in user_analyses]
+        if not analysis_ids:
+            return []
+        query_filter = {"analysis_id": {"$in": analysis_ids}}
+
     results = []
-    async for c in (
-        claims_coll.find({"analysis_id": {"$in": analysis_ids}}).sort("created_at", -1).limit(200)
-    ):
+    cursor = (
+        claims_coll.find(query_filter)
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(min(limit, 200))
+    )
+    async for c in cursor:
         results.append(serialize_claim(c))
     return results
 
 
-async def list_all_user_conflicts(user_id_str: str) -> list[dict[str, Any]]:
-    """Fetch all detected conflicts across all analyses for this user."""
+async def list_all_user_conflicts(
+    user_id_str: str, limit: int = 50, skip: int = 0
+) -> list[dict[str, Any]]:
+    """Fetch all detected conflicts across all analyses for this user with pagination."""
     analyses_coll = get_collection(Collections.ANALYSES)
     user_analyses = await analyses_coll.find(
         {"user_id": ObjectId(user_id_str)}, {"_id": 1, "query": 1}
@@ -420,11 +461,13 @@ async def list_all_user_conflicts(user_id_str: str) -> list[dict[str, Any]]:
     conflicts = []
 
     # 1. Contradicted claims
-    async for c in (
+    cursor_claims = (
         claims_coll.find({"analysis_id": {"$in": a_ids}, "state": "CONTRADICTED"})
         .sort("created_at", -1)
-        .limit(50)
-    ):
+        .skip(skip)
+        .limit(min(limit, 100))
+    )
+    async for c in cursor_claims:
         conflicts.append(
             {
                 "id": str(c["_id"]),
@@ -443,13 +486,15 @@ async def list_all_user_conflicts(user_id_str: str) -> list[dict[str, Any]]:
         )
 
     # 2. Corrupted / compromised evidence
-    async for e in (
+    cursor_evidence = (
         evidence_coll.find(
             {"analysis_id": {"$in": a_ids}, "integrity_status": {"$nin": ["VERIFIED", None]}}
         )
         .sort("created_at", -1)
-        .limit(50)
-    ):
+        .skip(skip)
+        .limit(min(limit, 100))
+    )
+    async for e in cursor_evidence:
         conflicts.append(
             {
                 "id": str(e["_id"]),
@@ -468,3 +513,81 @@ async def list_all_user_conflicts(user_id_str: str) -> list[dict[str, Any]]:
         )
 
     return conflicts
+
+
+async def export_analysis_dossier(
+    analysis_id_str: str, user_id_str: str, export_format: str = "jsonld"
+) -> dict[str, Any]:
+    """
+    Export full compliance and audit package for an analysis run.
+
+    Includes answer, verified claim assertions (with triples), retrieved evidence
+    with SHA-256 provenance hashes, and reliability diagnosis.
+    """
+    analysis = await get_analysis(analysis_id_str, user_id_str)
+    claims = await get_analysis_claims(analysis_id_str, user_id_str)
+    evidence = await get_analysis_evidence(analysis_id_str, user_id_str)
+
+    created_at_str = (
+        analysis.created_at.isoformat()
+        if hasattr(analysis.created_at, "isoformat")
+        else str(analysis.created_at)
+    )
+
+    if export_format.lower() == "jsonld":
+        return {
+            "@context": {
+                "@vocab": "https://schema.org/",
+                "trustrag": "https://trustrag.dev/ontology/",
+                "Claim": "trustrag:Claim",
+                "Evidence": "trustrag:Evidence",
+                "reliabilityScore": "trustrag:reliabilityScore",
+                "integrityStatus": "trustrag:integrityStatus",
+                "contentHash": "trustrag:contentHash",
+            },
+            "@type": "Report",
+            "@id": f"urn:trustrag:analysis:{analysis.id}",
+            "name": f"TRUSTRAG Verification Audit — {analysis.id}",
+            "dateCreated": created_at_str,
+            "about": {"@type": "Question", "text": analysis.query},
+            "text": analysis.answer,
+            "reliability": {
+                "score": analysis.reliability.score,
+                "status": analysis.reliability.status,
+            },
+            "diagnosis": {
+                "type": analysis.diagnosis.type,
+                "failures": analysis.diagnosis.failures,
+            },
+            "claims": [
+                {
+                    "@type": "Claim",
+                    "text": c.text,
+                    "subject": c.subject,
+                    "predicate": c.predicate,
+                    "object": c.object,
+                    "verdict": c.state,
+                    "explanation": c.explanation,
+                    "evidenceIds": c.evidence_ids,
+                }
+                for c in claims
+            ],
+            "evidence": [
+                {
+                    "@type": "DigitalDocument",
+                    "text": e.text,
+                    "filename": e.filename,
+                    "documentId": e.document_id,
+                    "integrityStatus": e.integrity_status,
+                    "retrievalScore": e.retrieval_score,
+                    "rerankScore": e.rerank_score,
+                }
+                for e in evidence
+            ],
+        }
+
+    return {
+        "analysis": analysis.model_dump(),
+        "claims": [c.model_dump() for c in claims],
+        "evidence": [e.model_dump() for e in evidence],
+    }

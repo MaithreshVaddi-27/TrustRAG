@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Database, Loader2, Zap } from 'lucide-react'
+import { Database, Loader2, Zap, Download } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { ReliabilityBadge, StatusDot } from '@/components/workbench/ReliabilityBadge'
@@ -7,7 +7,7 @@ import { ClaimInspector } from '@/components/workbench/ClaimInspector'
 import { EvidenceViewer } from '@/components/workbench/EvidenceViewer'
 import { ExecutionTrace, RecoveryTimeline } from '@/components/workbench/ExecutionTrace'
 import { kbService, analysisService } from '@/services/api'
-import { openAnalysisStream } from '@/lib/api'
+import api, { openAnalysisStream } from '@/lib/api'
 
 export default function PlaygroundPage() {
   const [query, setQuery] = useState('')
@@ -109,8 +109,32 @@ export default function PlaygroundPage() {
     { id: 'trace',     label: 'Trace' },
   ]
 
+  async function handleExportDossier() {
+    if (!analysis?.id) return
+    try {
+      const data = await api.get(`/api/v1/analyses/${analysis.id}/export?format=jsonld`).then(r => r.data)
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/ld+json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `trustrag-audit-${analysis.id}.jsonld`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Failed to export dossier', err)
+    }
+  }
+
   // Determine which trace events to show (live during load, or fetched after)
   const currentTraceEvents = loading ? traceEvents : (analysis?.trace || traceEvents)
+  const recoveryRuns = currentTraceEvents
+    .filter(e => e.event && e.event.startsWith('recovery.'))
+    .map(e => ({
+      strategy: e.event === 'recovery.rewrite' ? 'Targeted Query Rewrite' : 'Expanded Context Retrieval',
+      reason: e.data?.message || 'Threshold checks failed, attempting adaptive healing',
+      result: 'Context augmented, re-evaluating reliability',
+      success: true,
+    }))
 
   return (
     <AppLayout>
@@ -218,13 +242,24 @@ export default function PlaygroundPage() {
                   <StatusDot status={analysis.status} />
                   <p className="text-sm text-slate-300 truncate font-medium">{analysis.query}</p>
                 </div>
-                {analysis.reliability && (
-                  <ReliabilityBadge
-                    score={analysis.reliability.score}
-                    status={analysis.reliability.status}
-                    size="md"
-                  />
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  {analysis.reliability && (
+                    <ReliabilityBadge
+                      score={analysis.reliability.score}
+                      status={analysis.reliability.status}
+                      size="md"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleExportDossier}
+                    title="Export Open Knowledge JSON-LD Dossier"
+                    className="px-2.5 py-1 text-xs border border-slate-700 hover:border-slate-500 rounded-lg text-slate-300 hover:text-white flex items-center gap-1.5 transition-colors bg-surface-800"
+                  >
+                    <Download size={13} />
+                    Export
+                  </button>
+                </div>
               </div>
 
               {/* Tabs */}
@@ -284,7 +319,7 @@ export default function PlaygroundPage() {
                       </div>
                     )}
 
-                    <RecoveryTimeline recoveryRuns={[]} />
+                    <RecoveryTimeline recoveryRuns={recoveryRuns} />
                   </div>
                 )}
 

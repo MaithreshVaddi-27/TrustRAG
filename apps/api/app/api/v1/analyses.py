@@ -48,10 +48,26 @@ async def create_analysis_endpoint(
 
 @router.get("", response_model=list[AnalysisResponse], summary="List analysis history")
 async def list_analyses_endpoint(
+    limit: int = Query(50, ge=1, le=200, description="Max records to return"),
+    skip: int = Query(0, ge=0, description="Records to skip for pagination"),
     current_user: Mapping[str, Any] = Depends(get_current_user),
 ) -> list[AnalysisResponse]:
-    """List all analysis runs submitted by the logged-in user."""
-    return await analysis_service.list_analyses(str(current_user["_id"]))
+    """List all analysis runs submitted by the logged-in user with pagination."""
+    return await analysis_service.list_analyses(str(current_user["_id"]), limit=limit, skip=skip)
+
+
+@router.get("/{analysis_id}/export", summary="Export audit & compliance dossier")
+async def export_analysis_endpoint(
+    analysis_id: str,
+    export_format: str = Query(
+        "jsonld", alias="format", description="Export format: jsonld or json"
+    ),
+    current_user: Mapping[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Export complete verifiable dossier including answer, claim triples, and evidence hashes."""
+    return await analysis_service.export_analysis_dossier(
+        analysis_id, str(current_user["_id"]), export_format=export_format
+    )
 
 
 @router.get("/{analysis_id}", response_model=AnalysisResponse, summary="Get analysis run details")

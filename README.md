@@ -9,7 +9,7 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-FF6F00)](https://langchain-ai.github.io/langgraph/)
 [![Qdrant](https://img.shields.io/badge/Qdrant-Hybrid_Vector-DC2626?logo=qdrant&logoColor=white)](https://qdrant.tech)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Community_&_Atlas-47A248?logo=mongodb&logoColor=white)](https://mongodb.com)
-[![Tests](https://img.shields.io/badge/Tests-69%20Passing-brightgreen)](apps/api/tests)
+[![Tests](https://img.shields.io/badge/Tests-71%20Passing-brightgreen)](apps/api/tests)
 [![Bandit](https://img.shields.io/badge/Bandit%20SAST-0%20Issues-brightgreen)](docs/audits/final-audit-report.md)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
@@ -437,6 +437,7 @@ All protected endpoints require `Authorization: Bearer <JWT>`.
 | `POST` | `/api/v1/analyses` | User | Trigger LangGraph agentic analysis pipeline (rate-limited: 10/min) |
 | `GET` | `/api/v1/analyses` | User | List analysis history for authenticated user |
 | `GET` | `/api/v1/analyses/{id}` | User | Fetch analysis details, answer, reliability score, and diagnosis |
+| `GET` | `/api/v1/analyses/{id}/export` | User | Export complete verifiable JSON / JSON-LD audit dossier |
 | `GET` | `/api/v1/analyses/{id}/stream` | User | Server-Sent Events (SSE) live telemetry stream |
 | `GET` | `/api/v1/analyses/{id}/claims` | User | Fetch decomposed claims and NLI verification states |
 | `GET` | `/api/v1/analyses/{id}/evidence` | User | Fetch retrieved evidence chunks with provenance and integrity status |
