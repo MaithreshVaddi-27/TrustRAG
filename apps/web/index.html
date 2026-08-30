@@ -2,18 +2,50 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    
+    <!-- Primary Title & Meta -->
+    <title>TRUSTRAG — AI Reliability & Hallucination Audit Workbench</title>
+    <meta name="title" content="TRUSTRAG — AI Reliability & Hallucination Audit Workbench" />
+    <meta name="description" content="Autonomous Hallucination Detection & Closed-Loop Recovery Platform. Audit claims, verify evidence citations with RRF, and self-heal low-confidence RAG responses." />
+    
+    <!-- Favicon & PWA Icons -->
     <link rel="icon" type="image/svg+xml" href="/trustrag-icon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="TRUSTRAG — AI Reliability Workbench for Retrieval-Augmented Generation. Verify claims, diagnose failures, and adaptively recover with grounded answers." />
-    <meta name="theme-color" content="#0f172a" />
-    <!-- Google Fonts: Inter + JetBrains Mono -->
+    <link rel="apple-touch-icon" href="/trustrag-icon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Color Scheme & Theme Color for Mobile Browser Address Bars -->
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#040711" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#040711" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://trustrag.pages.dev/" />
+    <meta property="og:site_name" content="TRUSTRAG Workbench" />
+    <meta property="og:title" content="TRUSTRAG — AI Reliability & Hallucination Audit Workbench" />
+    <meta property="og:description" content="Autonomous Hallucination Detection & Closed-Loop Recovery Platform. Audit claims, verify evidence citations with RRF, and self-heal low-confidence RAG responses." />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:title" content="TRUSTRAG — AI Reliability & Hallucination Audit Workbench" />
+    <meta property="twitter:description" content="Autonomous Hallucination Detection & Closed-Loop Recovery Platform. Audit claims, verify evidence citations with RRF, and self-heal low-confidence RAG responses." />
+
+    <!-- Google Fonts: Inter + JetBrains Mono (Non-blocking with offline fallback) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      media="print"
+      onload="this.media='all'"
     />
-    <title>TRUSTRAG — AI Reliability Workbench</title>
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      />
+    </noscript>
   </head>
   <body class="bg-surface-900 text-slate-100 font-sans antialiased">
     <div id="root"></div>

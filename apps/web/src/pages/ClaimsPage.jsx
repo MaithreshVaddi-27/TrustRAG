@@ -16,8 +16,11 @@ export default function ClaimsPage() {
 
   const states = ['ALL', 'SUPPORTED', 'CONTRADICTED', 'NEUTRAL']
 
+  const getClaimState = (c) => (c.state || c.status || c.verification_status || 'NEUTRAL').toUpperCase()
+
   const stateCounts = claims.reduce((acc, c) => {
-    acc[c.state] = (acc[c.state] || 0) + 1
+    const st = getClaimState(c)
+    acc[st] = (acc[st] || 0) + 1
     return acc
   }, {})
 
@@ -26,7 +29,7 @@ export default function ClaimsPage() {
       !search.trim() ||
       claim.text?.toLowerCase().includes(search.toLowerCase()) ||
       claim.explanation?.toLowerCase().includes(search.toLowerCase())
-    const matchesState = selectedState === 'ALL' || claim.state === selectedState
+    const matchesState = selectedState === 'ALL' || getClaimState(claim) === selectedState
     return matchesSearch && matchesState
   })
 

@@ -55,11 +55,14 @@ async def index_parsed_chunks(
             return
 
         user_id = None
+        doc_filename = "Document"
         if hasattr(doc_coll, "find_one"):
             doc_lookup = doc_coll.find_one({"_id": doc_id})
             if hasattr(doc_lookup, "__await__"):
                 doc = await doc_lookup
-                user_id = doc.get("user_id") if doc else None
+                if doc:
+                    user_id = doc.get("user_id")
+                    doc_filename = doc.get("filename", "Document")
 
         # Store chunks in MongoDB for future integrity audits
         import hashlib
@@ -89,15 +92,19 @@ async def index_parsed_chunks(
         # 3. Load embedding model (cached)
         embed_model = get_embedding_model()
 
-        # Extract texts for batch embedding
-        texts = [c["text"] for c in chunks]
-        logger.info("Generating dense embeddings", doc_id=doc_id_str, count=len(texts))
+        # Zero-Cost Contextual Prefixing (Anthropic SOTA pattern):
+        # Prepend document filename and zone to resolve chunk ambiguity without extra LLM cost
+        contextual_texts = [
+            f"[{doc_filename} | {c.get('zone', 'body').upper()}] {c['text']}"
+            for c in chunks
+        ]
+        logger.info("Generating dense embeddings", doc_id=doc_id_str, count=len(contextual_texts))
 
         # Batch encode in chunks of 20 with 30s backoff to respect Google free-tier 100 RPM quota
         embed_batch_size = 20
         dense_vectors = []
-        for offset in range(0, len(texts), embed_batch_size):
-            batch_slice = texts[offset : offset + embed_batch_size]
+        for offset in range(0, len(contextual_texts), embed_batch_size):
+            batch_slice = contextual_texts[offset : offset + embed_batch_size]
             for attempt in range(5):
                 try:
                     batch_vecs = await asyncio.to_thread(embed_model.embed_documents, batch_slice)
@@ -115,7 +122,7 @@ async def index_parsed_chunks(
                         await asyncio.sleep(wait_seconds)
                     else:
                         raise batch_err
-            if offset + embed_batch_size < len(texts):
+            if offset + embed_batch_size < len(contextual_texts):
                 await asyncio.sleep(1.0)
 
         qdrant_client = get_qdrant_client()
@@ -124,9 +131,9 @@ async def index_parsed_chunks(
         # 4. Construct Qdrant points
         points = []
         for i, chunk in enumerate(chunks):
-            # Compute sparse TF vector with zone weighting
+            # Compute sparse TF vector with zone weighting over contextual text
             chunk_zone = chunk.get("zone", "body")
-            sparse_vec = generate_sparse_vector(chunk["text"], zone=chunk_zone)
+            sparse_vec = generate_sparse_vector(contextual_texts[i], zone=chunk_zone)
 
             # Unique deterministic ID for Qdrant point (based on doc ID and chunk index)
             point_id = hashlib_qdrant_id(doc_id_str, chunk["chunk_index"])
@@ -182,6 +189,9 @@ async def index_parsed_chunks(
                 }
             },
         )
+    finally:
+        from app.core.memory import trim_memory
+        trim_memory()
 
 
 def hashlib_qdrant_id(doc_id_str: str, chunk_index: int) -> str:

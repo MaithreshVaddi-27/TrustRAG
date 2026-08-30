@@ -7,6 +7,8 @@ Separates knowledge bases into independent Qdrant collections.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
@@ -16,6 +18,7 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _client: QdrantClient | None = None
 
 
@@ -26,7 +29,26 @@ def get_qdrant_client() -> QdrantClient:
         settings = get_settings()
         logger.info("Initializing Qdrant client", url=settings.qdrant_url)
         try:
-            if settings.qdrant_api_key:
+            # Support embedded local Qdrant directly via pip qdrant-client rust engine
+            if (
+                settings.qdrant_url in ("local", ":memory:")
+                or settings.qdrant_url.startswith("./")
+                or settings.qdrant_url.startswith("/")
+                or not settings.qdrant_url.startswith("http")
+            ):
+                if settings.qdrant_url == "local":
+                    storage_path = PROJECT_ROOT / "data" / "qdrant"
+                elif settings.qdrant_url == ":memory:":
+                    storage_path = ":memory:"
+                else:
+                    storage_path = Path(settings.qdrant_url)
+
+                if isinstance(storage_path, Path):
+                    storage_path.mkdir(parents=True, exist_ok=True)
+                    _client = QdrantClient(path=str(storage_path))
+                else:
+                    _client = QdrantClient(location=str(storage_path))
+            elif settings.qdrant_api_key:
                 _client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
             else:
                 _client = QdrantClient(url=settings.qdrant_url)
@@ -70,6 +92,7 @@ async def init_kb_collection(kb_id: str) -> None:
             vectors_config=models.VectorParams(
                 size=cfg.embedding_dimensionality,
                 distance=models.Distance.COSINE,
+                on_disk=True,
             ),
             # Setup sparse vectors indexing (sparse query matching/BM25)
             sparse_vectors_config={
@@ -77,8 +100,19 @@ async def init_kb_collection(kb_id: str) -> None:
                     index=models.SparseIndexParams(on_disk=True)
                 )
             },
+            # Ultra-low RAM: Quantize float32 vectors to INT8 with on-disk storage
+            quantization_config=models.ScalarQuantization(
+                scalar=models.ScalarQuantizationConfig(
+                    type=models.ScalarType.INT8,
+                    quantile=0.99,
+                    always_ram=False,
+                )
+            ),
         )
-        logger.info("Qdrant collection created successfully", collection=collection_name)
+        logger.info(
+            "Qdrant collection created with on_disk and INT8 quantization",
+            collection=collection_name,
+        )
     except Exception as exc:
         raise VectorStoreError(
             f"Failed to initialize Qdrant collection '{collection_name}'", detail=str(exc)

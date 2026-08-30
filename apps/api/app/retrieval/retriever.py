@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import threading
+from collections import OrderedDict
 from datetime import UTC, datetime
 from typing import Any
 
@@ -21,15 +23,49 @@ from app.ingestion.sparse_vector import generate_sparse_vector
 logger = get_logger(__name__)
 
 
+class QueryEmbeddingLRUCache:
+    """Thread-safe LRU cache for query vector embeddings to prevent redundant API calls."""
+
+    def __init__(self, capacity: int = 1024):
+        self._capacity = capacity
+        self._cache: OrderedDict[str, list[float]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, query: str) -> list[float] | None:
+        with self._lock:
+            if query in self._cache:
+                self._cache.move_to_end(query)
+                return self._cache[query]
+            return None
+
+    def set(self, query: str, vector: list[float]) -> None:
+        with self._lock:
+            if query in self._cache:
+                self._cache.move_to_end(query)
+            else:
+                if len(self._cache) >= self._capacity:
+                    self._cache.popitem(last=False)
+            self._cache[query] = vector
+
+
+_query_cache = QueryEmbeddingLRUCache(capacity=1024)
+
+
 async def dense_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
-    """Retrieve top_k chunks using dense vector embeddings (sentence-transformers)."""
+    """Retrieve top_k chunks using dense vector embeddings with LRU cache."""
     try:
         client = get_qdrant_client()
         collection_name = get_collection_name(kb_id)
-        embed_model = get_embedding_model()
 
-        # Embed query text in background thread to avoid freezing asyncio event loop
-        query_vector = await asyncio.to_thread(embed_model.embed_query, query)
+        # Check LRU cache first to eliminate redundant remote API latency
+        cached_vec = _query_cache.get(query)
+        if cached_vec is not None:
+            query_vector = cached_vec
+        else:
+            embed_model = get_embedding_model()
+            # Embed query text in background thread to avoid freezing asyncio event loop
+            query_vector = await asyncio.to_thread(embed_model.embed_query, query)
+            _query_cache.set(query, query_vector)
 
         if hasattr(client, "query_points"):
             response = client.query_points(

@@ -22,6 +22,9 @@ export const kbService = {
 
   listDocuments: (kbId) =>
     api.get(`/api/v1/knowledge-bases/${kbId}/documents`).then(r => r.data),
+
+  deleteDocument: (docId) =>
+    api.delete(`/api/v1/documents/${docId}`).then(r => r.data),
 }
 
 // ── Analyses ──────────────────────────────────────────────────────────────

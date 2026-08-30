@@ -11,6 +11,7 @@ Provides:
 
 from __future__ import annotations
 
+import functools
 import re
 import unicodedata
 from enum import StrEnum
@@ -619,8 +620,9 @@ class PorterStemmer:
 _stemmer = PorterStemmer()
 
 
+@functools.lru_cache(maxsize=32768)
 def stem_word(word: str) -> str:
-    """Convenience helper to stem a single word using singleton PorterStemmer."""
+    """Convenience helper to stem a single word using singleton PorterStemmer with LRU cache."""
     return _stemmer.stem(word)
 
 

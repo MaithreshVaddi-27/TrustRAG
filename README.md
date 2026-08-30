@@ -31,6 +31,7 @@
 - [Overview](#-overview)
 - [Self-Healing Reliability Loop](#-self-healing-reliability-loop)
 - [System Architecture](#-system-architecture)
+- [Ultra-Premium Dark Workbench UI](#-ultra-premium-dark-workbench-ui)
 - [Production Deployment (Render & Cloudflare)](#-production-deployment-render--cloudflare)
 - [Core Engineering Capabilities](#-core-engineering-capabilities)
   - [1. Multi-Tenant User Isolation & Anti-IDOR](#1-multi-tenant-user-isolation--anti-idor)
@@ -43,8 +44,8 @@
 - [Getting Started](#-getting-started)
   - [Prerequisites](#prerequisites)
   - [Environment Configuration](#1-environment-configuration)
-  - [Running with Docker (Recommended)](#option-a-running-with-docker-recommended)
-  - [Running Locally (Non-Docker)](#option-b-running-locally-non-docker)
+  - [Option A: Running Locally with Native Resources (Recommended)](#option-a-running-locally-with-native-resources-recommended)
+  - [Option B: Running with Docker Compose](#option-b-running-with-docker-compose)
 - [End-to-End Walkthrough via CLI](#-end-to-end-walkthrough-via-cli)
 - [API Reference](#-api-reference)
 - [Testing & Quality Assurance](#-testing--quality-assurance)
@@ -168,6 +169,56 @@ TrustRAG/
 
 ---
 
+## 💎 Ultra-Premium Dark Workbench UI
+
+The frontend interface has been rebuilt from the ground up to deliver a state-of-the-art developer and observability experience:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│ [⚔️ TRUSTRAG] [◀]    ● Live API    ⚡ Gemini 3.5 Flash Lite    💠 384d    [Run Analysis] [TR] │  Top Navbar
+├───────────────┬─────────────────────────────────────────────────────────────────────────┤
+│ 📊 Dashboard  │  AI Reliability Workbench                                              │
+│ ⚡ Playground │  Autonomous Hallucination Detection & Closed-Loop Recovery              │
+│ ───────────── │                                                                         │
+│ 🗄️ Knowledge  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐    │
+│ 🔍 Evidence   │  │  KBs & Docs  │ │ Analyses Run │ │ Reliability  │ │ Claims & NLI │    │  Hero KPI Cards
+│ 🧠 Claims     │  │    2 (191)   │ │  24 Grounded │ │  92.4% Trust │ │  86 Verified │    │
+│ 🔀 Conflicts  │  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘    │
+│ ───────────── │                                                                         │
+│ 🧪 Experiments│  📈 Reliability Progression Curve              🛡️ Claim Audit           │
+│ ⚙️ Settings   │  [~~~~~~~~~~ AreaChart ~~~~~~~~~~]             [■ ■ ■ BarChart]         │  Recharts Analytics
+│               │                                                                         │
+│ ───────────── │  🕒 Recent Analysis Stream                                              │
+│ [🔒 Shield]   │  • "IRS Unit 1 overview"  ──  [98% HIGH TRUST] ── 12 claims verified   │  Live Feed
+└───────────────┴─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. Zero-Purple / Zero-Pink Cyber Cyan Palette
+- **High-Tech Aesthetic**: Replaced standard indigo/purple shades with an **Electric Cyber Azure & Cyan** theme (`#0ea5e9`, `#0284c7`, `#38bdf8`) on obsidian deep-space surfaces (`#040711`, `#080c16`, `#121826`).
+- **Semantic Clarity**: Verified states glow in **Emerald Green** (`#10b981`), warnings in **Amber** (`#f59e0b`), and hallucinations/contradictions in **Crimson Red** (`#ef4444`).
+- **Subtle Micro-Textures**: Dot-matrix grid background (`.bg-cyber-grid`), cyan focus rings, and glassmorphic card elevations.
+
+### 2. Top Telemetry Navbar & Responsive Collapsible Sidebar
+- **Top Navbar**: Features real-time engine telemetry pills (`API Online`, `Gemini 3.5 Flash Lite`, `Gemini 384d Matryoshka`), a quick "Run Analysis" launcher, and user profile management.
+- **Collapsible Sidebar**:
+  - **Desktop**: Toggle button collapses the sidebar into an icon-dock rail (`w-18`) with floating hover tooltips, maximizing screen real estate for Playground traces. State persists across reloads via `localStorage`.
+  - **Mobile**: Responsive slide-out drawer with a dark backdrop blur and an explicit close button (`X`).
+
+### 3. Document Indexing Explorer (`/knowledge-bases`)
+- **Per-Collection Drawer**: Expand or collapse documents inside any Knowledge Base.
+- **Real-Time Indexing Badges**:
+  - `Indexed & Ready`: Emerald badge with chunk count (e.g. `72 chunks`, `119 chunks`).
+  - `Indexing...`: Cyan badge with animated spinner during background ingestion.
+  - `Failed`: Crimson badge with error inspection details.
+- **Cascade Deletion**: Delete individual documents with one click, cleanly purging chunks from MongoDB and points from Qdrant.
+
+### 4. Interactive Recharts Analytics (`/dashboard`)
+- **Reliability Progression Curve**: Gradient `AreaChart` tracking run-by-run reliability scores against the 70% safety threshold.
+- **Claim Verification Audit**: High-contrast `BarChart` comparing Supported, Neutral, and Contradicted claim counts.
+- **5-Phase Stepper**: Visual walkthrough of the closed-loop self-healing mechanism.
+
+---
+
 ## 🌐 Production Deployment (Render & Cloudflare)
 
 The production branch is **`production-deploy`**. Both the frontend and backend are continuously deployed to production environments:
@@ -270,12 +321,12 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 
 | Layer | Component | Version / Specification | Role in TRUSTRAG |
 |---|---|---|---|
-| **Frontend** | React + Vite | React 18, Vite 6, Tailwind CSS | High-performance glassmorphic UI, responsive tables, Recharts |
+| **Frontend** | React + Vite | React 18, Vite 6, Tailwind CSS | Ultra-premium dark theme UI, responsive navbar/sidebar, Recharts (99kB bundle) |
 | **Telemetry** | Server-Sent Events (SSE) | EventSource protocol | Real-time agent execution graph streaming to the workbench UI |
 | **Backend** | FastAPI | Python 3.11, Pydantic v2 | High-throughput asynchronous REST API, custom middleware |
 | **State Machine** | LangGraph | `StateGraph` | Multi-node deterministic agent state machine |
-| **Primary Database** | MongoDB Community | v7.0+ (Local Host / Docker Bridge) | Permanent storage of metadata, chunks, claims, and execution traces |
-| **Vector Engine** | Qdrant | v1.10.1 (HTTP & gRPC) | Hybrid dense and sparse vector storage, payload filtering |
+| **Primary Database** | MongoDB Community | v7.0+ (Local Host / Atlas Cloud) | Permanent storage of metadata, chunks, claims, and execution traces |
+| **Vector Engine** | Qdrant | Embedded Local Rust Engine / Cloud | Hybrid dense & sparse vectors; 0MB idle RAM local or cloud-hosted |
 | **Embeddings** | Google Gemini API / HuggingFace | `models/gemini-embedding-001` (384d) / `paraphrase-MiniLM-L3-v2` | Matryoshka 384-dim dense vectors with cloud low-RAM footprint (<55MB) |
 | **Reasoning LLM** | Google Gemini | `gemini-2.5-flash-lite` / `gemini-3.5-flash-lite` | Grounded reasoning, claim extraction, and batch NLI verification |
 | **Security Suite** | JWT + Bcrypt + SlowAPI | HS256, 12 Bcrypt rounds, IP rate limits | Authentication, timing-attack protection, defensive HTTP headers |
@@ -318,27 +369,42 @@ JWT_EXPIRY_MINUTES=60
 GEMINI_API_KEY=your_gemini_api_key_here
 
 # MongoDB Connection
-# Option 1: Local MongoDB Community (Recommended for permanent local storage):
-MONGODB_URI=mongodb://host.docker.internal:27017/trustrag_db
+# Option 1 (Recommended Local): Native MongoDB
+MONGODB_URI=mongodb://localhost:27017
 # Option 2: MongoDB Atlas Cloud:
-# MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/trustrag_db?retryWrites=true&w=majority
+# MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/trustrag?retryWrites=true&w=majority
 
 # Qdrant Vector Store
-# In Docker compose, container communicates via internal network:
-QDRANT_URL=http://qdrant:6333
+# Option 1 (Recommended Local): Embedded in-process Rust engine (0MB idle RAM, no Docker needed):
+QDRANT_URL=local
+# Option 2 (Docker / Server): http://localhost:6333
+# Option 3 (Qdrant Cloud):    https://<cluster-id>.<region>.aws.cloud.qdrant.io
 ```
 
 ---
 
-### Option A: Running with Docker (Recommended)
+### Option A: Running Locally with Native Resources (Recommended)
 
-1. **Start Backend & Vector Store**:
+This is the fastest, lightest method for development on macOS/Linux. It bypasses Docker Desktop's 4GB RAM overhead and boots in under 1 second.
+
+1. **Verify Local MongoDB**:
    ```bash
-   # Start FastAPI backend and Qdrant in detached mode
-   docker compose up -d
+   # Ensure local MongoDB is running (e.g. via Homebrew on macOS)
+   brew services start mongodb-community
    ```
 
-2. **Verify Multi-Service Health**:
+2. **Start Backend Service (Embedded Qdrant)**:
+   ```bash
+   cd apps/api
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -e ".[dev]"
+
+   # Launch FastAPI with hot-reload (automatically mounts embedded Qdrant in ./data/qdrant)
+   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+3. **Verify Health Endpoint**:
    ```bash
    curl -s http://localhost:8000/api/v1/health | jq
    ```
@@ -355,7 +421,7 @@ QDRANT_URL=http://qdrant:6333
    }
    ```
 
-3. **Start Frontend Workbench**:
+4. **Start Frontend Workbench**:
    ```bash
    cd apps/web
    npm install
@@ -366,26 +432,16 @@ QDRANT_URL=http://qdrant:6333
 
 ---
 
-### Option B: Running Locally (Non-Docker)
+### Option B: Running with Docker Compose
 
-1. **Start Qdrant**:
+For multi-container or staging testing:
+
+1. **Start Backend, Vector Store & MongoDB Bridge**:
    ```bash
-   docker run -d -p 6333:6333 -p 6334:6334 --name qdrant qdrant/qdrant:v1.10.1
+   docker compose up -d
    ```
 
-2. **Start Backend Service**:
-   ```bash
-   cd apps/api
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -e ".[dev]"
-
-   # Load environment variables and launch Uvicorn
-   set -a && source ../../.env && set +a
-   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-   ```
-
-3. **Start Frontend**:
+2. **Start Frontend**:
    ```bash
    cd apps/web
    npm install

@@ -498,5 +498,9 @@ async def execute_agentic_rag_flow(
     }
 
     logger.info("Executing Agentic RAG Flow graph", analysis_id=analysis_id_str)
-    final_state = await graph.ainvoke(initial_state)
-    return final_state
+    try:
+        final_state = await graph.ainvoke(initial_state)
+        return final_state
+    finally:
+        from app.core.memory import trim_memory
+        trim_memory()

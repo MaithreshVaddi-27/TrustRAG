@@ -227,7 +227,13 @@ def get_reranker():  # type: ignore[return]
         os.environ["HF_TOKEN"] = settings.hf_token
         os.environ["HUGGING_FACE_HUB_TOKEN"] = settings.hf_token
 
-    from sentence_transformers import CrossEncoder
+    try:
+        from sentence_transformers import CrossEncoder
+    except ImportError:
+        logger.warning(
+            "sentence-transformers not installed. Reranker disabled. Using Hybrid RRF."
+        )
+        return None
 
     logger.info("Initializing reranker", model=cfg.reranker_model)
 

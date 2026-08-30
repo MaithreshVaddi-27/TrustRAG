@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Eye, EyeOff } from 'lucide-react'
 import AuthLayout from '@/layouts/AuthLayout'
 import { authService } from '@/services/auth'
 
@@ -9,6 +9,7 @@ export default function RegisterPage() {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadingTime, setLoadingTime] = useState(0)
   const [error, setError] = useState('')
@@ -56,12 +57,12 @@ export default function RegisterPage() {
         )}
 
         {loading && loadingTime >= 5 && (
-          <div className="rounded-lg border border-amber-800/50 bg-amber-950/30 px-3 py-2.5 text-xs text-amber-300 animate-pulse space-y-1">
+          <div className="rounded-lg border border-cyan-800/50 bg-cyan-950/30 px-3 py-2.5 text-xs text-cyan-300 animate-pulse space-y-1">
             <p className="font-semibold flex items-center gap-1.5">
-              ⚡ Server is starting up ({loadingTime}s elapsed)
+              ⚡ Creating TrustRAG Account ({loadingTime}s elapsed)
             </p>
-            <p className="text-amber-400/90 text-[11px] leading-relaxed">
-              Render free tier services sleep after inactivity and take ~30–60 seconds to cold boot. Please leave this page open while it connects.
+            <p className="text-slate-400 text-[11px] leading-relaxed">
+              Provisioning isolated tenant collection in local database. Please wait while your workspace initializes.
             </p>
           </div>
         )}
@@ -103,17 +104,26 @@ export default function RegisterPage() {
             Password
             <span className="text-slate-600 font-normal ml-1">(min. 8 chars)</span>
           </label>
-          <input
-            id="reg-password"
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={8}
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="••••••••"
-            className="w-full bg-surface-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-600 transition-colors"
-          />
+          <div className="relative">
+            <input
+              id="reg-password"
+              type={showPw ? 'text' : 'password'}
+              autoComplete="new-password"
+              required
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="w-full bg-surface-800 border border-slate-700 rounded-lg px-3 py-2 pr-10 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-600 transition-colors"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+              aria-label={showPw ? 'Hide password' : 'Show password'}
+            >
+              {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+          </div>
         </div>
 
         <button

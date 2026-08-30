@@ -87,15 +87,24 @@ async def connect_db() -> None:
 
     for attempt in range(1, _CONNECT_MAX_ATTEMPTS + 1):
         try:
+            uri_lower = settings.mongodb_uri.lower()
+            is_local = (
+                "localhost" in uri_lower or "127.0.0.1" in uri_lower
+            ) and "replicaset=" not in uri_lower
+
             client_kwargs: dict[str, Any] = {
-                "serverSelectionTimeoutMS": 10000,
-                "connectTimeoutMS": 10000,
+                "serverSelectionTimeoutMS": 3000 if is_local else 10000,
+                "connectTimeoutMS": 5000 if is_local else 10000,
                 "socketTimeoutMS": 30000,
-                "retryWrites": True,
-                "w": "majority",
+                "maxPoolSize": 50,
+                "minPoolSize": 2,
+                "maxIdleTimeMS": 45000,
                 "tz_aware": True,
             }
-            uri_lower = settings.mongodb_uri.lower()
+            if not is_local:
+                client_kwargs["retryWrites"] = True
+                client_kwargs["w"] = "majority"
+
             if "mongodb+srv" in uri_lower or "tls=true" in uri_lower or "ssl=true" in uri_lower:
                 client_kwargs["tlsCAFile"] = certifi.where()
 

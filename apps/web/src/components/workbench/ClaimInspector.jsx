@@ -28,14 +28,15 @@ export function ClaimInspector({ claims = [] }) {
 
 function ClaimRow({ claim, index }) {
   const [open, setOpen] = useState(false)
+  const claimState = (claim.state || claim.status || claim.verification_status || '').toUpperCase()
 
   return (
     <div className={clsx(
       'rounded-lg border transition-colors',
-      claim.state === 'SUPPORTED'    && 'border-green-800/40 bg-green-950/20',
-      claim.state === 'CONTRADICTED' && 'border-red-800/40   bg-red-950/20',
-      claim.state === 'NEUTRAL'      && 'border-amber-800/40 bg-amber-950/20',
-      !claim.state                   && 'border-slate-700/40 bg-slate-800/20',
+      claimState === 'SUPPORTED'    && 'border-green-800/40 bg-green-950/20',
+      claimState === 'CONTRADICTED' && 'border-red-800/40   bg-red-950/20',
+      claimState === 'NEUTRAL'      && 'border-amber-800/40 bg-amber-950/20',
+      !claimState                   && 'border-slate-700/40 bg-slate-800/20',
     )}>
       <button
         className="w-full flex items-start gap-3 p-3 text-left hover:bg-white/5 transition-colors rounded-lg"
@@ -47,7 +48,7 @@ function ClaimRow({ claim, index }) {
         </span>
         <span className="flex-1 text-sm text-slate-200">{claim.text}</span>
         <div className="flex items-center gap-2 shrink-0">
-          <ClaimStateBadge state={claim.state} />
+          <ClaimStateBadge state={claimState} />
           {open ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
         </div>
       </button>
@@ -61,7 +62,7 @@ function ClaimRow({ claim, index }) {
               <span className="text-slate-500">→</span>
               <span className="text-amber-300">{claim.predicate || '—'}</span>
               <span className="text-slate-500">→</span>
-              <span className="text-indigo-300">{claim.object || '—'})</span>
+              <span className="text-cyan-300">{claim.object || '—'})</span>
             </div>
           )}
           {claim.explanation && (

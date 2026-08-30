@@ -1,6 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 
+// Public Landing page
+import LandingPage from '@/pages/LandingPage'
+
 // Auth pages
 import LoginPage    from '@/pages/LoginPage'
 import RegisterPage from '@/pages/RegisterPage'
@@ -43,6 +46,7 @@ export default function App() {
   return (
     <Routes>
       {/* ── Public ──────────────────────────────────────────── */}
+      <Route path="/"         element={<LandingPage />} />
       <Route path="/login"    element={<RedirectIfAuth><LoginPage /></RedirectIfAuth>} />
       <Route path="/register" element={<RedirectIfAuth><RegisterPage /></RedirectIfAuth>} />
 
@@ -57,9 +61,8 @@ export default function App() {
       <Route path="/settings"        element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/traces/:id"      element={<RequireAuth><TracePage /></RequireAuth>} />
 
-      {/* ── Defaults ───────────────────────────────────────── */}
-      <Route path="/"  element={<Navigate to="/dashboard" replace />} />
-      <Route path="*"  element={<Navigate to="/dashboard" replace />} />
+      {/* ── Fallback ────────────────────────────────────────── */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

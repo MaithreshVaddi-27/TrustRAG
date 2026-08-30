@@ -156,6 +156,8 @@ logs/
 # ─── Qdrant local data ────────────────────────────────────────────────────────
 qdrant_storage/
 qdrant_data/
+data/
+apps/api/data/
 
 # ─── ML / Model cache (sentence-transformers, HuggingFace Hub) ────────────────
 .cache/

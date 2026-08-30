@@ -71,14 +71,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # ── Startup ──────────────────────────────────────────────────────────
     configure_logging()
     settings = get_settings()
-    if settings.hf_token:
-        import os
 
+    # Enforce strict offline operation for all auxiliary tools & telemetry
+    import os
+
+    os.environ["LANGCHAIN_TRACING_V2"] = "false"
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
+    if settings.hf_token:
         os.environ["HF_TOKEN"] = settings.hf_token
         os.environ["HUGGING_FACE_HUB_TOKEN"] = settings.hf_token
-        logger.info("Configured Hugging Face Hub authentication token")
 
-    logger.info("TRUSTRAG API starting", env=settings.app_env)
+    logger.info("TRUSTRAG API starting (Local Offline Mode)", env=settings.app_env)
 
     await connect_db()
     await create_indexes()

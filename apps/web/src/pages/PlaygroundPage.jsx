@@ -187,9 +187,9 @@ export default function PlaygroundPage() {
 
   return (
     <AppLayout>
-      <div className="flex h-full">
+      <div className="flex flex-col lg:flex-row h-full min-h-[calc(100vh-4.5rem)]">
         {/* ── Left: Query panel ────────────────────────────────── */}
-        <div className="w-80 shrink-0 border-r border-slate-800 flex flex-col bg-surface-900/40">
+        <div className="w-full lg:w-80 shrink-0 lg:border-r border-b lg:border-b-0 border-slate-800 flex flex-col bg-surface-900/40">
           <div className="p-4 border-b border-slate-800">
             <h2 className="font-semibold text-white flex items-center gap-2">
               <Zap size={16} className="text-primary-400" /> Playground
@@ -258,7 +258,7 @@ export default function PlaygroundPage() {
         </div>
 
         {/* ── Right: Results panel ──────────────────────────────── */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-y-auto lg:overflow-hidden">
           {!analysis && !loading && (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-4">
               <div className="w-16 h-16 rounded-2xl bg-primary-600/10 border border-primary-700/30 flex items-center justify-center">
