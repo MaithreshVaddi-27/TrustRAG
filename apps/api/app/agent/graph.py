@@ -55,6 +55,12 @@ async def retrieval_node(state: AgentState) -> AgentState:
     """Execute hybrid retrieval, evidence integrity audit, and evidence persistence."""
     logger.info("Agent Retrieval Node starting", attempt=state["attempts"] + 1)
 
+    await add_trace_event(
+        state["analysis_id"],
+        "retrieval.started",
+        {"message": f"Searching knowledge base for query: '{state['current_query']}'"},
+    )
+
     # 1. Hybrid Retrieval
     top_k_override = None
     max_context_override = None

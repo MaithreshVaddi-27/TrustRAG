@@ -34,9 +34,9 @@ llm:
 # ─── Embedding ────────────────────────────────────────────────────────────────
 embedding:
   framework: langchain
-  # sentence-transformers — fully local, free, no API key required.
+  # sentence-transformers — fully local, lightweight (55 tensors, ~60MB), free.
   provider: huggingface
-  model: sentence-transformers/all-MiniLM-L6-v2
+  model: sentence-transformers/paraphrase-MiniLM-L3-v2
   # Dimension MUST match Qdrant collection configuration.
   output_dimensionality: 384
   # Increment this version when you change the embedding model.

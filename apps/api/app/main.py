@@ -15,6 +15,7 @@ Security notes:
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -44,6 +45,7 @@ from app.core.exceptions import (
     VectorStoreError,
 )
 from app.core.logging import configure_logging, get_logger
+from app.core.model_registry import get_embedding_model
 from app.core.rate_limiter import limiter
 from app.db.mongodb import connect_db, create_indexes, disconnect_db
 
@@ -80,6 +82,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     await connect_db()
     await create_indexes()
+
+    # Pre-warm embedding model so user queries and document indexing run immediately
+    try:
+        embed_model = get_embedding_model()
+        await asyncio.to_thread(embed_model.embed_query, "warmup")
+        logger.info("Embedding model pre-warmed and resident in memory")
+    except Exception as warm_err:
+        logger.warning(
+            "Embedding model warmup deferred to first query",
+            error=str(warm_err),
+        )
 
     logger.info("TRUSTRAG API ready")
     yield

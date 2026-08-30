@@ -154,6 +154,21 @@ def get_embedding_model() -> Embeddings:
         if settings.hf_token:
             model_kwargs["token"] = settings.hf_token
 
+        # Fast-path: if model is already pre-cached in Docker, load purely offline (0 network delay)
+        if cache_dir.exists() and any(cache_dir.iterdir()):
+            try:
+                offline_kwargs = {**model_kwargs, "local_files_only": True}
+                return HuggingFaceEmbeddings(
+                    model_name=cfg.embedding_model,
+                    cache_folder=str(cache_dir),
+                    encode_kwargs={"normalize_embeddings": True},
+                    model_kwargs=offline_kwargs,
+                )
+            except Exception as offline_err:
+                logger.debug(
+                    "Offline cache fast-path skipped, downloading model", error=str(offline_err)
+                )
+
         return HuggingFaceEmbeddings(
             model_name=cfg.embedding_model,
             cache_folder=str(cache_dir),
