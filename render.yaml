@@ -1,0 +1,32 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  TRUSTRAG — Render.com Infrastructure Blueprint                             ║
+# ║  Zero-configuration 1-Click Deploy for FastAPI Backend Service               ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+services:
+  - type: web
+    name: trustrag-api
+    runtime: docker
+    rootDir: apps/api
+    dockerfilePath: Dockerfile
+    plan: free
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: MONGODB_DATABASE
+        value: trustrag_db
+      - key: JWT_EXPIRY_MINUTES
+        value: "60"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: "http://localhost:5173"

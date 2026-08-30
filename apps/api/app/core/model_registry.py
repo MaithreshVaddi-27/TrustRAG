@@ -134,6 +134,15 @@ def get_embedding_model() -> Embeddings:
     )
 
     try:
+        try:
+            import torch
+
+            torch.set_num_threads(1)
+        except ImportError:
+            pass
+        except Exception as exc:
+            logger.debug("Could not limit torch thread count", error=str(exc))
+
         return HuggingFaceEmbeddings(
             model_name=cfg.embedding_model,
             cache_folder=str(cache_dir),
