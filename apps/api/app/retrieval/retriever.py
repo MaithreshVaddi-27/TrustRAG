@@ -67,21 +67,13 @@ async def dense_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
             query_vector = await asyncio.to_thread(embed_model.embed_query, query)
             _query_cache.set(query, query_vector)
 
-        if hasattr(client, "query_points"):
-            response = client.query_points(
-                collection_name=collection_name,
-                query=query_vector,
-                limit=top_k,
-                with_payload=True,
-            )
-            return response.points
-        else:
-            return client.search(
-                collection_name=collection_name,
-                query_vector=query_vector,
-                limit=top_k,
-                with_payload=True,
-            )
+        response = client.query_points(
+            collection_name=collection_name,
+            query=query_vector,
+            limit=top_k,
+            with_payload=True,
+        )
+        return response.points
     except Exception as exc:
         logger.error("Dense search failed", kb_id=kb_id, error=str(exc))
         return []
@@ -100,25 +92,14 @@ async def sparse_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
 
         sparse_vec = models.SparseVector(indices=sparse_rep["indices"], values=sparse_rep["values"])
 
-        if hasattr(client, "query_points"):
-            response = client.query_points(
-                collection_name=collection_name,
-                query=sparse_vec,
-                using="sparse-text",
-                limit=top_k,
-                with_payload=True,
-            )
-            return response.points
-        else:
-            return client.search(
-                collection_name=collection_name,
-                query_vector=models.NamedSparseVector(
-                    name="sparse-text",
-                    vector=sparse_vec,
-                ),
-                limit=top_k,
-                with_payload=True,
-            )
+        response = client.query_points(
+            collection_name=collection_name,
+            query=sparse_vec,
+            using="sparse-text",
+            limit=top_k,
+            with_payload=True,
+        )
+        return response.points
     except Exception as exc:
         logger.error("Sparse search failed", kb_id=kb_id, error=str(exc))
         return []

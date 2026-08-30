@@ -102,18 +102,7 @@ export default function DashboardPage() {
 
   // Chart data: Reliability timeline
   const timelineData = useMemo(() => {
-    if (!analyses.length) {
-      // Mock realistic demonstration data if fresh db
-      return [
-        { run: 'Run 1', score: 85, threshold: 70 },
-        { run: 'Run 2', score: 92, threshold: 70 },
-        { run: 'Run 3', score: 78, threshold: 70 },
-        { run: 'Run 4', score: 95, threshold: 70 },
-        { run: 'Run 5', score: 88, threshold: 70 },
-        { run: 'Run 6', score: 94, threshold: 70 },
-        { run: 'Latest', score: 91, threshold: 70 },
-      ]
-    }
+    if (!analyses.length) return []
     return analyses.slice(-8).map((a, idx) => ({
       run: `R-${idx + 1}`,
       score: Math.round((a.reliability?.score ?? 0.85) * 100),
@@ -124,9 +113,9 @@ export default function DashboardPage() {
   // Chart data: Claims breakdown
   const claimDistributionData = useMemo(() => {
     return [
-      { name: 'Supported', count: stats.supportedClaims || 12, color: '#10b981' },
-      { name: 'Neutral', count: stats.neutralClaims || 4, color: '#f59e0b' },
-      { name: 'Contradicted', count: stats.contradictedClaims || 1, color: '#ef4444' },
+      { name: 'Supported', count: stats.supportedClaims, color: '#10b981' },
+      { name: 'Neutral', count: stats.neutralClaims, color: '#f59e0b' },
+      { name: 'Contradicted', count: stats.contradictedClaims, color: '#ef4444' },
     ]
   }, [stats])
 
@@ -274,38 +263,48 @@ export default function DashboardPage() {
               </span>
             </div>
 
-            <div className="h-56 w-full pt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={timelineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="run" stroke="#475569" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#475569" fontSize={11} domain={[50, 100]} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#080c16',
-                      borderColor: '#1e293b',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      color: '#f8fafc',
-                      boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="score"
-                    stroke="#0ea5e9"
-                    strokeWidth={2.5}
-                    fillOpacity={1}
-                    fill="url(#scoreGradient)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            {timelineData.length === 0 ? (
+              <div className="h-56 w-full flex flex-col items-center justify-center text-center p-6 border border-dashed border-slate-800 rounded-xl bg-surface-900/40">
+                <Activity size={24} className="text-slate-600 mb-2" />
+                <p className="text-xs text-slate-300 font-medium">No reliability analyses recorded yet</p>
+                <p className="text-[11px] text-slate-500 mt-1 max-w-sm">
+                  Run an analysis in the Playground to generate telemetry progression and claim audit benchmarks.
+                </p>
+              </div>
+            ) : (
+              <div className="h-56 w-full pt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={timelineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="run" stroke="#475569" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#475569" fontSize={11} domain={[50, 100]} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#080c16',
+                        borderColor: '#1e293b',
+                        borderRadius: '12px',
+                        fontSize: '12px',
+                        color: '#f8fafc',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="score"
+                      stroke="#0ea5e9"
+                      strokeWidth={2.5}
+                      fillOpacity={1}
+                      fill="url(#scoreGradient)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </div>
 
           {/* Claim Verification Breakdown BarChart */}
@@ -318,28 +317,38 @@ export default function DashboardPage() {
               <p className="text-xs text-slate-400 mt-0.5">Distribution across verified states</p>
             </div>
 
-            <div className="h-44 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={claimDistributionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="name" stroke="#475569" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#475569" fontSize={11} allowDecimals={false} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#080c16',
-                      borderColor: '#1e293b',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      color: '#f8fafc',
-                    }}
-                  />
-                  <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                    {claimDistributionData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {claims.length === 0 ? (
+              <div className="h-44 w-full flex flex-col items-center justify-center text-center p-4 border border-dashed border-slate-800 rounded-xl bg-surface-900/40">
+                <ShieldCheck size={24} className="text-slate-600 mb-2" />
+                <p className="text-xs text-slate-300 font-medium">No claims decomposed yet</p>
+                <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
+                  Run a query in the Playground to extract and verify atomic assertions.
+                </p>
+              </div>
+            ) : (
+              <div className="h-44 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={claimDistributionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <XAxis dataKey="name" stroke="#475569" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#475569" fontSize={11} allowDecimals={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#080c16',
+                        borderColor: '#1e293b',
+                        borderRadius: '12px',
+                        fontSize: '12px',
+                        color: '#f8fafc',
+                      }}
+                    />
+                    <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                      {claimDistributionData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
 
             <div className="grid grid-cols-3 gap-2 pt-4 border-t border-slate-800/80 text-center">
               <div className="p-2 rounded-xl bg-emerald-950/20 border border-emerald-800/30">

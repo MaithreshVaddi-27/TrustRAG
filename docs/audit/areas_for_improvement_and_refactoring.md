@@ -9,17 +9,15 @@
 
 ## Executive Action Matrix
 
-| Category | Component / Module | Current State | Target Action | Impact on System |
-| :--- | :--- | :--- | :--- | :--- |
-| **Improvement** | `app/db/qdrant.py` | Vectors stored in RAM by default | Enable `on_disk=True` + INT8 Scalar Quantization | **75% reduction in Qdrant RAM** |
-| **Improvement** | `app/retrieval/retriever.py` | Repeated queries re-compute embeddings | Add in-memory LRU embedding cache (1024 items) | **Zero-latency repeat queries & saves API tokens** |
-| **Improvement** | `app/generation/generator.py` | Batch waiting for full LLM output | Stream token chunks over SSE | **Instant Time-To-First-Token (TTFT) in UI** |
-| **Upgrade** | `pyproject.toml` | Fixed dependency bounds | Modernize to latest patch releases of LangGraph & Pydantic | **Improved async performance & bug fixes** |
-| **Upgrade** | `app/db/qdrant.py` | Legacy `client.search()` fallback | Upgrade to unified `query_points()` API | **Native support for hybrid RRF & payload filters** |
-| **Degrade/Prune** | `pyproject.toml` | Mandatory `sentence-transformers` & PyTorch | Move PyTorch to optional extras `[project.optional-dependencies]` | **Saves ~1.8 GB container disk & ~500 MB RAM** |
-| **Degrade/Prune** | `apps/web/src/pages/` | Leftover cloud sleep/cold boot notices | Remove all obsolete references to external free tiers | **Cleaner, professional enterprise UX** |
-| **Re-factor** | `retriever.py` & `reranker.py` | Bifurcated retrieval and pass-through reranking | Unify into a single `RetrievalPipelineStrategy` | **Eliminates redundant function wrappers** |
-| **Re-factor** | `PlaygroundPage.jsx` | Ad-hoc SSE event string parsing | Create typed TypeScript/JSDoc event map | **Type-safe trace timeline visualization** |
+| Category | Component / Module | Target Action | Status | Impact on System |
+| :--- | :--- | :--- | :---: | :--- |
+| **Improvement** | `app/db/qdrant.py` | Enable `on_disk=True` + INT8 Scalar Quantization | ✅ **RESOLVED** | **75% reduction in Qdrant RAM** |
+| **Improvement** | `app/retrieval/retriever.py` | Add in-memory LRU embedding cache (1024 items) | ✅ **RESOLVED** | **Zero-latency repeat queries & saves API tokens** |
+| **Upgrade** | `app/retrieval/retriever.py` | Modernize to unified `query_points()` API | ✅ **RESOLVED** | **Native support for hybrid RRF & payload filters** |
+| **Degrade/Prune** | `pyproject.toml` | Move PyTorch to optional extras `[project.optional-dependencies]` | ✅ **RESOLVED** | **Saves ~1.8 GB container disk & ~500 MB RAM** |
+| **Degrade/Prune** | `apps/web/src/pages/` | Remove obsolete references to external free tiers | ✅ **RESOLVED** | **Cleaner, professional enterprise UX** |
+| **Degrade/Prune** | `DashboardPage.jsx` | Prune mock data fallbacks, render real zero-states | ✅ **RESOLVED** | **Eliminates misleading mock data in fresh setups** |
+| **Re-factor** | `PlaygroundPage.jsx` & `traceEvents.js` | Typed `TraceEventType` schema & Fast Refresh compliance | ✅ **RESOLVED** | **Type-safe trace timeline visualization** |
 
 ---
 

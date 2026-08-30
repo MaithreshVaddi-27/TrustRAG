@@ -6,6 +6,7 @@ import { ReliabilityBadge, StatusDot } from '@/components/workbench/ReliabilityB
 import { ClaimInspector } from '@/components/workbench/ClaimInspector'
 import { EvidenceViewer } from '@/components/workbench/EvidenceViewer'
 import { ExecutionTrace, RecoveryTimeline } from '@/components/workbench/ExecutionTrace'
+import { TraceEventType } from '@/components/workbench/traceEvents'
 import { kbService, analysisService } from '@/services/api'
 import api, { openAnalysisStream } from '@/lib/api'
 
@@ -177,9 +178,9 @@ export default function PlaygroundPage() {
   // Determine which trace events to show (live during load, or fetched after)
   const currentTraceEvents = loading ? traceEvents : (analysis?.trace || traceEvents)
   const recoveryRuns = currentTraceEvents
-    .filter(e => e.event && e.event.startsWith('recovery.'))
+    .filter(e => e.event && (e.event === TraceEventType.RECOVERY_REWRITE || e.event === TraceEventType.RECOVERY_RE_RETRIEVE || e.event.startsWith('recovery.')))
     .map(e => ({
-      strategy: e.event === 'recovery.rewrite' ? 'Targeted Query Rewrite' : 'Expanded Context Retrieval',
+      strategy: e.event === TraceEventType.RECOVERY_REWRITE ? 'Targeted Query Rewrite' : 'Expanded Context Retrieval',
       reason: e.data?.message || 'Threshold checks failed, attempting adaptive healing',
       result: 'Context augmented, re-evaluating reliability',
       success: true,
