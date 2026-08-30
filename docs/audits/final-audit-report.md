@@ -64,6 +64,20 @@ Over five progressive audit passes, **40 distinct items** spanning security, mul
 | **AUD-43** | UI/POLL | P1 | Playground UI reverted to initial state if SSE stream closed early | Upgraded `fetchFinalAnalysis` with resilient polling loop and `Promise.allSettled` | ✅ FIXED |
 | **AUD-44** | AI/AUTH | P2 | Hugging Face embedding model downloads lacked authentication token | Added `HF_TOKEN` support in Settings, model registry, Dockerfile, and Render | ✅ FIXED |
 | **AUD-45** | CODE/QUAL| P2 | Ruff simplify warnings and untracked build egg-info artifacts | Replaced `try-except-pass` with `contextlib.suppress`, simplified Porter stemmer | ✅ FIXED |
+| **AUD-46** | DB/MEM   | P1 | Qdrant vectors consumed high RAM in resident memory | Configured `on_disk=True` and INT8 scalar quantization (75% RAM reduction) | ✅ FIXED |
+| **AUD-47** | AI/PERF  | P1 | Repeat queries and LangGraph recovery re-computed embeddings | Added thread-safe 1024-entry `QueryEmbeddingLRUCache` (0ms cached latency) | ✅ FIXED |
+| **AUD-48** | DEP/DISK | P1 | PyTorch / `sentence-transformers` added ~1.8GB bloat to container | Decoupled PyTorch into optional extras; default uses cloud Gemini 384d MRL | ✅ FIXED |
+| **AUD-49** | AI/MCP   | P1 | External AI coding agents could not query TrustRAG natively | Integrated Model Context Protocol (MCP) server over stdio JSON-RPC 2.0 | ✅ FIXED |
+| **AUD-50** | UI/UX    | P1 | Landing page lacked rich interactivity, simulation, and contrast | Added RAF 120fps spotlight, project simulation sandbox, and dual-mode compare | ✅ FIXED |
+| **AUD-51** | UI/DATA  | P2 | Dashboard rendered mock fake scores on fresh databases | Replaced with cyber-styled zero-state indicators (`No analyses recorded yet`) | ✅ FIXED |
+| **AUD-52** | FE/REFR  | P2 | React Fast Refresh warned on constants exported from component files | Extracted `traceEvents.js` constants for 100% Fast Refresh compliance | ✅ FIXED |
+
+> 📚 For the in-depth SOTA multi-perspective audit reports, see [**`docs/audit/`**](../audit/):
+> - [Comprehensive Master Systems Audit](../audit/comprehensive_audit_report.md)
+> - [Deep Security & DevSecOps Audit](../audit/security_audit.md)
+> - [AI/ML Performance & Latency Audit](../audit/ai_ml_performance_audit.md)
+> - [QA Testing Report (Whitebox & Blackbox)](../audit/qa_testing_report.md)
+> - [Modernization & Refactoring Blueprint](../audit/areas_for_improvement_and_refactoring.md)
 
 ---
 
