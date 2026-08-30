@@ -80,5 +80,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
     CMD sh -c 'wget -qO- "http://localhost:${PORT:-8000}/api/v1/health" || exit 1'
 
-# Use exec in shell form so $PORT provided by Cloud Run is dynamically respected
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --log-level warning"]
+# Use exec in shell form so $PORT provided by Render/Cloud Run is dynamically respected
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --log-level info"]

@@ -83,21 +83,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await connect_db()
     await create_indexes()
 
-    # Pre-warm embedding model so user queries and document indexing run immediately
-    try:
-        embed_model = get_embedding_model()
-        await asyncio.to_thread(embed_model.embed_query, "warmup")
-        logger.info("Embedding model pre-warmed and resident in memory")
-    except Exception as warm_err:
-        logger.warning(
-            "Embedding model warmup deferred to first query",
-            error=str(warm_err),
-        )
-
     logger.info("TRUSTRAG API ready")
+
+    # Schedule non-blocking model warmup in background task so Uvicorn binds port INSTANTLY
+    async def _async_warmup() -> None:
+        try:
+            embed_model = get_embedding_model()
+            await asyncio.to_thread(embed_model.embed_query, "warmup")
+            logger.info("Embedding model pre-warmed and resident in memory")
+        except Exception as warm_err:
+            logger.warning(
+                "Embedding model warmup deferred to first query",
+                error=str(warm_err),
+            )
+
+    warmup_task = asyncio.create_task(_async_warmup())
+
     yield
 
     # ── Shutdown ─────────────────────────────────────────────────────────
+    if not warmup_task.done():
+        warmup_task.cancel()
     logger.info("TRUSTRAG API shutting down")
     await disconnect_db()
 
