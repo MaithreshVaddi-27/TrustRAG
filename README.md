@@ -625,8 +625,11 @@ npm run build
 
 ## 📚 Documentation Index
 
-Detailed engineering documentation is located in [**`docs/`**](docs/README.md):
-
+- 📊 [**Master Architecture & Systems Audit (`docs/audit/comprehensive_audit_report.md`)**](docs/audit/comprehensive_audit_report.md) — Multi-disciplinary evaluation across Systems, Security, AI/ML, and QA.
+- 🛡️ [**Deep Security & DevSecOps Audit (`docs/audit/security_audit.md`)**](docs/audit/security_audit.md) — Physical collection isolation, anti-IDOR defense, XXE protection, and cryptographic SHA-256 provenance.
+- 🧠 [**AI/ML Performance & Latency Audit (`docs/audit/ai_ml_performance_audit.md`)**](docs/audit/ai_ml_performance_audit.md) — Matryoshka 384d MRL embeddings, hybrid RRF search, and zero local GPU RAM operation.
+- 🧪 [**Quality Assurance Testing Report (`docs/audit/qa_testing_report.md`)**](docs/audit/qa_testing_report.md) — 79/79 automated tests across whitebox and blackbox test suites.
+- 🛠️ [**Modernization & Refactoring Blueprint (`docs/audit/areas_for_improvement_and_refactoring.md`)**](docs/audit/areas_for_improvement_and_refactoring.md) — Qdrant on-disk INT8 quantization, LRU embedding caching, and container pruning.
 - 🏛️ [**System Architecture (`docs/architecture/architecture.md`)**](docs/architecture/architecture.md) — Comprehensive technical design of the LangGraph state machine, hybrid search, and claim decomposition.
 - 📐 [**Decision Log (`docs/architecture/decision-log.md`)**](docs/architecture/decision-log.md) — Architectural Decision Records (ADRs) explaining technology selections and tradeoffs.
 - 🛡️ [**Security Controls (`docs/security/security-controls.md`)**](docs/security/security-controls.md) — Deep dive into JWT authentication, anti-IDOR validation, and defensive headers.

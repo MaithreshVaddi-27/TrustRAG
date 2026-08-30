@@ -10,6 +10,12 @@ Welcome to the comprehensive technical documentation for the TRUSTRAG AI Reliabi
 docs/
 ├── README.md                     # Master Documentation Directory Index (this file)
 ├── ROADMAP.md                    # Product vision, technical milestones, and phase tracking
+├── audit/                        # Comprehensive SOTA multi-perspective production audit suite
+│   ├── comprehensive_audit_report.md  # Master systems, security, AI/ML, and QA audit
+│   ├── security_audit.md              # Deep DevSecOps, anti-IDOR, and cryptographic integrity audit
+│   ├── ai_ml_performance_audit.md     # 384d MRL, zero GPU RAM, and hybrid RRF benchmark
+│   ├── qa_testing_report.md           # 79/79 Automated whitebox & blackbox test verification
+│   └── areas_for_improvement_and_refactoring.md # Technical debt & modernization blueprint
 ├── architecture/
 │   ├── architecture.md           # End-to-end system design, agent loop, and data flow
 │   └── decision-log.md           # Architectural Decision Records (ADRs)
@@ -34,9 +40,12 @@ docs/
 - [**System Architecture (`architecture/architecture.md`)**](architecture/architecture.md): Detailed breakdown of the LangGraph state machine, hybrid retrieval (dense + sparse BM25 with RRF), and claim decomposition pipeline.
 - [**Decision Log (`architecture/decision-log.md`)**](architecture/decision-log.md): Architectural Decision Records (ADRs) covering technology choices, local embedding strategies, and storage layers.
 
-### 2. Quality Audits & Verification
-- [**Master Audit Report (`audits/final-audit-report.md`)**](audits/final-audit-report.md): Consolidated master verification report confirming 35 findings resolved, whitebox/blackbox matrices, and 0 remaining defects.
-- [**Multi-Tenant Isolation Audit (`audits/multi-tenant-isolation-audit.md`)**](audits/multi-tenant-isolation-audit.md): Deep inspection of user data partitioning, anti-IDOR tests, Qdrant health checks, and cascade deletion.
+### 2. SOTA Production Audit Suite
+- [**Comprehensive Master Audit (`audit/comprehensive_audit_report.md`)**](audit/comprehensive_audit_report.md): Synthesis across Systems, Security, AI/ML, and QA with 0 open issues.
+- [**Deep Security & DevSecOps (`audit/security_audit.md`)**](audit/security_audit.md): Physical collection isolation, anti-IDOR defense, XXE protection, and cryptographic SHA-256 provenance.
+- [**AI/ML Performance & Latency (`audit/ai_ml_performance_audit.md`)**](audit/ai_ml_performance_audit.md): Matryoshka 384d MRL embeddings, hybrid RRF search, and zero local GPU RAM operation.
+- [**Quality Assurance Testing Report (`audit/qa_testing_report.md`)**](audit/qa_testing_report.md): 79/79 automated tests across whitebox and blackbox test suites.
+- [**Modernization & Refactoring Blueprint (`audit/areas_for_improvement_and_refactoring.md`)**](audit/areas_for_improvement_and_refactoring.md): Qdrant on-disk INT8 quantization, LRU embedding caching, and container pruning.
 
 ### 3. Security & Compliance
 - [**Security Controls (`security/security-controls.md`)**](security/security-controls.md): Specification of JWT tokens, bcrypt rounds, defensive HTTP response headers (`nosniff`, `DENY`), and prompt injection defenses.
