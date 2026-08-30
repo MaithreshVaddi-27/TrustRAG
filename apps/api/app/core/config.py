@@ -191,7 +191,7 @@ class ModelConfig:
     def llm_model(self) -> str:
         val = self._get("llm", "model")
         settings = get_settings()
-        return settings.gemini_model or val
+        return settings.gemini_model or val or "gemini-3.5-flash-lite"
 
     @property
     def llm_temperature(self) -> float:
@@ -222,7 +222,7 @@ class ModelConfig:
     def embedding_model(self) -> str:
         val = self._get("embedding", "model")
         settings = get_settings()
-        return settings.gemini_embedding_model or val
+        return settings.gemini_embedding_model or val or "models/gemini-embedding-001"
 
     @property
     def embedding_dimensionality(self) -> int:
@@ -243,7 +243,7 @@ class ModelConfig:
     def verification_model(self) -> str:
         val = self._get("verification", "model")
         settings = get_settings()
-        return settings.gemini_verification_model or val
+        return settings.gemini_verification_model or val or "gemini-3.5-flash-lite"
 
     @property
     def verification_temperature(self) -> float:
