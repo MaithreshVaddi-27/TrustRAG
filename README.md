@@ -15,6 +15,15 @@
 [![Bandit](https://img.shields.io/badge/Bandit%20SAST-0%20Issues-brightgreen)](docs/audits/final-audit-report.md)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
+### 🔗 Live Production Links
+
+| Service | URL | Description |
+|---|---|---|
+| 🌐 **Frontend Workbench** | **[https://trustrag.pages.dev/](https://trustrag.pages.dev/)** | Production UI deployed on Cloudflare Pages |
+| ⚡ **Backend REST API** | **[https://trustrag-api.onrender.com](https://trustrag-api.onrender.com)** | Production FastAPI container deployed on Render |
+| 📖 **Interactive API Docs** | **[https://trustrag-api.onrender.com/docs](https://trustrag-api.onrender.com/docs)** | OpenAPI Swagger documentation & testing |
+| 🩺 **System Health Check** | **[https://trustrag-api.onrender.com/api/v1/health](https://trustrag-api.onrender.com/api/v1/health)** | Real-time multi-service status endpoint |
+
 ---
 
 ## 📑 Table of Contents
