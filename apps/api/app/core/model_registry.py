@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.core.config import ModelConfig, get_model_config, get_settings
 from app.core.exceptions import ConfigurationError
@@ -133,6 +133,13 @@ def get_embedding_model() -> Embeddings:
         cache_dir=str(cache_dir),
     )
 
+    settings = get_settings()
+    if settings.hf_token:
+        import os
+
+        os.environ["HF_TOKEN"] = settings.hf_token
+        os.environ["HUGGING_FACE_HUB_TOKEN"] = settings.hf_token
+
     try:
         try:
             import torch
@@ -143,11 +150,15 @@ def get_embedding_model() -> Embeddings:
         except Exception as exc:
             logger.debug("Could not limit torch thread count", error=str(exc))
 
+        model_kwargs: dict[str, Any] = {"device": "cpu"}
+        if settings.hf_token:
+            model_kwargs["token"] = settings.hf_token
+
         return HuggingFaceEmbeddings(
             model_name=cfg.embedding_model,
             cache_folder=str(cache_dir),
             encode_kwargs={"normalize_embeddings": True},
-            model_kwargs={"device": "cpu"},
+            model_kwargs=model_kwargs,
         )
     except Exception as exc:
         raise ConfigurationError(
@@ -173,11 +184,20 @@ def get_reranker():  # type: ignore[return]
         logger.info("Reranker disabled in models.yaml")
         return None
 
+    settings = get_settings()
+    if settings.hf_token:
+        import os
+
+        os.environ["HF_TOKEN"] = settings.hf_token
+        os.environ["HUGGING_FACE_HUB_TOKEN"] = settings.hf_token
+
     from sentence_transformers import CrossEncoder
 
     logger.info("Initializing reranker", model=cfg.reranker_model)
 
     try:
+        if settings.hf_token:
+            return CrossEncoder(cfg.reranker_model, token=settings.hf_token)
         return CrossEncoder(cfg.reranker_model)
     except Exception as exc:
         raise ConfigurationError(

@@ -58,9 +58,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY --chown=trustrag:trustrag app/ ./app/
 COPY --chown=trustrag:trustrag config/ ./config/
 
-# Create model cache directory and pre-cache embedding weights for instant Cloud Run startup
+ARG HF_TOKEN=""
+ENV HF_TOKEN=${HF_TOKEN}
+
+# Create model cache directory and pre-cache embedding weights for instant container startup
 RUN mkdir -p /app/.model_cache && \
-    python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', cache_folder='/app/.model_cache')" && \
+    python -c "import os; from sentence_transformers import SentenceTransformer; token = os.environ.get('HF_TOKEN') or None; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', cache_folder='/app/.model_cache', token=token)" && \
     chown -R trustrag:trustrag /app/.model_cache
 
 # Drop to non-root

@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     jwt_expiry_minutes: int = 60
     cors_origins: str = "http://localhost:5173"
 
+    # ── Hugging Face ──────────────────────────────────────────────────────────
+    hf_token: str = ""  # Optional read-only token to prevent download rate-limits
+
     # ── Google Gemini ──────────────────────────────────────────────────────────
     gemini_api_key: str
 

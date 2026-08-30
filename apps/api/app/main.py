@@ -68,7 +68,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     # ── Startup ──────────────────────────────────────────────────────────
     configure_logging()
-    logger.info("TRUSTRAG API starting", env=get_settings().app_env)
+    settings = get_settings()
+    if settings.hf_token:
+        import os
+
+        os.environ["HF_TOKEN"] = settings.hf_token
+        os.environ["HUGGING_FACE_HUB_TOKEN"] = settings.hf_token
+        logger.info("Configured Hugging Face Hub authentication token")
+
+    logger.info("TRUSTRAG API starting", env=settings.app_env)
 
     await connect_db()
     await create_indexes()
