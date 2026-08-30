@@ -18,7 +18,7 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[4]
 _client: QdrantClient | None = None
 
 
@@ -37,7 +37,7 @@ def get_qdrant_client() -> QdrantClient:
                 or not settings.qdrant_url.startswith("http")
             ):
                 if settings.qdrant_url == "local":
-                    storage_path = PROJECT_ROOT / "data" / "qdrant"
+                    storage_path = REPO_ROOT / "data" / "qdrant"
                 elif settings.qdrant_url == ":memory:":
                     storage_path = ":memory:"
                 else:

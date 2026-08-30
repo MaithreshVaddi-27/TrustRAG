@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
@@ -86,6 +86,28 @@ class Settings(BaseSettings):
     # ── Rate limiting ─────────────────────────────────────────────────────────
     rate_limit_analyses_per_minute: int = 10
     rate_limit_auth_per_minute: int = 20
+
+    # ── Model Configuration Overrides (env takes precedence over models.yaml) ──
+    gemini_model: str = Field(
+        default="",
+        validation_alias=AliasChoices("GEMINI_MODEL", "LLM_MODEL"),
+        description="Override primary LLM model ID in .env",
+    )
+    gemini_verification_model: str = Field(
+        default="",
+        validation_alias=AliasChoices("GEMINI_VERIFICATION_MODEL", "VERIFICATION_MODEL"),
+        description="Override verification LLM model ID in .env",
+    )
+    gemini_embedding_model: str = Field(
+        default="",
+        validation_alias=AliasChoices("GEMINI_EMBEDDING_MODEL", "EMBEDDING_MODEL"),
+        description="Override embedding model ID in .env",
+    )
+    embedding_dim: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("EMBEDDING_DIM", "EMBEDDING_DIMENSIONALITY"),
+        description="Override embedding dimensionality in .env",
+    )
 
     # ── Derived: parsed CORS list ─────────────────────────────────────────────
     @property
@@ -167,7 +189,9 @@ class ModelConfig:
     # ── LLM ──────────────────────────────────────────────────────────────────
     @property
     def llm_model(self) -> str:
-        return self._get("llm", "model")
+        val = self._get("llm", "model")
+        settings = get_settings()
+        return settings.gemini_model or val
 
     @property
     def llm_temperature(self) -> float:
@@ -196,11 +220,15 @@ class ModelConfig:
 
     @property
     def embedding_model(self) -> str:
-        return self._get("embedding", "model")
+        val = self._get("embedding", "model")
+        settings = get_settings()
+        return settings.gemini_embedding_model or val
 
     @property
     def embedding_dimensionality(self) -> int:
-        return int(self._get("embedding", "output_dimensionality"))
+        val = int(self._get("embedding", "output_dimensionality"))
+        settings = get_settings()
+        return settings.embedding_dim if settings.embedding_dim is not None else val
 
     @property
     def embedding_version(self) -> str:
@@ -213,7 +241,9 @@ class ModelConfig:
     # ── Verification ──────────────────────────────────────────────────────────
     @property
     def verification_model(self) -> str:
-        return self._get("verification", "model")
+        val = self._get("verification", "model")
+        settings = get_settings()
+        return settings.gemini_verification_model or val
 
     @property
     def verification_temperature(self) -> float:

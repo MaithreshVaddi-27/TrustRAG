@@ -7,6 +7,7 @@ Coordinates retrieval, generation, verification, and adaptive recovery loops
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any, TypedDict
 
@@ -86,12 +87,90 @@ async def retrieval_node(state: AgentState) -> AgentState:
     )
 
     if not candidates and state.get("attempts", 0) == 0:
-        from app.db.qdrant import get_collection_name, get_qdrant_client
+        from app.db.qdrant import get_collection_name, get_qdrant_client, init_kb_collection
 
         try:
             q_client = get_qdrant_client()
-            c_info = q_client.get_collection(get_collection_name(state["kb_id"]))
-            if c_info.points_count == 0:
+            col_name = get_collection_name(state["kb_id"])
+            col_exists = q_client.collection_exists(col_name)
+            points_count = q_client.get_collection(col_name).points_count if col_exists else 0
+
+            # Check if MongoDB has chunks for this KB
+            chunks_coll = get_collection(Collections.DOCUMENT_CHUNKS)
+            mongo_chunks_count = await chunks_coll.count_documents(
+                {"knowledge_base_id": ObjectId(state["kb_id"])}
+            )
+
+            if points_count == 0 and mongo_chunks_count > 0:
+                logger.info(
+                    "Self-healing: Re-indexing chunks from MongoDB into Qdrant",
+                    kb_id=state["kb_id"],
+                    chunks_count=mongo_chunks_count,
+                )
+                from qdrant_client.http import models
+
+                from app.core.model_registry import get_embedding_model
+                from app.ingestion.pipeline import hashlib_qdrant_id
+                from app.ingestion.sparse_vector import generate_sparse_vector
+
+                await init_kb_collection(state["kb_id"])
+                chunks = await chunks_coll.find(
+                    {"knowledge_base_id": ObjectId(state["kb_id"])}
+                ).sort("chunk_index", 1).to_list(1000)
+
+                doc_coll = get_collection(Collections.DOCUMENTS)
+                doc_map = {}
+                for c in chunks:
+                    d_id = str(c["document_id"])
+                    if d_id not in doc_map:
+                        d_obj = await doc_coll.find_one({"_id": c["document_id"]})
+                        doc_map[d_id] = d_obj.get("filename", "document") if d_obj else "document"
+
+                contextual_texts = [
+                    f"[{doc_map.get(str(c['document_id']), 'document')} | "
+                    f"{c.get('zone', 'body').upper()}] {c['text']}"
+                    for c in chunks
+                ]
+                embed_model = get_embedding_model()
+                dense_vectors = await asyncio.to_thread(
+                    embed_model.embed_documents, contextual_texts
+                )
+
+                sync_points = []
+                for i, c in enumerate(chunks):
+                    doc_id_str = str(c["document_id"])
+                    chunk_zone = c.get("zone", "body")
+                    sparse_vec = generate_sparse_vector(contextual_texts[i], zone=chunk_zone)
+                    point_id = hashlib_qdrant_id(doc_id_str, c["chunk_index"])
+                    payload = {
+                        "document_id": doc_id_str,
+                        "knowledge_base_id": state["kb_id"],
+                        "user_id": str(c.get("user_id", "")),
+                        "chunk_index": c["chunk_index"],
+                        "page": c.get("page", 1),
+                        "character_offset": c.get("character_offset", 0),
+                        "zone": chunk_zone,
+                        "text": c["text"],
+                    }
+                    sync_points.append(
+                        models.PointStruct(
+                            id=point_id,
+                            vector={
+                                "": dense_vectors[i],
+                                "sparse-text": models.SparseVector(
+                                    indices=sparse_vec["indices"], values=sparse_vec["values"]
+                                ),
+                            },
+                            payload=payload,
+                        )
+                    )
+                q_client.upsert(collection_name=col_name, points=sync_points)
+                candidates = await retrieve_hybrid_chunks(
+                    query=state["current_query"],
+                    kb_id=state["kb_id"],
+                    top_k_override=top_k_override,
+                )
+            elif points_count == 0 and mongo_chunks_count == 0:
                 logger.warning("Knowledge base collection is empty", kb_id=state["kb_id"])
                 await add_trace_event(
                     state["analysis_id"],
@@ -112,7 +191,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                 state["diagnosis_failures"] = ["Knowledge base contains 0 indexed chunks"]
                 return state
         except Exception as exc:
-            logger.debug("Could not verify collection point count", error=str(exc))
+            logger.warning("Error during collection point verification/sync", error=str(exc))
 
     # 2. Rerank
     top_chunks = rerank_candidate_chunks(
