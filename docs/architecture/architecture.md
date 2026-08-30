@@ -37,10 +37,8 @@ FastAPI (Python 3.11)
     └─── app/evaluation/   Experiment runner + metrics
          │
          ├─── Google Gemini API (via langchain-google-genai)
-         │       LLM: gemini-2.5-flash (configurable)
-         │
-         ├─── sentence-transformers (local, free)
-         │       Embedding: all-MiniLM-L6-v2, 384-dim (configurable)
+         │       LLM: gemini-3.5-flash-lite / gemini-2.5-flash-lite (configurable)
+         │       Embedding: models/gemini-embedding-001, 384-dim MRL (0 MB GPU RAM)
          │
          ├─── Qdrant (vector store)
          │       Dense + Sparse/BM25 + Hybrid/RRF retrieval

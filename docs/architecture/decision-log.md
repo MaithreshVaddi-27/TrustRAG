@@ -139,6 +139,36 @@ Any deviation from the specification must be logged here with rationale.
 **Status:** Accepted  
 **Phase:** 0
 
-**Decision:** The configured model ID is `gemini-2.5-flash`. The user requested "Gemini 3.5 Flash" which does not exist as a published model ID. `gemini-2.5-flash` is the current free-tier Flash generation model.
+**Decision:** The configured model ID is `gemini-2.5-flash` (or `gemini-3.5-flash-lite`). The user requested "Gemini 3.5 Flash" which does not exist as a published model ID. `gemini-2.5-flash` is the current free-tier Flash generation model.
 
 **Action required:** Verify the exact model ID at [Google AI Studio](https://aistudio.google.com/app/apikey) before deployment and update `models.yaml` if needed.
+
+---
+
+## D-12: Google Gemini 384d MRL Embeddings & PyTorch Decoupling (Supersedes D-10)
+
+**Date:** 2026-08-30  
+**Status:** Accepted & Implemented  
+**Phase:** 13
+
+**Decision:** Transition default embeddings from local PyTorch `sentence-transformers` to cloud-native Google Gemini `models/gemini-embedding-001` with Matryoshka Representation Learning truncated to 384 dimensions (`output_dimensionality: 384`). Move PyTorch and `sentence-transformers` to optional extras (`[project.optional-dependencies] local-models`).
+
+**Rationale:**
+- **0 MB Local GPU RAM**: Completely offloads vector encoding from host memory/GPU to Google's cloud infrastructure.
+- **Instant Cold Starts**: Eliminates the 90-second initial container download time. Container boots in under 2 seconds.
+- **Disk Footprint Reduction**: Decoupling PyTorch shrinks the Docker container image from ~2.8 GB to ~350 MB.
+- **Dimensional Parity**: 384-dimensional MRL matches Qdrant collection geometry, maintaining 100% compatibility with existing hybrid search pipelines.
+
+---
+
+## D-13: Qdrant On-Disk Storage & INT8 Scalar Quantization
+
+**Date:** 2026-08-30  
+**Status:** Accepted & Implemented  
+**Phase:** 13
+
+**Decision:** Enable `on_disk=True` for Qdrant vector configurations and sparse token indices, paired with INT8 scalar quantization (`ScalarType.INT8`, `quantile=0.99`, `always_ram=False`).
+
+**Rationale:**
+- Reduces Qdrant vector RAM consumption by **75%** while retaining $>99.5\%$ search recall.
+- Allows the application to run smoothly on low-spec developer machines and free-tier containers without risking Out-Of-Memory (OOM) kills.

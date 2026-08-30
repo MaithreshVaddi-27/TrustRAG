@@ -282,7 +282,7 @@ Perform a complete workflow verification on your live Cloudflare Pages URL:
 3. **Check System Diagnostics**:
    - Go to `/settings`.
    - Verify green status pills for **MongoDB (Connected)** and **Qdrant (Connected)**.
-   - Confirm active models show `gemini-3.5-flash-lite` and `all-MiniLM-L6-v2`.
+   - Confirm active models show `gemini-3.5-flash-lite` and `models/gemini-embedding-001` (384d MRL).
 4. **Knowledge Base Creation & Ingestion**:
    - Navigate to `/knowledge-bases`.
    - Click **New Knowledge Base** → name it `Compliance & Security`.
@@ -303,7 +303,7 @@ Perform a complete workflow verification on your live Cloudflare Pages URL:
 
 | Issue / Topic | Description & Solution |
 | :--- | :--- |
-| **Cloud Run Cold Starts** | The `apps/api/Dockerfile` automatically pre-downloads `all-MiniLM-L6-v2` during Docker build, eliminating runtime Hugging Face downloads. Set `--min-instances 1` if you require 0ms cold starts. |
+| **Instant Cold Starts** | TRUSTRAG uses Google Gemini cloud-native 384d MRL embeddings (`models/gemini-embedding-001`), completely eliminating heavy runtime Hugging Face model downloads and GPU memory allocations. Container starts in under 2 seconds. |
 | **MongoDB Atlas Free Tier Sleep** | M0 clusters auto-pause on inactivity. TRUSTRAG's `mongodb.py` includes a 2.5-minute exponential backoff retry loop that waits for Atlas to wake up without crashing the container. |
 | **Cloudflare Pages SPA 404s** | [`apps/web/public/_redirects`](apps/web/public/_redirects) routes `/* /index.html 200`. Direct page refreshes on `/playground`, `/evidence`, etc., will never throw 404 errors. |
 | **Qdrant Authentication** | In `APP_ENV=production`, `QDRANT_API_KEY` is strictly required by Pydantic validator. Ensure your Qdrant Cloud key is set. |

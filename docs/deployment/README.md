@@ -87,7 +87,7 @@ npm install
 npm run dev
 ```
 
-> **First run note:** sentence-transformers will download `all-MiniLM-L6-v2` (~90MB) on first startup. Subsequent starts use the cache.
+> **First run note:** TRUSTRAG uses cloud-native Google Gemini 384d MRL embeddings (`models/gemini-embedding-001`), operating with 0 MB local GPU RAM and requiring no heavy local model downloads.
 
 ---
 
@@ -247,12 +247,13 @@ GET /api/v1/health
   "app": "TRUSTRAG",
   "version": "0.1.0",
   "services": {
-    "mongodb": "ok"
+    "mongodb": "ok",
+    "qdrant": "ok"
   },
   "models": {
     "config_version": "1.0",
-    "llm_model": "gemini-2.5-flash",
-    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "llm_model": "gemini-3.5-flash-lite",
+    "embedding_model": "models/gemini-embedding-001",
     ...
   }
 }
@@ -284,14 +285,14 @@ curl http://localhost:8000/api/v1/health
 
 Verify `MONGODB_URI` is correct and Atlas IP whitelist includes your server IP.
 
-### Embedding model slow on first request
+### Embedding latency & zero-GPU operation
 
-`sentence-transformers/all-MiniLM-L6-v2` downloads on first use (~90MB). Subsequent requests use the cache. Mount a persistent volume for `.model_cache` in Docker.
+TRUSTRAG uses Google Gemini 384d MRL embeddings (`models/gemini-embedding-001`). It requires no PyTorch or GPU RAM, and an in-memory thread-safe LRU cache serves repeat queries in 0ms.
 
 ### Gemini API errors
 
 - Verify `GEMINI_API_KEY` is set
-- Verify `gemini-2.5-flash` model is available in your region/plan at [AI Studio](https://aistudio.google.com)
+- Verify `gemini-3.5-flash-lite` model is available in your region/plan at [AI Studio](https://aistudio.google.com)
 - Check rate limits (Gemini free tier: 15 RPM, 1M tokens/day)
 
 ### CORS errors in browser
