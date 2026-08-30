@@ -195,3 +195,12 @@ def registry_status() -> dict[str, str | bool | None]:
         "reranker_enabled": cfg.reranker_enabled,
         "reranker_model": cfg.reranker_model if cfg.reranker_enabled else None,
     }
+
+
+def clear_model_caches() -> None:
+    """Clear cached model singletons so updated API keys or model configs take effect."""
+    get_llm.cache_clear()
+    get_verification_model.cache_clear()
+    get_embedding_model.cache_clear()
+    get_reranker.cache_clear()
+    logger.info("Cleared all model registry caches")

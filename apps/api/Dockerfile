@@ -58,8 +58,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY --chown=trustrag:trustrag app/ ./app/
 COPY --chown=trustrag:trustrag config/ ./config/
 
-# Create model cache directory (sentence-transformers will write here)
-RUN mkdir -p /app/.model_cache && chown trustrag:trustrag /app/.model_cache
+# Create model cache directory and pre-cache embedding weights for instant Cloud Run startup
+RUN mkdir -p /app/.model_cache && \
+    python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', cache_folder='/app/.model_cache')" && \
+    chown -R trustrag:trustrag /app/.model_cache
 
 # Drop to non-root
 USER trustrag
@@ -69,14 +71,11 @@ USER trustrag
 # start_period is generous because startup now retries the MongoDB Atlas
 # connection with backoff (up to ~2.5 min) to ride out M0 cluster auto-resume
 # instead of crashing on the first slow handshake — see app/db/mongodb.py.
-HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
-    CMD wget -qO- http://localhost:8000/api/v1/health || exit 1
-
+ENV PORT=8000
 EXPOSE 8000
 
-# Use exec form to correctly propagate signals
-CMD ["uvicorn", "app.main:app", \
-     "--host", "0.0.0.0", \
-     "--port", "8000", \
-     "--workers", "1", \
-     "--log-level", "warning"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
+    CMD sh -c 'wget -qO- "http://localhost:${PORT:-8000}/api/v1/health" || exit 1'
+
+# Use exec in shell form so $PORT provided by Cloud Run is dynamically respected
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --log-level warning"]

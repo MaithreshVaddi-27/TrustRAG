@@ -31,10 +31,32 @@ def extract_claim_triple_heuristic(text: str) -> tuple[str | None, str | None, s
         return None, None, None
 
     predicates = [
-        "allows", "requires", "provides", "contains", "includes", "excludes",
-        "is", "are", "was", "were", "has", "have", "must", "should", "can",
-        "cannot", "takes", "retains", "stores", "deletes", "refunds", "processes",
-        "supports", "guarantees", "specifies", "covers"
+        "allows",
+        "requires",
+        "provides",
+        "contains",
+        "includes",
+        "excludes",
+        "is",
+        "are",
+        "was",
+        "were",
+        "has",
+        "have",
+        "must",
+        "should",
+        "can",
+        "cannot",
+        "takes",
+        "retains",
+        "stores",
+        "deletes",
+        "refunds",
+        "processes",
+        "supports",
+        "guarantees",
+        "specifies",
+        "covers",
     ]
 
     words = text.strip().rstrip(".").split()
@@ -43,7 +65,7 @@ def extract_claim_triple_heuristic(text: str) -> tuple[str | None, str | None, s
             if w.lower() == p and i > 0 and i < len(words) - 1:
                 subject = " ".join(words[:i])
                 predicate = w
-                obj = " ".join(words[i + 1:])
+                obj = " ".join(words[i + 1 :])
                 return subject, predicate, obj
 
     if len(words) >= 4:

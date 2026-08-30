@@ -119,7 +119,7 @@ def parse_csv(stream: BinaryIO) -> list[dict[str, Any]]:
             if not any(val.strip() for val in row):
                 continue
             row_str = " | ".join(
-                f"{header[i] if i < len(header) else f'Col{i+1}'}: {val.strip()}"
+                f"{header[i] if i < len(header) else f'Col{i + 1}'}: {val.strip()}"
                 for i, val in enumerate(row)
             )
             lines.append(row_str)

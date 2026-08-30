@@ -338,3 +338,9 @@ def get_model_config() -> ModelConfig:
     """Return the cached ModelConfig singleton loaded from models.yaml."""
     raw = _load_models_yaml()
     return ModelConfig(raw)
+
+
+def reload_settings() -> Settings:
+    """Clear cached settings singleton and re-read environment variables."""
+    get_settings.cache_clear()
+    return get_settings()

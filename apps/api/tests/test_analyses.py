@@ -164,4 +164,3 @@ def test_list_analyses_with_pagination(mock_create_indexes, mock_connect, mock_a
         assert data[0]["id"] == "64ee39d09c6292376e191983"
         mock_cursor.skip.assert_called_once_with(5)
         mock_cursor.limit.assert_called_once_with(10)
-

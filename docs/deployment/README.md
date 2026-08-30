@@ -126,7 +126,7 @@ QDRANT_API_KEY=   # empty = no auth
 1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
 2. Create an API key (free tier available)
 3. Set `GEMINI_API_KEY` in `.env`
-4. Verify the configured model ID (`gemini-2.5-flash` in `models.yaml`) is available for your API key
+4. Verify the configured model ID (`gemini-3.5-flash-lite` in `config/models.yaml`) is available for your API key
 
 > **Model ID verification:** Run `python -c "from app.core.model_registry import get_llm; print(get_llm())"` after setting up credentials.
 
@@ -134,24 +134,47 @@ QDRANT_API_KEY=   # empty = no auth
 
 ## Backend Deployment
 
-### Render (free tier)
+### Google Cloud Run (Recommended for Production)
 
-1. Connect your GitHub repository to [render.com](https://render.com)
-2. Create a new **Web Service**
-3. Root directory: `apps/api`
-4. Build command: `pip install -e .`
-5. Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-6. Add all environment variables in the Render dashboard
-7. Set `APP_ENV=production`
+Google Cloud Run provides fully managed serverless container execution with automatic scaling, zero idle cost, and native container support.
 
-### Railway
+1. **Install and authenticate Google Cloud SDK**:
+   ```bash
+   gcloud auth login
+   gcloud config set project YOUR_GCP_PROJECT_ID
+   ```
 
-1. Connect repository at [railway.app](https://railway.app)
-2. Select `apps/api` as root
-3. Railway auto-detects Python and uses `pyproject.toml`
-4. Add environment variables
+2. **Deploy directly from the repository**:
+   ```bash
+   gcloud run deploy trustrag-api \
+     --source apps/api \
+     --region us-central1 \
+     --platform managed \
+     --allow-unauthenticated \
+     --memory 2Gi \
+     --cpu 2 \
+     --timeout 300 \
+     --set-env-vars "APP_ENV=production,MONGODB_DATABASE=trustrag_db" \
+     --set-secrets "MONGODB_URI=trustrag-mongodb-uri:latest,JWT_SECRET=trustrag-jwt-secret:latest,GEMINI_API_KEY=trustrag-gemini-key:latest,QDRANT_URL=trustrag-qdrant-url:latest,QDRANT_API_KEY=trustrag-qdrant-key:latest"
+   ```
+   *(Or pass environment variables via `--set-env-vars` if Secret Manager is not yet configured).*
 
-### Docker (any VPS)
+3. **Cloud Run Container Specifications**:
+   - **Port**: Google Cloud Run automatically provides `$PORT` (default `8080`). The Dockerfile dynamically binds to `${PORT:-8000}`.
+   - **Memory**: Minimum **1.5GiB - 2GiB** recommended so Sentence Transformers can load and cache dense embedding weights (`all-MiniLM-L6-v2`) in memory.
+   - **Execution Environment**: Second Generation (`--execution-environment gen2`).
+
+4. **Obtain your Backend URL**:
+   After deployment, Cloud Run provides a secure HTTPS URL:
+   ```
+   https://trustrag-api-<hash>-<region>.a.run.app
+   ```
+   Verify health:
+   ```bash
+   curl https://trustrag-api-<hash>-<region>.a.run.app/api/v1/health
+   ```
+
+### Docker (any VPS / Virtual Machine)
 
 ```bash
 docker build -t trustrag-api ./apps/api
@@ -162,20 +185,43 @@ docker run -p 8000:8000 --env-file .env trustrag-api
 
 ## Frontend Deployment
 
-### Netlify (recommended for free tier)
+### Cloudflare Pages (Recommended for Production)
 
-1. Connect repository at [netlify.com](https://netlify.com)
-2. Base directory: `apps/web`
-3. Build command: `npm run build`
-4. Publish directory: `dist`
-5. Add environment variable: `VITE_API_BASE_URL=https://your-backend-url.com`
+Cloudflare Pages provides global CDN edge delivery with zero-config preview deployments and custom domains.
 
-### Vercel
+#### Method A: Git Integration (Recommended)
+1. Log in to the [Cloudflare Dashboard](https://dash.cloudflare.com/) and navigate to **Workers & Pages** → **Create application** → **Pages** → **Connect to Git**.
+2. Select your `TrustRAG` repository.
+3. Configure the build parameters:
+   - **Project name**: `trustrag`
+   - **Production branch**: `main`
+   - **Framework preset**: `Vite`
+   - **Root directory**: `apps/web`
+   - **Build command**: `npm run build`
+   - **Build output directory**: `dist`
+4. Under **Environment variables**, set:
+   - `VITE_API_URL`: `https://trustrag-api-<hash>-<region>.a.run.app` (your Cloud Run backend URL).
+5. Click **Save and Deploy**.
 
-1. Import repository at [vercel.com](https://vercel.com)
-2. Framework: **Vite**
-3. Root directory: `apps/web`
-4. Add `VITE_API_BASE_URL` environment variable
+#### Method B: Direct Upload via Wrangler CLI
+```bash
+cd apps/web
+npm install
+VITE_API_URL="https://trustrag-api-<hash>-<region>.a.run.app" npm run build
+npx wrangler pages deploy dist --project-name trustrag
+```
+
+#### SPA Routing & Security Headers
+The repository automatically includes:
+- `apps/web/public/_redirects`: Routes all SPA paths (`/playground`, `/knowledge-bases`, `/evidence`, `/claims`, etc.) to `/index.html 200` without 404s.
+- `apps/web/public/_headers`: Enforces `X-Frame-Options: DENY`, `nosniff`, and cache rules on immutable static bundles.
+
+### Vercel / Netlify (Alternative)
+
+- Root directory: `apps/web`
+- Build command: `npm run build`
+- Output directory: `dist`
+- Environment variable: `VITE_API_URL=https://your-cloud-run-url.a.run.app`
 
 ---
 
