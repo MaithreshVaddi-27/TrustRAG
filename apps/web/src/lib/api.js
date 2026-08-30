@@ -93,16 +93,29 @@ export function openAnalysisStream(analysisId, { onEvent, onError, onComplete } 
       return
     }
 
+    // Ignore server keep-alive ping heartbeats
+    if (payload.event === 'ping') {
+      return
+    }
+
     onEvent?.(payload)
 
     if (TERMINAL_EVENTS.has(payload.event)) {
-      source.close()
+      try {
+        source.close()
+      } catch {
+        // ignore
+      }
       onComplete?.()
     }
   }
 
   source.onerror = (err) => {
-    source.close()
+    try {
+      source.close()
+    } catch {
+      // ignore
+    }
     onError?.(err)
   }
 

@@ -270,6 +270,13 @@ async def sse_event_generator(
 
         if not has_new:
             no_event_ticks += 1
+            # Periodic heartbeat ping keeps reverse proxies (Render/Cloudflare) alive
+            if no_event_ticks % 3 == 0:
+                yield {
+                    "event": "ping",
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "data": {},
+                }
 
         await asyncio.sleep(1.0)
 
