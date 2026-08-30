@@ -115,25 +115,46 @@ def get_embedding_model() -> Embeddings:
     """
     Return the embedding model.
 
-    Uses HuggingFaceEmbeddings (sentence-transformers) — fully local,
-    no API key required, free to run.
-
-    Model is downloaded once and cached in the configured cache directory.
-    Embedding dimensionality from models.yaml MUST match the Qdrant collection.
+    Supports:
+      - google_genai: Cloud-hosted Google Gemini embeddings (ultra-low RAM <60MB)
+      - huggingface: Local sentence-transformers (fallback for air-gapped environments)
     """
+    cfg: ModelConfig = get_model_config()
+    settings = get_settings()
+
+    # ── Option 1: Google Gemini Embeddings (Primary / Low-Memory Cloud) ──────────
+    if cfg.embedding_provider == "google_genai":
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+        logger.info(
+            "Initializing Google Generative AI embedding model",
+            model=cfg.embedding_model,
+            dimensionality=cfg.embedding_dimensionality,
+        )
+        try:
+            return GoogleGenerativeAIEmbeddings(
+                model=cfg.embedding_model,
+                google_api_key=settings.gemini_api_key,
+                output_dimensionality=cfg.embedding_dimensionality,
+            )
+        except Exception as exc:
+            raise ConfigurationError(
+                f"Failed to initialize Google embedding model '{cfg.embedding_model}'",
+                detail=str(exc),
+            ) from exc
+
+    # ── Option 2: Local Hugging Face Embeddings (Sentence-Transformers) ──────────
     from langchain_huggingface import HuggingFaceEmbeddings
 
-    cfg: ModelConfig = get_model_config()
     cache_dir = Path(cfg.embedding_cache_dir).resolve()
 
     logger.info(
-        "Initializing embedding model",
+        "Initializing HuggingFace embedding model",
         model=cfg.embedding_model,
         dimensionality=cfg.embedding_dimensionality,
         cache_dir=str(cache_dir),
     )
 
-    settings = get_settings()
     if settings.hf_token:
         import os
 

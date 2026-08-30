@@ -191,6 +191,10 @@ class ModelConfig:
 
     # ── Embedding ─────────────────────────────────────────────────────────────
     @property
+    def embedding_provider(self) -> str:
+        return str(self._get("embedding", "provider", required=False) or "google_genai")
+
+    @property
     def embedding_model(self) -> str:
         return self._get("embedding", "model")
 
@@ -204,7 +208,7 @@ class ModelConfig:
 
     @property
     def embedding_cache_dir(self) -> str:
-        return str(self._get("embedding", "cache_dir"))
+        return str(self._get("embedding", "cache_dir", required=False) or ".model_cache")
 
     # ── Verification ──────────────────────────────────────────────────────────
     @property

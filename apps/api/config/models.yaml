@@ -34,17 +34,14 @@ llm:
 # ─── Embedding ────────────────────────────────────────────────────────────────
 embedding:
   framework: langchain
-  # sentence-transformers — fully local, lightweight (55 tensors, ~60MB), free.
-  provider: huggingface
-  model: sentence-transformers/paraphrase-MiniLM-L3-v2
-  # Dimension MUST match Qdrant collection configuration.
+  # Google Gemini Embeddings — cloud API, ultra-low memory (<60MB total),
+  # eliminates PyTorch memory bloat, instant response, 100% free tier compatible.
+  provider: google_genai
+  model: models/gemini-embedding-001
+  # 384 dimensions matches Qdrant collection configuration via Matryoshka embeddings.
   output_dimensionality: 384
   # Increment this version when you change the embedding model.
-  # A version mismatch between stored chunks and the active model
-  # triggers a re-indexing requirement.
   version: "1"
-  # Local model cache directory (relative to api root)
-  cache_dir: .model_cache
 
 # ─── Verification LLM ─────────────────────────────────────────────────────────
 # Used for claim-level NLI/structured verification.
