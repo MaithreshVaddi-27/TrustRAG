@@ -59,16 +59,17 @@ Over five progressive audit passes, **40 distinct items** spanning security, mul
 | **AUD-38** | DEP/GCR | P1 | Google Cloud Run failed port binding on `$PORT` | Replaced hardcoded port 8000 with dynamic `${PORT:-8000}` in Dockerfile | ✅ FIXED |
 | **AUD-39** | AI/RESIL | P1 | Gemini rate limit (429) or API key invalidation crashed pipeline | Wrapped `batch_verify_claims_nli` in try-except with fallback to `NEUTRAL` | ✅ FIXED |
 | **AUD-40** | TEST/ENV | P2 | Running `pytest` outside Docker failed on missing `.env` | Created `tests/conftest.py` with mock defaults for local/CI test runs | ✅ FIXED |
+| **AUD-41** | API/CORS | P1 | CORS preflight rejected on `POST /api/v1/analyses` due to restricted headers | Allowed wildcard methods and headers (`allow_methods=["*"]`, `allow_headers=["*"]`) | ✅ FIXED |
+| **AUD-42** | API/SSE | P1 | Reverse proxies (Render/Cloudflare) dropped idle SSE trace streams | Added periodic 3-second heartbeat ping (`{"event": "ping"}`) and proxy headers | ✅ FIXED |
+| **AUD-43** | UI/POLL | P1 | Playground UI reverted to initial state if SSE stream closed early | Upgraded `fetchFinalAnalysis` with resilient polling loop and `Promise.allSettled` | ✅ FIXED |
+| **AUD-44** | AI/AUTH | P2 | Hugging Face embedding model downloads lacked authentication token | Added `HF_TOKEN` support in Settings, model registry, Dockerfile, and Render | ✅ FIXED |
+| **AUD-45** | CODE/QUAL| P2 | Ruff simplify warnings and untracked build egg-info artifacts | Replaced `try-except-pass` with `contextlib.suppress`, simplified Porter stemmer | ✅ FIXED |
 
 ---
 
 ## 3. Blackbox Verification Matrix (Live Server)
 
----
-
-## 3. Blackbox Verification Matrix (Live Server)
-
-All blackbox tests were executed against the live Docker cluster (`http://localhost:8000`):
+All blackbox tests were executed against the live cluster:
 
 | Test ID | Method & Route | Target Scenario | Observed Response | Result |
 | :--- | :--- | :--- | :--- | :--- |
