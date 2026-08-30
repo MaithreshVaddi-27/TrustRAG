@@ -79,6 +79,35 @@ async def retrieval_node(state: AgentState) -> AgentState:
         query=state["current_query"], kb_id=state["kb_id"], top_k_override=top_k_override
     )
 
+    if not candidates and state.get("attempts", 0) == 0:
+        from app.db.qdrant import get_collection_name, get_qdrant_client
+
+        try:
+            q_client = get_qdrant_client()
+            c_info = q_client.get_collection(get_collection_name(state["kb_id"]))
+            if c_info.points_count == 0:
+                logger.warning("Knowledge base collection is empty", kb_id=state["kb_id"])
+                await add_trace_event(
+                    state["analysis_id"],
+                    "retrieval.empty",
+                    {"message": "Knowledge base has 0 indexed chunks. Upload documents first."},
+                )
+                state["answer"] = (
+                    "This knowledge base has no indexed document content. "
+                    "Please upload a document to this knowledge base on the "
+                    "Knowledge Bases page before running an analysis."
+                )
+                state["chunks"] = []
+                state["evidence_ids"] = []
+                state["claims"] = []
+                state["verdict_status"] = "PASS"
+                state["reliability_score"] = 0.0
+                state["diagnosis_type"] = "RETRIEVAL_FAILURE"
+                state["diagnosis_failures"] = ["Knowledge base contains 0 indexed chunks"]
+                return state
+        except Exception as exc:
+            logger.debug("Could not verify collection point count", error=str(exc))
+
     # 2. Rerank
     top_chunks = rerank_candidate_chunks(
         state["current_query"], candidates, max_context_override=max_context_override
