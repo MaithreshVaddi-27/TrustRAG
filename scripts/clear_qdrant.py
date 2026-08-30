@@ -10,6 +10,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load .env
@@ -37,12 +38,14 @@ def main():
 
     try:
         collections = client.get_collections().collections
-    except Exception as exc:
+    except (ConnectionError, TimeoutError, OSError) as exc:
         print(f"Failed to connect to Qdrant Cloud: {exc}")
         sys.exit(1)
 
     if not collections:
-        print("No collections found in Qdrant Cloud. Vector database is completely clean!")
+        print(
+            "No collections found in Qdrant Cloud. Vector database is completely clean!"
+        )
         return
 
     print(f"Found {len(collections)} collection(s):")
@@ -50,11 +53,13 @@ def main():
         try:
             info = client.get_collection(c.name)
             print(f"  • {c.name}: {info.points_count} points, status: {info.status}")
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):
             print(f"  • {c.name}")
 
     if args.purge:
-        confirm = input("\nAre you sure you want to delete ALL collections above? (y/N): ")
+        confirm = input(
+            "\nAre you sure you want to delete ALL collections above? (y/N): "
+        )
         if confirm.lower() == "y":
             for c in collections:
                 print(f"Deleting collection: {c.name}...")
