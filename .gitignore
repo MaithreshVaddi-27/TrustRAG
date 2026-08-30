@@ -198,6 +198,7 @@ semgrep-report.json
 # yarn.lock
 # pnpm-lock.yaml
 bun.lockb
+uv.lock
 
 # ─── AI / Agentic tool directories ────────────────────────────────────────────
 # IDE AI assistants and agent runtimes may write local config here

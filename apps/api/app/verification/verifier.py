@@ -284,19 +284,32 @@ async def batch_verify_claims_nli(
     model = get_verification_model()
     structured_batch = model.with_structured_output(BatchNLIVerdict)
 
-    logger.info("Executing batch NLI verification", claim_count=len(claims))
-    response = await structured_batch.ainvoke([("human", prompt_str)])
+    try:
+        logger.info("Executing batch NLI verification", claim_count=len(claims))
+        response = await structured_batch.ainvoke([("human", prompt_str)])
 
-    results: dict[int, dict[str, Any]] = {}
-    for item in response.verdicts:
-        results[item.claim_id] = {
-            "verdict": item.verdict,
-            "supporting_segments": item.supporting_segments,
-            "explanation": item.explanation,
-        }
+        results: dict[int, dict[str, Any]] = {}
+        for item in response.verdicts:
+            results[item.claim_id] = {
+                "verdict": item.verdict,
+                "supporting_segments": item.supporting_segments,
+                "explanation": item.explanation,
+            }
 
-    logger.info("Batch NLI verification complete", verified_count=len(results))
-    return results
+        logger.info("Batch NLI verification complete", verified_count=len(results))
+        return results
+
+    except Exception as exc:
+        logger.error("Batch NLI verification failed", error=str(exc))
+        # Fallback: mark all claims as NEUTRAL so the pipeline degrades gracefully without crashing
+        fallback_results: dict[int, dict[str, Any]] = {}
+        for i in range(1, len(claims) + 1):
+            fallback_results[i] = {
+                "verdict": "NEUTRAL",
+                "supporting_segments": [],
+                "explanation": "Verification service unavailable or quota limit reached.",
+            }
+        return fallback_results
 
 
 async def execute_claim_verification(

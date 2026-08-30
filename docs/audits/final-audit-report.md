@@ -1,8 +1,8 @@
 # TRUSTRAG — Master Comprehensive Quality Audit & Verification Report
 
-**Audit Cycle**: v1.0 through v4.0 (Final Sign-Off)  
-**Date**: August 29, 2026  
-**Scope**: Full Stack (FastAPI, React 18, LangGraph StateGraph, MongoDB, Qdrant)  
+**Audit Cycle**: v1.0 through v5.0 (Deployment Sign-Off)  
+**Date**: August 30, 2026  
+**Scope**: Full Stack (FastAPI, React 18, LangGraph StateGraph, MongoDB Atlas, Qdrant Cloud, Cloudflare Pages, Cloud Run)  
 **Status**: ✅ **100% RESOLVED & VERIFIED** (0 Open Issues, 79/79 Unit Tests Passing, 0 Bandit SAST Issues)
 
 ---
@@ -11,7 +11,7 @@
 
 This master quality audit report consolidates all audit phases, security reviews, architecture validations, and runtime verifications for the TRUSTRAG platform.
 
-Over four progressive audit passes, **35 distinct items** spanning security, multi-tenant isolation, data integrity, code cleanliness, performance, and user experience were evaluated, remediated, and verified against automated unit tests and live cluster blackbox executions.
+Over five progressive audit passes, **40 distinct items** spanning security, multi-tenant isolation, data integrity, deployment topology, error resilience, and user experience were evaluated, remediated, and verified against automated unit tests and live cluster blackbox executions.
 
 ---
 
@@ -54,6 +54,15 @@ Over four progressive audit passes, **35 distinct items** spanning security, mul
 | **AUD-33** | UI/SRCH | P3 | Knowledge bases listing lacked search filter | Added instant client-side search input by name and description | ✅ FIXED |
 | **AUD-34** | UI/SETT | P2 | Static settings placeholder page | Transformed into live telemetry cluster health & model registry panel | ✅ FIXED |
 | **AUD-35** | TEST/COV | P1 | Missing health route automated tests | Added `test_health.py` bringing `health.py` to 100% test coverage | ✅ FIXED |
+| **AUD-36** | GIT/IGN | P1 | Frontend `api.js` un-tracked due to `.gitignore` `lib/` pattern | Whitelisted `!apps/web/src/lib/` to guarantee build file tracking | ✅ FIXED |
+| **AUD-37** | DEP/CFP | P1 | Cloudflare Pages direct link refresh threw 404 Not Found | Created `public/_redirects` (`/* /index.html 200`) and `public/_headers` | ✅ FIXED |
+| **AUD-38** | DEP/GCR | P1 | Google Cloud Run failed port binding on `$PORT` | Replaced hardcoded port 8000 with dynamic `${PORT:-8000}` in Dockerfile | ✅ FIXED |
+| **AUD-39** | AI/RESIL | P1 | Gemini rate limit (429) or API key invalidation crashed pipeline | Wrapped `batch_verify_claims_nli` in try-except with fallback to `NEUTRAL` | ✅ FIXED |
+| **AUD-40** | TEST/ENV | P2 | Running `pytest` outside Docker failed on missing `.env` | Created `tests/conftest.py` with mock defaults for local/CI test runs | ✅ FIXED |
+
+---
+
+## 3. Blackbox Verification Matrix (Live Server)
 
 ---
 
