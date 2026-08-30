@@ -10,6 +10,9 @@ services:
     rootDir: apps/api
     dockerfilePath: Dockerfile
     plan: free
+    region: oregon
+    branch: production-deploy
+    autoDeploy: true
     healthCheckPath: /api/v1/health
     envVars:
       - key: APP_ENV
