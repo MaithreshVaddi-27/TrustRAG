@@ -6,9 +6,11 @@
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![Live Demo](https://img.shields.io/badge/Live_Workbench-trustrag.pages.dev-00C7B7?logo=cloudflarepages&logoColor=white)](https://trustrag.pages.dev)
+[![API Status](https://img.shields.io/badge/API_Live-trustrag--api.onrender.com-46E3B7?logo=render&logoColor=white)](https://trustrag-api.onrender.com)
 [![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-FF6F00)](https://langchain-ai.github.io/langgraph/)
 [![Qdrant](https://img.shields.io/badge/Qdrant-Hybrid_Vector-DC2626?logo=qdrant&logoColor=white)](https://qdrant.tech)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Community_&_Atlas-47A248?logo=mongodb&logoColor=white)](https://mongodb.com)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas_%26_Community-47A248?logo=mongodb&logoColor=white)](https://mongodb.com)
 [![Tests](https://img.shields.io/badge/Tests-79%20Passing-brightgreen)](apps/api/tests)
 [![Bandit](https://img.shields.io/badge/Bandit%20SAST-0%20Issues-brightgreen)](docs/audits/final-audit-report.md)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
@@ -20,6 +22,7 @@
 - [Overview](#-overview)
 - [Self-Healing Reliability Loop](#-self-healing-reliability-loop)
 - [System Architecture](#-system-architecture)
+- [Production Deployment (Render & Cloudflare)](#-production-deployment-render--cloudflare)
 - [Core Engineering Capabilities](#-core-engineering-capabilities)
   - [1. Multi-Tenant User Isolation & Anti-IDOR](#1-multi-tenant-user-isolation--anti-idor)
   - [2. Rule-Based Stemming & Document Zoning](#2-rule-based-stemming--document-zoning)
@@ -67,7 +70,7 @@ Standard RAG (Retrieval-Augmented Generation) systems fail silently. When dense 
                             │
                             ▼
               ┌───────────────────────────┐
-              │ 2. Hybrid Retrieval       │ ── Dense (all-MiniLM-L6-v2, 384d)
+              │ 2. Hybrid Retrieval       │ ── Dense (Gemini Embeddings, 384d)
               │    & Reciprocal Fusion    │ ── Sparse Token-Frequency BM25
               └─────────────┬─────────────┘ ── RRF Scoring & Temporal Window Filter
                             │
@@ -156,6 +159,68 @@ TrustRAG/
 
 ---
 
+## 🌐 Production Deployment (Render & Cloudflare)
+
+The production branch is **`production-deploy`**. Both the frontend and backend are continuously deployed to production environments:
+
+- **Frontend Workbench**: [https://trustrag.pages.dev](https://trustrag.pages.dev) (Hosted on Cloudflare Pages)
+- **Backend API**: [https://trustrag-api.onrender.com](https://trustrag-api.onrender.com) (Hosted on Render.com)
+- **Interactive OpenAPI Docs**: [https://trustrag-api.onrender.com/docs](https://trustrag-api.onrender.com/docs)
+- **Health Check Endpoint**: [https://trustrag-api.onrender.com/api/v1/health](https://trustrag-api.onrender.com/api/v1/health)
+
+### 1. Backend Service (Render.com)
+
+The backend is packaged as a high-efficiency container (`apps/api/Dockerfile`) and orchestrated via [`render.yaml`](render.yaml):
+
+1. **Production Runtime Highlights**:
+   * **Base Image**: `python:3.11-slim` multi-stage build installing production-only dependencies (`pip install .`).
+   * **Ultra-Low Memory Footprint**: Operates at **~55MB RAM** using cloud-native Google Gemini embeddings (`models/gemini-embedding-001`), completely immune to Render's 512MB free-tier OOM limits.
+   * **Instant Port Binding**: Non-blocking `lifespan` startup architecture yields immediately to Uvicorn, allowing Render's port detection to detect `$PORT` within 1 second.
+   * **SSE Heartbeat Keep-Alive**: Emits SSE comment pings every 3 seconds to keep persistent HTTP connections alive through Render's reverse proxy timeouts.
+
+2. **Required Environment Variables on Render**:
+   | Variable | Description / Recommended Value |
+   |---|---|
+   | `APP_ENV` | `production` |
+   | `MONGODB_URI` | MongoDB Atlas connection string (`mongodb+srv://...`) |
+   | `MONGODB_DATABASE` | `trustrag` |
+   | `QDRANT_URL` | Qdrant Cloud cluster URL (`https://<id>.<region>.aws.cloud.qdrant.io`) |
+   | `QDRANT_API_KEY` | Qdrant Cloud API key |
+   | `GEMINI_API_KEY` | Google AI Studio Gemini API key |
+   | `JWT_SECRET` | 64-character random hex string for signing JWT tokens |
+   | `CORS_ORIGINS` | `*` or `https://trustrag.pages.dev,http://localhost:5173` |
+
+### 2. Frontend Web Application (Cloudflare Pages)
+
+The frontend is built with React 18 and Vite 6, deployed globally across Cloudflare's edge CDN:
+
+1. **Build Configuration**:
+   * **Framework Preset**: None / Vite
+   * **Root Directory**: `apps/web`
+   * **Build Command**: `npm run build`
+   * **Build Output Directory**: `dist`
+   * **Single-Page App Routing**: Enforced via [`apps/web/public/_redirects`](apps/web/public/_redirects) (`/* /index.html 200`).
+   * **Defensive HTTP Headers**: Enforced via [`apps/web/public/_headers`](apps/web/public/_headers) (CSP, HSTS, X-Content-Type-Options).
+
+2. **Required Environment Variables on Cloudflare Pages**:
+   | Variable | Value |
+   |---|---|
+   | `VITE_API_URL` | `https://trustrag-api.onrender.com` |
+
+### 3. Database & Cluster Maintenance Utility
+
+A dedicated Python maintenance script is included in [`scripts/clear_qdrant.py`](scripts/clear_qdrant.py) for inspecting and purging Qdrant Cloud collections:
+
+```bash
+# List all active collections and point counts
+python scripts/clear_qdrant.py --list
+
+# Purge and delete all collections in the Qdrant Cloud cluster
+python scripts/clear_qdrant.py --purge
+```
+
+---
+
 ## 💡 Core Engineering Capabilities
 
 ### 1. Multi-Tenant User Isolation & Anti-IDOR
@@ -202,7 +267,7 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 | **State Machine** | LangGraph | `StateGraph` | Multi-node deterministic agent state machine |
 | **Primary Database** | MongoDB Community | v7.0+ (Local Host / Docker Bridge) | Permanent storage of metadata, chunks, claims, and execution traces |
 | **Vector Engine** | Qdrant | v1.10.1 (HTTP & gRPC) | Hybrid dense and sparse vector storage, payload filtering |
-| **Embeddings** | HuggingFace Local | `sentence-transformers/all-MiniLM-L6-v2` | 384-dimensional dense vectors running locally in container |
+| **Embeddings** | Google Gemini API / HuggingFace | `models/gemini-embedding-001` (384d) / `paraphrase-MiniLM-L3-v2` | Matryoshka 384-dim dense vectors with cloud low-RAM footprint (<55MB) |
 | **Reasoning LLM** | Google Gemini | `gemini-2.5-flash-lite` / `gemini-3.5-flash-lite` | Grounded reasoning, claim extraction, and batch NLI verification |
 | **Security Suite** | JWT + Bcrypt + SlowAPI | HS256, 12 Bcrypt rounds, IP rate limits | Authentication, timing-attack protection, defensive HTTP headers |
 
