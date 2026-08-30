@@ -186,6 +186,10 @@ async def generation_node(state: AgentState) -> AgentState:
     """Generate answer grounded in retrieved context."""
     logger.info("Agent Generation Node starting")
 
+    # If answer was already formulated (e.g. empty KB guard), preserve it
+    if state.get("answer"):
+        return state
+
     await add_trace_event(
         state["analysis_id"],
         "generation.started",
@@ -201,6 +205,13 @@ async def generation_node(state: AgentState) -> AgentState:
 async def verification_node(state: AgentState) -> AgentState:
     """Run claims decomposition and NLI verification, and evaluate reliability thresholds."""
     logger.info("Agent Verification Node starting")
+
+    # If already diagnosed as empty KB, terminate cleanly
+    if state.get("diagnosis_type") == "RETRIEVAL_FAILURE" and state.get("answer"):
+        cfg = get_model_config()
+        state["attempts"] = cfg.max_recovery_attempts
+        state["verdict_status"] = "PASS"
+        return state
 
     answer = state["answer"]
     cfg = get_model_config()
