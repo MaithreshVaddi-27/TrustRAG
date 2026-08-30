@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.core.config import ModelConfig, get_model_config, get_settings
 from app.core.exceptions import ConfigurationError
@@ -115,30 +115,86 @@ def get_embedding_model() -> Embeddings:
     """
     Return the embedding model.
 
-    Uses HuggingFaceEmbeddings (sentence-transformers) — fully local,
-    no API key required, free to run.
-
-    Model is downloaded once and cached in the configured cache directory.
-    Embedding dimensionality from models.yaml MUST match the Qdrant collection.
+    Supports:
+      - google_genai: Cloud-hosted Google Gemini embeddings (ultra-low RAM <60MB)
+      - huggingface: Local sentence-transformers (fallback for air-gapped environments)
     """
+    cfg: ModelConfig = get_model_config()
+    settings = get_settings()
+
+    # ── Option 1: Google Gemini Embeddings (Primary / Low-Memory Cloud) ──────────
+    if cfg.embedding_provider == "google_genai":
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+        logger.info(
+            "Initializing Google Generative AI embedding model",
+            model=cfg.embedding_model,
+            dimensionality=cfg.embedding_dimensionality,
+        )
+        try:
+            return GoogleGenerativeAIEmbeddings(
+                model=cfg.embedding_model,
+                google_api_key=settings.gemini_api_key,
+                output_dimensionality=cfg.embedding_dimensionality,
+            )
+        except Exception as exc:
+            raise ConfigurationError(
+                f"Failed to initialize Google embedding model '{cfg.embedding_model}'",
+                detail=str(exc),
+            ) from exc
+
+    # ── Option 2: Local Hugging Face Embeddings (Sentence-Transformers) ──────────
     from langchain_huggingface import HuggingFaceEmbeddings
 
-    cfg: ModelConfig = get_model_config()
     cache_dir = Path(cfg.embedding_cache_dir).resolve()
 
     logger.info(
-        "Initializing embedding model",
+        "Initializing HuggingFace embedding model",
         model=cfg.embedding_model,
         dimensionality=cfg.embedding_dimensionality,
         cache_dir=str(cache_dir),
     )
 
+    if settings.hf_token:
+        import os
+
+        os.environ["HF_TOKEN"] = settings.hf_token
+        os.environ["HUGGING_FACE_HUB_TOKEN"] = settings.hf_token
+
     try:
+        try:
+            import torch
+
+            torch.set_num_threads(1)
+        except ImportError:
+            pass
+        except Exception as exc:
+            logger.debug("Could not limit torch thread count", error=str(exc))
+
+        model_kwargs: dict[str, Any] = {"device": "cpu"}
+        if settings.hf_token:
+            model_kwargs["token"] = settings.hf_token
+
+        # Fast-path: if model is already pre-cached in Docker, load purely offline (0 network delay)
+        if cache_dir.exists() and any(cache_dir.iterdir()):
+            try:
+                offline_kwargs = {**model_kwargs, "local_files_only": True}
+                return HuggingFaceEmbeddings(
+                    model_name=cfg.embedding_model,
+                    cache_folder=str(cache_dir),
+                    encode_kwargs={"normalize_embeddings": True},
+                    model_kwargs=offline_kwargs,
+                )
+            except Exception as offline_err:
+                logger.debug(
+                    "Offline cache fast-path skipped, downloading model", error=str(offline_err)
+                )
+
         return HuggingFaceEmbeddings(
             model_name=cfg.embedding_model,
             cache_folder=str(cache_dir),
             encode_kwargs={"normalize_embeddings": True},
-            model_kwargs={"device": "cpu"},
+            model_kwargs=model_kwargs,
         )
     except Exception as exc:
         raise ConfigurationError(
@@ -164,11 +220,20 @@ def get_reranker():  # type: ignore[return]
         logger.info("Reranker disabled in models.yaml")
         return None
 
+    settings = get_settings()
+    if settings.hf_token:
+        import os
+
+        os.environ["HF_TOKEN"] = settings.hf_token
+        os.environ["HUGGING_FACE_HUB_TOKEN"] = settings.hf_token
+
     from sentence_transformers import CrossEncoder
 
     logger.info("Initializing reranker", model=cfg.reranker_model)
 
     try:
+        if settings.hf_token:
+            return CrossEncoder(cfg.reranker_model, token=settings.hf_token)
         return CrossEncoder(cfg.reranker_model)
     except Exception as exc:
         raise ConfigurationError(
@@ -195,3 +260,12 @@ def registry_status() -> dict[str, str | bool | None]:
         "reranker_enabled": cfg.reranker_enabled,
         "reranker_model": cfg.reranker_model if cfg.reranker_enabled else None,
     }
+
+
+def clear_model_caches() -> None:
+    """Clear cached model singletons so updated API keys or model configs take effect."""
+    get_llm.cache_clear()
+    get_verification_model.cache_clear()
+    get_embedding_model.cache_clear()
+    get_reranker.cache_clear()
+    logger.info("Cleared all model registry caches")

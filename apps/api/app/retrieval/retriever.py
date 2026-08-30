@@ -5,6 +5,7 @@ TRUSTRAG — Hybrid dense + sparse search retriever with RRF and temporal filter
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime
 from typing import Any
 
@@ -27,8 +28,8 @@ async def dense_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
         collection_name = get_collection_name(kb_id)
         embed_model = get_embedding_model()
 
-        # Embed query text
-        query_vector = embed_model.embed_query(query)
+        # Embed query text in background thread to avoid freezing asyncio event loop
+        query_vector = await asyncio.to_thread(embed_model.embed_query, query)
 
         if hasattr(client, "query_points"):
             response = client.query_points(
@@ -182,10 +183,8 @@ async def apply_temporal_filtering(
 
     doc_objs = []
     for did in doc_ids:
-        try:
+        with contextlib.suppress(InvalidId):
             doc_objs.append(ObjectId(did))
-        except InvalidId:
-            pass
 
     docs_cursor = doc_coll.find({"_id": {"$in": doc_objs}})
     docs_map = {}

@@ -160,9 +160,7 @@ async def get_analysis(analysis_id_str: str, user_id_str: str) -> AnalysisRespon
     return serialize_analysis(analysis)
 
 
-async def list_analyses(
-    user_id_str: str, limit: int = 50, skip: int = 0
-) -> list[AnalysisResponse]:
+async def list_analyses(user_id_str: str, limit: int = 50, skip: int = 0) -> list[AnalysisResponse]:
     """List analysis runs for the authenticated user with pagination."""
     analyses_coll = get_collection(Collections.ANALYSES)
     results = []
@@ -272,6 +270,13 @@ async def sse_event_generator(
 
         if not has_new:
             no_event_ticks += 1
+            # Periodic heartbeat ping keeps reverse proxies (Render/Cloudflare) alive
+            if no_event_ticks % 3 == 0:
+                yield {
+                    "event": "ping",
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "data": {},
+                }
 
         await asyncio.sleep(1.0)
 
@@ -391,9 +396,7 @@ async def list_all_user_evidence(
     query_filter: dict[str, Any] = {"user_id": uid}
     if await evidence_coll.count_documents(query_filter) == 0:
         analyses_coll = get_collection(Collections.ANALYSES)
-        user_analyses = await analyses_coll.find(
-            {"user_id": uid}, {"_id": 1}
-        ).to_list(1000)
+        user_analyses = await analyses_coll.find({"user_id": uid}, {"_id": 1}).to_list(1000)
         analysis_ids = [a["_id"] for a in user_analyses]
         if not analysis_ids:
             return []
@@ -401,10 +404,7 @@ async def list_all_user_evidence(
 
     results = []
     cursor = (
-        evidence_coll.find(query_filter)
-        .sort("created_at", -1)
-        .skip(skip)
-        .limit(min(limit, 200))
+        evidence_coll.find(query_filter).sort("created_at", -1).skip(skip).limit(min(limit, 200))
     )
     async for e in cursor:
         results.append(serialize_evidence(e))
@@ -421,21 +421,14 @@ async def list_all_user_claims(
     query_filter: dict[str, Any] = {"user_id": uid}
     if await claims_coll.count_documents(query_filter) == 0:
         analyses_coll = get_collection(Collections.ANALYSES)
-        user_analyses = await analyses_coll.find(
-            {"user_id": uid}, {"_id": 1}
-        ).to_list(1000)
+        user_analyses = await analyses_coll.find({"user_id": uid}, {"_id": 1}).to_list(1000)
         analysis_ids = [a["_id"] for a in user_analyses]
         if not analysis_ids:
             return []
         query_filter = {"analysis_id": {"$in": analysis_ids}}
 
     results = []
-    cursor = (
-        claims_coll.find(query_filter)
-        .sort("created_at", -1)
-        .skip(skip)
-        .limit(min(limit, 200))
-    )
+    cursor = claims_coll.find(query_filter).sort("created_at", -1).skip(skip).limit(min(limit, 200))
     async for c in cursor:
         results.append(serialize_claim(c))
     return results

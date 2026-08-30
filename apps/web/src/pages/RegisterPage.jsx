@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import AuthLayout from '@/layouts/AuthLayout'
@@ -7,10 +7,24 @@ import { authService } from '@/services/auth'
 export default function RegisterPage() {
   const navigate = useNavigate()
   const [fullName, setFullName] = useState('')
-  const [email,    setEmail]    = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState('')
+  const [loading, setLoading] = useState(false)
+  const [loadingTime, setLoadingTime] = useState(0)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let interval
+    if (loading) {
+      setLoadingTime(0)
+      interval = setInterval(() => {
+        setLoadingTime((prev) => prev + 1)
+      }, 1000)
+    } else {
+      setLoadingTime(0)
+    }
+    return () => clearInterval(interval)
+  }, [loading])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -38,6 +52,17 @@ export default function RegisterPage() {
         {error && (
           <div className="rounded-lg border border-red-800/50 bg-red-950/40 px-3 py-2 text-sm text-red-400">
             {error}
+          </div>
+        )}
+
+        {loading && loadingTime >= 5 && (
+          <div className="rounded-lg border border-amber-800/50 bg-amber-950/30 px-3 py-2.5 text-xs text-amber-300 animate-pulse space-y-1">
+            <p className="font-semibold flex items-center gap-1.5">
+              ⚡ Server is starting up ({loadingTime}s elapsed)
+            </p>
+            <p className="text-amber-400/90 text-[11px] leading-relaxed">
+              Render free tier services sleep after inactivity and take ~30–60 seconds to cold boot. Please leave this page open while it connects.
+            </p>
           </div>
         )}
 

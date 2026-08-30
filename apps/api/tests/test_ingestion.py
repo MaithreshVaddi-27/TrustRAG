@@ -177,8 +177,8 @@ def test_parse_docx():
         xml = (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-            '<w:body><w:p><w:t>Corporate Policy Document in DOCX</w:t></w:p></w:body>'
-            '</w:document>'
+            "<w:body><w:p><w:t>Corporate Policy Document in DOCX</w:t></w:p></w:body>"
+            "</w:document>"
         )
         zf.writestr("word/document.xml", xml)
     bio.seek(0)
@@ -193,4 +193,3 @@ def test_parse_document_routing():
     pages, _, _ = parse_document("config.json", stream)
     assert len(pages) == 1
     assert '"key": "value"' in pages[0]["text"]
-

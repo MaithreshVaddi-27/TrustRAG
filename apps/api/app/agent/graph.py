@@ -55,6 +55,12 @@ async def retrieval_node(state: AgentState) -> AgentState:
     """Execute hybrid retrieval, evidence integrity audit, and evidence persistence."""
     logger.info("Agent Retrieval Node starting", attempt=state["attempts"] + 1)
 
+    await add_trace_event(
+        state["analysis_id"],
+        "retrieval.started",
+        {"message": f"Searching knowledge base for query: '{state['current_query']}'"},
+    )
+
     # 1. Hybrid Retrieval
     top_k_override = None
     max_context_override = None
@@ -78,6 +84,35 @@ async def retrieval_node(state: AgentState) -> AgentState:
     candidates = await retrieve_hybrid_chunks(
         query=state["current_query"], kb_id=state["kb_id"], top_k_override=top_k_override
     )
+
+    if not candidates and state.get("attempts", 0) == 0:
+        from app.db.qdrant import get_collection_name, get_qdrant_client
+
+        try:
+            q_client = get_qdrant_client()
+            c_info = q_client.get_collection(get_collection_name(state["kb_id"]))
+            if c_info.points_count == 0:
+                logger.warning("Knowledge base collection is empty", kb_id=state["kb_id"])
+                await add_trace_event(
+                    state["analysis_id"],
+                    "retrieval.empty",
+                    {"message": "Knowledge base has 0 indexed chunks. Upload documents first."},
+                )
+                state["answer"] = (
+                    "This knowledge base has no indexed document content. "
+                    "Please upload a document to this knowledge base on the "
+                    "Knowledge Bases page before running an analysis."
+                )
+                state["chunks"] = []
+                state["evidence_ids"] = []
+                state["claims"] = []
+                state["verdict_status"] = "PASS"
+                state["reliability_score"] = 0.0
+                state["diagnosis_type"] = "RETRIEVAL_FAILURE"
+                state["diagnosis_failures"] = ["Knowledge base contains 0 indexed chunks"]
+                return state
+        except Exception as exc:
+            logger.debug("Could not verify collection point count", error=str(exc))
 
     # 2. Rerank
     top_chunks = rerank_candidate_chunks(
@@ -151,6 +186,10 @@ async def generation_node(state: AgentState) -> AgentState:
     """Generate answer grounded in retrieved context."""
     logger.info("Agent Generation Node starting")
 
+    # If answer was already formulated (e.g. empty KB guard), preserve it
+    if state.get("answer"):
+        return state
+
     await add_trace_event(
         state["analysis_id"],
         "generation.started",
@@ -166,6 +205,13 @@ async def generation_node(state: AgentState) -> AgentState:
 async def verification_node(state: AgentState) -> AgentState:
     """Run claims decomposition and NLI verification, and evaluate reliability thresholds."""
     logger.info("Agent Verification Node starting")
+
+    # If already diagnosed as empty KB, terminate cleanly
+    if state.get("diagnosis_type") == "RETRIEVAL_FAILURE" and state.get("answer"):
+        cfg = get_model_config()
+        state["attempts"] = cfg.max_recovery_attempts
+        state["verdict_status"] = "PASS"
+        return state
 
     answer = state["answer"]
     cfg = get_model_config()

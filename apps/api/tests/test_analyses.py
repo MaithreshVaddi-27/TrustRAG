@@ -73,27 +73,26 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
             return_value=MagicMock(inserted_id=ObjectId("64ee39d09c6292376e191983"))
         )
 
-        with patch("app.services.analysis_service.get_collection", return_value=mock_collection):
-            # Mock trace event insert
-            with patch(
-                "app.services.analysis_service.add_trace_event", AsyncMock()
-            ) as mock_add_trace:
-                payload = {
-                    "knowledge_base_id": "64ee39d09c6292376e191982",
-                    "query": "Is there a 45 days policy?",
-                }
-                response = client.post("/api/v1/analyses", json=payload)
+        with (
+            patch("app.services.analysis_service.get_collection", return_value=mock_collection),
+            patch("app.services.analysis_service.add_trace_event", AsyncMock()) as mock_add_trace,
+        ):
+            payload = {
+                "knowledge_base_id": "64ee39d09c6292376e191982",
+                "query": "Is there a 45 days policy?",
+            }
+            response = client.post("/api/v1/analyses", json=payload)
 
-                assert response.status_code == 201
-                data = response.json()
-                assert data["query"] == "Is there a 45 days policy?"
-                assert data["status"] == "pending"
-                assert data["reliability"]["status"] == "PENDING"
-                mock_add_trace.assert_called_once_with(
-                    analysis_id_str="64ee39d09c6292376e191983",
-                    event="analysis.started",
-                    data={"message": "Analysis run initiated"},
-                )
+            assert response.status_code == 201
+            data = response.json()
+            assert data["query"] == "Is there a 45 days policy?"
+            assert data["status"] == "pending"
+            assert data["reliability"]["status"] == "PENDING"
+            mock_add_trace.assert_called_once_with(
+                analysis_id_str="64ee39d09c6292376e191983",
+                event="analysis.started",
+                data={"message": "Analysis run initiated"},
+            )
 
 
 @patch("app.api.v1.analyses.get_current_user")
@@ -164,4 +163,3 @@ def test_list_analyses_with_pagination(mock_create_indexes, mock_connect, mock_a
         assert data[0]["id"] == "64ee39d09c6292376e191983"
         mock_cursor.skip.assert_called_once_with(5)
         mock_cursor.limit.assert_called_once_with(10)
-

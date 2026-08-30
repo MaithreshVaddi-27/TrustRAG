@@ -7,6 +7,7 @@ and updates document ingestion status in MongoDB.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -92,8 +93,8 @@ async def index_parsed_chunks(
         texts = [c["text"] for c in chunks]
         logger.info("Generating dense embeddings", doc_id=doc_id_str, count=len(texts))
 
-        # Batch encode
-        dense_vectors = embed_model.embed_documents(texts)
+        # Batch encode in background thread to avoid freezing the event loop
+        dense_vectors = await asyncio.to_thread(embed_model.embed_documents, texts)
 
         qdrant_client = get_qdrant_client()
         collection_name = get_collection_name(kb_id_str)

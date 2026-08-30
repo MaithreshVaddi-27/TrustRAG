@@ -6,6 +6,7 @@ Multi-format extraction, encoding detection (chardet), and temporal validity met
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import io
 import json
@@ -43,17 +44,13 @@ def extract_dates(text: str) -> tuple[datetime | None, datetime | None]:
 
     match_from = DATE_PATTERN_FROM.search(header_snippet)
     if match_from:
-        try:
+        with contextlib.suppress(ValueError):
             eff_from = datetime.strptime(match_from.group(1), "%Y-%m-%d").replace(tzinfo=UTC)
-        except ValueError:
-            pass
 
     match_until = DATE_PATTERN_UNTIL.search(header_snippet)
     if match_until:
-        try:
+        with contextlib.suppress(ValueError):
             eff_until = datetime.strptime(match_until.group(1), "%Y-%m-%d").replace(tzinfo=UTC)
-        except ValueError:
-            pass
 
     return eff_from, eff_until
 
@@ -119,7 +116,7 @@ def parse_csv(stream: BinaryIO) -> list[dict[str, Any]]:
             if not any(val.strip() for val in row):
                 continue
             row_str = " | ".join(
-                f"{header[i] if i < len(header) else f'Col{i+1}'}: {val.strip()}"
+                f"{header[i] if i < len(header) else f'Col{i + 1}'}: {val.strip()}"
                 for i, val in enumerate(row)
             )
             lines.append(row_str)

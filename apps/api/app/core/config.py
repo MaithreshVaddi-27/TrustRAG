@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     jwt_expiry_minutes: int = 60
     cors_origins: str = "http://localhost:5173"
 
+    # ── Hugging Face ──────────────────────────────────────────────────────────
+    hf_token: str = ""  # Optional read-only token to prevent download rate-limits
+
     # ── Google Gemini ──────────────────────────────────────────────────────────
     gemini_api_key: str
 
@@ -188,6 +191,10 @@ class ModelConfig:
 
     # ── Embedding ─────────────────────────────────────────────────────────────
     @property
+    def embedding_provider(self) -> str:
+        return str(self._get("embedding", "provider", required=False) or "google_genai")
+
+    @property
     def embedding_model(self) -> str:
         return self._get("embedding", "model")
 
@@ -201,7 +208,7 @@ class ModelConfig:
 
     @property
     def embedding_cache_dir(self) -> str:
-        return str(self._get("embedding", "cache_dir"))
+        return str(self._get("embedding", "cache_dir", required=False) or ".model_cache")
 
     # ── Verification ──────────────────────────────────────────────────────────
     @property
@@ -338,3 +345,9 @@ def get_model_config() -> ModelConfig:
     """Return the cached ModelConfig singleton loaded from models.yaml."""
     raw = _load_models_yaml()
     return ModelConfig(raw)
+
+
+def reload_settings() -> Settings:
+    """Clear cached settings singleton and re-read environment variables."""
+    get_settings.cache_clear()
+    return get_settings()

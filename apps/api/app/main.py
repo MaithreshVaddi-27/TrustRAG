@@ -15,6 +15,7 @@ Security notes:
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -44,6 +45,7 @@ from app.core.exceptions import (
     VectorStoreError,
 )
 from app.core.logging import configure_logging, get_logger
+from app.core.model_registry import get_embedding_model
 from app.core.rate_limiter import limiter
 from app.db.mongodb import connect_db, create_indexes, disconnect_db
 
@@ -68,15 +70,40 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     # ── Startup ──────────────────────────────────────────────────────────
     configure_logging()
-    logger.info("TRUSTRAG API starting", env=get_settings().app_env)
+    settings = get_settings()
+    if settings.hf_token:
+        import os
+
+        os.environ["HF_TOKEN"] = settings.hf_token
+        os.environ["HUGGING_FACE_HUB_TOKEN"] = settings.hf_token
+        logger.info("Configured Hugging Face Hub authentication token")
+
+    logger.info("TRUSTRAG API starting", env=settings.app_env)
 
     await connect_db()
     await create_indexes()
 
     logger.info("TRUSTRAG API ready")
+
+    # Schedule non-blocking model warmup in background task so Uvicorn binds port INSTANTLY
+    async def _async_warmup() -> None:
+        try:
+            embed_model = get_embedding_model()
+            await asyncio.to_thread(embed_model.embed_query, "warmup")
+            logger.info("Embedding model pre-warmed and resident in memory")
+        except Exception as warm_err:
+            logger.warning(
+                "Embedding model warmup deferred to first query",
+                error=str(warm_err),
+            )
+
+    warmup_task = asyncio.create_task(_async_warmup())
+
     yield
 
     # ── Shutdown ─────────────────────────────────────────────────────────
+    if not warmup_task.done():
+        warmup_task.cancel()
     logger.info("TRUSTRAG API shutting down")
     await disconnect_db()
 
@@ -249,10 +276,11 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
+        allow_origin_regex=r"^https:\/\/([a-zA-Z0-9_\-]+\.)*(pages\.dev|vercel\.app|netlify\.app)$",
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-        expose_headers=["X-Request-ID"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["*"],
     )
 
     # ── Request ID ────────────────────────────────────────────────────────

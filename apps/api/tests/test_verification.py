@@ -148,4 +148,3 @@ def test_extract_claim_triple_heuristics():
     assert extract_claim_triple_heuristic("") == (None, None, None)
     assert extract_claim_triple_heuristic("   ") == (None, None, None)
     assert extract_claim_triple_heuristic("Warning") == ("Warning", None, None)
-

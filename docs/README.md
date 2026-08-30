@@ -22,6 +22,7 @@ docs/
 ├── evaluation/
 │   └── methodology.md            # Benchmark evaluation dataset and custom reliability metrics
 └── deployment/
+    ├── DEPLOYMENT_GUIDE.md       # Master runbook: Cloudflare Pages, Google Cloud Run, Atlas, Qdrant
     └── README.md                 # Docker Compose, environment configuration, and scaling
 ```
 
@@ -42,6 +43,6 @@ docs/
 - [**Threat Model (`security/threat-model.md`)**](security/threat-model.md): Detailed threat identification, attack trees, and defense-in-depth countermeasures.
 
 ### 4. Operations & Experiments
-- [**Evaluation Methodology (`evaluation/methodology.md`)**](evaluation/methodology.md): Scoring models for verification coverage, contradiction rates, and reliability metrics.
-- [**Deployment Guide (`deployment/README.md`)**](deployment/README.md): Instructions for launching TRUSTRAG with Docker Compose, local MongoDB community edition, and Qdrant.
+- [**Production Deployment Runbook (`deployment/DEPLOYMENT_GUIDE.md`)**](deployment/DEPLOYMENT_GUIDE.md): Complete step-by-step instructions for deploying to Cloudflare Pages, Google Cloud Run, MongoDB Atlas, and Qdrant Cloud.
+- [**Local & VPS Deployment (`deployment/README.md`)**](deployment/README.md): Instructions for launching TRUSTRAG with Docker Compose, local MongoDB community edition, and Qdrant.
 - [**Roadmap (`ROADMAP.md`)**](ROADMAP.md): Track completed development phases and upcoming roadmap initiatives.

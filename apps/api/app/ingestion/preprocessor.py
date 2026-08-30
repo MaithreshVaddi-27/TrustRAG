@@ -400,10 +400,7 @@ class PorterStemmer:
             i += 1
 
     def _vowelinstem(self) -> bool:
-        for i in range(self.k0, self.j + 1):
-            if not self._cons(i):
-                return True
-        return False
+        return any(not self._cons(i) for i in range(self.k0, self.j + 1))
 
     def _doublec(self, i: int) -> bool:
         if i < self.k0 + 1:
@@ -416,9 +413,7 @@ class PorterStemmer:
         if i < self.k0 + 2 or not self._cons(i) or self._cons(i - 1) or not self._cons(i - 2):
             return False
         ch = self.b[i]
-        if ch in "wxy":
-            return False
-        return True
+        return ch not in "wxy"
 
     def _ends(self, s: str) -> bool:
         length = len(s)
@@ -502,9 +497,7 @@ class PorterStemmer:
         elif c == "o":
             if self._ends("ization"):
                 self._r("ize")
-            elif self._ends("ation"):
-                self._r("ate")
-            elif self._ends("ator"):
+            elif self._ends("ation") or self._ends("ator"):
                 self._r("ate")
         elif c == "s":
             if self._ends("alism"):
@@ -522,9 +515,8 @@ class PorterStemmer:
                 self._r("ive")
             elif self._ends("biliti"):
                 self._r("ble")
-        elif c == "g":
-            if self._ends("logi"):
-                self._r("log")
+        elif c == "g" and self._ends("logi"):
+            self._r("log")
 
     def _step3(self) -> None:
         if self.k <= self.k0:
@@ -545,9 +537,8 @@ class PorterStemmer:
                 self._r("ic")
             elif self._ends("ful"):
                 self._r("")
-        elif c == "s":
-            if self._ends("ness"):
-                self._r("")
+        elif c == "s" and self._ends("ness"):
+            self._r("")
 
     def _step4(self) -> None:
         if self.k <= self.k0:
@@ -573,9 +564,9 @@ class PorterStemmer:
             if not any(self._ends(s) for s in n_suffixes):
                 return
         elif c == "o":
-            if self._ends("ion") and self.j >= self.k0 and self.b[self.j] in "st":
-                pass
-            elif self._ends("ou"):
+            if (self._ends("ion") and self.j >= self.k0 and self.b[self.j] in "st") or self._ends(
+                "ou"
+            ):
                 pass
             else:
                 return

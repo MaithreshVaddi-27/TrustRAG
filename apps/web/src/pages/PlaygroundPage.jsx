@@ -68,35 +68,84 @@ export default function PlaygroundPage() {
     } catch (err) {
       console.error("Failed to start analysis:", err)
       setLoading(false)
-      setErrorMsg(err.message || "Failed to start analysis")
+      const detail = err.response?.data?.detail || err.message || "Failed to start analysis"
+      setErrorMsg(typeof detail === 'string' ? detail : JSON.stringify(detail))
     }
   }
 
-  async function fetchFinalAnalysis(analysisId) {
-    try {
-      const [finalAnalysis, claims, evidence, trace] = await Promise.all([
-        analysisService.get(analysisId),
-        analysisService.claims(analysisId),
-        analysisService.evidence(analysisId),
-        analysisService.trace(analysisId)
-      ])
+  async function fetchFinalAnalysis(analysisId, maxPollAttempts = 45) {
+    let attempts = 0
+    let lastFetched = null
 
-      setAnalysis({
-        ...finalAnalysis,
-        claims: claims || [],
-        evidence: evidence || [],
-        trace: trace || []
-      })
-      // If completed successfully, switch to answer tab automatically
-      if (finalAnalysis.status === 'completed') {
-        setActiveTab('answer')
+    try {
+      while (attempts < maxPollAttempts) {
+        attempts++
+        try {
+          const finalAnalysis = await analysisService.get(analysisId)
+          lastFetched = finalAnalysis
+
+          // If still running, poll every 1.5s and sync live traces
+          if (finalAnalysis.status === 'pending' || finalAnalysis.status === 'processing') {
+            try {
+              const traceList = await analysisService.trace(analysisId)
+              if (traceList && traceList.length > 0) {
+                setTraceEvents(traceList)
+              }
+            } catch {
+              // Ignore trace polling errors
+            }
+            await new Promise((r) => setTimeout(r, 1500))
+            continue
+          }
+
+          // Terminal state (completed, abstained, or failed): fetch claims, evidence, trace safely
+          const [claimsRes, evidenceRes, traceRes] = await Promise.allSettled([
+            analysisService.claims(analysisId),
+            analysisService.evidence(analysisId),
+            analysisService.trace(analysisId),
+          ])
+
+          const claims = claimsRes.status === 'fulfilled' ? claimsRes.value : []
+          const evidence = evidenceRes.status === 'fulfilled' ? evidenceRes.value : []
+          const trace = traceRes.status === 'fulfilled' ? traceRes.value : []
+
+          const fullAnalysis = {
+            ...finalAnalysis,
+            claims: claims || [],
+            evidence: evidence || [],
+            trace: (trace && trace.length > 0) ? trace : traceEvents,
+          }
+
+          setAnalysis(fullAnalysis)
+
+          if (finalAnalysis.status === 'completed') {
+            setActiveTab('answer')
+          }
+          return
+        } catch (err) {
+          console.error("Polling error fetching analysis status:", err)
+          await new Promise((r) => setTimeout(r, 2000))
+        }
+      }
+
+      // If loop exhausted (timed out waiting for background task):
+      if (lastFetched) {
+        setAnalysis(lastFetched)
+      } else {
+        setErrorMsg("Analysis execution timed out. Please check again in a few moments.")
       }
     } catch (err) {
       console.error("Failed to fetch final analysis data:", err)
+      const detail = err.response?.data?.detail || err.message || "Failed to fetch analysis"
+      setErrorMsg(typeof detail === 'string' ? detail : JSON.stringify(detail))
     } finally {
       setLoading(false)
       if (streamRef.current) {
-        streamRef.current.close()
+        try {
+          streamRef.current.close()
+        } catch {
+          // ignore
+        }
         streamRef.current = null
       }
     }
