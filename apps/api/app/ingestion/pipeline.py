@@ -93,8 +93,30 @@ async def index_parsed_chunks(
         texts = [c["text"] for c in chunks]
         logger.info("Generating dense embeddings", doc_id=doc_id_str, count=len(texts))
 
-        # Batch encode in background thread to avoid freezing the event loop
-        dense_vectors = await asyncio.to_thread(embed_model.embed_documents, texts)
+        # Batch encode in chunks of 20 with 30s backoff to respect Google free-tier 100 RPM quota
+        embed_batch_size = 20
+        dense_vectors = []
+        for offset in range(0, len(texts), embed_batch_size):
+            batch_slice = texts[offset : offset + embed_batch_size]
+            for attempt in range(5):
+                try:
+                    batch_vecs = await asyncio.to_thread(embed_model.embed_documents, batch_slice)
+                    dense_vectors.extend(batch_vecs)
+                    break
+                except Exception as batch_err:
+                    err_msg = str(batch_err)
+                    if ("429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg) and attempt < 4:
+                        wait_seconds = 32 if attempt >= 1 else 15
+                        logger.warning(
+                            "Embedding rate limit reached, waiting for quota reset",
+                            attempt=attempt + 1,
+                            wait_seconds=wait_seconds,
+                        )
+                        await asyncio.sleep(wait_seconds)
+                    else:
+                        raise batch_err
+            if offset + embed_batch_size < len(texts):
+                await asyncio.sleep(1.0)
 
         qdrant_client = get_qdrant_client()
         collection_name = get_collection_name(kb_id_str)
