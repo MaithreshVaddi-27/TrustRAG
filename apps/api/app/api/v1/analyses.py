@@ -140,4 +140,12 @@ async def stream_trace_endpoint(
             # Format according to SSE spec: data: <json_string>\n\n
             yield f"data: {json.dumps(event_data)}\n\n"
 
-    return StreamingResponse(event_publisher(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_publisher(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

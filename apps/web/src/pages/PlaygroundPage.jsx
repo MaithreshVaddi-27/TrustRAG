@@ -68,7 +68,8 @@ export default function PlaygroundPage() {
     } catch (err) {
       console.error("Failed to start analysis:", err)
       setLoading(false)
-      setErrorMsg(err.message || "Failed to start analysis")
+      const detail = err.response?.data?.detail || err.message || "Failed to start analysis"
+      setErrorMsg(typeof detail === 'string' ? detail : JSON.stringify(detail))
     }
   }
 
