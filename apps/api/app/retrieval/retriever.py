@@ -5,6 +5,7 @@ TRUSTRAG — Hybrid dense + sparse search retriever with RRF and temporal filter
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime
 from typing import Any
 
@@ -182,10 +183,8 @@ async def apply_temporal_filtering(
 
     doc_objs = []
     for did in doc_ids:
-        try:
+        with contextlib.suppress(InvalidId):
             doc_objs.append(ObjectId(did))
-        except InvalidId:
-            pass
 
     docs_cursor = doc_coll.find({"_id": {"$in": doc_objs}})
     docs_map = {}
