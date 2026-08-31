@@ -2,9 +2,9 @@ name: Security
 
 on:
   push:
-    branches: [main]
+    branches: [main, ui-redesign]
   pull_request:
-    branches: [main]
+    branches: [main, ui-redesign]
   # Weekly scan for new CVEs even without code changes
   schedule:
     - cron: "0 6 * * 1"

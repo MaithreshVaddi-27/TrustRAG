@@ -228,7 +228,7 @@ The frontend interface has been rebuilt from the ground up to deliver a state-of
 
 ## 🌐 Production Deployment (Render & Cloudflare)
 
-The production branch is **`production-deploy`**. Both the frontend and backend are continuously deployed to production environments:
+The deployment branch is **`ui-redesign`**. Both the frontend and backend are continuously deployed from this branch:
 
 - **Frontend Workbench**: [https://trustrag.pages.dev](https://trustrag.pages.dev) (Hosted on Cloudflare Pages)
 - **Backend API**: [https://trustrag-api.onrender.com](https://trustrag-api.onrender.com) (Hosted on Render.com)
