@@ -30,9 +30,13 @@ See [docs/security/security-controls.md](docs/security/security-controls.md) for
 
 Key controls:
 - JWT authentication (all routes except `/health` and `/auth/*`)
-- bcrypt password hashing
+- bcrypt password hashing (12 rounds)
 - IDOR prevention (ownership checked per resource)
 - Prompt injection defense (UNTRUSTED DATA labeling in prompts)
+- RFC HTTP/HTTPS scheme URL sanitization (rejects `javascript:`, `data:`, `file:`, `vbscript:` from search citations)
+- Tabnabbing & reverse window opener protection (`target="_blank" rel="noopener noreferrer"`)
+- Query bounds & timeout guards (500-character ceiling, 8.0s timeout limit)
+- Zero secret disclosure (health check and config snapshots expose boolean flags only)
 - Rate limiting per IP
 - No raw stack traces to clients
 - Secret scrubbing in logs

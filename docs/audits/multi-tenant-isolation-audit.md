@@ -78,7 +78,7 @@ tests/test_kb.py::test_multi_tenant_cross_user_access_blocked PASSED     [ 75%]
 
 ### Full-Stack Health Endpoint
 ```bash
-curl -s http://localhost:8000/api/v1/health | jq
+curl -s http://localhost:8080/api/v1/health | jq
 ```
 **Output**:
 ```json

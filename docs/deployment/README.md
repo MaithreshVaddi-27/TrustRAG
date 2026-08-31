@@ -67,7 +67,7 @@ cp .env.example .env
 docker compose up
 
 # 3. Verify
-curl http://localhost:8000/api/v1/health
+curl http://localhost:8080/api/v1/health
 # Frontend: http://localhost:5173
 ```
 
@@ -79,7 +79,7 @@ cd apps/api
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8080
 
 # Frontend (separate terminal)
 cd apps/web
@@ -167,7 +167,7 @@ The repository includes [`render.yaml`](../../render.yaml) pre-configured for in
 
 ```bash
 docker build -t trustrag-api ./apps/api
-docker run -p 8000:8000 --env-file .env trustrag-api
+docker run -p 8080:8080 --env-file .env trustrag-api
 ```
 
 ---
@@ -279,7 +279,7 @@ When you change the embedding model in `models.yaml`:
 
 Check MongoDB connectivity:
 ```bash
-curl http://localhost:8000/api/v1/health
+curl http://localhost:8080/api/v1/health
 # Look for "mongodb": "degraded"
 ```
 

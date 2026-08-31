@@ -172,3 +172,65 @@ Any deviation from the specification must be logged here with rationale.
 **Rationale:**
 - Reduces Qdrant vector RAM consumption by **75%** while retaining $>99.5\%$ search recall.
 - Allows the application to run smoothly on low-spec developer machines and free-tier containers without risking Out-Of-Memory (OOM) kills.
+
+---
+
+## D-14: Default Port Migration to 8080
+
+**Date:** 2026-08-31  
+**Status:** Accepted & Implemented  
+**Phase:** 14
+
+**Decision:** Change default FastAPI backend port from `8000` to `8080` across all configurations (`main.py`, `Dockerfile`, `docker-compose.yml`, `vite.config.js` proxy, and documentation).
+
+**Rationale:**
+- macOS natively binds port `8000` to AirPlay Receiver and AirDrop services on modern macOS releases, causing immediate `[Errno 48] Address already in use` crashes.
+- Standardizes container deployments on Google Cloud Run and AWS ECS, where port `8080` is the canonical HTTP target.
+
+---
+
+## D-15: Model Context Protocol (MCP) Standard for Web Search Grounding
+
+**Date:** 2026-08-31  
+**Status:** Accepted & Implemented  
+**Phase:** 14
+
+**Decision:** Standardize live web search grounding using the Model Context Protocol (MCP) specification. Implement internal MCP server (`app/mcp/server.py`) and client dispatcher (`app/mcp/client.py`) supporting `tavily_search`, `duckduckgo_search`, and `hybrid_web_search`.
+
+**Rationale:**
+- Decouples LLM generation from specific search engine vendors.
+- Allows free-tier zero-API-key search via DuckDuckGo, high-accuracy RAG search via Tavily, or parallel hybrid execution with automatic URL deduplication.
+- Centralizes security controls (SSRF URL sanitization and query length enforcement).
+
+---
+
+## D-16: Dual-Channel Polling & Real-Time Telemetry HUD in Workbench
+
+**Date:** 2026-08-31  
+**Status:** Accepted & Implemented  
+**Phase:** 14
+
+**Decision:** 
+1. Implement dual-channel active fallback polling (2-second interval) alongside Server-Sent Events (SSE) in `PlaygroundPage.jsx`.
+2. Replace distorted green radar with an executive 4-stage architecture telemetry HUD (`PipelineTelemetryHUD.jsx`).
+
+**Rationale:**
+- Browser `EventSource` connections can buffer or stall during cyclic self-healing loops without triggering `onerror` or `oncomplete`. Active fallback polling guarantees instant UI completion detection within 2 seconds.
+- Replaces generic/oval radar graphics with an informative, responsive 4-step pipeline status tracker showing dynamic stage progression.
+
+---
+
+## D-17: GFM Table Rendering via remark-gfm & Multi-Part Query Grounding
+
+**Date:** 2026-08-31  
+**Status:** Accepted & Implemented  
+**Phase:** 14
+
+**Decision:** 
+1. Install and integrate `remark-gfm` with `react-markdown` in `FormattedAnswer.jsx` with custom dark glass table components.
+2. Update `GROUNDING_SYSTEM_PROMPT` to enforce Complete Multi-Part Coverage for compound queries.
+
+**Rationale:**
+- Without `remark-gfm`, `react-markdown` strictly adheres to CommonMark and renders markdown table syntax (`| a | b |`) as raw text paragraphs with pipe characters.
+- Multi-part queries (e.g. "What is X? What is the difference between X and Y?") were previously truncated; updated instructions mandate dedicated `###` sections for all sub-inquiries.
+

@@ -32,27 +32,46 @@ logger = get_logger(__name__)
 # ─── LLM ─────────────────────────────────────────────────────────────────────
 
 
+# ─── LLM ─────────────────────────────────────────────────────────────────────
+
+
 @lru_cache(maxsize=1)
 def get_llm() -> BaseChatModel:
     """
     Return the primary LLM for answer generation.
 
-    Uses ChatGoogleGenerativeAI via langchain-google-genai.
-    Model ID and all parameters come from models.yaml.
+    Supports:
+      - gemini: ChatGoogleGenerativeAI via langchain-google-genai
+      - nvidia: ChatNVIDIA via langchain-nvidia-ai-endpoints
     """
-    from langchain_google_genai import ChatGoogleGenerativeAI
-
     settings = get_settings()
     cfg: ModelConfig = get_model_config()
 
     logger.info(
         "Initializing LLM",
+        provider=cfg.llm_provider,
         model=cfg.llm_model,
         temperature=cfg.llm_temperature,
         max_output_tokens=cfg.llm_max_output_tokens,
     )
 
     try:
+        if cfg.llm_provider in ("nvidia", "nim"):
+            from langchain_nvidia_ai_endpoints import ChatNVIDIA
+
+            if not settings.nvidia_api_key:
+                raise ConfigurationError("NVIDIA_API_KEY must be set when AI_PROVIDER is 'nvidia'")
+
+            return ChatNVIDIA(
+                model=cfg.llm_model,
+                api_key=settings.nvidia_api_key,
+                temperature=cfg.llm_temperature,
+                max_tokens=cfg.llm_max_output_tokens,
+                timeout=cfg.llm_timeout_seconds,
+            )
+
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
         return ChatGoogleGenerativeAI(
             model=cfg.llm_model,
             google_api_key=settings.gemini_api_key,
@@ -64,7 +83,7 @@ def get_llm() -> BaseChatModel:
         )
     except Exception as exc:
         raise ConfigurationError(
-            f"Failed to initialize LLM '{cfg.llm_model}'",
+            f"Failed to initialize LLM '{cfg.llm_model}' (provider: {cfg.llm_provider})",
             detail=str(exc),
         ) from exc
 
@@ -80,18 +99,33 @@ def get_verification_model() -> BaseChatModel:
     Separate from the primary LLM to allow independent cost/quality tuning.
     Temperature is forced to 0.0 for deterministic verification.
     """
-    from langchain_google_genai import ChatGoogleGenerativeAI
-
     settings = get_settings()
     cfg: ModelConfig = get_model_config()
 
     logger.info(
         "Initializing verification model",
+        provider=cfg.verification_provider,
         model=cfg.verification_model,
         temperature=cfg.verification_temperature,
     )
 
     try:
+        if cfg.verification_provider in ("nvidia", "nim"):
+            from langchain_nvidia_ai_endpoints import ChatNVIDIA
+
+            if not settings.nvidia_api_key:
+                raise ConfigurationError("NVIDIA_API_KEY must be set when AI_PROVIDER is 'nvidia'")
+
+            return ChatNVIDIA(
+                model=cfg.verification_model,
+                api_key=settings.nvidia_api_key,
+                temperature=0.0,
+                max_tokens=cfg.verification_max_output_tokens,
+                timeout=cfg.verification_timeout_seconds,
+            )
+
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
         return ChatGoogleGenerativeAI(
             model=cfg.verification_model,
             google_api_key=settings.gemini_api_key,
@@ -101,13 +135,44 @@ def get_verification_model() -> BaseChatModel:
             max_retries=cfg.llm_max_retries,
         )
     except Exception as exc:
-        raise ConfigurationError(
-            f"Failed to initialize verification model '{cfg.verification_model}'",
-            detail=str(exc),
-        ) from exc
+        msg = (
+            f"Failed to initialize verification model '{cfg.verification_model}' "
+            f"(provider: {cfg.verification_provider})"
+        )
+        raise ConfigurationError(msg, detail=str(exc)) from exc
 
 
 # ─── Embedding Model ──────────────────────────────────────────────────────────
+
+
+class BGEAwareHuggingFaceEmbeddings:
+    """
+    Wrapper around HuggingFaceEmbeddings adding BGE query instruction prefixing.
+    Implements standard LangChain Embeddings interface.
+    """
+
+    def __init__(self, base_embeddings: Any, model_name: str) -> None:
+        self._base = base_embeddings
+        self._is_bge = "bge" in model_name.lower()
+
+    def embed_query(self, text: str) -> list[float]:
+        if self._is_bge and not text.startswith("Represent this sentence"):
+            text = f"Represent this sentence for searching relevant passages: {text}"
+        return self._base.embed_query(text)
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self._base.embed_documents(texts)
+
+    async def aembed_query(self, text: str) -> list[float]:
+        if self._is_bge and not text.startswith("Represent this sentence"):
+            text = f"Represent this sentence for searching relevant passages: {text}"
+        return await self._base.aembed_query(text)
+
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        return await self._base.aembed_documents(texts)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._base, name)
 
 
 @lru_cache(maxsize=1)
@@ -116,14 +181,40 @@ def get_embedding_model() -> Embeddings:
     Return the embedding model.
 
     Supports:
-      - google_genai: Cloud-hosted Google Gemini embeddings (ultra-low RAM <60MB)
-      - huggingface: Local sentence-transformers (fallback for air-gapped environments)
+      - huggingface / local: Local BGE (BAAI/bge-small-en-v1.5, 0 API cost, ~32ms query latency)
+      - google_genai / gemini: Cloud-hosted Google Gemini embeddings (ultra-low RAM <60MB)
+      - nvidia / nim: Cloud-hosted NVIDIA NIM embeddings
     """
     cfg: ModelConfig = get_model_config()
     settings = get_settings()
 
-    # ── Option 1: Google Gemini Embeddings (Primary / Low-Memory Cloud) ──────────
-    if cfg.embedding_provider == "google_genai":
+    # ── Option 1: NVIDIA NIM Embeddings ─────────────────────────────────────────
+    if cfg.embedding_provider in ("nvidia", "nim"):
+        from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings
+
+        if not settings.nvidia_api_key:
+            raise ConfigurationError(
+                "NVIDIA_API_KEY must be set when EMBEDDING_PROVIDER is 'nvidia'"
+            )
+
+        logger.info(
+            "Initializing NVIDIA NIM embedding model",
+            model=cfg.embedding_model,
+        )
+        try:
+            return NVIDIAEmbeddings(
+                model=cfg.embedding_model,
+                api_key=settings.nvidia_api_key,
+                truncate="END",
+            )
+        except Exception as exc:
+            raise ConfigurationError(
+                f"Failed to initialize NVIDIA embedding model '{cfg.embedding_model}'",
+                detail=str(exc),
+            ) from exc
+
+    # ── Option 2: Google Gemini Embeddings (Cloud) ──────────────────────────────
+    if cfg.embedding_provider in ("google_genai", "gemini"):
         from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
         logger.info(
@@ -143,13 +234,13 @@ def get_embedding_model() -> Embeddings:
                 detail=str(exc),
             ) from exc
 
-    # ── Option 2: Local Hugging Face Embeddings (Sentence-Transformers) ──────────
+    # ── Option 3: Local Hugging Face Embeddings (Sentence-Transformers / BGE) ────
     from langchain_huggingface import HuggingFaceEmbeddings
 
     cache_dir = Path(cfg.embedding_cache_dir).resolve()
 
     logger.info(
-        "Initializing HuggingFace embedding model",
+        "Initializing local HuggingFace embedding model",
         model=cfg.embedding_model,
         dimensionality=cfg.embedding_dimensionality,
         cache_dir=str(cache_dir),
@@ -175,27 +266,29 @@ def get_embedding_model() -> Embeddings:
         if settings.hf_token:
             model_kwargs["token"] = settings.hf_token
 
-        # Fast-path: if model is already pre-cached in Docker, load purely offline (0 network delay)
+        # Fast-path: if model is already pre-cached, load purely offline (0 network delay)
         if cache_dir.exists() and any(cache_dir.iterdir()):
             try:
                 offline_kwargs = {**model_kwargs, "local_files_only": True}
-                return HuggingFaceEmbeddings(
+                base_emb = HuggingFaceEmbeddings(
                     model_name=cfg.embedding_model,
                     cache_folder=str(cache_dir),
                     encode_kwargs={"normalize_embeddings": True},
                     model_kwargs=offline_kwargs,
                 )
+                return BGEAwareHuggingFaceEmbeddings(base_emb, cfg.embedding_model)  # type: ignore[return-value]
             except Exception as offline_err:
                 logger.debug(
                     "Offline cache fast-path skipped, downloading model", error=str(offline_err)
                 )
 
-        return HuggingFaceEmbeddings(
+        base_emb = HuggingFaceEmbeddings(
             model_name=cfg.embedding_model,
             cache_folder=str(cache_dir),
             encode_kwargs={"normalize_embeddings": True},
             model_kwargs=model_kwargs,
         )
+        return BGEAwareHuggingFaceEmbeddings(base_emb, cfg.embedding_model)  # type: ignore[return-value]
     except Exception as exc:
         raise ConfigurationError(
             f"Failed to initialize embedding model '{cfg.embedding_model}'",
@@ -251,18 +344,27 @@ def get_reranker():  # type: ignore[return]
 # ─── Registry info ────────────────────────────────────────────────────────────
 
 
-def registry_status() -> dict[str, str | bool | None]:
+def registry_status() -> dict[str, Any]:
     """
     Return a safe summary of the active model configuration.
     Used by the health endpoint. Never includes secrets.
     """
     cfg = get_model_config()
+    settings = get_settings()
     return {
         "config_version": cfg.config_version,
+        "llm_provider": cfg.llm_provider,
         "llm_model": cfg.llm_model,
+        "embedding_provider": cfg.embedding_provider,
         "embedding_model": cfg.embedding_model,
+        "embedding_dimensionality": cfg.embedding_dimensionality,
         "embedding_version": cfg.embedding_version,
+        "verification_provider": cfg.verification_provider,
         "verification_model": cfg.verification_model,
+        "search_provider": settings.search_provider,
+        "tavily_configured": bool(settings.tavily_api_key),
+        "nvidia_configured": bool(settings.nvidia_api_key),
+        "gemini_configured": bool(settings.gemini_api_key),
         "reranker_enabled": cfg.reranker_enabled,
         "reranker_model": cfg.reranker_model if cfg.reranker_enabled else None,
     }

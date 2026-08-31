@@ -104,5 +104,6 @@
 | **Audit v2** | 2026-08-29 | Static type checks, defensive headers, MongoDB index performance | ✅ Resolved |
 | **Audit v3** | 2026-08-29 | Global route aggregation, frontend page connections, LLM model upgrade | ✅ Resolved |
 | **Audit v4 (Master)** | 2026-08-29 | Multi-tenant isolation, cascade deletion, 8 document formats, XXE defense, live telemetry, 79 automated tests | ✅ **100% VERIFIED** |
+| **Audit v5 (SOTA)** | 2026-08-31 | Port 8080 default, Model Context Protocol (MCP) live grounding, LangGraph self-healing loop fixes, dual-channel SSE fallback polling, GFM tables via remark-gfm, 86 automated tests | ✅ **100% VERIFIED** |
 
 > All historical audit passes have been verified and consolidated into [`docs/audits/final-audit-report.md`](file:///Users/maithresh/Documents/TechCode/Projects/TrustRAG-latest/docs/audits/final-audit-report.md) and [`docs/audits/multi-tenant-isolation-audit.md`](file:///Users/maithresh/Documents/TechCode/Projects/TrustRAG-latest/docs/audits/multi-tenant-isolation-audit.md).

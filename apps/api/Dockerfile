@@ -69,11 +69,11 @@ USER trustrag
 # start_period is generous because startup now retries the MongoDB Atlas
 # connection with backoff (up to ~2.5 min) to ride out M0 cluster auto-resume
 # instead of crashing on the first slow handshake — see app/db/mongodb.py.
-ENV PORT=8000
-EXPOSE 8000
+ENV PORT=8080
+EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
-    CMD sh -c 'wget -qO- "http://localhost:${PORT:-8000}/api/v1/health" || exit 1'
+    CMD sh -c 'wget -qO- "http://localhost:${PORT:-8080}/api/v1/health" || exit 1'
 
 # Use exec in shell form so $PORT provided by Render/Cloud Run is dynamically respected
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --log-level info"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --log-level info"]

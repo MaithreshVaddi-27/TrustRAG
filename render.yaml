@@ -33,5 +33,7 @@ services:
         sync: false
       - key: HF_TOKEN
         sync: false
+      - key: TAVILY_API_KEY
+        sync: false
       - key: CORS_ORIGINS
         value: "http://localhost:5173"

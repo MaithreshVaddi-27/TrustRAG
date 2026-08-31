@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { clsx } from 'clsx'
 import { BookOpen, Calendar, ExternalLink, Hash, Shield, ShieldAlert } from 'lucide-react'
 
 /**
@@ -23,10 +25,12 @@ export function EvidenceViewer({ chunks = [] }) {
 }
 
 function EvidenceChunk({ chunk, rank }) {
+  const [expanded, setExpanded] = useState(false)
   const integrityOk = chunk.integrity_status === 'VERIFIED' || !chunk.integrity_status
+  const isLong = chunk.text && chunk.text.length > 260
 
   return (
-    <div className="glass-card p-4 space-y-3 hover:border-slate-600/60 transition-colors">
+    <div className="glass-card p-4 space-y-3 hover:border-cyan-500/40 hover:shadow-lg transition-all duration-200">
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
@@ -47,10 +51,24 @@ function EvidenceChunk({ chunk, rank }) {
         </div>
       </div>
 
-      {/* Evidence text */}
-      <blockquote className="border-l-2 border-primary-600/50 pl-3 text-sm text-slate-300 leading-relaxed line-clamp-4">
-        {chunk.text}
-      </blockquote>
+      {/* Evidence text with expand/collapse */}
+      <div className="space-y-1.5">
+        <blockquote className={clsx(
+          "border-l-2 border-primary-600/50 pl-3 text-sm text-slate-300 leading-relaxed break-words",
+          !expanded && isLong && "line-clamp-4"
+        )}>
+          {chunk.text}
+        </blockquote>
+        {isLong && (
+          <button
+            type="button"
+            onClick={() => setExpanded(e => !e)}
+            className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium pl-3 transition-colors"
+          >
+            {expanded ? 'Show less ▲' : 'Read full segment ▼'}
+          </button>
+        )}
+      </div>
 
       {/* Scores + metadata */}
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 font-mono">
@@ -75,12 +93,23 @@ function EvidenceChunk({ chunk, rank }) {
             {chunk.effective_until && ` → ${new Date(chunk.effective_until).toLocaleDateString()}`}
           </span>
         )}
-        {chunk.document_id && (
+        {chunk.url ? (
+          <a
+            href={chunk.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 ml-auto text-cyan-400 hover:text-cyan-300 hover:underline font-sans"
+            title={chunk.url}
+          >
+            <ExternalLink size={11} />
+            <span>Web Source</span>
+          </a>
+        ) : chunk.document_id ? (
           <span className="flex items-center gap-1 ml-auto">
             <ExternalLink size={10} />
             {String(chunk.document_id).slice(-8)}
           </span>
-        )}
+        ) : null}
       </div>
     </div>
   )

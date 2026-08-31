@@ -27,7 +27,14 @@ dependencies = [
     "langchain-core>=0.3.0",
     "langchain-community>=0.3.0",
     "langchain-google-genai>=2.0.0",
+    "langchain-nvidia-ai-endpoints>=1.4.0",
     "langgraph>=0.2.0",
+
+    # ── Model Context Protocol & Search ──────────────────────────────────────
+    "mcp>=2.1.0",
+    "tavily-python>=0.8.0",
+    "duckduckgo-search>=8.0.0",
+    "ddgs>=9.16.0",
 
     # ── Vector store ─────────────────────────────────────────────────────────
     "qdrant-client>=1.10.0",

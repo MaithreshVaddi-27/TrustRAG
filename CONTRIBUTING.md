@@ -38,12 +38,13 @@ npm install
 ## Running Tests
 
 ```bash
-# Backend unit tests (no live services required)
+# Backend unit tests (86 unit tests across 14 test suites, no live services required)
 cd apps/api
-pytest tests/test_config.py -v
+pytest -v
 
-# Frontend build check
+# Frontend lint and build check
 cd apps/web
+npm run lint
 npm run build
 ```
 

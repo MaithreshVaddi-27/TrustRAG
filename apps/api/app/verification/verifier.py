@@ -356,9 +356,8 @@ async def execute_claim_verification(
             error=str(exc),
         )
 
-    verified_claims = []
-
-    # 3. Process each claim and persist to MongoDB
+    # 3. Process each claim and persist to MongoDB (Batch Optimized)
+    claim_docs = []
     for i, text in enumerate(claims_texts, start=1):
         if i in results_map:
             nli_res = results_map[i]
@@ -385,10 +384,16 @@ async def execute_claim_verification(
             "evidence_ids": supporting_evidence_ids,
             "created_at": datetime.now(UTC),
         }
+        claim_docs.append(claim_doc)
 
-        result = await claims_coll.insert_one(claim_doc)
-        claim_doc["_id"] = result.inserted_id
+    if claim_docs:
+        try:
+            insert_res = await claims_coll.insert_many(claim_docs)
+            for doc, inserted_id in zip(claim_docs, insert_res.inserted_ids, strict=False):
+                doc["_id"] = inserted_id
+        except TypeError:
+            for doc in claim_docs:
+                res = await claims_coll.insert_one(doc)
+                doc["_id"] = res.inserted_id
 
-        verified_claims.append(claim_doc)
-
-    return verified_claims
+    return claim_docs

@@ -75,6 +75,35 @@ class Settings(BaseSettings):
     # ── Google Gemini ──────────────────────────────────────────────────────────
     gemini_api_key: str
 
+    # ── NVIDIA NIM & Tavily Search ─────────────────────────────────────────────
+    nvidia_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("NVIDIA_API_KEY", "NIM_API_KEY"),
+        description="NVIDIA NIM API key for Llama, Mistral, and Nemotron models",
+    )
+    tavily_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("TAVILY_API_KEY"),
+        description="Tavily AI Search API key",
+    )
+
+    # ── Multi-Provider Engine Selectors ────────────────────────────────────────
+    ai_provider: str = Field(
+        default="gemini",
+        validation_alias=AliasChoices("AI_PROVIDER", "LLM_PROVIDER"),
+        description="Active AI generation & verification provider: 'gemini' or 'nvidia'",
+    )
+    embedding_provider: str = Field(
+        default="huggingface",
+        validation_alias=AliasChoices("EMBEDDING_PROVIDER", "EMBEDDING_BACKEND"),
+        description="Active embedding engine: 'huggingface' (local), 'google_genai', or 'nvidia'",
+    )
+    search_provider: str = Field(
+        default="auto",
+        validation_alias=AliasChoices("SEARCH_PROVIDER"),
+        description="Web search engine: 'auto', 'tavily', 'duckduckgo', or 'both'",
+    )
+
     # ── MongoDB Atlas ──────────────────────────────────────────────────────────
     mongodb_uri: str
     mongodb_database: str = "trustrag_db"
@@ -100,7 +129,9 @@ class Settings(BaseSettings):
     )
     gemini_embedding_model: str = Field(
         default="",
-        validation_alias=AliasChoices("GEMINI_EMBEDDING_MODEL", "EMBEDDING_MODEL"),
+        validation_alias=AliasChoices(
+            "GEMINI_EMBEDDING_MODEL", "EMBEDDING_MODEL", "LOCAL_EMBEDDING_MODEL"
+        ),
         description="Override embedding model ID in .env",
     )
     embedding_dim: int | None = Field(
@@ -188,10 +219,20 @@ class ModelConfig:
 
     # ── LLM ──────────────────────────────────────────────────────────────────
     @property
+    def llm_provider(self) -> str:
+        settings = get_settings()
+        fallback = str(self._get("llm", "provider", required=False) or "gemini")
+        return (settings.ai_provider or fallback).lower()
+
+    @property
     def llm_model(self) -> str:
         val = self._get("llm", "model")
         settings = get_settings()
-        return settings.gemini_model or val or "gemini-3.5-flash-lite"
+        if settings.gemini_model:
+            return settings.gemini_model
+        if self.llm_provider in ("nvidia", "nim"):
+            return "meta/llama-3.3-70b-instruct"
+        return str(val or "gemini-3.5-flash-lite")
 
     @property
     def llm_temperature(self) -> float:
@@ -216,13 +257,21 @@ class ModelConfig:
     # ── Embedding ─────────────────────────────────────────────────────────────
     @property
     def embedding_provider(self) -> str:
-        return str(self._get("embedding", "provider", required=False) or "google_genai")
+        settings = get_settings()
+        fallback = str(self._get("embedding", "provider", required=False) or "huggingface")
+        return (settings.embedding_provider or fallback).lower()
 
     @property
     def embedding_model(self) -> str:
         val = self._get("embedding", "model")
         settings = get_settings()
-        return settings.gemini_embedding_model or val or "models/gemini-embedding-001"
+        if settings.gemini_embedding_model:
+            return settings.gemini_embedding_model
+        if self.embedding_provider in ("huggingface", "local"):
+            return "BAAI/bge-small-en-v1.5"
+        if self.embedding_provider in ("nvidia", "nim"):
+            return "nvidia/nv-embedqa-e5-v5"
+        return str(val or "models/gemini-embedding-001")
 
     @property
     def embedding_dimensionality(self) -> int:
@@ -240,10 +289,20 @@ class ModelConfig:
 
     # ── Verification ──────────────────────────────────────────────────────────
     @property
+    def verification_provider(self) -> str:
+        settings = get_settings()
+        fallback = str(self._get("verification", "provider", required=False) or "gemini")
+        return (settings.ai_provider or fallback).lower()
+
+    @property
     def verification_model(self) -> str:
         val = self._get("verification", "model")
         settings = get_settings()
-        return settings.gemini_verification_model or val or "gemini-3.5-flash-lite"
+        if settings.gemini_verification_model:
+            return settings.gemini_verification_model
+        if self.verification_provider in ("nvidia", "nim"):
+            return "meta/llama-3.3-70b-instruct"
+        return str(val or "gemini-3.5-flash-lite")
 
     @property
     def verification_temperature(self) -> float:

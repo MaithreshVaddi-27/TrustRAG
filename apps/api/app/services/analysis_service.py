@@ -34,11 +34,12 @@ def serialize_analysis(doc: Mapping[str, Any]) -> AnalysisResponse:
     """Helper to convert MongoDB Analysis document to Pydantic AnalysisResponse."""
     rel = doc.get("reliability", {})
     diag = doc.get("diagnosis", {})
+    created_at = doc.get("created_at") or doc.get("started_at") or datetime.now(UTC)
     return AnalysisResponse(
         id=str(doc["_id"]),
         user_id=str(doc["user_id"]),
         knowledge_base_id=str(doc["knowledge_base_id"]),
-        query=doc["query"],
+        query=doc.get("query", ""),
         status=doc.get("status", "pending"),
         answer=doc.get("answer"),
         reliability=ReliabilitySummary(
@@ -49,35 +50,40 @@ def serialize_analysis(doc: Mapping[str, Any]) -> AnalysisResponse:
             type=diag.get("type"),
             failures=diag.get("failures", []),
         ),
-        created_at=doc["created_at"],
+        created_at=created_at,
         config_snapshot=doc.get("config_snapshot"),
+        web_search_enabled=bool(doc.get("web_search_enabled", False)),
+        web_search_provider=doc.get("web_search_provider"),
     )
 
 
 def serialize_claim(doc: Mapping[str, Any]) -> ClaimResponse:
     """Helper to convert MongoDB Claim document to Pydantic ClaimResponse."""
+    created_at = doc.get("created_at") or datetime.now(UTC)
     return ClaimResponse(
         id=str(doc["_id"]),
         analysis_id=str(doc["analysis_id"]),
-        text=doc["text"],
+        text=doc.get("text", ""),
         subject=doc.get("subject"),
         predicate=doc.get("predicate"),
         object=doc.get("object"),
         state=doc.get("state", "UNKNOWN"),
         explanation=doc.get("explanation"),
         evidence_ids=[str(eid) for eid in doc.get("evidence_ids", [])],
-        created_at=doc["created_at"],
+        created_at=created_at,
     )
 
 
 def serialize_evidence(doc: Mapping[str, Any]) -> EvidenceResponse:
     """Helper to convert MongoDB Evidence document to Pydantic EvidenceResponse."""
+    created_at = doc.get("created_at") or datetime.now(UTC)
     return EvidenceResponse(
         id=str(doc["_id"]),
         analysis_id=str(doc["analysis_id"]),
-        text=doc["text"],
+        text=doc.get("text", ""),
         document_id=str(doc["document_id"]) if doc.get("document_id") else "",
         filename=doc.get("filename"),
+        url=doc.get("url"),
         retrieval_score=doc.get("retrieval_score"),
         fusion_score=doc.get("fusion_score"),
         rerank_score=doc.get("rerank_score"),
@@ -85,15 +91,16 @@ def serialize_evidence(doc: Mapping[str, Any]) -> EvidenceResponse:
         integrity_status=doc.get("integrity_status"),
         effective_from=doc.get("effective_from"),
         effective_until=doc.get("effective_until"),
-        created_at=doc["created_at"],
+        created_at=created_at,
     )
 
 
 def serialize_trace(doc: Mapping[str, Any]) -> TraceEventResponse:
     """Helper to convert MongoDB TraceEvent document to Pydantic TraceEventResponse."""
+    timestamp = doc.get("timestamp") or datetime.now(UTC)
     return TraceEventResponse(
-        event=doc["event"],
-        timestamp=doc["timestamp"],
+        event=doc.get("event", ""),
+        timestamp=timestamp,
         data=doc.get("data", {}),
     )
 
@@ -119,6 +126,8 @@ async def create_analysis(
         "diagnosis": {"type": None, "failures": []},
         "created_at": datetime.now(UTC),
         "config_snapshot": cfg.as_snapshot(),
+        "web_search_enabled": schema.enable_web_search,
+        "web_search_provider": schema.web_search_provider,
     }
 
     result = await get_collection(Collections.ANALYSES).insert_one(analysis_doc)
@@ -138,6 +147,8 @@ async def create_analysis(
         kb_id_str=schema.knowledge_base_id,
         query=schema.query.strip(),
         user_id_str=user_id_str,
+        web_search_enabled=schema.enable_web_search,
+        web_search_provider=schema.web_search_provider,
     )
 
     return serialize_analysis(analysis_doc)
@@ -282,18 +293,25 @@ async def sse_event_generator(
 
 
 async def run_analysis_pipeline(
-    analysis_id_str: str, kb_id_str: str, query: str, user_id_str: str | None = None
+    analysis_id_str: str,
+    kb_id_str: str,
+    query: str,
+    user_id_str: str | None = None,
+    web_search_enabled: bool = False,
+    web_search_provider: str = "both",
 ) -> None:
     """
     Execute RAG retrieval and generation pipeline in the background.
 
     Phases:
       1. Retrieve segments using hybrid (dense + sparse) matching
-      2. Apply temporal filters using parent document dates
-      3. Rerank top matches using CrossEncoder
-      4. Persist segments as Evidence models in MongoDB
-      5. Generate answer using Gemini, grounded in retrieved context
-      6. Update status and save answer in MongoDB
+      2. Ground with live MCP web search (Tavily / DuckDuckGo) if enabled
+      3. Apply temporal filters using parent document dates
+      4. Rerank top matches using CrossEncoder
+      5. Persist segments as Evidence models in MongoDB
+      6. Generate answer using active LLM, grounded in retrieved context
+      7. Decompose claims & verify through NLI
+      8. Update status and save answer in MongoDB
     """
     analysis_id = ObjectId(analysis_id_str)
     analyses_coll = get_collection(Collections.ANALYSES)
@@ -313,6 +331,8 @@ async def run_analysis_pipeline(
             kb_id_str=kb_id_str,
             query=query,
             user_id_str=user_id_str,
+            web_search_enabled=web_search_enabled,
+            web_search_provider=web_search_provider,
         )
 
         answer = final_state["answer"]

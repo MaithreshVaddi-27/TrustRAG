@@ -18,6 +18,14 @@ class AnalysisCreate(BaseModel):
         max_length=2000,
         description="User question (max 2000 characters to bound token cost)",
     )
+    enable_web_search: bool = Field(
+        default=False,
+        description="Whether to ground analysis using live web search via MCP",
+    )
+    web_search_provider: str = Field(
+        default="both",
+        description="Web search provider: 'tavily', 'duckduckgo', or 'both'",
+    )
 
 
 class ReliabilitySummary(BaseModel):
@@ -43,6 +51,8 @@ class AnalysisResponse(BaseModel):
     diagnosis: DiagnosisSummary
     created_at: datetime
     config_snapshot: dict[str, Any] | None = None
+    web_search_enabled: bool = False
+    web_search_provider: str | None = None
 
 
 class ClaimResponse(BaseModel):
@@ -68,6 +78,7 @@ class EvidenceResponse(BaseModel):
     text: str
     document_id: str
     filename: str | None = None
+    url: str | None = None
     retrieval_score: float | None = None
     fusion_score: float | None = None
     rerank_score: float | None = None

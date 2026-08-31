@@ -217,7 +217,7 @@ export default function AppLayout({ children }) {
         </aside>
 
         {/* ── MAIN CONTENT AREA ─────────────────────────────────────────── */}
-        <main className="flex-1 min-w-0 overflow-y-auto bg-surface-950 bg-cyber-grid relative">
+        <main className="flex-1 min-w-0 overflow-y-auto bg-surface-950 bg-cyber-grid relative h-full flex flex-col">
           {children}
         </main>
       </div>

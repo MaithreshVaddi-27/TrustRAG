@@ -14,6 +14,7 @@ from typing import Any
 from bson import ObjectId
 from qdrant_client.http import models
 
+from app.core.config import get_model_config
 from app.core.logging import get_logger
 from app.core.model_registry import get_embedding_model
 from app.db.mongodb import Collections, get_collection
@@ -91,6 +92,7 @@ async def index_parsed_chunks(
 
         # 3. Load embedding model (cached)
         embed_model = get_embedding_model()
+        cfg = get_model_config()
 
         # Zero-Cost Contextual Prefixing (Anthropic SOTA pattern):
         # Prepend document filename and zone to resolve chunk ambiguity without extra LLM cost
@@ -122,7 +124,8 @@ async def index_parsed_chunks(
                         await asyncio.sleep(wait_seconds)
                     else:
                         raise batch_err
-            if offset + embed_batch_size < len(contextual_texts):
+            has_more = offset + embed_batch_size < len(contextual_texts)
+            if has_more and cfg.embedding_provider == "google_genai":
                 await asyncio.sleep(1.0)
 
         qdrant_client = get_qdrant_client()

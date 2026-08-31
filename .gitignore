@@ -74,6 +74,8 @@ celerybeat.pid
 *.sage.py
 .env.local
 .venv
+.venv*
+apps/api/.venv/
 env/
 venv/
 ENV/
@@ -179,6 +181,9 @@ htmlcov/
 coverage.xml
 test-results/
 junit.xml
+playwright-report/
+blob-report/
+playwright/.cache/
 
 # ─── Temporary / scratch ──────────────────────────────────────────────────────
 tmp/

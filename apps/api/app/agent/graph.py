@@ -47,6 +47,8 @@ class AgentState(TypedDict):
     reliability_score: float | None
     diagnosis_type: str | None  # RETRIEVAL_FAILURE | EVIDENCE_CONFLICT | LOW_COVERAGE | None
     diagnosis_failures: list[str]
+    web_search_enabled: bool
+    web_search_provider: str  # "tavily" | "duckduckgo" | "both"
 
 
 # ─── Graph Nodes ─────────────────────────────────────────────────────────────
@@ -202,6 +204,65 @@ async def retrieval_node(state: AgentState) -> AgentState:
     audited_chunks = await audit_evidence_integrity(top_chunks)
     verified_chunks = [c for c in audited_chunks if c.get("integrity_status") == "VERIFIED"]
 
+    # 3b. Live Web Search Grounding via MCP (Tavily / DuckDuckGo / Both)
+    if state.get("web_search_enabled"):
+        search_prov = state.get("web_search_provider", "both")
+        await add_trace_event(
+            state["analysis_id"],
+            "web_search.started",
+            {"message": f"Executing live web search grounding via MCP ({search_prov.upper()})"},
+        )
+        try:
+            from app.mcp.client import execute_mcp_tool
+
+            tool_name = (
+                "tavily_search"
+                if search_prov == "tavily"
+                else ("duckduckgo_search" if search_prov == "duckduckgo" else "hybrid_web_search")
+            )
+            tool_args: dict[str, Any] = {"query": state["current_query"], "max_results": 5}
+            if tool_name == "hybrid_web_search":
+                tool_args["provider"] = "both"
+
+            web_items = await execute_mcp_tool(tool_name, tool_args)
+            if web_items and isinstance(web_items, list):
+                logger.info("Web search MCP returned results", count=len(web_items))
+                from app.services.search_service import sanitize_url
+
+                for w_idx, w in enumerate(web_items):
+                    w_title = str(w.get("title") or "Web Source").strip()[:150]
+                    w_url = sanitize_url(w.get("url"))
+                    w_content = str(w.get("content") or "").strip()
+                    if not w_content:
+                        continue
+                    w_chunk = {
+                        "chunk_id": f"web_{w_idx}",
+                        "document_id": None,
+                        "filename": w_title,
+                        "url": w_url,
+                        "text": f"[WEB CITATION: {w_title}] {w_content}",
+                        "dense_score": float(w.get("score", 0.8)),
+                        "rrf_score": float(w.get("score", 0.8)),
+                        "rerank_score": float(w.get("score", 0.8)),
+                        "method": f"mcp_{w.get('source', search_prov)}",
+                        "integrity_status": "VERIFIED",
+                        "page": 1,
+                    }
+                    audited_chunks.append(w_chunk)
+                    verified_chunks.append(w_chunk)
+
+                web_sources = [{"title": w.get("title"), "url": w.get("url")} for w in web_items]
+                await add_trace_event(
+                    state["analysis_id"],
+                    "web_search.completed",
+                    {
+                        "message": f"Retrieved {len(web_items)} live web search citations via MCP",
+                        "sources": web_sources,
+                    },
+                )
+        except Exception as web_exc:
+            logger.error("Web search MCP grounding failed", error=str(web_exc))
+
     # Trace log outcomes
     corrupted_count = len(audited_chunks) - len(verified_chunks)
     if corrupted_count > 0:
@@ -221,39 +282,50 @@ async def retrieval_node(state: AgentState) -> AgentState:
                     "filename": c.get("filename") or "unknown_doc",
                     "page": c.get("page", 1),
                     "score": c.get("rerank_score") or c.get("rrf_score", 0.0),
+                    "url": c.get("url"),
                 }
                 for c in verified_chunks
             ],
         },
     )
 
-    # 4. Save evidence records in MongoDB
+    # 4. Save evidence records in MongoDB (Batch Optimized)
     evidence_coll = get_collection(Collections.EVIDENCE)
-    evidence_ids = []
-    for c in audited_chunks:
-        doc_id = ObjectId(c["document_id"]) if c.get("document_id") else None
-        evt_doc = {
-            "analysis_id": ObjectId(state["analysis_id"]),
-            "user_id": ObjectId(state["user_id"]) if state.get("user_id") else None,
-            "text": c["text"],
-            "document_id": doc_id,
-            "filename": c.get("filename"),
-            "retrieval_score": c.get("dense_score", 0.0),
-            "fusion_score": c.get("rrf_score", 0.0),
-            "rerank_score": c.get("rerank_score"),
-            "method": "hybrid",
-            "integrity_status": c.get("integrity_status", "CORRUPTED"),
-            "effective_from": c.get("effective_from"),
-            "effective_until": c.get("effective_until"),
-            "created_at": datetime.now(UTC),
-        }
-        res = await evidence_coll.insert_one(evt_doc)
-        evidence_ids.append(res.inserted_id)
+    evidence_ids: list[ObjectId] = []
+    if audited_chunks:
+        evidence_docs = []
+        for c in audited_chunks:
+            doc_id = ObjectId(c["document_id"]) if c.get("document_id") else None
+            evt_doc = {
+                "analysis_id": ObjectId(state["analysis_id"]),
+                "user_id": ObjectId(state["user_id"]) if state.get("user_id") else None,
+                "text": c["text"],
+                "document_id": doc_id,
+                "filename": c.get("filename"),
+                "url": c.get("url"),
+                "retrieval_score": c.get("dense_score", 0.0),
+                "fusion_score": c.get("rrf_score", 0.0),
+                "rerank_score": c.get("rerank_score"),
+                "method": c.get("method", "hybrid"),
+                "integrity_status": c.get("integrity_status", "CORRUPTED"),
+                "effective_from": c.get("effective_from"),
+                "effective_until": c.get("effective_until"),
+                "created_at": datetime.now(UTC),
+            }
+            evidence_docs.append(evt_doc)
+
+        try:
+            insert_res = await evidence_coll.insert_many(evidence_docs)
+            evidence_ids = list(insert_res.inserted_ids)
+        except TypeError:
+            for doc in evidence_docs:
+                res = await evidence_coll.insert_one(doc)
+                evidence_ids.append(res.inserted_id)
 
     # Filter out Mongo IDs for verified evidence only
     verified_evidence_ids = []
     for i, c in enumerate(audited_chunks):
-        if c.get("integrity_status") == "VERIFIED":
+        if c.get("integrity_status") == "VERIFIED" and i < len(evidence_ids):
             verified_evidence_ids.append(evidence_ids[i])
 
     state["chunks"] = verified_chunks
@@ -265,8 +337,9 @@ async def generation_node(state: AgentState) -> AgentState:
     """Generate answer grounded in retrieved context."""
     logger.info("Agent Generation Node starting")
 
-    # If answer was already formulated (e.g. empty KB guard), preserve it
-    if state.get("answer"):
+    # If answer was already formulated by the 0-chunk empty KB guard, preserve it
+    empty_kb_guard = state.get("diagnosis_failures") == ["Knowledge base contains 0 indexed chunks"]
+    if state.get("answer") and not state.get("chunks") and empty_kb_guard:
         return state
 
     await add_trace_event(
@@ -401,6 +474,10 @@ async def recovery_node(state: AgentState) -> AgentState:
     state["attempts"] += 1
     cfg = get_model_config()
 
+    # Clear prior failed/abstained answer and claims so recovery generates and verifies freshly
+    state["answer"] = None
+    state["claims"] = []
+
     # Determine recovery strategy based on priorities configured in models.yaml
     # Fallback to query_rewrite on first attempt, re_retrieve on second
     priority = cfg._get("recovery", "strategy_priority", required=False) or [
@@ -436,10 +513,10 @@ Output only the expanded search query string. Do not include markdown headers or
             # Query rewrite triggered because generation abstained / insufficient context
             rewrite_prompt = f"""You are a search query expansion assistant for an IR system.
 The original query did not return sufficient information to answer the question.
-Your task is to rewrite and expand the user query by incorporating synonyms,
-section headers, or conceptual topics that could be present in the document.
+Your task is to expand the query by resolving ambiguous acronyms and terms.
+Keep the query focused and concise (5 to 12 words), ideal for search engines.
 
-Output only the expanded search query string. Do not include markdown headers or commentary.
+Output only the expanded search query string. Do not include markdown or quotes.
 
 <ORIGINAL_QUERY>
 {state["query"]}
@@ -553,7 +630,12 @@ def build_agent_graph() -> Any:
 
 
 async def execute_agentic_rag_flow(
-    analysis_id_str: str, kb_id_str: str, query: str, user_id_str: str | None = None
+    analysis_id_str: str,
+    kb_id_str: str,
+    query: str,
+    user_id_str: str | None = None,
+    web_search_enabled: bool = False,
+    web_search_provider: str = "both",
 ) -> dict[str, Any]:
     """Compile and execute the full agent graph pipeline."""
     graph = build_agent_graph()
@@ -574,6 +656,8 @@ async def execute_agentic_rag_flow(
         "reliability_score": None,
         "diagnosis_type": None,
         "diagnosis_failures": [],
+        "web_search_enabled": web_search_enabled,
+        "web_search_provider": web_search_provider,
     }
 
     logger.info("Executing Agentic RAG Flow graph", analysis_id=analysis_id_str)

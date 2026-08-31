@@ -51,12 +51,12 @@ services:
     command: >
       sh -c "PYTHONPATH=/build uvicorn app.main:app
       --host 0.0.0.0
-      --port 8000
+      --port 8080
       --reload
       --reload-dir /build/app
       --log-level info"
     ports:
-      - "8000:8000"
+      - "8080:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -78,7 +78,7 @@ services:
         condition: service_healthy
     healthcheck:
       # python:slim includes wget; use it for consistency with Qdrant healthcheck.
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/api/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/v1/health || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5

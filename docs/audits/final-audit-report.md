@@ -71,6 +71,12 @@ Over five progressive audit passes, **40 distinct items** spanning security, mul
 | **AUD-50** | UI/UX    | P1 | Landing page lacked rich interactivity, simulation, and contrast | Added RAF 120fps spotlight, project simulation sandbox, and dual-mode compare | ✅ FIXED |
 | **AUD-51** | UI/DATA  | P2 | Dashboard rendered mock fake scores on fresh databases | Replaced with cyber-styled zero-state indicators (`No analyses recorded yet`) | ✅ FIXED |
 | **AUD-52** | FE/REFR  | P2 | React Fast Refresh warned on constants exported from component files | Extracted `traceEvents.js` constants for 100% Fast Refresh compliance | ✅ FIXED |
+| **AUD-53** | SYS/PORT | P1 | macOS AirPlay/AirDrop port 8000 conflict caused immediate crash | Migrated default API port to 8080 across all configs, Docker, and docs | ✅ FIXED |
+| **AUD-54** | AI/MCP   | P1 | RAG lacked live web grounding across multiple search providers | Implemented MCP tools (`tavily_search`, `duckduckgo_search`, and hybrid fusion) | ✅ FIXED |
+| **AUD-55** | AI/REC   | P1 | Stale answer state caused premature abstention in recovery | Added state reset logic and multi-part query instructions in generator | ✅ FIXED |
+| **AUD-56** | UI/RESP  | P1 | Invalid CSS classes caused left panel to push right panel off-screen | Rebuilt responsive side-by-side split layout with independent scrolling | ✅ FIXED |
+| **AUD-57** | UI/TEL   | P1 | Radar graphic was distorted into oval and UI stalled on buffered SSE | Created executive `PipelineTelemetryHUD` + 2s dual-channel active fallback polling | ✅ FIXED |
+| **AUD-58** | UI/GFM   | P1 | Markdown comparison tables rendered as raw text with pipe characters | Integrated `remark-gfm` with custom dark glass responsive data table components | ✅ FIXED |
 
 > 📚 For the in-depth SOTA multi-perspective audit reports, see [**`docs/audit/`**](../audit/):
 > - [Comprehensive Master Systems Audit](../audit/comprehensive_audit_report.md)

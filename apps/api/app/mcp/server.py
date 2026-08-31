@@ -20,8 +20,8 @@ from typing import Any
 
 from app.core.logging import get_logger
 from app.db.mongodb import Collections, connect_db, get_collection
-from app.retrieval.hybrid import hybrid_search
-from app.verification.nli import verify_claims_batch
+from app.retrieval.retriever import retrieve_hybrid_chunks
+from app.verification.verifier import batch_verify_claims_nli
 
 logger = get_logger(__name__)
 
@@ -77,23 +77,92 @@ MCP_TOOLS: list[dict[str, Any]] = [
             "properties": {},
         },
     },
+    {
+        "name": "tavily_search",
+        "description": "AI-native web search using Tavily for clean snippets and source URLs.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum results to return (default: 5)",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "duckduckgo_search",
+        "description": "100% free web search using DuckDuckGo (zero API key needed).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum results to return (default: 5)",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "hybrid_web_search",
+        "description": "Concurrent search across Tavily and DuckDuckGo with deduplication.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum results to return (default: 5)",
+                },
+                "provider": {
+                    "type": "string",
+                    "description": "Search provider: 'tavily', 'duckduckgo', or 'both'",
+                },
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 
 async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Execute an MCP tool call and return structured tool content."""
+    from app.services.search_service import duckduckgo_search, execute_web_search, tavily_search
+
+    if tool_name == "tavily_search":
+        count = arguments.get("max_results", 5)
+        res = await tavily_search(arguments["query"], max_results=count)
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
+
+    elif tool_name == "duckduckgo_search":
+        count = arguments.get("max_results", 5)
+        res = await duckduckgo_search(arguments["query"], max_results=count)
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
+
+    elif tool_name == "hybrid_web_search":
+        count = arguments.get("max_results", 5)
+        res = await execute_web_search(
+            arguments["query"],
+            provider=arguments.get("provider", "both"),
+            max_results=count,
+        )
+        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
     if tool_name == "trustrag_search":
         kb_id = arguments["kb_id"]
         query = arguments["query"]
         top_k = arguments.get("top_k", 5)
-        candidates = await hybrid_search(kb_id=kb_id, query=query, top_k=top_k)
+        candidates = await retrieve_hybrid_chunks(query=query, kb_id=kb_id, top_k=top_k)
         results = [
             {
-                "chunk_id": c.chunk_id,
-                "text": c.text,
-                "score": round(c.score, 4),
-                "zone": c.zone,
-                "document_id": c.document_id,
+                "chunk_id": str(c.get("chunk_id")),
+                "text": c.get("text", ""),
+                "score": round(float(c.get("rerank_score") or c.get("rrf_score", 0.0)), 4),
+                "zone": c.get("zone", "body"),
+                "document_id": str(c.get("document_id") or ""),
             }
             for c in candidates
         ]
@@ -102,25 +171,11 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
     elif tool_name == "trustrag_verify_claim":
         claims = arguments["claims"]
         evidence_texts = arguments["evidence_texts"]
-        # Format evidence as dummy chunk structures for NLI verifier
-        from app.retrieval.hybrid import RetrievalCandidate
-
-        fake_candidates = [
-            RetrievalCandidate(
-                chunk_id=f"ev_{idx}",
-                document_id="external",
-                text=text,
-                score=1.0,
-                dense_rank=idx,
-                sparse_rank=idx,
-                zone="body",
-                page=1,
-                character_offset=0,
-                text_hash="",
-            )
+        fake_chunks = [
+            {"chunk_id": f"ev_{idx}", "text": text}
             for idx, text in enumerate(evidence_texts)
         ]
-        verdicts = await verify_claims_batch(claims=claims, candidates=fake_candidates)
+        verdicts = await batch_verify_claims_nli(claims=claims, chunks=fake_chunks)
         return {"content": [{"type": "text", "text": json.dumps(verdicts, indent=2)}]}
 
     elif tool_name == "trustrag_list_kbs":

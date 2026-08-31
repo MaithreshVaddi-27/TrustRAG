@@ -32,11 +32,11 @@ function ClaimRow({ claim, index }) {
 
   return (
     <div className={clsx(
-      'rounded-lg border transition-colors',
-      claimState === 'SUPPORTED'    && 'border-green-800/40 bg-green-950/20',
-      claimState === 'CONTRADICTED' && 'border-red-800/40   bg-red-950/20',
-      claimState === 'NEUTRAL'      && 'border-amber-800/40 bg-amber-950/20',
-      !claimState                   && 'border-slate-700/40 bg-slate-800/20',
+      'rounded-xl border transition-all duration-200 shadow-sm',
+      claimState === 'SUPPORTED'    && 'neon-verdict-supported',
+      claimState === 'CONTRADICTED' && 'neon-verdict-contradicted',
+      claimState === 'NEUTRAL'      && 'neon-verdict-neutral',
+      !claimState                   && 'border-slate-800 bg-surface-900/60',
     )}>
       <button
         className="w-full flex items-start gap-3 p-3 text-left hover:bg-white/5 transition-colors rounded-lg"
@@ -46,7 +46,7 @@ function ClaimRow({ claim, index }) {
         <span className="text-slate-500 text-xs font-mono mt-0.5 min-w-[1.5rem]">
           C{index}
         </span>
-        <span className="flex-1 text-sm text-slate-200">{claim.text}</span>
+        <span className="flex-1 text-sm text-slate-200 break-words leading-relaxed">{claim.text}</span>
         <div className="flex items-center gap-2 shrink-0">
           <ClaimStateBadge state={claimState} />
           {open ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
@@ -56,8 +56,8 @@ function ClaimRow({ claim, index }) {
       {open && (
         <div className="px-3 pb-3 space-y-2 animate-fade-in">
           {(claim.subject || claim.predicate || claim.object) && (
-            <div className="flex items-center gap-1.5 text-xs text-slate-300 bg-surface-900/60 border border-slate-800 rounded px-2.5 py-1.5 font-mono">
-              <span className="text-slate-500 font-sans text-[11px] font-medium mr-1">Triple:</span>
+            <div className="flex items-center gap-1.5 text-xs text-slate-300 bg-surface-900/60 border border-slate-800 rounded px-2.5 py-1.5 font-mono overflow-x-auto">
+              <span className="text-slate-500 font-sans text-[11px] font-medium mr-1 shrink-0">Triple:</span>
               <span className="text-primary-300">({claim.subject || '—'}</span>
               <span className="text-slate-500">→</span>
               <span className="text-amber-300">{claim.predicate || '—'}</span>
@@ -68,7 +68,7 @@ function ClaimRow({ claim, index }) {
           {claim.explanation && (
             <div className="flex gap-2 text-xs text-slate-400 bg-surface-800/50 rounded p-2">
               <Quote size={12} className="shrink-0 mt-0.5 text-slate-500" />
-              <span>{claim.explanation}</span>
+              <span className="break-words leading-relaxed">{claim.explanation}</span>
             </div>
           )}
           {claim.evidence_ids?.length > 0 && (

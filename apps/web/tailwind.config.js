@@ -59,14 +59,17 @@ export default {
       },
       // ── Animation & Micro-effects ──────────────────────────────────────
       animation: {
-        'fade-in':    'fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-        'slide-up':   'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'spin-slow':  'spin 4s linear infinite',
-        'glow':       'glow 2s ease-in-out infinite alternate',
-        'float':      'float 5s ease-in-out infinite',
-        'scan':       'scan 3s ease-in-out infinite',
-        'shimmer':    'shimmer 2.5s linear infinite',
+        'fade-in':     'fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+        'slide-up':    'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+        'pulse-slow':  'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'spin-slow':   'spin 4s linear infinite',
+        'glow':        'glow 2s ease-in-out infinite alternate',
+        'float':       'float 5s ease-in-out infinite',
+        'scan':        'scan 3s ease-in-out infinite',
+        'shimmer':     'shimmer 2.5s linear infinite',
+        'radar-sweep': 'radarSweep 2.5s linear infinite',
+        'halo-pulse':  'haloPulse 2s cubic-bezier(0, 0, 0.2, 1) infinite',
+        'border-glow': 'borderGlow 3s ease-in-out infinite',
       },
       keyframes: {
         fadeIn: {
@@ -94,6 +97,27 @@ export default {
           '0%':   { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0' },
         },
+        radarSweep: {
+          '0%':   { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(360deg)' },
+        },
+        haloPulse: {
+          '0%':   { transform: 'scale(0.95)', opacity: '0.8' },
+          '50%':  { transform: 'scale(1.25)', opacity: '0' },
+          '100%': { transform: 'scale(0.95)', opacity: '0' },
+        },
+        borderGlow: {
+          '0%, 100%': { borderColor: 'rgba(14, 165, 233, 0.3)', boxShadow: '0 0 15px rgba(14, 165, 233, 0.15)' },
+          '50%':      { borderColor: 'rgba(6, 182, 212, 0.7)', boxShadow: '0 0 25px rgba(6, 182, 212, 0.35)' },
+        },
+      },
+      // ── Cyber Glow Box Shadows ──────────────────────────────────────────
+      boxShadow: {
+        'glow-primary': '0 0 25px -2px rgba(14, 165, 233, 0.45), 0 0 10px -1px rgba(14, 165, 233, 0.3)',
+        'glow-cyan':    '0 0 25px -2px rgba(6, 182, 212, 0.45), 0 0 10px -1px rgba(6, 182, 212, 0.3)',
+        'glow-emerald': '0 0 25px -2px rgba(16, 185, 129, 0.45), 0 0 10px -1px rgba(16, 185, 129, 0.3)',
+        'glow-crimson': '0 0 25px -2px rgba(239, 68, 68, 0.45), 0 0 10px -1px rgba(239, 68, 68, 0.3)',
+        'glow-amber':   '0 0 25px -2px rgba(245, 158, 11, 0.45), 0 0 10px -1px rgba(245, 158, 11, 0.3)',
       },
       // ── Glassmorphism ──────────────────────────────────────────────────
       backdropBlur: {

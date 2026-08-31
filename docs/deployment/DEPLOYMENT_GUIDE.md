@@ -152,7 +152,7 @@ Railway provides frictionless GitHub deployments with automatic Dockerfile detec
 2. Click **Create App** → **GitHub** → select `TrustRAG` (branch: `production-deploy`).
 3. Set **Builder** to **Dockerfile** (path: `apps/api/Dockerfile`).
 4. Set **Environment Variables** (same as above).
-5. Set Health Check: HTTP on path `/api/v1/health` and port `8000`.
+5. Set Health Check: HTTP on path `/api/v1/health` and port `8080`.
 6. Click **Deploy**. Koyeb provisions `https://trustrag-api-<username>.koyeb.app`.
 
 ---

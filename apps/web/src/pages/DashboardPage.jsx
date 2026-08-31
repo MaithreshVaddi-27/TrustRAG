@@ -1,19 +1,19 @@
-import { useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Brain, Database, Zap, ArrowRight, Clock,
   ShieldCheck, Cpu,
-  TrendingUp, Sparkles, Layers, Activity
+  TrendingUp, Sparkles, Layers, Activity, RefreshCw
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar,
-  XAxis, YAxis, Tooltip, Cell
+  XAxis, YAxis, Tooltip, Cell, ReferenceLine
 } from 'recharts'
 import AppLayout from '@/layouts/AppLayout'
 import { ReliabilityBadge } from '@/components/workbench/ReliabilityBadge'
 import { kbService, analysisService, claimService, conflictService } from '@/services/api'
-import { formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow, format } from 'date-fns'
 
 const PIPELINE_PHASES = [
   {
@@ -59,12 +59,60 @@ const PIPELINE_PHASES = [
 ]
 
 export default function DashboardPage() {
-  const { data: kbs = [] } = useQuery({ queryKey: ['knowledgeBases'], queryFn: kbService.list })
-  const { data: analyses = [] } = useQuery({ queryKey: ['analyses'], queryFn: analysisService.list })
-  const { data: claims = [] } = useQuery({ queryKey: ['all-claims'], queryFn: claimService.list })
-  const { data: conflicts = [] } = useQuery({ queryKey: ['all-conflicts'], queryFn: conflictService.list })
+  const [autoRefresh, setAutoRefresh] = useState(true)
+  const [historyWindow, setHistoryWindow] = useState('10') // '10' | '20' | 'all'
+  const [lastSync, setLastSync] = useState(new Date())
 
-  // Aggregate statistics
+  // Real-time live polling every 3 seconds for active telemetry
+  const {
+    data: analyses = [],
+    refetch: refetchAnalyses,
+    isFetching: isFetchingAnalyses,
+  } = useQuery({
+    queryKey: ['analyses'],
+    queryFn: analysisService.list,
+    refetchInterval: autoRefresh ? 3000 : false,
+  })
+
+  const {
+    data: claims = [],
+    refetch: refetchClaims,
+  } = useQuery({
+    queryKey: ['all-claims'],
+    queryFn: claimService.list,
+    refetchInterval: autoRefresh ? 3000 : false,
+  })
+
+  const {
+    data: conflicts = [],
+    refetch: refetchConflicts,
+  } = useQuery({
+    queryKey: ['all-conflicts'],
+    queryFn: conflictService.list,
+    refetchInterval: autoRefresh ? 5000 : false,
+  })
+
+  const {
+    data: kbs = [],
+    refetch: refetchKbs,
+  } = useQuery({
+    queryKey: ['knowledgeBases'],
+    queryFn: kbService.list,
+    refetchInterval: autoRefresh ? 5000 : false,
+  })
+
+  useEffect(() => {
+    setLastSync(new Date())
+  }, [analyses, claims])
+
+  const handleManualSync = () => {
+    refetchAnalyses()
+    refetchClaims()
+    refetchConflicts()
+    refetchKbs()
+  }
+
+  // Aggregate statistics computed from real live history
   const stats = useMemo(() => {
     const totalDocs = kbs.reduce((sum, kb) => sum + (kb.document_count || 0), 0)
     
@@ -75,20 +123,22 @@ export default function DashboardPage() {
     let neutralClaims = 0
 
     analyses.forEach(a => {
-      if (a.reliability?.score !== undefined) {
+      if (a.reliability?.score !== undefined && a.reliability?.score !== null) {
         totalScore += a.reliability.score
         scoredCount++
       }
     })
 
     claims.forEach(c => {
-      const s = (c.status || c.verification_status || '').toLowerCase()
+      const s = (c.state || c.status || c.verification_status || '').toLowerCase()
       if (s === 'supported' || s === 'verified') supportedClaims++
       else if (s === 'contradicted') contradictedClaims++
       else neutralClaims++
     })
 
     const avgReliability = scoredCount > 0 ? (totalScore / scoredCount) : 0.88
+    const totalClaimsCount = supportedClaims + contradictedClaims + neutralClaims
+    const supportedRate = totalClaimsCount > 0 ? ((supportedClaims / totalClaimsCount) * 100).toFixed(0) : '0'
 
     return {
       totalDocs,
@@ -96,19 +146,41 @@ export default function DashboardPage() {
       supportedClaims,
       contradictedClaims,
       neutralClaims,
+      totalClaimsCount,
+      supportedRate,
       totalConflicts: conflicts.length,
     }
   }, [kbs, analyses, claims, conflicts])
 
-  // Chart data: Reliability timeline
+  // Chart data: Reliability progression curve according to real history (chronological: past -> present)
   const timelineData = useMemo(() => {
-    if (!analyses.length) return []
-    return analyses.slice(-8).map((a, idx) => ({
-      run: `R-${idx + 1}`,
-      score: Math.round((a.reliability?.score ?? 0.85) * 100),
-      threshold: 70,
-    }))
-  }, [analyses])
+    if (!analyses || !analyses.length) return []
+
+    const limit = historyWindow === 'all' ? analyses.length : Number(historyWindow)
+    // analyses is sorted by created_at DESC from the API, so slice newest and reverse to plot left-to-right
+    const chronologicalSlice = [...analyses].slice(0, limit).reverse()
+
+    return chronologicalSlice.map((a, idx) => {
+      const scoreValue = a.reliability?.score != null
+        ? Math.round(a.reliability.score * 100)
+        : (a.status === 'completed' ? 100 : 0)
+
+      const createdDate = a.created_at ? new Date(a.created_at) : new Date()
+
+      return {
+        id: a.id,
+        runLabel: `#${idx + 1}`,
+        time: format(createdDate, 'HH:mm'),
+        fullTime: format(createdDate, 'MMM dd, HH:mm:ss'),
+        score: scoreValue,
+        threshold: 70,
+        status: a.reliability?.status || (scoreValue >= 70 ? 'TRUSTED' : (scoreValue > 0 ? 'UNCERTAIN' : 'FAILED')),
+        query: a.query || 'Untitled Analysis',
+        shortQuery: (a.query || '').length > 30 ? (a.query || '').slice(0, 30) + '…' : (a.query || 'Untitled Analysis'),
+        statusRaw: a.status,
+      }
+    })
+  }, [analyses, historyWindow])
 
   // Chart data: Claims breakdown
   const claimDistributionData = useMemo(() => {
@@ -157,6 +229,59 @@ export default function DashboardPage() {
                 <span>Run Interactive Analysis</span>
               </Link>
             </div>
+          </div>
+        </div>
+
+        {/* ── LIVE OBSERVABILITY CONTROL BAR ────────────────────────────── */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-cyan-500/30 bg-surface-900/80 backdrop-blur-xl shadow-lg shadow-cyan-950/20">
+          <div className="flex items-center gap-3">
+            <div className="relative flex items-center justify-center">
+              {autoRefresh ? (
+                <>
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="absolute w-2 h-2 rounded-full bg-emerald-400" />
+                </>
+              ) : (
+                <span className="w-2 h-2 rounded-full bg-slate-500" />
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-bold tracking-wider uppercase text-cyan-300">
+                Live Observability Stream
+              </span>
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                autoRefresh
+                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800/60'
+                  : 'bg-surface-950 text-slate-400 border-slate-800'
+              }`}>
+                {autoRefresh ? 'Active Polling (3s)' : 'Paused'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 text-xs font-mono text-slate-400">
+            <span>Synced {formatDistanceToNow(lastSync, { addSuffix: true })}</span>
+            <button
+              type="button"
+              onClick={handleManualSync}
+              disabled={isFetchingAnalyses}
+              className="px-2.5 py-1.5 rounded-xl bg-surface-800 hover:bg-surface-700 text-slate-200 border border-slate-700 flex items-center gap-1.5 transition-all disabled:opacity-50 shadow-sm"
+              title="Force sync live state"
+            >
+              <RefreshCw size={12} className={isFetchingAnalyses ? 'animate-spin text-cyan-400' : 'text-slate-400'} />
+              <span>Sync Now</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAutoRefresh(prev => !prev)}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
+                autoRefresh
+                  ? 'bg-emerald-950/50 border-emerald-700/60 text-emerald-300 hover:bg-emerald-900/50'
+                  : 'bg-surface-800 border-slate-700 text-slate-300 hover:text-white'
+              }`}
+            >
+              {autoRefresh ? 'Pause Stream' : 'Go Live'}
+            </button>
           </div>
         </div>
 
@@ -237,7 +362,7 @@ export default function DashboardPage() {
               <ArrowRight size={14} className="text-slate-600 group-hover:text-primary-400 group-hover:translate-x-0.5 transition-all" />
             </div>
             <div className="mt-4">
-              <p className="text-3xl font-extrabold text-white tracking-tight">{claims.length}</p>
+              <p className="text-3xl font-extrabold text-white tracking-tight">{stats.totalClaimsCount || claims.length}</p>
               <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
                 <span>Claims Decomposed</span>
                 <span className="font-mono text-emerald-400">{stats.supportedClaims} verified</span>
@@ -250,21 +375,55 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Reliability Score History AreaChart */}
           <div className="lg:col-span-2 glass-card p-6 flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <div>
                 <h3 className="font-bold text-white text-base flex items-center gap-2">
-                  <Activity size={16} className="text-primary-400" />
+                  <Activity size={16} className="text-cyan-400" />
                   Reliability Progression Curve
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">Execution score trajectory versus safety threshold (70%)</p>
+                <p className="text-xs text-slate-400 mt-0.5">Chronological execution history trajectory vs. safety threshold (70%)</p>
               </div>
-              <span className="text-[11px] font-mono text-slate-500 px-2.5 py-1 rounded-lg bg-surface-800 border border-slate-700">
-                Latest 8 Runs
-              </span>
+
+              {/* History Window Filter Pills */}
+              <div className="flex items-center gap-1.5 bg-surface-950 p-1 rounded-xl border border-slate-800 text-[11px] font-mono shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setHistoryWindow('10')}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    historyWindow === '10'
+                      ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-800/60 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Last 10
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryWindow('20')}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    historyWindow === '20'
+                      ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-800/60 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Last 20
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryWindow('all')}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    historyWindow === 'all'
+                      ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-800/60 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  All ({analyses.length})
+                </button>
+              </div>
             </div>
 
             {timelineData.length === 0 ? (
-              <div className="h-56 w-full flex flex-col items-center justify-center text-center p-6 border border-dashed border-slate-800 rounded-xl bg-surface-900/40">
+              <div className="h-64 w-full flex flex-col items-center justify-center text-center p-6 border border-dashed border-slate-800 rounded-xl bg-surface-900/40">
                 <Activity size={24} className="text-slate-600 mb-2" />
                 <p className="text-xs text-slate-300 font-medium">No reliability analyses recorded yet</p>
                 <p className="text-[11px] text-slate-500 mt-1 max-w-sm">
@@ -272,34 +431,50 @@ export default function DashboardPage() {
                 </p>
               </div>
             ) : (
-              <div className="h-56 w-full pt-2">
+              <div className="h-64 w-full pt-2">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={timelineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <AreaChart data={timelineData} margin={{ top: 15, right: 15, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.0} />
+                        <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.45} />
+                        <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
                       </linearGradient>
                     </defs>
-                    <XAxis dataKey="run" stroke="#475569" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#475569" fontSize={11} domain={[50, 100]} tickLine={false} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#080c16',
-                        borderColor: '#1e293b',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        color: '#f8fafc',
-                        boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                    <XAxis
+                      dataKey="runLabel"
+                      stroke="#64748b"
+                      fontSize={11}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      stroke="#64748b"
+                      fontSize={11}
+                      domain={[0, 100]}
+                      ticks={[0, 25, 50, 75, 100]}
+                      tickLine={false}
+                    />
+                    <ReferenceLine
+                      y={70}
+                      stroke="#f59e0b"
+                      strokeDasharray="3 3"
+                      label={{
+                        value: 'Safety Threshold (70%)',
+                        position: 'insideTopRight',
+                        fill: '#f59e0b',
+                        fontSize: 10,
+                        fontFamily: 'monospace',
                       }}
                     />
+                    <Tooltip content={<CustomTimelineTooltip />} />
                     <Area
                       type="monotone"
                       dataKey="score"
-                      stroke="#0ea5e9"
+                      stroke="#06b6d4"
                       strokeWidth={2.5}
                       fillOpacity={1}
                       fill="url(#scoreGradient)"
+                      dot={{ fill: '#06b6d4', stroke: '#080c16', strokeWidth: 2, r: 4 }}
+                      activeDot={{ fill: '#38bdf8', stroke: '#ffffff', strokeWidth: 2, r: 6 }}
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -314,11 +489,13 @@ export default function DashboardPage() {
                 <ShieldCheck size={16} className="text-emerald-400" />
                 Claim Verification Audit
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">Distribution across verified states</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {stats.totalClaimsCount} atomic claims evaluated from history
+              </p>
             </div>
 
-            {claims.length === 0 ? (
-              <div className="h-44 w-full flex flex-col items-center justify-center text-center p-4 border border-dashed border-slate-800 rounded-xl bg-surface-900/40">
+            {stats.totalClaimsCount === 0 ? (
+              <div className="h-48 w-full flex flex-col items-center justify-center text-center p-4 border border-dashed border-slate-800 rounded-xl bg-surface-900/40">
                 <ShieldCheck size={24} className="text-slate-600 mb-2" />
                 <p className="text-xs text-slate-300 font-medium">No claims decomposed yet</p>
                 <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
@@ -326,11 +503,11 @@ export default function DashboardPage() {
                 </p>
               </div>
             ) : (
-              <div className="h-44 w-full">
+              <div className="h-48 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={claimDistributionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <XAxis dataKey="name" stroke="#475569" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#475569" fontSize={11} allowDecimals={false} tickLine={false} />
+                    <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#64748b" fontSize={11} allowDecimals={false} tickLine={false} />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: '#080c16',
@@ -353,7 +530,7 @@ export default function DashboardPage() {
             <div className="grid grid-cols-3 gap-2 pt-4 border-t border-slate-800/80 text-center">
               <div className="p-2 rounded-xl bg-emerald-950/20 border border-emerald-800/30">
                 <p className="text-xs text-emerald-400 font-bold">{stats.supportedClaims}</p>
-                <p className="text-[10px] text-slate-400">Supported</p>
+                <p className="text-[10px] text-slate-400">Supported ({stats.supportedRate}%)</p>
               </div>
               <div className="p-2 rounded-xl bg-amber-950/20 border border-amber-800/30">
                 <p className="text-xs text-amber-400 font-bold">{stats.neutralClaims}</p>
@@ -486,3 +663,58 @@ export default function DashboardPage() {
     </AppLayout>
   )
 }
+
+function CustomTimelineTooltip({ active, payload }) {
+  if (!active || !payload || !payload.length) return null
+  const data = payload[0].payload
+  const isTrusted = data.score >= 70
+  const isFailed = data.score === 0 || data.status === 'FAILED'
+
+  return (
+    <div className="rounded-xl border border-slate-700/80 bg-surface-950/95 p-3.5 backdrop-blur-xl shadow-2xl space-y-2 max-w-xs font-sans text-xs">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-800 pb-2">
+        <span className="font-mono text-cyan-300 font-bold text-[11px]">
+          {data.runLabel} &bull; {data.time}
+        </span>
+        <span
+          className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+            isTrusted
+              ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60'
+              : isFailed
+              ? 'bg-red-950/80 text-red-300 border border-red-800/60'
+              : 'bg-amber-950/80 text-amber-300 border border-amber-800/60'
+          }`}
+        >
+          {data.status}
+        </span>
+      </div>
+
+      <div>
+        <p className="text-[11px] text-slate-300 font-mono line-clamp-2 leading-relaxed">
+          &ldquo;{data.query}&rdquo;
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[11px]">
+        <span className="text-slate-400">Reliability Score:</span>
+        <div className="flex items-baseline gap-1.5">
+          <span
+            className={`font-mono font-bold text-sm ${
+              data.score >= 70 ? 'text-emerald-400' : 'text-amber-400'
+            }`}
+          >
+            {data.score}%
+          </span>
+          <span className="text-[10px] text-slate-500 font-mono">
+            ({data.score >= 70 ? 'Passed' : 'Under 70%'})
+          </span>
+        </div>
+      </div>
+
+      <div className="text-[10px] text-slate-500 font-mono">
+        {data.fullTime}
+      </div>
+    </div>
+  )
+}
+
