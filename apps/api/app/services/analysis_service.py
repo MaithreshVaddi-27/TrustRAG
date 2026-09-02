@@ -54,6 +54,10 @@ def serialize_analysis(doc: Mapping[str, Any]) -> AnalysisResponse:
         config_snapshot=doc.get("config_snapshot"),
         web_search_enabled=bool(doc.get("web_search_enabled", False)),
         web_search_provider=doc.get("web_search_provider"),
+        llm_provider=doc.get("llm_provider"),
+        llm_model=doc.get("llm_model"),
+        embedding_provider=doc.get("embedding_provider"),
+        embedding_model=doc.get("embedding_model"),
     )
 
 
@@ -128,6 +132,10 @@ async def create_analysis(
         "config_snapshot": cfg.as_snapshot(),
         "web_search_enabled": schema.enable_web_search,
         "web_search_provider": schema.web_search_provider,
+        "llm_provider": schema.llm_provider,
+        "llm_model": schema.llm_model,
+        "embedding_provider": schema.embedding_provider,
+        "embedding_model": schema.embedding_model,
     }
 
     result = await get_collection(Collections.ANALYSES).insert_one(analysis_doc)
@@ -137,7 +145,13 @@ async def create_analysis(
     await add_trace_event(
         analysis_id_str=str(result.inserted_id),
         event="analysis.started",
-        data={"message": "Analysis run initiated"},
+        data={
+            "message": "Analysis run initiated",
+            "provider": schema.llm_provider or cfg.llm_provider,
+            "model": schema.llm_model or cfg.llm_model,
+            "embedding_provider": schema.embedding_provider or cfg.embedding_provider,
+            "embedding_model": schema.embedding_model or cfg.embedding_model,
+        },
     )
 
     # Queue background RAG execution pipeline
@@ -149,6 +163,10 @@ async def create_analysis(
         user_id_str=user_id_str,
         web_search_enabled=schema.enable_web_search,
         web_search_provider=schema.web_search_provider,
+        llm_provider=schema.llm_provider,
+        llm_model=schema.llm_model,
+        embedding_provider=schema.embedding_provider,
+        embedding_model=schema.embedding_model,
     )
 
     return serialize_analysis(analysis_doc)
@@ -292,6 +310,24 @@ async def sse_event_generator(
         await asyncio.sleep(1.0)
 
 
+# Hardware-aware global concurrency limiter to protect system resources
+_analysis_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_concurrency_semaphore() -> asyncio.Semaphore:
+    global _analysis_semaphore
+    if _analysis_semaphore is None:
+        try:
+            from app.core.hardware import detect_hardware_profile
+
+            profile = detect_hardware_profile()
+            max_conc = profile.get("recommendations", {}).get("max_concurrency", 2)
+        except Exception:
+            max_conc = 2
+        _analysis_semaphore = asyncio.Semaphore(max_conc)
+    return _analysis_semaphore
+
+
 async def run_analysis_pipeline(
     analysis_id_str: str,
     kb_id_str: str,
@@ -299,6 +335,10 @@ async def run_analysis_pipeline(
     user_id_str: str | None = None,
     web_search_enabled: bool = False,
     web_search_provider: str = "both",
+    llm_provider: str | None = None,
+    llm_model: str | None = None,
+    embedding_provider: str | None = None,
+    embedding_model: str | None = None,
 ) -> None:
     """
     Execute RAG retrieval and generation pipeline in the background.
@@ -315,25 +355,31 @@ async def run_analysis_pipeline(
     """
     analysis_id = ObjectId(analysis_id_str)
     analyses_coll = get_collection(Collections.ANALYSES)
+    sem = _get_concurrency_semaphore()
 
     try:
-        # Mark status as processing
-        await analyses_coll.update_one(
-            {"_id": analysis_id},
-            {"$set": {"status": "processing", "updated_at": datetime.now(UTC)}},
-        )
+        async with sem:
+            # Mark status as processing
+            await analyses_coll.update_one(
+                {"_id": analysis_id},
+                {"$set": {"status": "processing", "updated_at": datetime.now(UTC)}},
+            )
 
-        # 1. Execute Agentic LangGraph workflow (retrieval, NLI verify, and recovery loop)
-        from app.agent.graph import execute_agentic_rag_flow
+            # 1. Execute Agentic LangGraph workflow (retrieval, NLI verify, and recovery loop)
+            from app.agent.graph import execute_agentic_rag_flow
 
-        final_state = await execute_agentic_rag_flow(
-            analysis_id_str=analysis_id_str,
-            kb_id_str=kb_id_str,
-            query=query,
-            user_id_str=user_id_str,
-            web_search_enabled=web_search_enabled,
-            web_search_provider=web_search_provider,
-        )
+            final_state = await execute_agentic_rag_flow(
+                analysis_id_str=analysis_id_str,
+                kb_id_str=kb_id_str,
+                query=query,
+                user_id_str=user_id_str,
+                web_search_enabled=web_search_enabled,
+                web_search_provider=web_search_provider,
+                llm_provider=llm_provider,
+                llm_model=llm_model,
+                embedding_provider=embedding_provider,
+                embedding_model=embedding_model,
+            )
 
         answer = final_state["answer"]
         score = final_state.get("reliability_score")
@@ -385,25 +431,39 @@ async def run_analysis_pipeline(
             error=str(exc),
         )
 
+        err_str = str(exc).lower()
+        if "connect" in err_str or "connection" in err_str or "refused" in err_str:
+            client_msg = f"Inference server connection error. Ensure {llm_provider or 'local'} server is running and accessible."
+        elif "not found" in err_str:
+            client_msg = f"Model '{llm_model}' not found on {llm_provider or 'local'} server. Please ensure the model is pulled or loaded."
+        elif "timeout" in err_str or "timed out" in err_str:
+            client_msg = "Inference timed out. The local model may still be loading or system is under heavy load."
+        else:
+            client_msg = f"Pipeline execution error ({type(exc).__name__}). Check server logs."
+
         await add_trace_event(
             analysis_id_str,
             "analysis.failed",
-            # Do NOT expose raw exception details to users — log internally only
-            {"message": "Analysis execution failed. Check server logs for details."},
+            {"message": client_msg},
         )
 
-        # Store generic error type — NOT str(exc) which leaks internal details
-        error_type = type(exc).__name__
         await analyses_coll.update_one(
             {"_id": analysis_id},
             {
                 "$set": {
                     "status": "failed",
-                    "error_message": f"Pipeline error ({error_type}). See server logs.",
+                    "error_message": client_msg,
                     "updated_at": datetime.now(UTC),
                 }
             },
         )
+    finally:
+        try:
+            from app.core.memory import trim_memory
+
+            trim_memory()
+        except Exception:
+            pass
 
 
 async def list_all_user_evidence(

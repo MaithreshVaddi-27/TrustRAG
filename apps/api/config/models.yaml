@@ -21,14 +21,22 @@ runtime:
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
   framework: langchain
-  provider: google_genai
-  # Model ID — change here only; never in application code.
-  # Verify at: https://ai.google.dev/gemini-api/docs/models
-  model: gemini-3.5-flash-lite
+  # Provider options: ollama, llama_cpp, google_genai, nvidia
+  provider: ollama
+  # Supported local models:
+  #   ollama:
+  #     - granite4.2:3b-q4_K_M
+  #     - qwen3.5:4b
+  #     - gemma4:e2b-it-qat
+  #   llama_cpp:
+  #     - ibm-granite/granite-4.2-3b-GGUF:Q4_K_M
+  #     - psychopenguin/Qwen3.5-4B-Q4_K_M-GGUF:Q4_K_M
+  #     - google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0
+  model: gemma4:e2b-it-qat
   temperature: 0.2
   top_p: 0.9
   max_output_tokens: 2048
-  timeout_seconds: 60
+  timeout_seconds: 180
   max_retries: 2
 
 # ─── Embedding ────────────────────────────────────────────────────────────────
@@ -45,15 +53,13 @@ embedding:
 
 # ─── Verification LLM ─────────────────────────────────────────────────────────
 # Used for claim-level NLI/structured verification.
-# Using a separate (potentially cheaper) model from the main LLM
-# is intentional — allows independent cost/quality tuning.
 verification:
   framework: langchain
-  provider: google_genai
-  model: gemini-3.5-flash-lite
+  provider: ollama
+  model: gemma4:e2b
   temperature: 0.0          # Zero temperature for deterministic verification
   max_output_tokens: 1024
-  timeout_seconds: 45
+  timeout_seconds: 180
   max_retries: 2
 
 # ─── Reranker ─────────────────────────────────────────────────────────────────
@@ -120,4 +126,11 @@ recovery:
 cost_controls:
   max_input_tokens: 100000          # Hard limit per LLM call
   max_verification_claims: 20       # Skip verification above this count
-  enable_response_caching: false    # Only enable for deterministic queries
+  enable_response_caching: true     # Semantic response caching enabled
+
+# ─── Inference Acceleration & KV Cache Optimization ───────────────────────────
+optimization:
+  kv_cache_quantization: "q4_0"     # Options: q4_0, q8_0, fp16 (saves 50-75% context VRAM)
+  flash_attention: true             # Computes attention in SRAM tiles (O(N) memory)
+  prompt_caching: true              # Reuses KV cache for static system prompt prefixes
+  adaptive_top_k: true              # Selects top 3-4 chunks if retrieval confidence > 0.82

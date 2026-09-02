@@ -25,11 +25,23 @@ SEARCH_TIMEOUT_SECONDS = 8.0
 MAX_QUERY_LENGTH = 500
 
 
+import ipaddress
+
+# Blocked hostnames for SSRF defense-in-depth
+BLOCKED_HOSTNAMES = {
+    "localhost",
+    "metadata.google.internal",
+    "metadata",
+    "instance-data",
+}
+
+
 def sanitize_url(raw_url: str | None) -> str:
     """
     Sanitize and validate search citation URLs.
     Strictly permits only http:// and https:// schemes.
     Discards dangerous pseudo-schemes (javascript:, data:, file:, vbscript:).
+    Protects against SSRF by blocking loopback, private, and cloud metadata IPs/hosts.
     """
     if not raw_url or not isinstance(raw_url, str):
         return ""
@@ -41,6 +53,25 @@ def sanitize_url(raw_url: str | None) -> str:
             return ""
         if not parsed.netloc or " " in parsed.netloc:
             return ""
+
+        hostname = parsed.hostname.lower() if parsed.hostname else ""
+        if not hostname:
+            return ""
+
+        if hostname in BLOCKED_HOSTNAMES or hostname.endswith(".internal") or hostname.endswith(".local"):
+            logger.warning("Rejected internal/metadata hostname in search citation", host=hostname)
+            return ""
+
+        # Block private IP ranges, loopback, link-local, and cloud metadata
+        try:
+            ip = ipaddress.ip_address(hostname)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                logger.warning("Rejected private/loopback IP in search citation", ip=str(ip))
+                return ""
+        except ValueError:
+            # Domain name, allowed
+            pass
+
         return clean
     except Exception:
         return ""

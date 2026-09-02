@@ -98,7 +98,9 @@ async def upload_document_endpoint(
     allowed_extensions = {
         ext if ext.startswith(".") else f".{ext}" for ext in cfg.supported_formats
     }
-    filename = file.filename or "unknown"
+    from pathlib import Path
+    raw_filename = file.filename or "document.txt"
+    filename = Path(raw_filename).name.replace("\x00", "").strip() or "document.txt"
     ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
     if ext not in allowed_extensions:
         raise UnsupportedFormatError(

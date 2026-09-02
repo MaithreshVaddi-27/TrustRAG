@@ -51,21 +51,45 @@ class QueryEmbeddingLRUCache:
 _query_cache = QueryEmbeddingLRUCache(capacity=1024)
 
 
-async def dense_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
+async def dense_search(
+    query: str,
+    kb_id: str,
+    top_k: int = 20,
+    embedding_provider: str | None = None,
+    embedding_model: str | None = None,
+) -> list[Any]:
     """Retrieve top_k chunks using dense vector embeddings with LRU cache."""
     try:
         client = get_qdrant_client()
         collection_name = get_collection_name(kb_id)
 
-        # Check LRU cache first to eliminate redundant remote API latency
-        cached_vec = _query_cache.get(query)
+        # Check LRU cache first to eliminate redundant computation
+        cache_key = f"{embedding_provider or ''}:{embedding_model or ''}:{query}"
+        cached_vec = _query_cache.get(cache_key)
         if cached_vec is not None:
             query_vector = cached_vec
         else:
-            embed_model = get_embedding_model()
+            embed_model = get_embedding_model(embedding_provider, embedding_model)
             # Embed query text in background thread to avoid freezing asyncio event loop
             query_vector = await asyncio.to_thread(embed_model.embed_query, query)
-            _query_cache.set(query, query_vector)
+            _query_cache.set(cache_key, query_vector)
+
+        # Safely align query vector dimension to collection's expected dimension
+        try:
+            col_info = client.get_collection(collection_name)
+            target_dim = getattr(col_info.config.params.vectors, "size", None)
+            if target_dim:
+                if len(query_vector) > target_dim:
+                    query_vector = query_vector[:target_dim]
+                    # Mathematically re-normalize truncated vector to unit length for accurate cosine similarity
+                    import math
+                    norm = math.sqrt(sum(x * x for x in query_vector))
+                    if norm > 0:
+                        query_vector = [x / norm for x in query_vector]
+                elif len(query_vector) < target_dim:
+                    query_vector = query_vector + [0.0] * (target_dim - len(query_vector))
+        except Exception as col_err:
+            logger.debug("Could not inspect collection dimensions", error=str(col_err))
 
         response = client.query_points(
             collection_name=collection_name,
@@ -244,6 +268,8 @@ async def retrieve_hybrid_chunks(
     kb_id: str,
     reference_time: datetime | None = None,
     top_k_override: int | None = None,
+    embedding_provider: str | None = None,
+    embedding_model: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Primary hybrid dense + sparse retrieval coordinator.
@@ -258,7 +284,13 @@ async def retrieve_hybrid_chunks(
 
     # Run dense + sparse searches concurrently
     dense_res, sparse_res = await asyncio.gather(
-        dense_search(query, kb_id, top_k=dense_top),
+        dense_search(
+            query,
+            kb_id,
+            top_k=dense_top,
+            embedding_provider=embedding_provider,
+            embedding_model=embedding_model,
+        ),
         sparse_search(query, kb_id, top_k=sparse_top),
     )
 

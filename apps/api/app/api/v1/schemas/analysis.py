@@ -26,6 +26,22 @@ class AnalysisCreate(BaseModel):
         default="both",
         description="Web search provider: 'tavily', 'duckduckgo', or 'both'",
     )
+    llm_provider: str | None = Field(
+        default=None,
+        description="Active LLM provider override ('ollama', 'llama_cpp', 'gemini', 'nvidia')",
+    )
+    llm_model: str | None = Field(
+        default=None,
+        description="Specific model identifier override (e.g. 'gemma4:e2b')",
+    )
+    embedding_provider: str | None = Field(
+        default=None,
+        description="Active embedding provider override ('huggingface', 'ollama', 'google_genai', 'nvidia')",
+    )
+    embedding_model: str | None = Field(
+        default=None,
+        description="Specific embedding model identifier override (e.g. 'BAAI/bge-small-en-v1.5', 'embeddinggemma:300m-qat-q8_0')",
+    )
 
 
 class ReliabilitySummary(BaseModel):
@@ -53,6 +69,10 @@ class AnalysisResponse(BaseModel):
     config_snapshot: dict[str, Any] | None = None
     web_search_enabled: bool = False
     web_search_provider: str | None = None
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    embedding_provider: str | None = None
+    embedding_model: str | None = None
 
 
 class ClaimResponse(BaseModel):

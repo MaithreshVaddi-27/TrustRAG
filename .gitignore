@@ -73,6 +73,7 @@ celerybeat-schedule
 celerybeat.pid
 *.sage.py
 .env.local
+/app
 .venv
 .venv*
 apps/api/.venv/
@@ -161,7 +162,7 @@ qdrant_data/
 data/
 apps/api/data/
 
-# ─── ML / Model cache (sentence-transformers, HuggingFace Hub) ────────────────
+# ─── ML / Model cache (sentence-transformers, HuggingFace Hub, GGUF) ──────────
 .cache/
 .cache/huggingface/
 .model_cache/
@@ -171,7 +172,11 @@ models/
 *.pt
 *.ckpt
 *.safetensors
+*.gguf
+*.llamafile
+llama-server.log
 .huggingface/
+data/qdrant/
 
 # ─── Test output ──────────────────────────────────────────────────────────────
 .pytest_cache/

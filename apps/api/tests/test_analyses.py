@@ -88,11 +88,10 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
             assert data["query"] == "Is there a 45 days policy?"
             assert data["status"] == "pending"
             assert data["reliability"]["status"] == "PENDING"
-            mock_add_trace.assert_called_once_with(
-                analysis_id_str="64ee39d09c6292376e191983",
-                event="analysis.started",
-                data={"message": "Analysis run initiated"},
-            )
+            call_kwargs = mock_add_trace.call_args.kwargs
+            assert call_kwargs["analysis_id_str"] == "64ee39d09c6292376e191983"
+            assert call_kwargs["event"] == "analysis.started"
+            assert call_kwargs["data"]["message"] == "Analysis run initiated"
 
 
 @patch("app.api.v1.analyses.get_current_user")

@@ -42,10 +42,10 @@ docs/
 
 ### 2. SOTA Production Audit Suite
 - [**Comprehensive Master Audit (`audit/comprehensive_audit_report.md`)**](audit/comprehensive_audit_report.md): Synthesis across Systems, Security, AI/ML, and QA with 0 open issues.
-- [**Deep Security & DevSecOps (`audit/security_audit.md`)**](audit/security_audit.md): Physical collection isolation, anti-IDOR defense, SSRF URL sanitization, and cryptographic SHA-256 provenance.
-- [**AI/ML Performance & Latency (`audit/ai_ml_performance_audit.md`)**](audit/ai_ml_performance_audit.md): Matryoshka 384d MRL embeddings, hybrid RRF search, and zero local GPU RAM operation.
-- [**Quality Assurance Testing Report (`audit/qa_testing_report.md`)**](audit/qa_testing_report.md): 86/86 automated tests across whitebox and blackbox test suites.
-- [**Modernization & Refactoring Blueprint (`audit/areas_for_improvement_and_refactoring.md`)**](audit/areas_for_improvement_and_refactoring.md): Qdrant on-disk INT8 quantization, LRU embedding caching, and container pruning.
+- [**Deep Security & DevSecOps (`audit/security_audit.md`)**](audit/security_audit.md): Physical collection isolation, anti-IDOR defense, SSRF URL sanitization (private IP / metadata protection), and cryptographic SHA-256 provenance.
+- [**AI/ML Performance & Latency (`audit/ai_ml_performance_audit.md`)**](audit/ai_ml_performance_audit.md): Matryoshka 384d MRL, local HuggingFace BGE, Ollama 768d embeddings, hybrid RRF search, and offline execution.
+- [**Quality Assurance Testing Report (`audit/qa_testing_report.md`)**](audit/qa_testing_report.md): 91/91 automated tests across whitebox and blackbox test suites (100% pass rate).
+- [**Modernization & Refactoring Blueprint (`audit/areas_for_improvement_and_refactoring.md`)**](audit/areas_for_improvement_and_refactoring.md): Qdrant on-disk INT8 quantization, LRU embedding caching, dimension alignment, and container pruning.
 
 ### 3. Security & Compliance
 - [**Security Controls (`security/security-controls.md`)**](security/security-controls.md): Specification of JWT tokens, bcrypt rounds, defensive HTTP response headers (`nosniff`, `DENY`), SSRF guards, and prompt injection defenses.

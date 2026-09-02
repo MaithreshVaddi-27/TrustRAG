@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { useAuthStore, authStore } from '@/store/authStore'
-import { healthService } from '@/services/api'
+import { healthService, modelService } from '@/services/api'
 import {
   Server,
   ShieldCheck,
@@ -17,16 +17,40 @@ import {
   FileText,
   Clock,
   Loader2,
+  Terminal,
+  Sparkles,
+  Zap,
 } from 'lucide-react'
 
 export default function SettingsPage() {
   const { user } = useAuthStore()
   const [copied, setCopied] = useState(false)
+  const [trimming, setTrimming] = useState(false)
+  const [trimResult, setTrimResult] = useState(null)
+
+  const handleTrimMemory = async () => {
+    setTrimming(true)
+    try {
+      const res = await modelService.trimMemory()
+      setTrimResult(res)
+      setTimeout(() => setTrimResult(null), 4000)
+    } catch (err) {
+      console.error('Failed to trim memory', err)
+    } finally {
+      setTrimming(false)
+    }
+  }
 
   const { data: health, isLoading } = useQuery({
     queryKey: ['system-health'],
     queryFn: healthService.get,
     refetchInterval: 30000,
+  })
+
+  const { data: providersData } = useQuery({
+    queryKey: ['settings-model-providers'],
+    queryFn: modelService.getProviders,
+    refetchInterval: 15000,
   })
 
   const copyUserId = () => {
@@ -197,6 +221,295 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* Hardware Acceleration & System Health */}
+        <div className="glass-card p-5 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+            <div className="flex items-center gap-2.5">
+              <Zap size={18} className="text-amber-400" />
+              <h2 className="font-semibold text-slate-200 text-base">
+                Hardware Acceleration & System Health
+              </h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono border ${
+                providersData?.hardware?.health?.status === 'optimal'
+                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800/40'
+                  : 'bg-amber-950/80 text-amber-300 border-amber-800/40'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${providersData?.hardware?.health?.status === 'optimal' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                {providersData?.hardware?.health?.status === 'optimal' ? 'System Healthy' : 'Resource Pressure'}
+              </span>
+              <button
+                type="button"
+                onClick={handleTrimMemory}
+                disabled={trimming}
+                className="px-2.5 py-1 text-xs rounded-lg bg-surface-800 hover:bg-surface-700 text-slate-200 border border-slate-700 transition-colors flex items-center gap-1.5"
+              >
+                {trimming ? <Loader2 size={12} className="animate-spin" /> : <Activity size={12} className="text-cyan-400" />}
+                <span>Compact Heap</span>
+              </button>
+            </div>
+          </div>
+
+          {trimResult && (
+            <div className="p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-800/50 text-xs text-emerald-300 animate-fade-in flex items-center justify-between">
+              <span>Heap memory compacted successfully. Current process RSS: {trimResult.after_mb} MB</span>
+              <span className="font-mono text-[10px] text-emerald-400">Freed: {trimResult.freed_mb} MB</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Accelerator */}
+            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-4 space-y-2">
+              <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Hardware Accelerator</span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-100 text-sm">
+                  {providersData?.hardware?.accelerator_name || 'Detecting...'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Engine: <code className="text-amber-400 font-mono">{providersData?.hardware?.accelerator?.toUpperCase() || 'CPU'}</code> &bull; Machine: <code className="text-slate-300 font-mono">{providersData?.hardware?.machine || 'arm64'}</code>
+              </p>
+            </div>
+
+            {/* Memory & VRAM */}
+            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-4 space-y-2">
+              <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Host Memory (RAM)</span>
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-100 text-sm">
+                  {providersData?.hardware?.memory?.used_gb || 0} / {providersData?.hardware?.memory?.total_gb || 8} GB
+                </span>
+                <span className="font-mono text-xs text-cyan-400">
+                  {providersData?.hardware?.memory?.usage_pct || 0}%
+                </span>
+              </div>
+              <div className="w-full bg-surface-900 rounded-full h-1.5 border border-slate-800 overflow-hidden">
+                <div 
+                  className={`h-full transition-all duration-500 rounded-full ${
+                    (providersData?.hardware?.memory?.usage_pct || 0) > 85 ? 'bg-amber-400' : 'bg-cyan-500'
+                  }`}
+                  style={{ width: `${Math.min(100, providersData?.hardware?.memory?.usage_pct || 0)}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Process RSS: <span className="text-slate-300 font-mono">{providersData?.hardware?.process_rss_mb || 0} MB</span>
+              </p>
+            </div>
+
+            {/* Hardware-Adaptive Recommendations */}
+            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-4 space-y-2">
+              <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Auto-Tuned Recommendation</span>
+              <div className="space-y-1 text-xs text-slate-300">
+                <div>Optimal LLM: <code className="text-emerald-300 font-mono">{providersData?.hardware?.recommendations?.primary_llm || 'granite4.2:3b-q4_K_M'}</code></div>
+                <div>Optimal Embed: <code className="text-cyan-300 font-mono">{providersData?.hardware?.recommendations?.primary_embedding || 'embeddinggemma:300m-qat-q8_0'}</code></div>
+                <div>Safe Concurrency: <span className="text-slate-400">{providersData?.hardware?.recommendations?.max_concurrency || 2} concurrent runs</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Local LLM Infrastructure (Ollama & llama.cpp) */}
+        <div className="glass-card p-5 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+            <div className="flex items-center gap-2.5">
+              <Terminal size={18} className="text-emerald-400" />
+              <h2 className="font-semibold text-slate-200 text-base">
+                Local LLM Infrastructure (Private & Offline)
+              </h2>
+            </div>
+            <span className="text-xs text-slate-500 font-mono">localhost:11434 / localhost:8081</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Ollama Engine */}
+            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-4 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2 text-slate-200 font-semibold text-sm">
+                    <Cpu size={15} className="text-emerald-400" /> Ollama Engine
+                  </div>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono ${
+                    providersData?.providers?.ollama?.connected
+                      ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/40'
+                      : 'bg-amber-950/80 text-amber-400 border border-amber-800/40'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${providersData?.providers?.ollama?.connected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                    {providersData?.providers?.ollama?.connected ? 'Online' : 'Unreachable'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Native local inference server. Active model: <code className="text-emerald-300 font-mono">granite4.2:3b-q4_K_M</code>
+                </p>
+                <div className="mt-2 text-[11px] text-slate-400 space-y-1">
+                  <div>Endpoint: <code className="text-slate-300 font-mono">http://localhost:11434</code></div>
+                  <div>Discovery Command: <code className="text-emerald-400 font-mono">ollama list</code></div>
+                  <div>Configured LLMs: <span className="text-slate-300 font-mono">{providersData?.providers?.ollama?.models?.join(', ') || 'granite4.2:3b-q4_K_M, qwen3.5:4b, gemma4:e2b-it-qat'}</span></div>
+                  <div>Dense Embeddings: <span className="text-emerald-300 font-mono">{providersData?.embedding_providers?.ollama?.models?.map(m => m.id).join(', ') || 'embeddinggemma:300m-qat-q8_0'}</span></div>
+                </div>
+              </div>
+
+              {!providersData?.providers?.ollama?.connected && (
+                <div className="p-2.5 bg-amber-950/40 border border-amber-800/40 rounded-lg text-[11px] text-amber-300">
+                  💡 Start Ollama by running <code className="bg-surface-900 px-1 py-0.5 rounded text-amber-200 font-mono">ollama serve</code> and <code className="bg-surface-900 px-1 py-0.5 rounded text-amber-200 font-mono">ollama pull granite4.2:3b-q4_K_M</code>.
+                </div>
+              )}
+            </div>
+
+            {/* llama.cpp Engine */}
+            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-4 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2 text-slate-200 font-semibold text-sm">
+                    <Terminal size={15} className="text-cyan-400" /> llama.cpp Server
+                  </div>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono ${
+                    providersData?.providers?.llama_cpp?.connected
+                      ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/40'
+                      : 'bg-amber-950/80 text-amber-400 border border-amber-800/40'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${providersData?.providers?.llama_cpp?.connected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                    {providersData?.providers?.llama_cpp?.connected ? 'Online' : 'Standby'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  OpenAI-compatible server. Active model: <code className="text-cyan-300 font-mono">ibm-granite/granite-4.2-3b-GGUF:Q4_K_M</code>
+                </p>
+                <div className="mt-2 text-[11px] text-slate-400 space-y-1">
+                  <div>Endpoint: <code className="text-slate-300 font-mono">http://localhost:8081/v1</code></div>
+                  <div>Discovery Command: <code className="text-cyan-400 font-mono">llama-server --cache-list</code></div>
+                  <div>Cache GGUF Models: <span className="text-slate-300 font-mono">{providersData?.providers?.llama_cpp?.cache_models?.join(', ') || 'ggml-org/embeddinggemma-300M-GGUF:Q8_0'}</span></div>
+                  <div>Configured LLMs: <span className="text-cyan-300 font-mono">{providersData?.providers?.llama_cpp?.models?.join(', ') || 'ibm-granite/granite-4.2-3b-GGUF:Q4_K_M, psychopenguin/Qwen3.5-4B-Q4_K_M-GGUF:Q4_K_M, google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0'}</span></div>
+                </div>
+              </div>
+
+              {!providersData?.providers?.llama_cpp?.connected && (
+                <div className="p-2.5 bg-surface-900/60 border border-slate-700/50 rounded-lg text-[11px] text-slate-400">
+                  💡 Start server: <code className="bg-surface-950 px-1 py-0.5 rounded text-cyan-300 font-mono">llama-server -m granite-4.2-3b.gguf --port 8081</code>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Dense Vector Embedding Infrastructure */}
+        <div className="glass-card p-5 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+            <div className="flex items-center gap-2.5">
+              <Layers size={18} className="text-cyan-400" />
+              <h2 className="font-semibold text-slate-200 text-base">
+                Dense Vector Embedding Infrastructure
+              </h2>
+            </div>
+            <span className="text-xs text-slate-500 font-mono">Active: {providersData?.active_embedding_model || 'embeddinggemma:300m-qat-q8_0'}</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+            {/* Local Ollama Embeddings */}
+            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-3.5 flex flex-col justify-between space-y-2">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-slate-200 font-semibold text-xs">Local Ollama</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-950/80 text-emerald-400 border border-emerald-800/40">768d</span>
+                </div>
+                <p className="text-[11px] text-slate-400">Dense vectors via Ollama /api/embed.</p>
+              </div>
+              <div className="pt-2 border-t border-slate-700/40 text-[10px] text-emerald-300 font-mono truncate" title="embeddinggemma:300m-qat-q8_0">
+                embeddinggemma:300m-qat-q8_0
+              </div>
+            </div>
+
+            {/* Local llama.cpp GGUF Embeddings */}
+            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-3.5 flex flex-col justify-between space-y-2">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-slate-200 font-semibold text-xs">llama.cpp GGUF</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-950/80 text-amber-400 border border-amber-800/40">768d</span>
+                </div>
+                <p className="text-[11px] text-slate-400">Offline GGUF embeddings over port 8081.</p>
+              </div>
+              <div className="pt-2 border-t border-slate-700/40 text-[10px] text-amber-300 font-mono truncate" title="ggml-org/embeddinggemma-300M-GGUF:Q8_0">
+                embeddinggemma-300M (Q8_0)
+              </div>
+            </div>
+
+            {/* Local HuggingFace BGE */}
+            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-3.5 flex flex-col justify-between space-y-2">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-slate-200 font-semibold text-xs">HuggingFace BGE</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-950/80 text-cyan-400 border border-cyan-800/40">384d</span>
+                </div>
+                <p className="text-[11px] text-slate-400">Local PyTorch / CPU. Zero API cost.</p>
+              </div>
+              <div className="pt-2 border-t border-slate-700/40 text-[10px] text-cyan-300 font-mono truncate" title="BAAI/bge-small-en-v1.5">
+                bge-small-en-v1.5
+              </div>
+            </div>
+
+            {/* Google Gemini Embeddings */}
+            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-3.5 flex flex-col justify-between space-y-2">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-slate-200 font-semibold text-xs">Google Gemini</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-indigo-950/80 text-indigo-400 border border-indigo-800/40">384d</span>
+                </div>
+                <p className="text-[11px] text-slate-400">Matryoshka API embeddings.</p>
+              </div>
+              <div className="pt-2 border-t border-slate-700/40 text-[10px] text-indigo-300 font-mono truncate" title="models/gemini-embedding-001">
+                gemini-embedding-001
+              </div>
+            </div>
+
+            {/* NVIDIA NIM Embeddings */}
+            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-3.5 flex flex-col justify-between space-y-2">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-slate-200 font-semibold text-xs">NVIDIA NIM</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-purple-950/80 text-purple-400 border border-purple-800/40">384d</span>
+                </div>
+                <p className="text-[11px] text-slate-400">Enterprise cloud endpoints.</p>
+              </div>
+              <div className="pt-2 border-t border-slate-700/40 text-[10px] text-purple-300 font-mono truncate" title="nvidia/nv-embedqa-e5-v5">
+                nv-embedqa-e5-v5
+              </div>
+            </div>
+          </div>
+
+          {/* Model Context Protocol (MCP) Interface */}
+          <div className="pt-3 border-t border-slate-800/80 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-200">
+                <Sparkles size={14} className="text-cyan-400" />
+                <span>Model Context Protocol (MCP) Protocol Interface</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-cyan-950/80 text-cyan-300 border border-cyan-800/40">
+                stdio & in-process active
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Standardized MCP server exposing TrustRAG and local LLM tools to Cursor, Claude Desktop, Antigravity IDE, and external agents:
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-1 text-[11px] font-mono">
+              <div className="p-2 bg-surface-900/80 border border-slate-800 rounded-lg text-slate-300">
+                <span className="text-cyan-400 font-semibold block">trustrag_search</span>
+                <span className="text-[10px] text-slate-500 font-sans">Hybrid RRF Search</span>
+              </div>
+              <div className="p-2 bg-surface-900/80 border border-slate-800 rounded-lg text-slate-300">
+                <span className="text-cyan-400 font-semibold block">trustrag_verify_claim</span>
+                <span className="text-[10px] text-slate-500 font-sans">NLI Verification</span>
+              </div>
+              <div className="p-2 bg-surface-900/80 border border-slate-800 rounded-lg text-slate-300">
+                <span className="text-cyan-400 font-semibold block">duckduckgo_search</span>
+                <span className="text-[10px] text-slate-500 font-sans">Free Web Grounding</span>
+              </div>
+              <div className="p-2 bg-surface-900/80 border border-slate-800 rounded-lg text-slate-300">
+                <span className="text-cyan-400 font-semibold block">local_llm_chat</span>
+                <span className="text-[10px] text-slate-500 font-sans">Ollama/llama.cpp MCP</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Active AI Model Pipeline Configuration */}
         <div className="glass-card p-5 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
@@ -209,9 +522,9 @@ export default function SettingsPage() {
 
           <div className="divide-y divide-slate-800/60 text-xs">
             <div className="py-2.5 flex items-center justify-between">
-              <span className="text-slate-400 font-medium">Grounded Generator (LLM)</span>
-              <span className="font-mono text-slate-200 bg-surface-800 px-2 py-0.5 rounded border border-slate-700/60">
-                {models.llm_model || 'gemini-3.5-flash-lite'}
+              <span className="text-slate-400 font-medium">Active LLM Engine</span>
+              <span className="font-mono text-emerald-300 bg-surface-800 px-2 py-0.5 rounded border border-slate-700/60 uppercase">
+                {models.llm_provider || 'ollama'} ({models.llm_model || 'gemma4:e2b'})
               </span>
             </div>
             <div className="py-2.5 flex items-center justify-between">

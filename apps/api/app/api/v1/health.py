@@ -47,6 +47,8 @@ async def health() -> dict:
     cfg = get_model_config()
     settings = get_settings()
 
+    from app.core.hardware import detect_hardware_profile
+
     return {
         "status": overall_status,
         "timestamp": datetime.now(UTC).isoformat(),
@@ -55,5 +57,6 @@ async def health() -> dict:
         "environment": settings.app_env,
         "services": services,
         "models": registry_status(),
+        "hardware": detect_hardware_profile(),
         "supported_formats": cfg.supported_formats,
     }

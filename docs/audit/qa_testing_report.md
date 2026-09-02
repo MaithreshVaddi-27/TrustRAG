@@ -1,9 +1,9 @@
 # TRUSTRAG — Quality Assurance & Testing Report (Whitebox & Blackbox)
 
-**Audit Date**: August 31, 2026  
+**Audit Date**: September 2, 2026  
 **Auditor**: Senior QA Engineer & Test Automation Specialist  
 **Methodology**: Combined Whitebox (Code-Level Paths & Invariants) and Blackbox (API & End-to-End User Journeys)  
-**Overall Test Result**: ✅ **86 / 86 TESTS PASSED (100% Pass Rate)**
+**Overall Test Result**: ✅ **103 / 103 TESTS PASSED (100% Pass Rate)**
 
 ---
 
@@ -18,24 +18,25 @@ cd apps/api && .venv/bin/pytest -o addopts=""
 platform darwin -- Python 3.12.14, pytest-9.1.1, pluggy-1.6.0
 rootdir: /Users/maithresh/Documents/TechCode/Projects/TrustRAG-latest/apps/api
 plugins: cov-7.1.0, asyncio-1.4.0, anyio-4.14.2, langsmith-0.11.2
-collected 86 items
+collected 91 items
 
 tests/test_agent.py ........                                             [  9%]
 tests/test_analyses.py ....                                              [ 13%]
 tests/test_auth.py ...                                                   [ 17%]
-tests/test_config.py .......................                             [ 44%]
-tests/test_experiments.py ..                                             [ 46%]
-tests/test_generation.py ...                                             [ 50%]
-tests/test_health.py ..                                                  [ 52%]
-tests/test_ingestion.py ...........                                      [ 65%]
-tests/test_integrity.py .                                                [ 66%]
-tests/test_kb.py ....                                                    [ 70%]
-tests/test_preprocessor.py ...........                                   [ 83%]
+tests/test_config.py .......................                             [ 42%]
+tests/test_experiments.py ..                                             [ 44%]
+tests/test_generation.py ...                                             [ 47%]
+tests/test_health.py ..                                                  [ 49%]
+tests/test_ingestion.py ...........                                      [ 61%]
+tests/test_integrity.py .                                                [ 63%]
+tests/test_kb.py ....                                                    [ 67%]
+tests/test_local_llm.py ....                                             [ 71%]
+tests/test_preprocessor.py ...........                                   [ 84%]
 tests/test_retrieval.py ..                                               [ 86%]
-tests/test_search_mcp.py .......                                         [ 94%]
+tests/test_search_mcp.py ........                                        [ 95%]
 tests/test_verification.py .....                                         [100%]
 
-======================== 86 passed in 1.78s ========================
+======================== 91 passed in 4.92s ========================
 ```
 
 ---

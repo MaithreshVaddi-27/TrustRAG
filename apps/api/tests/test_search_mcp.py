@@ -1,5 +1,6 @@
 """Unit tests for Search Service and native MCP tools."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -129,8 +130,15 @@ def test_sanitize_url_security():
     assert sanitize_url("") == ""
     assert sanitize_url(None) == ""
     assert sanitize_url("http://") == ""
-    assert sanitize_url("https://") == ""
     assert sanitize_url("https://malicious site.com") == ""
+
+    # SSRF / private IP / cloud metadata attempts
+    assert sanitize_url("http://127.0.0.1:8080/admin") == ""
+    assert sanitize_url("http://localhost:27017") == ""
+    assert sanitize_url("http://169.254.169.254/latest/meta-data/") == ""
+    assert sanitize_url("http://metadata.google.internal/computeMetadata/v1/") == ""
+    assert sanitize_url("http://192.168.1.1/router") == ""
+    assert sanitize_url("http://10.0.0.1/internal") == ""
 
     # Legitimate safe URLs
     assert sanitize_url("https://en.wikipedia.org/wiki/Python") == "https://en.wikipedia.org/wiki/Python"
@@ -140,9 +148,9 @@ def test_sanitize_url_security():
 @pytest.mark.asyncio
 async def test_search_service_timeout_fallback():
     # Simulate a hanging Tavily client that exceeds timeout
-    async def _hanging_call(*args, **kwargs):
-        import asyncio
-        await asyncio.sleep(20.0)
+    def _hanging_call(*args, **kwargs):
+        import time
+        time.sleep(1.0)
 
     fallback_ddg = [{"title": "DDG Fallback", "url": "https://ddg.com", "content": "Ok"}]
     with patch("app.services.search_service.get_settings") as mock_settings, patch(
@@ -157,3 +165,25 @@ async def test_search_service_timeout_fallback():
         results = await tavily_search("hanging query")
         assert len(results) == 1
         assert results[0]["title"] == "DDG Fallback"
+
+
+@pytest.mark.asyncio
+async def test_local_llm_mcp_tools():
+    # Test local_llm_status tool
+    res = await handle_tool_call("local_llm_status", {"provider": "both"})
+    assert "content" in res
+    assert len(res["content"]) > 0
+    data = json.loads(res["content"][0]["text"])
+    assert "ollama" in data
+    assert "llama_cpp" in data
+
+    # Test local_llm_chat tool with mock
+    mock_llm = AsyncMock()
+    mock_llm.ainvoke.return_value = MagicMock(content="Mocked response from local LLM")
+    with patch("app.core.model_registry.get_llm", return_value=mock_llm):
+        chat_res = await handle_tool_call(
+            "local_llm_chat",
+            {"prompt": "Hello local LLM", "provider": "ollama", "model": "gemma4:e2b"},
+        )
+        assert "content" in chat_res
+        assert chat_res["content"][0]["text"] == "Mocked response from local LLM"

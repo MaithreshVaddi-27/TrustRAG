@@ -27,28 +27,36 @@ React 18 + Vite (Port 5173)
 FastAPI (Python 3.12, Default Port 8080)
     │
     ├─── app/core/         Settings, ModelRegistry, Logging, Security, Exceptions
-    ├─── app/db/           MongoDB Atlas client (Motor async, connection pooling)
-    ├─── app/ai/           LangChain / Gemini wrappers (LLM, 384d MRL embeddings)
+    │       └── local_llm.py → ChatOllamaClient, ChatLlamaCppClient, OllamaEmbeddings,
+    │                          CLI introspection (ollama list, llama-server --cache-list)
+    ├─── app/db/           MongoDB Community / Atlas client, Qdrant client
     ├─── app/ingestion/    Document parsing, chunking, cryptographic hashing
-    ├─── app/retrieval/    Dense + Sparse BM25 + Reciprocal Rank Fusion (RRF)
+    ├─── app/retrieval/    Dense (384d/768d) + Sparse BM25 + Reciprocal Rank Fusion (RRF)
+    │                      + Dynamic L2 dimension alignment & normalization
     ├─── app/mcp/          Model Context Protocol (MCP) Server & Dispatcher
+    │       ├── local_llm_chat    → Prompt local LLM (Ollama / llama.cpp) over MCP
+    │       ├── local_llm_status  → Query local model health & discovery via MCP
     │       ├── tavily_search     → AI-curated RAG search with clean parsed snippets
     │       ├── duckduckgo_search → Zero-config, 100% free web search fallback
     │       └── hybrid_web_search → Parallel execution with URL deduplication
-    ├─── app/services/     Search Service (SSRF sanitization, query boundaries)
-    ├─── app/generation/   Grounded answer generation with multi-part coverage
+    ├─── app/services/     Search Service (SSRF sanitization, private IP guards)
+    ├─── app/generation/   Grounded answer generation (Local LLMs or Cloud)
     ├─── app/verification/ Propositional claim decomposition + NLI entailment
     ├─── app/integrity/    Cryptographic SHA-256 provenance & temporal audit
-    ├─── app/reliability/  Reliability scoring engine & threshold diagnosis
     ├─── app/agent/        LangGraph stateful self-healing workflow
     └─── app/evaluation/   Experiment runner & benchmark metrics
          │
-         ├─── Google Gemini API (via langchain-google-genai)
-         │       LLM: gemini-3.5-flash-lite / gemini-2.5-flash-lite
-         │       Embedding: models/gemini-embedding-001, 384-dim MRL (0 MB local GPU RAM)
+         ├─── Local Engines:
+         │       Ollama (Port 11434): gemma4:e2b / embeddinggemma:300m-qat-q8_0
+         │       llama.cpp (Port 8081): gemma-4-E2B-it-qat-q4_0-gguf:Q4_0
+         │       HuggingFace: BAAI/bge-small-en-v1.5 (384d SOTA CPU embeddings)
+         │
+         ├─── Cloud Engines (Optional):
+         │       Google Gemini: gemini-3.5-flash-lite / models/gemini-embedding-001
+         │       NVIDIA NIM: meta/llama-3.3-70b-instruct / nv-embedqa-e5-v5
          │
          ├─── Qdrant (Vector & Payload Store)
-         │       Dense vector indexing + Payload filtering
+         │       Dense vector indexing (384d & 768d) + Payload filtering
          │
          └─── MongoDB (Operational Data Store)
                  Users, Knowledge Bases, Analyses, Claims, Evidence, Traces

@@ -187,14 +187,16 @@ Strict Rules for each claim:
 # ─── Pipeline Core Functions ──────────────────────────────────────────────────
 
 
-async def decompose_answer_to_claims(answer: str) -> list[str]:
-    """Decompose the generated answer into atomic claims using Gemini structured outputs."""
+async def decompose_answer_to_claims(
+    answer: str, provider: str | None = None, model: str | None = None
+) -> list[str]:
+    """Decompose the generated answer into atomic claims using structured outputs."""
     if not answer or answer == "ABSTAIN":
         return []
 
     try:
-        model = get_verification_model()
-        structured_llm = model.with_structured_output(ClaimDecomposition)
+        model_obj = get_verification_model(provider=provider, model=model)
+        structured_llm = model_obj.with_structured_output(ClaimDecomposition)
 
         logger.info("Running answer claim decomposition", answer_len=len(answer))
 
@@ -212,7 +214,12 @@ async def decompose_answer_to_claims(answer: str) -> list[str]:
         return [answer] if len(answer.strip()) > 0 else []
 
 
-async def verify_claim_nli(claim: str, chunks: list[dict[str, Any]]) -> dict[str, Any]:
+async def verify_claim_nli(
+    claim: str,
+    chunks: list[dict[str, Any]],
+    provider: str | None = None,
+    model: str | None = None,
+) -> dict[str, Any]:
     """
     Perform NLI verification check on a single claim against retrieved evidence segments.
 
@@ -229,8 +236,8 @@ async def verify_claim_nli(claim: str, chunks: list[dict[str, Any]]) -> dict[str
 
         context_str = format_context(chunks)
 
-        model = get_verification_model()
-        structured_nli = model.with_structured_output(NLIVerdict)
+        model_obj = get_verification_model(provider=provider, model=model)
+        structured_nli = model_obj.with_structured_output(NLIVerdict)
 
         prompt_str = NLI_PROMPT_TEMPLATE.format(context_str=context_str, claim=claim)
 
@@ -246,8 +253,6 @@ async def verify_claim_nli(claim: str, chunks: list[dict[str, Any]]) -> dict[str
 
     except Exception as exc:
         logger.error("NLI verification failed", claim=claim, error=str(exc))
-        # Default to NEUTRAL on exception for safety
-        # Do NOT expose raw exception details — log internally only
         return {
             "verdict": "NEUTRAL",
             "supporting_segments": [],
@@ -256,7 +261,10 @@ async def verify_claim_nli(claim: str, chunks: list[dict[str, Any]]) -> dict[str
 
 
 async def batch_verify_claims_nli(
-    claims: list[str], chunks: list[dict[str, Any]]
+    claims: list[str],
+    chunks: list[dict[str, Any]],
+    provider: str | None = None,
+    model: str | None = None,
 ) -> dict[int, dict[str, Any]]:
     """
     Verify multiple claims simultaneously in a single structured call.
@@ -281,8 +289,8 @@ async def batch_verify_claims_nli(
         context_str=context_str, claims_list_str=claims_list_str
     )
 
-    model = get_verification_model()
-    structured_batch = model.with_structured_output(BatchNLIVerdict)
+    model_obj = get_verification_model(provider=provider, model=model)
+    structured_batch = model_obj.with_structured_output(BatchNLIVerdict)
 
     try:
         logger.info("Executing batch NLI verification", claim_count=len(claims))
@@ -318,6 +326,8 @@ async def execute_claim_verification(
     chunks: list[dict[str, Any]],
     evidence_ids: list[ObjectId],
     user_id_str: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Decompose answer, execute NLI verifications, and save claims to MongoDB.
@@ -329,7 +339,7 @@ async def execute_claim_verification(
     claims_coll = get_collection(Collections.CLAIMS)
 
     # 1. Decompose answer into atomic assertions
-    claims_texts = await decompose_answer_to_claims(answer)
+    claims_texts = await decompose_answer_to_claims(answer, provider=provider, model=model)
     if not claims_texts:
         return []
 
@@ -349,7 +359,7 @@ async def execute_claim_verification(
     # 2. Execute verification (attempt batch verification first to prevent 429 errors)
     results_map: dict[int, dict[str, Any]] = {}
     try:
-        results_map = await batch_verify_claims_nli(claims_texts, chunks)
+        results_map = await batch_verify_claims_nli(claims_texts, chunks, provider=provider, model=model)
     except Exception as exc:
         logger.warning(
             "Batch verification encountered error, falling back to individual checks",

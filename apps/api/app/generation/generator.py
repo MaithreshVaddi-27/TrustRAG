@@ -78,15 +78,24 @@ def format_context(chunks: list[dict[str, Any]]) -> str:
         formatted.append(f"--- Segment {idx} [Source: {filename}, Page {page}] ---\n{text}")
         idx += 1
 
-    return "\n\n".join(formatted)
+    raw_context = "\n\n".join(formatted)
+    from app.core.semantic_cache import prune_context_tokens
+
+    return prune_context_tokens(raw_context, max_chars=5500)
 
 
-async def generate_grounded_answer(query: str, chunks: list[dict[str, Any]]) -> str:
+async def generate_grounded_answer(
+    query: str,
+    chunks: list[dict[str, Any]],
+    provider: str | None = None,
+    model: str | None = None,
+) -> str:
     """
-    Invoke Gemini model to generate a grounded answer based on candidate evidence chunks.
+    Invoke LLM (Ollama, llama.cpp, Gemini, or NVIDIA) to generate a grounded answer
+    based on candidate evidence chunks.
 
     If chunks list is empty, returns 'ABSTAIN' immediately without LLM invocation
-    to save token costs.
+    to save token costs and prevent hallucination.
     """
     if not chunks:
         logger.info("Empty context provided, abstaining immediately to save tokens")
@@ -94,7 +103,7 @@ async def generate_grounded_answer(query: str, chunks: list[dict[str, Any]]) -> 
 
     try:
         # Load primary LLM (cached)
-        llm = get_llm()
+        llm = get_llm(provider=provider, model=model)
 
         # Prepare context text
         context_str = format_context(chunks)
@@ -105,7 +114,11 @@ async def generate_grounded_answer(query: str, chunks: list[dict[str, Any]]) -> 
             HumanMessage(content=f"[CONTEXT]\n{context_str}\n\n[QUERY]\n{query}"),
         ]
 
-        logger.info("Invoking Gemini for grounded generation", chunk_count=len(chunks))
+        logger.info(
+            "Invoking LLM for grounded generation",
+            provider=provider or getattr(llm, "_llm_type", "default"),
+            chunk_count=len(chunks),
+        )
 
         response = await llm.ainvoke(messages)
 

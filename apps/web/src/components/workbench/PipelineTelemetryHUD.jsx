@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Activity, CheckCircle2, Cpu, Database, Globe, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
+import { Activity, CheckCircle2, Cpu, Database, Globe, Layers, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
 
 /**
  * PipelineTelemetryHUD — Ultra-premium, executive live telemetry HUD.
@@ -11,6 +11,9 @@ export function PipelineTelemetryHUD({
   query = '',
   enableWebSearch = false,
   webSearchProvider = 'both',
+  provider = 'ollama',
+  model = 'gemma4:e2b',
+  embeddingModel = 'BAAI/bge-small-en-v1.5',
 }) {
   // Determine current active pipeline stage from events
   const status = useMemo(() => {
@@ -69,6 +72,16 @@ export function PipelineTelemetryHUD({
         </div>
 
         <div className="flex items-center gap-2 text-[11px] font-mono shrink-0">
+          <span className="px-2 py-0.5 rounded-md bg-purple-950/80 border border-purple-800/50 text-purple-300 flex items-center gap-1">
+            <Cpu size={11} className="text-purple-400" />
+            {provider?.toUpperCase() || 'LOCAL'}: {model || 'DEFAULT'}
+          </span>
+          {embeddingModel && (
+            <span className="px-2 py-0.5 rounded-md bg-emerald-950/80 border border-emerald-800/50 text-emerald-300 flex items-center gap-1">
+              <Layers size={11} className="text-emerald-400" />
+              {embeddingModel.includes('/') ? embeddingModel.split('/')[1] : embeddingModel}
+            </span>
+          )}
           <span className="px-2 py-0.5 rounded-md bg-surface-950 border border-slate-800 text-slate-400">
             Events: <strong className="text-cyan-300">{status.eventCount}</strong>
           </span>
@@ -109,7 +122,7 @@ export function PipelineTelemetryHUD({
         {/* Stage 3: Grounded Reasoning */}
         <StageCard
           title="3. Grounded Synthesis"
-          subtitle="Strict Context Bound"
+          subtitle={`${provider?.toUpperCase() || 'LLM'} (${model || 'DEFAULT'})`}
           icon={Sparkles}
           done={status.generationDone}
           active={status.retrievalDone && !status.generationDone}

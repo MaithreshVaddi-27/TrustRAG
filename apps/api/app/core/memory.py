@@ -47,3 +47,22 @@ def get_memory_usage_mb() -> float:
         return round(usage / 1024, 2)
     except Exception:
         return 0.0
+
+
+def check_and_enforce_memory_guard(max_rss_mb: float = 3000.0) -> dict[str, Any]:
+    """
+    Check current process memory RSS and system pressure.
+    If usage is elevated or exceeds threshold, trigger proactive heap compaction.
+    """
+    rss = get_memory_usage_mb()
+    trimmed = False
+    if rss > max_rss_mb:
+        trim_memory()
+        trimmed = True
+        logger.info("Memory guard triggered proactive heap compaction", rss_mb=rss, max_threshold=max_rss_mb)
+
+    return {
+        "rss_mb": rss,
+        "trimmed": trimmed,
+        "status": "warning" if rss > max_rss_mb else "healthy",
+    }

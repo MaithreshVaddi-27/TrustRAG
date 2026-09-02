@@ -49,6 +49,10 @@ class AgentState(TypedDict):
     diagnosis_failures: list[str]
     web_search_enabled: bool
     web_search_provider: str  # "tavily" | "duckduckgo" | "both"
+    llm_provider: str | None
+    llm_model: str | None
+    embedding_provider: str | None
+    embedding_model: str | None
 
 
 # ─── Graph Nodes ─────────────────────────────────────────────────────────────
@@ -84,9 +88,17 @@ async def retrieval_node(state: AgentState) -> AgentState:
             {"message": f"Expanding search parameters to double context (top_k={top_k_override})"},
         )
 
-    candidates = await retrieve_hybrid_chunks(
-        query=state["current_query"], kb_id=state["kb_id"], top_k_override=top_k_override
-    )
+    retrieve_kwargs: dict[str, Any] = {
+        "query": state["current_query"],
+        "kb_id": state["kb_id"],
+        "top_k_override": top_k_override,
+    }
+    if state.get("embedding_provider"):
+        retrieve_kwargs["embedding_provider"] = state.get("embedding_provider")
+    if state.get("embedding_model"):
+        retrieve_kwargs["embedding_model"] = state.get("embedding_model")
+
+    candidates = await retrieve_hybrid_chunks(**retrieve_kwargs)
 
     if not candidates and state.get("attempts", 0) == 0:
         from app.db.qdrant import get_collection_name, get_qdrant_client, init_kb_collection
@@ -348,7 +360,12 @@ async def generation_node(state: AgentState) -> AgentState:
         {"message": "Reasoning grounded answer from verified context"},
     )
 
-    answer = await generate_grounded_answer(state["current_query"], state["chunks"])
+    answer = await generate_grounded_answer(
+        state["current_query"],
+        state["chunks"],
+        provider=state.get("llm_provider"),
+        model=state.get("llm_model"),
+    )
 
     state["answer"] = answer
     return state
@@ -402,6 +419,8 @@ async def verification_node(state: AgentState) -> AgentState:
         chunks=state["chunks"],
         evidence_ids=state["evidence_ids"],
         user_id_str=state.get("user_id"),
+        provider=state.get("llm_provider"),
+        model=state.get("llm_model"),
     )
 
     state["claims"] = claims
@@ -523,7 +542,9 @@ Output only the expanded search query string. Do not include markdown or quotes.
 </ORIGINAL_QUERY>
 """
         try:
-            model = get_verification_model()
+            model = get_verification_model(
+                provider=state.get("llm_provider"), model=state.get("llm_model")
+            )
             response = await model.ainvoke(rewrite_prompt)
             new_query = response.content
             if isinstance(new_query, bytes):
@@ -636,6 +657,10 @@ async def execute_agentic_rag_flow(
     user_id_str: str | None = None,
     web_search_enabled: bool = False,
     web_search_provider: str = "both",
+    llm_provider: str | None = None,
+    llm_model: str | None = None,
+    embedding_provider: str | None = None,
+    embedding_model: str | None = None,
 ) -> dict[str, Any]:
     """Compile and execute the full agent graph pipeline."""
     graph = build_agent_graph()
@@ -658,12 +683,80 @@ async def execute_agentic_rag_flow(
         "diagnosis_failures": [],
         "web_search_enabled": web_search_enabled,
         "web_search_provider": web_search_provider,
+        "llm_provider": llm_provider,
+        "llm_model": llm_model,
+        "embedding_provider": embedding_provider,
+        "embedding_model": embedding_model,
     }
+
+    # ── Semantic Response Cache Fast-Path (0% Compute Load) ────────────────────
+    q_vec: list[float] = []
+    if not web_search_enabled:
+        try:
+            from app.core.model_registry import get_embedding_model
+            from app.core.semantic_cache import check_semantic_cache
+
+            emb_model = get_embedding_model(provider=embedding_provider, model=embedding_model)
+            try:
+                q_vec = await emb_model.aembed_query(query)
+            except Exception:
+                q_vec = emb_model.embed_query(query)
+
+            cached_resp = check_semantic_cache(query, kb_id_str, q_vec, similarity_threshold=0.94)
+            if cached_resp:
+                await add_trace_event(
+                    analysis_id_str,
+                    "cache.hit",
+                    {
+                        "message": "Semantic cache match (similarity >= 94%). Serving verified answer with 0% compute load.",
+                        "cached_query": query,
+                    },
+                )
+                return {
+                    **initial_state,
+                    "answer": cached_resp["answer"],
+                    "reliability_score": cached_resp.get("reliability_score", 1.0),
+                    "verdict_status": cached_resp.get("verdict_status", "PASS"),
+                    "chunks": cached_resp.get("chunks", []),
+                    "evidence_ids": cached_resp.get("evidence_ids", []),
+                    "claims": cached_resp.get("claims", []),
+                }
+        except Exception as cache_err:
+            logger.debug("Semantic cache check bypassed", error=str(cache_err))
 
     logger.info("Executing Agentic RAG Flow graph", analysis_id=analysis_id_str)
     try:
         final_state = await graph.ainvoke(initial_state)
+
+        # Store in semantic cache if verified and valid
+        if (
+            q_vec
+            and final_state.get("verdict_status") == "PASS"
+            and final_state.get("answer")
+            and final_state["answer"] != "ABSTAIN"
+            and not web_search_enabled
+        ):
+            try:
+                from app.core.semantic_cache import store_semantic_cache
+
+                store_semantic_cache(
+                    query=query,
+                    kb_id=kb_id_str,
+                    query_vector=q_vec,
+                    response_data={
+                        "answer": final_state["answer"],
+                        "reliability_score": final_state.get("reliability_score"),
+                        "verdict_status": final_state.get("verdict_status"),
+                        "chunks": final_state.get("chunks", []),
+                        "evidence_ids": final_state.get("evidence_ids", []),
+                        "claims": final_state.get("claims", []),
+                    },
+                )
+            except Exception as store_err:
+                logger.debug("Semantic cache store skipped", error=str(store_err))
+
         return final_state
     finally:
         from app.core.memory import trim_memory
+
         trim_memory()

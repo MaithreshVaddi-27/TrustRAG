@@ -100,6 +100,8 @@ async def init_kb_collection(kb_id: str) -> None:
                     index=models.SparseIndexParams(on_disk=True)
                 )
             },
+            # Keep document payloads on disk using memory-mapped pages
+            on_disk_payload=True,
             # Ultra-low RAM: Quantize float32 vectors to INT8 with on-disk storage
             quantization_config=models.ScalarQuantization(
                 scalar=models.ScalarQuantizationConfig(

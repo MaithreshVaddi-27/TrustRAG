@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
+import { useQuery } from '@tanstack/react-query'
 import {
   Brain, Database, FileSearch,
   FlaskConical, GitMerge, LayoutDashboard, LogOut,
@@ -8,6 +9,7 @@ import {
   ShieldCheck, Cpu, Layers
 } from 'lucide-react'
 import { authStore, useAuthStore } from '@/store/authStore'
+import { modelService } from '@/services/api'
 
 const NAV = [
   { label: 'Dashboard',       to: '/dashboard',       icon: LayoutDashboard, badge: null },
@@ -27,6 +29,13 @@ export default function AppLayout({ children }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuthStore()
+
+  // Dynamic model telemetry query
+  const { data: providersData } = useQuery({
+    queryKey: ['model-providers'],
+    queryFn: modelService.getProviders,
+    staleTime: 30000,
+  })
 
   // Sidebar collapse state with localStorage persistence
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -111,14 +120,32 @@ export default function AppLayout({ children }) {
             <span>API Online</span>
           </div>
 
-          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300">
             <Cpu size={12} className="text-primary-400" />
-            <span>Gemini 3.5 Flash Lite</span>
+            <span className="max-w-[200px] truncate" title={providersData?.active_model}>
+              {providersData?.active_provider === 'ollama'
+                ? `Ollama: ${providersData?.active_model || 'granite4.2:3b-q4_K_M'}`
+                : (providersData?.active_provider === 'llama_cpp' || providersData?.active_provider === 'llamacpp')
+                ? `llama.cpp: ${providersData?.active_model || 'GGUF'}`
+                : (providersData?.active_model || 'Local LLM')}
+            </span>
           </div>
 
-          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300">
             <Layers size={12} className="text-cyan-400" />
-            <span>Gemini 384d Matryoshka</span>
+            <span className="max-w-[210px] truncate" title={providersData?.active_embedding_model}>
+              {providersData?.active_embedding_model || 'embeddinggemma:300m-qat-q8_0'}
+            </span>
+          </div>
+
+          <div 
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300"
+            title={`${providersData?.hardware?.accelerator_name || 'Hardware'} • Memory: ${providersData?.hardware?.memory?.total_gb || 8}GB`}
+          >
+            <Zap size={12} className={providersData?.hardware?.accelerator === 'mps' ? 'text-amber-400' : (providersData?.hardware?.accelerator === 'cuda' ? 'text-emerald-400' : 'text-slate-400')} />
+            <span>
+              {providersData?.hardware?.accelerator === 'mps' ? 'Metal (MPS)' : (providersData?.hardware?.accelerator === 'cuda' ? 'CUDA GPU' : 'Multi-Thread CPU')}
+            </span>
           </div>
         </div>
 

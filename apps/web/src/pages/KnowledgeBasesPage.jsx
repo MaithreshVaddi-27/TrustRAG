@@ -65,7 +65,7 @@ export default function KnowledgeBasesPage() {
               Knowledge <span className="text-gradient">Bases</span>
             </h1>
             <p className="text-slate-400 text-sm mt-1">
-              Document repositories partitioned with 384-dimensional dense & sparse BM25 indexing.
+              Document repositories partitioned with multi-dimensional dense (384d / 768d) & sparse BM25 indexing.
             </p>
           </div>
 

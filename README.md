@@ -6,23 +6,20 @@
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![Live Demo](https://img.shields.io/badge/Live_Workbench-trustrag.pages.dev-00C7B7?logo=cloudflarepages&logoColor=white)](https://trustrag.pages.dev)
-[![API Status](https://img.shields.io/badge/API_Live-trustrag--api.onrender.com-46E3B7?logo=render&logoColor=white)](https://trustrag-api.onrender.com)
-[![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-FF6F00)](https://langchain-ai.github.io/langgraph/)
-[![Qdrant](https://img.shields.io/badge/Qdrant-Hybrid_Vector-DC2626?logo=qdrant&logoColor=white)](https://qdrant.tech)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas_%26_Community-47A248?logo=mongodb&logoColor=white)](https://mongodb.com)
-[![Tests](https://img.shields.io/badge/Tests-86%20Passing-brightgreen)](apps/api/tests)
+[![Ollama](https://img.shields.io/badge/Ollama-Local_Offline-000000?logo=ollama&logoColor=white)](https://ollama.com)
+[![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF_Server-orange)](https://github.com/ggerganov/llama.cpp)
+[![Tests](https://img.shields.io/badge/Tests-103%20Passing-brightgreen)](apps/api/tests)
 [![Bandit](https://img.shields.io/badge/Bandit%20SAST-0%20Issues-brightgreen)](docs/audits/final-audit-report.md)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
-### 🔗 Live Production Links
+### 🔗 Local Workbench Quick Links (Branch: `ui-redesign`)
 
-| Service | URL | Description |
+| Service | Local URL | Description |
 |---|---|---|
-| 🌐 **Frontend Workbench** | **[https://trustrag.pages.dev/](https://trustrag.pages.dev/)** | Production UI deployed on Cloudflare Pages |
-| ⚡ **Backend REST API** | **[https://trustrag-api.onrender.com](https://trustrag-api.onrender.com)** | Production FastAPI container deployed on Render |
-| 📖 **Interactive API Docs** | **[https://trustrag-api.onrender.com/docs](https://trustrag-api.onrender.com/docs)** | OpenAPI Swagger documentation & testing |
-| 🩺 **System Health Check** | **[https://trustrag-api.onrender.com/api/v1/health](https://trustrag-api.onrender.com/api/v1/health)** | Real-time multi-service status endpoint |
+| 🌐 **Frontend Workbench** | **[http://localhost:5173](http://localhost:5173)** | AI Reliability Workbench & Local Model Playground |
+| ⚡ **Backend REST API** | **[http://localhost:8080](http://localhost:8080)** | FastAPI Agentic RAG Engine with Local Model Support |
+| 📖 **Interactive API Docs** | **[http://localhost:8080/docs](http://localhost:8080/docs)** | Swagger OpenAPI interactive documentation & test runner |
+| 🩺 **System Health & Hardware** | **[http://localhost:8080/api/v1/health](http://localhost:8080/api/v1/health)** | Live hardware profiling (Metal/CUDA/CPU), memory guard & telemetry |
 
 ---
 
@@ -32,7 +29,7 @@
 - [Self-Healing Reliability Loop](#-self-healing-reliability-loop)
 - [System Architecture](#-system-architecture)
 - [Ultra-Premium Dark Workbench UI](#-ultra-premium-dark-workbench-ui)
-- [Production Deployment (Render & Cloudflare)](#-production-deployment-render--cloudflare)
+- [Deployment & Production Readiness](#-deployment--production-readiness)
 - [Core Engineering Capabilities](#-core-engineering-capabilities)
   - [1. Multi-Tenant User Isolation & Anti-IDOR](#1-multi-tenant-user-isolation--anti-idor)
   - [2. Rule-Based Stemming & Document Zoning](#2-rule-based-stemming--document-zoning)
@@ -46,6 +43,9 @@
   - [10. Local SOTA Embeddings (BAAI/bge-small-en-v1.5)](#10-local-sota-embeddings-baaibge-small-en-v15)
   - [11. Live Web Search Grounding via MCP (Tavily + DuckDuckGo)](#11-live-web-search-grounding-via-mcp-tavily--duckduckgo)
   - [12. Enterprise Security Hardening & SSRF Defense](#12-enterprise-security-hardening--ssrf-defense)
+  - [13. 100% Private Local LLMs (Ollama & llama.cpp)](#13-100-private-local-llms-ollama--llamacpp)
+  - [14. Native CLI Model Discovery (ollama list & llama-server)](#14-native-cli-model-discovery-ollama-list--llama-server)
+  - [15. Multi-Dimensional Vector Embeddings & L2 Normalization](#15-multi-dimensional-vector-embeddings--l2-normalization)
 - [Technology Stack](#-technology-stack)
 - [Getting Started](#-getting-started)
   - [Prerequisites](#prerequisites)
@@ -226,53 +226,41 @@ The frontend interface has been rebuilt from the ground up to deliver a state-of
 
 ---
 
-## 🌐 Production Deployment (Render & Cloudflare)
+## 🚀 Deployment & Production Readiness
 
-The deployment branch is **`ui-redesign`**. Both the frontend and backend are continuously deployed from this branch:
+This branch (**`ui-redesign`**) serves as the **Local-First AI Reliability Workbench** and is structured to be 100% production-ready for self-hosted, on-premises, or containerized deployments.
 
-- **Frontend Workbench**: [https://trustrag.pages.dev](https://trustrag.pages.dev) (Hosted on Cloudflare Pages)
-- **Backend API**: [https://trustrag-api.onrender.com](https://trustrag-api.onrender.com) (Hosted on Render.com)
-- **Interactive OpenAPI Docs**: [https://trustrag-api.onrender.com/docs](https://trustrag-api.onrender.com/docs)
-- **Health Check Endpoint**: [https://trustrag-api.onrender.com/api/v1/health](https://trustrag-api.onrender.com/api/v1/health)
+### 1. Backend Service (`apps/api/Dockerfile`)
 
-### 1. Backend Service (Render.com)
-
-The backend is packaged as a high-efficiency container (`apps/api/Dockerfile`) and orchestrated via [`render.yaml`](render.yaml):
+The backend is packaged as a high-efficiency multi-stage container ready for deployment on any Docker, Kubernetes, or cloud container platform:
 
 1. **Production Runtime Highlights**:
    * **Base Image**: `python:3.11-slim` multi-stage build installing production-only dependencies (`pip install .`).
-   * **Ultra-Low Memory Footprint**: Operates at **~55MB RAM** using cloud-native Google Gemini embeddings (`models/gemini-embedding-001`), completely immune to Render's 512MB free-tier OOM limits.
-   * **Instant Port Binding**: Non-blocking `lifespan` startup architecture yields immediately to Uvicorn, allowing Render's port detection to detect `$PORT` within 1 second.
-   * **SSE Heartbeat Keep-Alive**: Emits SSE comment pings every 3 seconds to keep persistent HTTP connections alive through Render's reverse proxy timeouts.
+   * **Hardware-Aware Autotuning**: Automatically senses host hardware (Apple Silicon Metal / NVIDIA CUDA / CPU) and allocates layers/workers accordingly.
+   * **Non-Root Execution**: Runs under unprivileged `trustrag` user (UID 1001) for strict container security.
+   * **Instant Port Binding**: Non-blocking `lifespan` startup architecture binds `$PORT` immediately with `/api/v1/health` probes.
+   * **SSE Keep-Alive**: Emits SSE comment pings to keep persistent HTTP connections alive through reverse proxies.
 
-2. **Required Environment Variables on Render**:
+2. **Core Environment Variables**:
    | Variable | Description / Recommended Value |
    |---|---|
-   | `APP_ENV` | `production` |
-   | `MONGODB_URI` | MongoDB Atlas connection string (`mongodb+srv://...`) |
-   | `MONGODB_DATABASE` | `trustrag` |
-   | `QDRANT_URL` | Qdrant Cloud cluster URL (`https://<id>.<region>.aws.cloud.qdrant.io`) |
-   | `QDRANT_API_KEY` | Qdrant Cloud API key |
-   | `GEMINI_API_KEY` | Google AI Studio Gemini API key |
+   | `APP_ENV` | `production` or `development` |
+   | `MONGODB_URI` | MongoDB connection string (e.g. `mongodb://localhost:27017/trustrag_db` or Atlas) |
+   | `MONGODB_DATABASE` | `trustrag_db` |
+   | `QDRANT_URL` | Qdrant endpoint (e.g. `http://localhost:6335` or cloud cluster) |
+   | `QDRANT_API_KEY` | Optional for local Qdrant, required for Qdrant Cloud |
    | `JWT_SECRET` | 64-character random hex string for signing JWT tokens |
-   | `CORS_ORIGINS` | `*` or `https://trustrag.pages.dev,http://localhost:5173` |
+   | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:3000` |
 
-### 2. Frontend Web Application (Cloudflare Pages)
+### 2. Frontend Web Application (`apps/web`)
 
-The frontend is built with React 18 and Vite 6, deployed globally across Cloudflare's edge CDN:
+Built with React 18 and Vite 6, compiling into high-performance static assets:
 
-1. **Build Configuration**:
-   * **Framework Preset**: None / Vite
-   * **Root Directory**: `apps/web`
-   * **Build Command**: `npm run build`
-   * **Build Output Directory**: `dist`
-   * **Single-Page App Routing**: Enforced via [`apps/web/public/_redirects`](apps/web/public/_redirects) (`/* /index.html 200`).
+1. **Build & Preview Commands**:
+   * **Build Command**: `npm --prefix apps/web run build`
+   * **Production Output**: `apps/web/dist` (optimized chunks with Brotli/gzip support)
+   * **Local Preview**: `npm --prefix apps/web run preview`
    * **Defensive HTTP Headers**: Enforced via [`apps/web/public/_headers`](apps/web/public/_headers) (CSP, HSTS, X-Content-Type-Options).
-
-2. **Required Environment Variables on Cloudflare Pages**:
-   | Variable | Value |
-   |---|---|
-   | `VITE_API_URL` | `https://trustrag-api.onrender.com` |
 
 ### 3. Database & Cluster Maintenance Utility
 
@@ -358,10 +346,33 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 
 ### 12. Enterprise Security Hardening & SSRF Defense
 - **Strict RFC URL Sanitization**: [`sanitize_url()`](apps/api/app/services/search_service.py) parses and validates all citation URLs against strict `http://` and `https://` schemes, dropping malicious `javascript:`, `data:`, `file:`, and `vbscript:` vectors.
+- **SSRF Defense-in-Depth**: Automatically discards private IP ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), loopbacks (`127.0.0.1`, `localhost`), and cloud metadata IP addresses (`169.254.169.254`, `metadata.google.internal`).
 - **Tabnabbing & Reverse Window Protection**: Every external link enforces `target="_blank" rel="noopener noreferrer"`.
 - **Query Bounds**: 500-character ceiling prevents buffer overflow and DoS attacks.
 - **Timeout Protection**: Web search requests are bounded by `SEARCH_TIMEOUT_SECONDS = 8.0` with `asyncio.wait_for` to guarantee pipeline resilience.
 - **Zero Secret Leakage**: The health endpoint and telemetry snapshots only return boolean status flags (`gemini_configured`, `nvidia_configured`, `tavily_configured`), keeping credentials completely secure.
+
+### 13. 100% Private Local LLMs (Ollama & llama.cpp)
+- **Local-First Native Async Engines**: [`ChatOllamaClient`](apps/api/app/core/local_llm.py) and [`ChatLlamaCppClient`](apps/api/app/core/local_llm.py) conform to LangChain's `BaseChatModel` interface with native async non-blocking execution.
+- **Pre-Configured Models**:
+  * **Ollama**: Defaulted to `gemma4:e2b` (5.1B params, dynamically aliased to local `gemma4:e2b-it-qat` or prefix-matched fallback).
+  * **llama.cpp**: Defaulted to `gemma-4-E2B-it-qat-q4_0-gguf:Q4_0` served over port `8081` (`http://localhost:8081/v1`).
+- **Structured Pydantic Output**: Native support for `with_structured_output(...)` enables reliable, schema-validated atomic claim decomposition and NLI verdict generation without cloud dependencies.
+- **Complete Zero-Key Operation**: TRUSTRAG boots and executes 100% offline without requiring any third-party cloud API keys.
+
+### 14. Native CLI Model Discovery (ollama list & llama-server)
+- **Real-Time Shell Introspection**:
+  * **`ollama list`**: Automatically introspects local models, isolating text LLMs (`qwen3.5:4b`, `gemma4:e2b-it-qat`, `granite4.2:3b`) from embedding models (`embeddinggemma:300m-qat-q8_0`).
+  * **`llama-server --cache-list`**: Introspects cached GGUF model blobs directly from the local HuggingFace / llama.cpp cache (`ggml-org/embeddinggemma-300M-GGUF:Q8_0`).
+- **Interactive UI Model Switcher**: The Playground workbench and Settings diagnostic page dynamically display detected models, active endpoints, and port telemetry.
+
+### 15. Multi-Dimensional Vector Embeddings & L2 Normalization
+- **Choice of SOTA Embedding Engines**:
+  * **Local HuggingFace**: `BAAI/bge-small-en-v1.5` & `all-MiniLM-L6-v2` (384-dimensional dense vectors, zero API cost, sub-35ms CPU latency).
+  * **Local Ollama**: `embeddinggemma:300m-qat-q8_0` (768-dimensional dense representations).
+  * **Cloud Gemini**: `models/gemini-embedding-001` (384-dimensional Matryoshka representations).
+  * **Cloud NVIDIA NIM**: `nvidia/nv-embedqa-e5-v5` (384-dimensional vectors).
+- **Dimension-Safe Retrieval with L2 Normalization**: When querying a 384d Qdrant collection with a 768d embedding model, [`dense_search()`](apps/api/app/retrieval/retriever.py) automatically truncates and re-normalizes the vector ($\|v\|_2 = 1.0$), ensuring strict mathematical consistency for cosine similarity calculations.
 
 ---
 
@@ -372,12 +383,13 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 | **Frontend** | React + Vite | React 18, Vite 6, Tailwind CSS | Ultra-premium dark theme UI, RAF 120fps spotlight, Recharts |
 | **Telemetry** | Server-Sent Events (SSE) | EventSource protocol | Real-time agent execution graph streaming to the workbench UI |
 | **Backend** | FastAPI | Python 3.11, Pydantic v2 | High-throughput asynchronous REST API, custom middleware |
-| **Agent Protocols** | Model Context Protocol (MCP) | JSON-RPC 2.0 (stdio) | Universal tool interface for external AI coding agents |
+| **Local LLMs** | Ollama & llama.cpp | Port 11434 & Port 8081 | 100% private, offline LLM synthesis and NLI verification |
+| **Cloud LLMs** | Google Gemini & NVIDIA NIM | Gemini 3.5 Flash Lite / Llama 3.3 70B | Cloud-native grounded reasoning and batch NLI claim verification |
+| **Dense Embeddings** | Multi-Provider Engine | 384d (BGE / Gemini) & 768d (Ollama) | Dense semantic vector representations with dimensional alignment |
+| **Agent Protocols** | Model Context Protocol (MCP) | JSON-RPC 2.0 (stdio) | Universal tool interface for external AI coding agents & local LLM chat |
 | **State Machine** | LangGraph | `StateGraph` | Multi-node deterministic agent state machine |
 | **Primary Database** | MongoDB Community | v7.0+ (Local Host / Atlas Cloud) | Permanent storage of metadata, chunks, claims, and execution traces |
 | **Vector Engine** | Qdrant | Embedded Local Rust Engine / Cloud | Hybrid dense & sparse vectors; on-disk storage with INT8 scalar quantization |
-| **Embeddings** | Google Gemini API | `models/gemini-embedding-001` (384d MRL) | Matryoshka 384-dim dense vectors with 0 MB local GPU RAM footprint |
-| **Reasoning LLM** | Google Gemini | `gemini-2.5-flash-lite` / `gemini-3.5-flash-lite` | Grounded reasoning, claim extraction, and batch NLI verification |
 | **Security Suite** | JWT + Bcrypt + SlowAPI | HS256, 12 Bcrypt rounds, IP rate limits | Authentication, timing-attack protection, defensive HTTP headers |
 
 ---

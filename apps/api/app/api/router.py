@@ -36,6 +36,9 @@ from app.api.v1 import (
 from app.api.v1 import (
     knowledge_bases as kb_module,
 )
+from app.api.v1 import (
+    models as model_module,
+)
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -53,6 +56,9 @@ api_router.include_router(doc_module.router)
 
 # ── Analyses ───────────────────────────────────────────────────────────────
 api_router.include_router(analysis_module.router)
+
+# ── Models & Providers ────────────────────────────────────────────────────
+api_router.include_router(model_module.router)
 
 # ── Evidence ───────────────────────────────────────────────────────────────
 api_router.include_router(evidence_module.router)

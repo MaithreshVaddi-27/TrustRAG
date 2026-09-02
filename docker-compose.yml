@@ -1,18 +1,17 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# TRUSTRAG — Local Development docker-compose
+# TRUSTRAG — Full-Stack Development docker-compose
 # ─────────────────────────────────────────────────────────────────────────────
 # Provides:
-#   - FastAPI backend (with hot-reload)
-#   - Qdrant vector store (local, free)
+#   - FastAPI backend (Port 8080, with hot-reload & local/cloud model support)
+#   - React Frontend Workbench (Port 5173, Vite)
+#   - Qdrant vector store (Port 6335 host / 6333 container, local storage)
 #
-# MongoDB Atlas is NOT run locally — use the cloud M0 free tier.
-# Gemini API is accessed remotely — requires GEMINI_API_KEY in .env.
+# Connects seamlessly to host-running Ollama (:11434), llama-server (:8081),
+# and local MongoDB (:27017) via host.docker.internal.
 #
 # Usage:
-#   cp .env.example .env        # Fill in GEMINI_API_KEY and MONGODB_URI
+#   cp .env.example .env
 #   docker compose up
-#
-# For local Qdrant, QDRANT_URL should be: http://qdrant:6333 (container network)
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -21,18 +20,13 @@ services:
     image: qdrant/qdrant:v1.10.1
     container_name: trustrag_qdrant
     ports:
-      # Host port 6335 avoids conflict with other Qdrant instances on 6333.
-      # The API container uses http://qdrant:6333 (Docker network) — unaffected.
       - "6335:6333"
-      - "6336:6334"   # gRPC (optional)
+      - "6336:6334"   # gRPC
     volumes:
       - qdrant_storage:/qdrant/storage
     environment:
       QDRANT__SERVICE__HTTP_PORT: 6333
     healthcheck:
-      # qdrant/qdrant has no curl or wget — use bash /dev/tcp for a pure TCP check.
-      # bash is available in the image (/bin/bash exists).
-      # This opens a TCP connection to port 6333; exits 0 if port is listening.
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' 2>/dev/null"]
       interval: 5s
       timeout: 3s
@@ -45,7 +39,7 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
-      target: builder          # Use builder stage for dev (includes dev tools)
+      target: builder
     container_name: trustrag_api
     working_dir: /build
     command: >
@@ -60,31 +54,46 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      # Mount source for hot-reload
       - ./apps/api/app:/build/app:ro
       - ./apps/api/config:/build/config:ro
       - ./apps/api/tests:/build/tests:ro
-      # Persist model cache across restarts (sentence-transformers download)
       - model_cache:/build/.model_cache
     env_file:
       - .env
     environment:
-      # Override QDRANT_URL to use docker network
       QDRANT_URL: http://qdrant:6333
-      # Connect to local mongodb-community running on host machine
       MONGODB_URI: mongodb://host.docker.internal:27017/trustrag_db
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      LLAMACPP_BASE_URL: http://host.docker.internal:8081/v1
     depends_on:
       qdrant:
         condition: service_healthy
     healthcheck:
-      # python:slim includes wget; use it for consistency with Qdrant healthcheck.
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/v1/health || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 180s   # Extra time: Mongo connect retries (~2.5 min worst case)
-                            # to ride out Atlas M0 auto-resume, plus first-run
-                            # sentence-transformer model download.
+      start_period: 120s
+    restart: unless-stopped
+
+  # ── React Frontend Workbench ──────────────────────────────────────────────
+  web:
+    image: node:20-alpine
+    container_name: trustrag_web
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8080/api/v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      api:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
@@ -92,5 +101,3 @@ volumes:
     driver: local
   model_cache:
     driver: local
-
-

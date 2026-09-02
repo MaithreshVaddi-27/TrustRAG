@@ -126,6 +126,38 @@ MCP_TOOLS: list[dict[str, Any]] = [
             "required": ["query"],
         },
     },
+    {
+        "name": "local_llm_chat",
+        "description": "Invoke local LLM (Ollama or llama.cpp) for grounded reasoning, summarization, or chat.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string", "description": "Prompt text for the local LLM"},
+                "provider": {
+                    "type": "string",
+                    "description": "Provider: 'ollama' or 'llama_cpp' (default: 'ollama')",
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Model identifier (e.g. 'gemma4:e2b' or 'gemma-4-E2B-it-qat-q4_0-gguf:Q4_0')",
+                },
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "local_llm_status",
+        "description": "Query status and available models for local LLM engines (Ollama and llama.cpp).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "description": "'ollama', 'llama_cpp', or 'both'",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -192,6 +224,30 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
                 }
             )
         return {"content": [{"type": "text", "text": json.dumps(kbs, indent=2)}]}
+
+    elif tool_name == "local_llm_chat":
+        from app.core.model_registry import get_llm
+
+        provider = arguments.get("provider", "ollama")
+        model = arguments.get("model")
+        prompt = arguments["prompt"]
+        llm = get_llm(provider=provider, model=model)
+        res = await llm.ainvoke(prompt)
+        text = res.content if hasattr(res, "content") else str(res)
+        return {"content": [{"type": "text", "text": text}]}
+
+    elif tool_name == "local_llm_status":
+        from app.core.config import get_settings
+        from app.core.local_llm import check_llamacpp_status, check_ollama_status
+
+        settings = get_settings()
+        prov = arguments.get("provider", "both")
+        status_res: dict[str, Any] = {}
+        if prov in ("ollama", "both"):
+            status_res["ollama"] = await check_ollama_status(settings.ollama_base_url)
+        if prov in ("llama_cpp", "both"):
+            status_res["llama_cpp"] = await check_llamacpp_status(settings.llamacpp_base_url)
+        return {"content": [{"type": "text", "text": json.dumps(status_res, indent=2)}]}
 
     raise ValueError(f"Unknown MCP tool: {tool_name}")
 

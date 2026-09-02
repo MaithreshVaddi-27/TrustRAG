@@ -19,7 +19,7 @@ const PIPELINE_PHASES = [
   {
     step: '01',
     title: 'Hybrid Retrieval',
-    desc: 'Dense embeddings (Gemini 384d) + Sparse BM25 fused via Reciprocal Rank Fusion.',
+    desc: 'Dense embeddings (Local BGE / Ollama / Gemini) + Sparse BM25 fused via Reciprocal Rank Fusion.',
     icon: Database,
     color: 'text-cyan-400',
     border: 'border-cyan-500/30',
@@ -27,7 +27,7 @@ const PIPELINE_PHASES = [
   {
     step: '02',
     title: 'Grounded Reasoning',
-    desc: 'Strict evidence-grounded synthesis using Gemini 3.5 Flash Lite.',
+    desc: 'Strict evidence-grounded synthesis using Local LLMs (Ollama / llama.cpp) or Cloud.',
     icon: Cpu,
     color: 'text-sky-400',
     border: 'border-sky-500/30',
@@ -136,13 +136,15 @@ export default function DashboardPage() {
       else neutralClaims++
     })
 
-    const avgReliability = scoredCount > 0 ? (totalScore / scoredCount) : 0.88
+    const avgReliability = scoredCount > 0 ? (totalScore / scoredCount) : 0
+    const avgReliabilityDisplay = scoredCount > 0 ? `${(avgReliability * 100).toFixed(1)}%` : '--'
     const totalClaimsCount = supportedClaims + contradictedClaims + neutralClaims
     const supportedRate = totalClaimsCount > 0 ? ((supportedClaims / totalClaimsCount) * 100).toFixed(0) : '0'
 
     return {
       totalDocs,
       avgReliability: (avgReliability * 100).toFixed(1),
+      avgReliabilityDisplay,
       supportedClaims,
       contradictedClaims,
       neutralClaims,
@@ -341,7 +343,7 @@ export default function DashboardPage() {
               </span>
             </div>
             <div className="mt-4">
-              <p className="text-3xl font-extrabold text-white tracking-tight">{stats.avgReliability}%</p>
+              <p className="text-3xl font-extrabold text-white tracking-tight">{stats.avgReliabilityDisplay}</p>
               <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
                 <span>Mean Reliability</span>
                 <span className="font-mono text-slate-500">Threshold: 70%</span>

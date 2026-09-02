@@ -72,8 +72,30 @@ class Settings(BaseSettings):
     # ── Hugging Face ──────────────────────────────────────────────────────────
     hf_token: str = ""  # Optional read-only token to prevent download rate-limits
 
-    # ── Google Gemini ──────────────────────────────────────────────────────────
-    gemini_api_key: str
+    # ── Google Gemini (Optional if using local LLMs) ───────────────────────────
+    gemini_api_key: str = ""
+
+    # ── Local LLM Providers (Ollama & llama.cpp) ──────────────────────────────
+    ollama_base_url: str = Field(
+        default="http://localhost:11434",
+        validation_alias=AliasChoices("OLLAMA_BASE_URL", "OLLAMA_HOST"),
+        description="Ollama local API server endpoint",
+    )
+    ollama_model: str = Field(
+        default="gemma4:e2b",
+        validation_alias=AliasChoices("OLLAMA_MODEL"),
+        description="Default Ollama model name",
+    )
+    llamacpp_base_url: str = Field(
+        default="http://localhost:8081/v1",
+        validation_alias=AliasChoices("LLAMACPP_BASE_URL", "LLAMA_CPP_BASE_URL"),
+        description="llama.cpp server OpenAI-compatible base URL",
+    )
+    llamacpp_model: str = Field(
+        default="gemma-4-E2B-it-qat-q4_0-gguf:Q4_0",
+        validation_alias=AliasChoices("LLAMACPP_MODEL", "LLAMA_CPP_MODEL"),
+        description="Default llama.cpp model identifier or GGUF path",
+    )
 
     # ── NVIDIA NIM & Tavily Search ─────────────────────────────────────────────
     nvidia_api_key: str = Field(
@@ -89,9 +111,9 @@ class Settings(BaseSettings):
 
     # ── Multi-Provider Engine Selectors ────────────────────────────────────────
     ai_provider: str = Field(
-        default="gemini",
+        default="ollama",
         validation_alias=AliasChoices("AI_PROVIDER", "LLM_PROVIDER"),
-        description="Active AI generation & verification provider: 'gemini' or 'nvidia'",
+        description="Active AI generation & verification provider: 'ollama', 'llama_cpp', 'gemini', or 'nvidia'",
     )
     embedding_provider: str = Field(
         default="huggingface",
@@ -226,13 +248,28 @@ class ModelConfig:
 
     @property
     def llm_model(self) -> str:
-        val = self._get("llm", "model")
+        self._get("llm")
         settings = get_settings()
+        if self.llm_provider == "ollama":
+            return settings.ollama_model or "gemma4:e2b"
+        if self.llm_provider in ("llama_cpp", "llamacpp"):
+            return settings.llamacpp_model or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0"
+        val = self._get("llm", "model")
         if settings.gemini_model:
             return settings.gemini_model
         if self.llm_provider in ("nvidia", "nim"):
             return "meta/llama-3.3-70b-instruct"
         return str(val or "gemini-3.5-flash-lite")
+
+    @property
+    def ollama_base_url(self) -> str:
+        settings = get_settings()
+        return settings.ollama_base_url or "http://localhost:11434"
+
+    @property
+    def llamacpp_base_url(self) -> str:
+        settings = get_settings()
+        return settings.llamacpp_base_url or "http://localhost:8081/v1"
 
     @property
     def llm_temperature(self) -> float:
@@ -296,8 +333,12 @@ class ModelConfig:
 
     @property
     def verification_model(self) -> str:
-        val = self._get("verification", "model")
         settings = get_settings()
+        if self.verification_provider == "ollama":
+            return settings.ollama_model or "gemma4:e2b"
+        if self.verification_provider in ("llama_cpp", "llamacpp"):
+            return settings.llamacpp_model or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0"
+        val = self._get("verification", "model")
         if settings.gemini_verification_model:
             return settings.gemini_verification_model
         if self.verification_provider in ("nvidia", "nim"):
@@ -406,10 +447,13 @@ class ModelConfig:
         """Return a flat dict for recording with each analysis run."""
         return {
             "config_version": self.config_version,
+            "llm_provider": self.llm_provider,
             "llm_model": self.llm_model,
+            "embedding_provider": self.embedding_provider,
             "embedding_model": self.embedding_model,
             "embedding_version": self.embedding_version,
             "embedding_dimensionality": self.embedding_dimensionality,
+            "verification_provider": self.verification_provider,
             "verification_model": self.verification_model,
             "reranker_enabled": self.reranker_enabled,
             "reranker_model": self.reranker_model if self.reranker_enabled else None,
