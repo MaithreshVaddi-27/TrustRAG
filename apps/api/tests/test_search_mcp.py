@@ -24,8 +24,9 @@ async def test_tavily_search_success():
         ]
     }
 
-    with patch("app.services.search_service.get_settings") as mock_settings, patch(
-        "tavily.TavilyClient", return_value=mock_tavily_client
+    with (
+        patch("app.services.search_service.get_settings") as mock_settings,
+        patch("tavily.TavilyClient", return_value=mock_tavily_client),
     ):
         mock_settings.return_value.tavily_api_key = "tvly-test-12345"
         results = await tavily_search("test query", max_results=3)
@@ -39,8 +40,9 @@ async def test_tavily_search_success():
 @pytest.mark.asyncio
 async def test_tavily_search_fallback_when_no_key():
     fallback_mock = AsyncMock(return_value=[{"title": "Fallback"}])
-    with patch("app.services.search_service.get_settings") as mock_settings, patch(
-        "app.services.search_service.duckduckgo_search", fallback_mock
+    with (
+        patch("app.services.search_service.get_settings") as mock_settings,
+        patch("app.services.search_service.duckduckgo_search", fallback_mock),
     ):
         mock_settings.return_value.tavily_api_key = ""
         results = await tavily_search("test query")
@@ -87,8 +89,9 @@ async def test_execute_web_search_deduplication():
 
     mock_tavily = AsyncMock(return_value=tavily_res)
     mock_ddg = AsyncMock(return_value=ddg_res)
-    with patch("app.services.search_service.tavily_search", mock_tavily), patch(
-        "app.services.search_service.duckduckgo_search", mock_ddg
+    with (
+        patch("app.services.search_service.tavily_search", mock_tavily),
+        patch("app.services.search_service.duckduckgo_search", mock_ddg),
     ):
         merged = await execute_web_search("test query", provider="both")
         assert len(merged) == 2
@@ -109,9 +112,7 @@ async def test_mcp_tool_execution():
 
     with patch(
         "app.mcp.client.handle_tool_call",
-        AsyncMock(
-            return_value={"content": [{"type": "text", "text": '[{"title": "Client Ok"}]'}]}
-        ),
+        AsyncMock(return_value={"content": [{"type": "text", "text": '[{"title": "Client Ok"}]'}]}),
     ):
         parsed = await execute_mcp_tool("duckduckgo_search", {"query": "client query"})
         assert len(parsed) == 1
@@ -141,7 +142,10 @@ def test_sanitize_url_security():
     assert sanitize_url("http://10.0.0.1/internal") == ""
 
     # Legitimate safe URLs
-    assert sanitize_url("https://en.wikipedia.org/wiki/Python") == "https://en.wikipedia.org/wiki/Python"
+    assert (
+        sanitize_url("https://en.wikipedia.org/wiki/Python")
+        == "https://en.wikipedia.org/wiki/Python"
+    )
     assert sanitize_url("http://example.com/article?id=123") == "http://example.com/article?id=123"
 
 
@@ -150,14 +154,18 @@ async def test_search_service_timeout_fallback():
     # Simulate a hanging Tavily client that exceeds timeout
     def _hanging_call(*args, **kwargs):
         import time
+
         time.sleep(1.0)
 
     fallback_ddg = [{"title": "DDG Fallback", "url": "https://ddg.com", "content": "Ok"}]
-    with patch("app.services.search_service.get_settings") as mock_settings, patch(
-        "app.services.search_service.duckduckgo_search", AsyncMock(return_value=fallback_ddg)
-    ), patch("app.services.search_service.SEARCH_TIMEOUT_SECONDS", 0.05), patch(
-        "tavily.TavilyClient"
-    ) as mock_client:
+    with (
+        patch("app.services.search_service.get_settings") as mock_settings,
+        patch(
+            "app.services.search_service.duckduckgo_search", AsyncMock(return_value=fallback_ddg)
+        ),
+        patch("app.services.search_service.SEARCH_TIMEOUT_SECONDS", 0.05),
+        patch("tavily.TavilyClient") as mock_client,
+    ):
         mock_settings.return_value.tavily_api_key = "tvly-key"
         mock_instance = mock_client.return_value
         mock_instance.search.side_effect = _hanging_call

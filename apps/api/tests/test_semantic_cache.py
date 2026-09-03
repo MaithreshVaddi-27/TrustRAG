@@ -3,10 +3,10 @@ Tests for semantic caching and context pruning.
 """
 
 from app.core.semantic_cache import (
-    cosine_similarity,
     check_semantic_cache,
-    store_semantic_cache,
+    cosine_similarity,
     prune_context_tokens,
+    store_semantic_cache,
 )
 
 
@@ -49,7 +49,10 @@ def test_semantic_cache_lifecycle():
 
     # Dissimilar query miss
     vec_dissimilar = [0.0, 1.0, 0.0]
-    assert check_semantic_cache("Unrelated question", kb, vec_dissimilar, similarity_threshold=0.90) is None
+    assert (
+        check_semantic_cache("Unrelated question", kb, vec_dissimilar, similarity_threshold=0.90)
+        is None
+    )
 
 
 def test_prune_context_tokens():

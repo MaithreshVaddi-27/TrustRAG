@@ -128,9 +128,11 @@ async def retrieval_node(state: AgentState) -> AgentState:
                 from app.ingestion.sparse_vector import generate_sparse_vector
 
                 await init_kb_collection(state["kb_id"])
-                chunks = await chunks_coll.find(
-                    {"knowledge_base_id": ObjectId(state["kb_id"])}
-                ).sort("chunk_index", 1).to_list(1000)
+                chunks = (
+                    await chunks_coll.find({"knowledge_base_id": ObjectId(state["kb_id"])})
+                    .sort("chunk_index", 1)
+                    .to_list(10_000)  # Support large KBs; pipeline.py batches upserts anyway
+                )
 
                 doc_coll = get_collection(Collections.DOCUMENTS)
                 doc_map = {}
@@ -497,12 +499,8 @@ async def recovery_node(state: AgentState) -> AgentState:
     state["answer"] = None
     state["claims"] = []
 
-    # Determine recovery strategy based on priorities configured in models.yaml
-    # Fallback to query_rewrite on first attempt, re_retrieve on second
-    priority = cfg._get("recovery", "strategy_priority", required=False) or [
-        "query_rewrite",
-        "re_retrieve",
-    ]
+    # Determine recovery strategy from public config property
+    priority = cfg.recovery_strategy_priority
     idx = (state["attempts"] - 1) % len(priority)
     strategy = priority[idx]
 

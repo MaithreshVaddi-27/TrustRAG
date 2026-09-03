@@ -10,10 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-from pathlib import Path
 import re
-from collections.abc import Iterator
-from typing import Any, Callable, TypeVar
+from pathlib import Path
+from typing import Any, TypeVar
 
 import httpx
 from langchain_core.callbacks import CallbackManagerForLLMRun
@@ -38,7 +37,11 @@ def _convert_messages_to_dict(messages: list[Any]) -> list[dict[str, str]]:
     for m in messages:
         if isinstance(m, tuple) and len(m) == 2:
             role, content = m
-            role_norm = "assistant" if role in ("ai", "assistant") else ("system" if role == "system" else "user")
+            role_norm = (
+                "assistant"
+                if role in ("ai", "assistant")
+                else ("system" if role == "system" else "user")
+            )
             converted.append({"role": role_norm, "content": str(content)})
         elif isinstance(m, SystemMessage):
             converted.append({"role": "system", "content": str(m.content)})
@@ -50,10 +53,12 @@ def _convert_messages_to_dict(messages: list[Any]) -> list[dict[str, str]]:
             role_norm = getattr(m, "role", "user")
             converted.append({"role": str(role_norm), "content": str(m.content)})
         elif isinstance(m, dict):
-            converted.append({
-                "role": str(m.get("role", "user")),
-                "content": str(m.get("content", "")),
-            })
+            converted.append(
+                {
+                    "role": str(m.get("role", "user")),
+                    "content": str(m.get("content", "")),
+                }
+            )
     return converted
 
 
@@ -126,14 +131,18 @@ class ChatOllamaClient(BaseChatModel):
         options: dict[str, Any] = {
             "temperature": kwargs.get("temperature", self.temperature),
             "top_p": kwargs.get("top_p", self.top_p),
-            "num_ctx": kwargs.get("num_ctx", 4096),  # Limit KV-cache to 4k tokens to prevent memory bloat
+            "num_ctx": kwargs.get(
+                "num_ctx", 4096
+            ),  # Limit KV-cache to 4k tokens to prevent memory bloat
             "num_predict": kwargs.get("max_tokens", 2048),
         }
         if stop:
             options["stop"] = stop
 
         requested_model = kwargs.get("model", self.model)
-        target_model = "gemma4:e2b-it-qat" if requested_model in ("gemma4:e2b", "gemma4") else requested_model
+        target_model = (
+            "gemma4:e2b-it-qat" if requested_model in ("gemma4:e2b", "gemma4") else requested_model
+        )
 
         payload: dict[str, Any] = {
             "model": target_model,
@@ -170,9 +179,7 @@ class ChatOllamaClient(BaseChatModel):
                 res.raise_for_status()
                 data = res.json()
                 content = data.get("message", {}).get("content", "")
-                return ChatResult(
-                    generations=[ChatGeneration(message=AIMessage(content=content))]
-                )
+                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
         except httpx.ConnectError as exc:
             raise ConfigurationError(
                 f"Cannot connect to Ollama at '{self.base_url}'. Is Ollama running? Run 'ollama serve' in your terminal.",
@@ -321,9 +328,7 @@ class ChatLlamaCppClient(BaseChatModel):
                 data = res.json()
                 choices = data.get("choices", [])
                 content = choices[0].get("message", {}).get("content", "") if choices else ""
-                return ChatResult(
-                    generations=[ChatGeneration(message=AIMessage(content=content))]
-                )
+                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
         except httpx.ConnectError as exc:
             raise ConfigurationError(
                 f"Cannot connect to llama.cpp server at '{self.base_url}'. "
@@ -564,7 +569,8 @@ async def discover_ollama_cli_models() -> dict[str, list[str]]:
     embedding_models: list[str] = []
     try:
         proc = await asyncio.create_subprocess_exec(
-            "ollama", "list",
+            "ollama",
+            "list",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -593,7 +599,8 @@ async def discover_llamacpp_cache_models() -> list[str]:
     cache_models: list[str] = []
     try:
         proc = await asyncio.create_subprocess_exec(
-            "llama-server", "--cache-list",
+            "llama-server",
+            "--cache-list",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -649,8 +656,20 @@ async def check_ollama_status(base_url: str = "http://localhost:11434") -> dict[
     primary_ollama_embs = ["embeddinggemma:300m-qat-q8_0"]
 
     # Merge models preserving order with primary models at the top
-    all_llms = list(dict.fromkeys(primary_ollama_llms + cli_llms + [m for m in api_models if not any(k in m.lower() for k in ("embed", "bge", "nomic"))]))
-    all_embeddings = list(dict.fromkeys(primary_ollama_embs + cli_embeddings + [m for m in api_models if any(k in m.lower() for k in ("embed", "bge", "nomic"))]))
+    all_llms = list(
+        dict.fromkeys(
+            primary_ollama_llms
+            + cli_llms
+            + [m for m in api_models if not any(k in m.lower() for k in ("embed", "bge", "nomic"))]
+        )
+    )
+    all_embeddings = list(
+        dict.fromkeys(
+            primary_ollama_embs
+            + cli_embeddings
+            + [m for m in api_models if any(k in m.lower() for k in ("embed", "bge", "nomic"))]
+        )
+    )
 
     # If CLI succeeded, Ollama daemon is installed and active
     if cli_llms or cli_embeddings:
@@ -699,7 +718,11 @@ async def check_llamacpp_status(base_url: str = "http://localhost:8081/v1") -> d
     ]
 
     combined = list(dict.fromkeys(primary_llamacpp_llms + api_models + cache_models + hf_models))
-    default_model = "google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0" if "google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0" in combined else combined[0]
+    default_model = (
+        "google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0"
+        if "google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0" in combined
+        else combined[0]
+    )
 
     return {
         "connected": connected,

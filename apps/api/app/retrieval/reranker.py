@@ -38,7 +38,7 @@ def rerank_candidate_chunks(
         logger.debug("Reranker disabled, returning candidates list directly", limit=max_context)
         # Adaptive Top-K: If top chunks are confident, bound to top 4 to save model context load
         if len(chunks) > 3 and chunks[0].get("dense_score", 0.0) >= 0.78:
-            return chunks[:min(max_context, 4)]
+            return chunks[: min(max_context, 4)]
         return chunks[:max_context]
 
     try:
@@ -46,7 +46,7 @@ def rerank_candidate_chunks(
         if model is None:
             logger.warning("Reranker model factory returned None, skipping rerank")
             if len(chunks) > 3 and chunks[0].get("dense_score", 0.0) >= 0.78:
-                return chunks[:min(max_context, 4)]
+                return chunks[: min(max_context, 4)]
             return chunks[:max_context]
 
         logger.info("Running cross-encoder reranking", model=cfg.reranker_model, count=len(chunks))
@@ -65,9 +65,17 @@ def rerank_candidate_chunks(
         chunks.sort(key=lambda x: x.get("rerank_score", 0.0), reverse=True)
 
         # Adaptive Top-K: If top chunks are confident, bound to top 4
-        effective_limit = min(max_context, 4) if (len(chunks) > 3 and chunks[0].get("rerank_score", 0.0) >= 0.80) else max_context
+        effective_limit = (
+            min(max_context, 4)
+            if (len(chunks) > 3 and chunks[0].get("rerank_score", 0.0) >= 0.80)
+            else max_context
+        )
         sliced = chunks[:effective_limit]
-        logger.debug("Reranking completed", top_score=sliced[0]["rerank_score"] if sliced else 0.0, count=len(sliced))
+        logger.debug(
+            "Reranking completed",
+            top_score=sliced[0]["rerank_score"] if sliced else 0.0,
+            count=len(sliced),
+        )
         return sliced
 
     except Exception as exc:

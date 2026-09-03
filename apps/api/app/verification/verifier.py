@@ -359,7 +359,9 @@ async def execute_claim_verification(
     # 2. Execute verification (attempt batch verification first to prevent 429 errors)
     results_map: dict[int, dict[str, Any]] = {}
     try:
-        results_map = await batch_verify_claims_nli(claims_texts, chunks, provider=provider, model=model)
+        results_map = await batch_verify_claims_nli(
+            claims_texts, chunks, provider=provider, model=model
+        )
     except Exception as exc:
         logger.warning(
             "Batch verification encountered error, falling back to individual checks",

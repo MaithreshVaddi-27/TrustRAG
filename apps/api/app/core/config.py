@@ -434,6 +434,14 @@ class ModelConfig:
     def max_query_rewrites(self) -> int:
         return int(self._get("recovery", "max_query_rewrites"))
 
+    @property
+    def recovery_strategy_priority(self) -> list[str]:
+        """Return the ordered list of recovery strategies from config (e.g. ['query_rewrite', 're_retrieve'])."""
+        val = self._get("recovery", "strategy_priority", required=False)
+        if isinstance(val, list) and val:
+            return [str(s) for s in val]
+        return ["query_rewrite", "re_retrieve"]
+
     # ── Cost controls ─────────────────────────────────────────────────────────
     @property
     def max_input_tokens(self) -> int:

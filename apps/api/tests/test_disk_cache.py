@@ -3,11 +3,12 @@ Unit tests for persistent SQLite embedding cache.
 """
 
 import os
+
 from app.core.disk_cache import (
-    get_cached_embedding,
-    set_cached_embedding,
-    get_cached_embeddings_batch,
     _make_key,
+    get_cached_embedding,
+    get_cached_embeddings_batch,
+    set_cached_embedding,
 )
 
 
@@ -39,7 +40,7 @@ def test_disk_cache_set_and_get(tmp_path, monkeypatch):
     retrieved = get_cached_embedding(text, model)
     assert retrieved is not None
     assert len(retrieved) == len(vec)
-    for a, b in zip(retrieved, vec):
+    for a, b in zip(retrieved, vec, strict=True):
         assert abs(a - b) < 1e-4
 
     # Miss on different model

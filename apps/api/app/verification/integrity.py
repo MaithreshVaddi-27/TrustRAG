@@ -35,6 +35,12 @@ async def audit_evidence_integrity(chunks: list[dict[str, Any]]) -> list[dict[st
         doc_id_str = c.get("document_id")
         chunk_idx = c.get("chunk_index")
 
+        # Web search / external chunks have no MongoDB reference — mark VERIFIED immediately.
+        # They are trusted external citations, not DB-backed text that can be tampered with.
+        if not doc_id_str:
+            c["integrity_status"] = "VERIFIED"
+            continue
+
         if doc_id_str and chunk_idx is not None:
             try:
                 doc_obj = ObjectId(doc_id_str)

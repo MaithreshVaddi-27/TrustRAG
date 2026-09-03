@@ -54,16 +54,12 @@ async def index_parsed_chunks(
             await doc_coll.update_one({"_id": doc_id}, {"$set": {"ingestion_status": "completed"}})
             logger.info("Ingestion completed: document has no text chunks", doc_id=doc_id_str)
             return
-
         user_id = None
         doc_filename = "Document"
-        if hasattr(doc_coll, "find_one"):
-            doc_lookup = doc_coll.find_one({"_id": doc_id})
-            if hasattr(doc_lookup, "__await__"):
-                doc = await doc_lookup
-                if doc:
-                    user_id = doc.get("user_id")
-                    doc_filename = doc.get("filename", "Document")
+        doc = await doc_coll.find_one({"_id": doc_id})
+        if doc:
+            user_id = doc.get("user_id")
+            doc_filename = doc.get("filename", "Document")
 
         # Store chunks in MongoDB for future integrity audits
         import hashlib
@@ -97,8 +93,7 @@ async def index_parsed_chunks(
         # Zero-Cost Contextual Prefixing (Anthropic SOTA pattern):
         # Prepend document filename and zone to resolve chunk ambiguity without extra LLM cost
         contextual_texts = [
-            f"[{doc_filename} | {c.get('zone', 'body').upper()}] {c['text']}"
-            for c in chunks
+            f"[{doc_filename} | {c.get('zone', 'body').upper()}] {c['text']}" for c in chunks
         ]
         logger.info("Generating dense embeddings", doc_id=doc_id_str, count=len(contextual_texts))
 
@@ -194,6 +189,7 @@ async def index_parsed_chunks(
         )
     finally:
         from app.core.memory import trim_memory
+
         trim_memory()
 
 

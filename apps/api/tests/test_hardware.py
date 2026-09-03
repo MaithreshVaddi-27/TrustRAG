@@ -2,16 +2,15 @@
 Tests for hardware acceleration detection, memory profiling, and model recommendations.
 """
 
-import pytest
 from app.core.hardware import (
+    detect_hardware_profile,
     get_optimal_torch_device,
     get_system_memory_info,
-    detect_hardware_profile,
 )
 from app.core.memory import (
+    check_and_enforce_memory_guard,
     get_memory_usage_mb,
     trim_memory,
-    check_and_enforce_memory_guard,
 )
 
 

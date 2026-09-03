@@ -18,11 +18,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from langchain_core.embeddings import Embeddings
+
 from app.core.config import ModelConfig, get_model_config, get_settings
 from app.core.exceptions import ConfigurationError
 from app.core.logging import get_logger
-
-from langchain_core.embeddings import Embeddings
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
@@ -55,8 +55,13 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
 
     active_provider = (provider or cfg.llm_provider).lower()
     active_model = model or (
-        settings.ollama_model if active_provider == "ollama"
-        else (settings.llamacpp_model if active_provider in ("llama_cpp", "llamacpp") else cfg.llm_model)
+        settings.ollama_model
+        if active_provider == "ollama"
+        else (
+            settings.llamacpp_model
+            if active_provider in ("llama_cpp", "llamacpp")
+            else cfg.llm_model
+        )
     )
 
     logger.info(
@@ -145,8 +150,13 @@ def get_verification_model(provider: str | None = None, model: str | None = None
 
     active_provider = (provider or cfg.verification_provider).lower()
     active_model = model or (
-        settings.ollama_model if active_provider == "ollama"
-        else (settings.llamacpp_model if active_provider in ("llama_cpp", "llamacpp") else cfg.verification_model)
+        settings.ollama_model
+        if active_provider == "ollama"
+        else (
+            settings.llamacpp_model
+            if active_provider in ("llama_cpp", "llamacpp")
+            else cfg.verification_model
+        )
     )
 
     logger.info(
@@ -269,12 +279,16 @@ class CachedEmbeddingsWrapper(Embeddings):
     Prevents redundant forward passes and network I/O for repeated queries and document chunks.
     """
 
-    def __init__(self, base_embeddings: Any, max_cache_size: int = 512, model_name: str = "default") -> None:
+    def __init__(
+        self, base_embeddings: Any, max_cache_size: int = 512, model_name: str = "default"
+    ) -> None:
         self._base = base_embeddings
         self._cache: dict[str, list[float]] = {}
         self._keys: list[str] = []
         self._max_size = max_cache_size
-        self._model_name = getattr(base_embeddings, "model", getattr(base_embeddings, "model_name", model_name))
+        self._model_name = getattr(
+            base_embeddings, "model", getattr(base_embeddings, "model_name", model_name)
+        )
 
     def embed_query(self, text: str) -> list[float]:
         if text in self._cache:
@@ -379,7 +393,11 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
     active_model = model or cfg.embedding_model
 
     # ── Option 1: Local Ollama Embeddings ───────────────────────────────────────
-    if active_provider == "ollama" or (isinstance(active_model, str) and ("embeddinggemma" in active_model or "nomic" in active_model) and "gguf" not in active_model.lower()):
+    if active_provider == "ollama" or (
+        isinstance(active_model, str)
+        and ("embeddinggemma" in active_model or "nomic" in active_model)
+        and "gguf" not in active_model.lower()
+    ):
         from app.core.local_llm import OllamaEmbeddings
 
         logger.info(
@@ -393,7 +411,9 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
         )
 
     # ── Option 1b: Local llama.cpp Embeddings ───────────────────────────────────
-    if active_provider in ("llamacpp", "llama_cpp") or (isinstance(active_model, str) and "ggml-org/embeddinggemma" in active_model):
+    if active_provider in ("llamacpp", "llama_cpp") or (
+        isinstance(active_model, str) and "ggml-org/embeddinggemma" in active_model
+    ):
         from app.core.local_llm import LlamaCppEmbeddings
 
         logger.info(
@@ -523,7 +543,8 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
                 return BGEAwareHuggingFaceEmbeddings(base_emb, active_model)  # type: ignore[return-value]
             except Exception as offline_err:
                 logger.debug(
-                    "Offline cache fast-path fallback, attempting standard load", error=str(offline_err)
+                    "Offline cache fast-path fallback, attempting standard load",
+                    error=str(offline_err),
                 )
 
         base_emb = HuggingFaceEmbeddings(
@@ -567,9 +588,7 @@ def get_reranker():  # type: ignore[return]
     try:
         from sentence_transformers import CrossEncoder
     except ImportError:
-        logger.warning(
-            "sentence-transformers not installed. Reranker disabled. Using Hybrid RRF."
-        )
+        logger.warning("sentence-transformers not installed. Reranker disabled. Using Hybrid RRF.")
         return None
 
     logger.info("Initializing reranker", model=cfg.reranker_model)

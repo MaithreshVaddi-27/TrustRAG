@@ -15,9 +15,9 @@ export const kbService = {
   uploadDocument: (kbId, file) => {
     const form = new FormData()
     form.append('file', file)
-    return api.post(`/api/v1/knowledge-bases/${kbId}/documents`, form, {
-      headers: { 'Content-Type': undefined },
-    }).then(r => r.data)
+    // Content-Type is automatically removed for FormData by the Axios request
+    // interceptor in lib/api.js — no need to override it here.
+    return api.post(`/api/v1/knowledge-bases/${kbId}/documents`, form).then(r => r.data)
   },
 
   listDocuments: (kbId) =>

@@ -5,10 +5,12 @@ TRUSTRAG API — Analysis routes.
 from __future__ import annotations
 
 import json
+import secrets
+import time
 from collections.abc import Mapping
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_user
@@ -26,6 +28,13 @@ from app.services import analysis_service
 
 router = APIRouter(prefix="/analyses", tags=["analyses"])
 
+# Rate limit string evaluated once at module load (SlowAPI expects a string, not a callable)
+_ANALYSIS_RATE_LIMIT = f"{get_settings().rate_limit_analyses_per_minute}/minute"
+
+# In-memory short-lived SSE ticket store: {ticket: (user_id, analysis_id, expires_at)}
+# Tickets are single-use and expire after 60 seconds to avoid JWT-in-URL exposure.
+_SSE_TICKETS: dict[str, tuple[str, str, float]] = {}
+
 
 @router.post(
     "",
@@ -33,7 +42,7 @@ router = APIRouter(prefix="/analyses", tags=["analyses"])
     status_code=status.HTTP_201_CREATED,
     summary="Initiate analysis run",
 )
-@limiter.limit(lambda: f"{get_settings().rate_limit_analyses_per_minute}/minute")
+@limiter.limit(_ANALYSIS_RATE_LIMIT)
 async def create_analysis_endpoint(
     request: Request,
     schema: AnalysisCreate,
@@ -114,26 +123,69 @@ async def get_trace_endpoint(
     return await analysis_service.get_analysis_trace(analysis_id, str(current_user["_id"]))
 
 
+@router.post(
+    "/{analysis_id}/stream-ticket",
+    summary="Issue short-lived SSE stream ticket",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_stream_ticket_endpoint(
+    analysis_id: str,
+    current_user: Mapping[str, Any] = Depends(get_current_user),
+) -> dict[str, str]:
+    """
+    Issue a 60-second single-use ticket for the SSE stream endpoint.
+
+    Use this instead of passing the full JWT in the query string,
+    which would expose it in server logs and browser history.
+    The ticket is a cryptographically random token stored in memory.
+    """
+    # Purge expired tickets lazily
+    now = time.time()
+    expired = [k for k, v in _SSE_TICKETS.items() if v[2] < now]
+    for k in expired:
+        _SSE_TICKETS.pop(k, None)
+
+    ticket = secrets.token_urlsafe(32)
+    _SSE_TICKETS[ticket] = (str(current_user["_id"]), analysis_id, now + 60)
+    return {"ticket": ticket}
+
+
 @router.get("/{analysis_id}/stream", summary="Stream live execution trace")
 async def stream_trace_endpoint(
     analysis_id: str,
     token: str | None = Query(
         None, description="Auth token (required since EventSource doesn't support headers)"
     ),
+    ticket: str | None = Query(
+        None, description="Short-lived stream ticket (preferred over token)"
+    ),
 ) -> StreamingResponse:
     """
     Establish Server-Sent Events (SSE) stream for live trace updates.
 
-    Validates token from query parameters.
+    Prefers a short-lived `ticket` (issued by POST /stream-ticket) over a raw JWT `token`
+    to avoid credential exposure in server logs and browser history.
     """
-    if not token:
-        raise AuthenticationError(
-            "Not authenticated", detail="Token must be passed as query parameter"
-        )
+    user_id_str: str
 
-    # Reuse get_current_user logic manually
-    user = await get_current_user(token)
-    user_id_str = str(user["_id"])
+    if ticket:
+        # Validate and consume the ticket
+        now = time.time()
+        entry = _SSE_TICKETS.pop(ticket, None)
+        if not entry or entry[2] < now or entry[1] != analysis_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired stream ticket",
+            )
+        user_id_str = entry[0]
+    elif token:
+        # Legacy fallback: raw JWT in query param (still supported but discouraged)
+        user = await get_current_user(token)
+        user_id_str = str(user["_id"])
+    else:
+        raise AuthenticationError(
+            "Not authenticated", detail="Provide a stream ticket or token query parameter"
+        )
 
     async def event_publisher():
         async for event_data in analysis_service.sse_event_generator(analysis_id, user_id_str):

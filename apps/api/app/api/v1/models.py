@@ -54,8 +54,18 @@ async def get_providers_endpoint() -> dict[str, Any]:
             "connected": True,
             "default_model": "BAAI/bge-small-en-v1.5",
             "models": [
-                {"id": "BAAI/bge-small-en-v1.5", "name": "BAAI/bge-small-en-v1.5 (384d SOTA)", "dim": 384, "tag": "Recommended"},
-                {"id": "sentence-transformers/all-MiniLM-L6-v2", "name": "all-MiniLM-L6-v2 (384d Fast)", "dim": 384, "tag": "Fast"},
+                {
+                    "id": "BAAI/bge-small-en-v1.5",
+                    "name": "BAAI/bge-small-en-v1.5 (384d SOTA)",
+                    "dim": 384,
+                    "tag": "Recommended",
+                },
+                {
+                    "id": "sentence-transformers/all-MiniLM-L6-v2",
+                    "name": "all-MiniLM-L6-v2 (384d Fast)",
+                    "dim": 384,
+                    "tag": "Fast",
+                },
             ],
         },
         "ollama": {
@@ -64,9 +74,17 @@ async def get_providers_endpoint() -> dict[str, Any]:
             "connected": ollama_info.get("connected", False),
             "default_model": "embeddinggemma:300m-qat-q8_0",
             "models": [
-                {"id": "embeddinggemma:300m-qat-q8_0", "name": "embeddinggemma:300m-qat-q8_0 (768d)", "dim": 768, "tag": "Ollama SOTA"},
-            ] + [
-                {"id": m, "name": f"{m} (768d)", "dim": 768, "tag": "Local Ollama"} for m in ollama_emb_models if m != "embeddinggemma:300m-qat-q8_0"
+                {
+                    "id": "embeddinggemma:300m-qat-q8_0",
+                    "name": "embeddinggemma:300m-qat-q8_0 (768d)",
+                    "dim": 768,
+                    "tag": "Ollama SOTA",
+                },
+            ]
+            + [
+                {"id": m, "name": f"{m} (768d)", "dim": 768, "tag": "Local Ollama"}
+                for m in ollama_emb_models
+                if m != "embeddinggemma:300m-qat-q8_0"
             ],
         },
         "llamacpp": {
@@ -75,7 +93,12 @@ async def get_providers_endpoint() -> dict[str, Any]:
             "connected": llamacpp_info.get("connected", False),
             "default_model": "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
             "models": [
-                {"id": "ggml-org/embeddinggemma-300M-GGUF:Q8_0", "name": "embeddinggemma-300M (768d GGUF)", "dim": 768, "tag": "llama.cpp Cache"},
+                {
+                    "id": "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
+                    "name": "embeddinggemma-300M (768d GGUF)",
+                    "dim": 768,
+                    "tag": "llama.cpp Cache",
+                },
             ],
         },
         "google_genai": {
@@ -84,7 +107,12 @@ async def get_providers_endpoint() -> dict[str, Any]:
             "connected": bool(settings.gemini_api_key),
             "default_model": "models/gemini-embedding-001",
             "models": [
-                {"id": "models/gemini-embedding-001", "name": "gemini-embedding-001 (384d Matryoshka)", "dim": 384, "tag": "Google API"},
+                {
+                    "id": "models/gemini-embedding-001",
+                    "name": "gemini-embedding-001 (384d Matryoshka)",
+                    "dim": 384,
+                    "tag": "Google API",
+                },
             ],
         },
         "nvidia": {
@@ -93,7 +121,12 @@ async def get_providers_endpoint() -> dict[str, Any]:
             "connected": bool(settings.nvidia_api_key),
             "default_model": "nvidia/nv-embedqa-e5-v5",
             "models": [
-                {"id": "nvidia/nv-embedqa-e5-v5", "name": "nv-embedqa-e5-v5 (384d)", "dim": 384, "tag": "NVIDIA Cloud"},
+                {
+                    "id": "nvidia/nv-embedqa-e5-v5",
+                    "name": "nv-embedqa-e5-v5 (384d)",
+                    "dim": 384,
+                    "tag": "NVIDIA Cloud",
+                },
             ],
         },
     }
@@ -109,7 +142,8 @@ async def get_providers_endpoint() -> dict[str, Any]:
                 "type": "local",
                 "connected": ollama_info.get("connected", False),
                 "base_url": settings.ollama_base_url,
-                "default_model": settings.ollama_model or ollama_info.get("default_model", "gemma4:e2b"),
+                "default_model": settings.ollama_model
+                or ollama_info.get("default_model", "gemma4:e2b"),
                 "models": ollama_info.get("models", ["gemma4:e2b"]),
                 "error": ollama_info.get("error"),
             },
@@ -127,7 +161,9 @@ async def get_providers_endpoint() -> dict[str, Any]:
                 "name": "Google Gemini (Cloud)",
                 "type": "cloud",
                 "connected": bool(settings.gemini_api_key),
-                "default_model": cfg.llm_model if cfg.llm_provider == "gemini" else "gemini-3.5-flash-lite",
+                "default_model": cfg.llm_model
+                if cfg.llm_provider == "gemini"
+                else "gemini-3.5-flash-lite",
                 "models": [
                     "gemini-3.5-flash-lite",
                     "gemini-2.5-flash",

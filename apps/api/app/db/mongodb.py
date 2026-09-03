@@ -242,6 +242,11 @@ async def create_indexes() -> None:
     await db[Collections.ANALYSES].create_index(
         [("status", pymongo.ASCENDING)], name="analysis_status"
     )
+    # Compound index for user-scoped status queries (e.g. list running analyses per user)
+    await db[Collections.ANALYSES].create_index(
+        [("user_id", pymongo.ASCENDING), ("status", pymongo.ASCENDING)],
+        name="analysis_user_status",
+    )
 
     # ── claims ─────────────────────────────────────────────────────────────
     await db[Collections.CLAIMS].create_index(
@@ -277,6 +282,13 @@ async def create_indexes() -> None:
     await db[Collections.TRACE_EVENTS].create_index(
         [("analysis_id", pymongo.ASCENDING), ("timestamp", pymongo.ASCENDING)],
         name="trace_analysis_time",
+    )
+    # TTL index: automatically delete trace events older than 30 days to prevent
+    # unbounded collection growth in production environments.
+    await db[Collections.TRACE_EVENTS].create_index(
+        [("created_at", pymongo.ASCENDING)],
+        name="trace_ttl_expiry",
+        expireAfterSeconds=2_592_000,  # 30 days
     )
 
     # ── experiments ────────────────────────────────────────────────────────

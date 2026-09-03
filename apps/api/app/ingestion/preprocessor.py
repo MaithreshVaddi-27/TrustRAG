@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import functools
 import re
+import threading
 import unicodedata
 from enum import StrEnum
 
@@ -617,13 +618,23 @@ class PorterStemmer:
         return self.b[self.k0 : self.k + 1]
 
 
-_stemmer = PorterStemmer()
+# Use threading.local() so each thread has its own PorterStemmer instance.
+# The stemmer has mutable instance state (self.b, self.k, etc.) that is not
+# safe to share across threads — concurrent calls corrupt stemmer output.
+_local = threading.local()
+
+
+def _get_stemmer() -> PorterStemmer:
+    """Return the current thread's PorterStemmer, creating it on first use."""
+    if not hasattr(_local, "stemmer"):
+        _local.stemmer = PorterStemmer()
+    return _local.stemmer
 
 
 @functools.lru_cache(maxsize=32768)
 def stem_word(word: str) -> str:
-    """Convenience helper to stem a single word using singleton PorterStemmer with LRU cache."""
-    return _stemmer.stem(word)
+    """Convenience helper to stem a single word using thread-local PorterStemmer with LRU cache."""
+    return _get_stemmer().stem(word)
 
 
 # ─── N-Grams (Bigrams) ────────────────────────────────────────────────────────
@@ -666,7 +677,7 @@ def lexical_analyze(
     # Filter stopwords and very short noise (single character unless numeric/meaningful)
     filtered = [t for t in tokens if t not in stopwords and (len(t) > 1 or t.isdigit())]
 
-    stemmed = [_stemmer.stem(t) for t in filtered] if stem else filtered
+    stemmed = [_get_stemmer().stem(t) for t in filtered] if stem else filtered
 
     if not include_bigrams or len(stemmed) < 2:
         return stemmed

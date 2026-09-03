@@ -3,9 +3,15 @@ Tests for local LLM clients (Ollama and llama.cpp).
 """
 
 import pytest
-from app.core.local_llm import ChatOllamaClient, ChatLlamaCppClient, check_ollama_status, check_llamacpp_status
-from app.core.model_registry import get_llm, get_verification_model
 from pydantic import BaseModel
+
+from app.core.local_llm import (
+    ChatLlamaCppClient,
+    ChatOllamaClient,
+    check_llamacpp_status,
+    check_ollama_status,
+)
+from app.core.model_registry import get_llm, get_verification_model
 
 
 class SampleExtraction(BaseModel):

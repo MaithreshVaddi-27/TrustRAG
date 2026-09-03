@@ -204,8 +204,7 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
         claims = arguments["claims"]
         evidence_texts = arguments["evidence_texts"]
         fake_chunks = [
-            {"chunk_id": f"ev_{idx}", "text": text}
-            for idx, text in enumerate(evidence_texts)
+            {"chunk_id": f"ev_{idx}", "text": text} for idx, text in enumerate(evidence_texts)
         ]
         verdicts = await batch_verify_claims_nli(claims=claims, chunks=fake_chunks)
         return {"content": [{"type": "text", "text": json.dumps(verdicts, indent=2)}]}

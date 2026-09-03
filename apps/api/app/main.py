@@ -285,7 +285,7 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["*"],
+        expose_headers=["X-Request-ID", "Content-Type", "Content-Disposition"],
     )
 
     # ── Request ID ────────────────────────────────────────────────────────

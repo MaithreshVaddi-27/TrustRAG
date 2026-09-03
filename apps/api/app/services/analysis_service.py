@@ -312,20 +312,35 @@ async def sse_event_generator(
 
 # Hardware-aware global concurrency limiter to protect system resources
 _analysis_semaphore: asyncio.Semaphore | None = None
+_semaphore_init_lock: asyncio.Lock | None = None
 
 
-def _get_concurrency_semaphore() -> asyncio.Semaphore:
+def _get_semaphore_init_lock() -> asyncio.Lock:
+    """Return the module-level asyncio lock for semaphore initialization (lazy, event-loop-safe)."""
+    global _semaphore_init_lock
+    if _semaphore_init_lock is None:
+        _semaphore_init_lock = asyncio.Lock()
+    return _semaphore_init_lock
+
+
+async def _get_concurrency_semaphore() -> asyncio.Semaphore:
+    """Return the global analysis semaphore, initializing it exactly once under a lock."""
     global _analysis_semaphore
-    if _analysis_semaphore is None:
-        try:
-            from app.core.hardware import detect_hardware_profile
+    if _analysis_semaphore is not None:
+        return _analysis_semaphore
+    async with _get_semaphore_init_lock():
+        # Double-check after acquiring lock to handle concurrent waiters
+        if _analysis_semaphore is None:
+            try:
+                from app.core.hardware import detect_hardware_profile
 
-            profile = detect_hardware_profile()
-            max_conc = profile.get("recommendations", {}).get("max_concurrency", 2)
-        except Exception:
-            max_conc = 2
-        _analysis_semaphore = asyncio.Semaphore(max_conc)
+                profile = detect_hardware_profile()
+                max_conc = profile.get("recommendations", {}).get("max_concurrency", 2)
+            except Exception:
+                max_conc = 2
+            _analysis_semaphore = asyncio.Semaphore(max_conc)
     return _analysis_semaphore
+
 
 
 async def run_analysis_pipeline(
@@ -355,7 +370,7 @@ async def run_analysis_pipeline(
     """
     analysis_id = ObjectId(analysis_id_str)
     analyses_coll = get_collection(Collections.ANALYSES)
-    sem = _get_concurrency_semaphore()
+    sem = await _get_concurrency_semaphore()
 
     try:
         async with sem:
@@ -433,11 +448,19 @@ async def run_analysis_pipeline(
 
         err_str = str(exc).lower()
         if "connect" in err_str or "connection" in err_str or "refused" in err_str:
-            client_msg = f"Inference server connection error. Ensure {llm_provider or 'local'} server is running and accessible."
+            client_msg = (
+                f"Inference server connection error. Ensure {llm_provider or 'local'} "
+                "server is running and accessible."
+            )
         elif "not found" in err_str:
-            client_msg = f"Model '{llm_model}' not found on {llm_provider or 'local'} server. Please ensure the model is pulled or loaded."
+            client_msg = (
+                f"Model '{llm_model}' not found on {llm_provider or 'local'} server. "
+                "Please ensure the model is pulled or loaded."
+            )
         elif "timeout" in err_str or "timed out" in err_str:
-            client_msg = "Inference timed out. The local model may still be loading or system is under heavy load."
+            client_msg = (
+                "Inference timed out. The local model may still be loading or system is under heavy load."
+            )
         else:
             client_msg = f"Pipeline execution error ({type(exc).__name__}). Check server logs."
 
@@ -462,8 +485,8 @@ async def run_analysis_pipeline(
             from app.core.memory import trim_memory
 
             trim_memory()
-        except Exception:
-            pass
+        except Exception as trim_exc:
+            logger.debug("Post-analysis memory compaction skipped", error=str(trim_exc))
 
 
 async def list_all_user_evidence(

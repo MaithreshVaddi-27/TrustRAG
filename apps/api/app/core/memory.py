@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import gc
 import sys
+from typing import Any
 
 from app.core.logging import get_logger
 
@@ -30,6 +31,7 @@ def trim_memory() -> None:
     if sys.platform.startswith("linux"):
         try:
             import ctypes
+
             libc = ctypes.CDLL("libc.so.6")
             libc.malloc_trim(0)
         except Exception as exc:
@@ -40,6 +42,7 @@ def get_memory_usage_mb() -> float:
     """Return the current resident set size (RSS) memory in megabytes."""
     try:
         import resource
+
         usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         # On macOS ru_maxrss is in bytes, on Linux it is in kilobytes
         if sys.platform == "darwin":
@@ -59,7 +62,9 @@ def check_and_enforce_memory_guard(max_rss_mb: float = 3000.0) -> dict[str, Any]
     if rss > max_rss_mb:
         trim_memory()
         trimmed = True
-        logger.info("Memory guard triggered proactive heap compaction", rss_mb=rss, max_threshold=max_rss_mb)
+        logger.info(
+            "Memory guard triggered proactive heap compaction", rss_mb=rss, max_threshold=max_rss_mb
+        )
 
     return {
         "rss_mb": rss,

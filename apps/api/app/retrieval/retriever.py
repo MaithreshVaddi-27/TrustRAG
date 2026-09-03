@@ -83,6 +83,7 @@ async def dense_search(
                     query_vector = query_vector[:target_dim]
                     # Mathematically re-normalize truncated vector to unit length for accurate cosine similarity
                     import math
+
                     norm = math.sqrt(sum(x * x for x in query_vector))
                     if norm > 0:
                         query_vector = [x / norm for x in query_vector]

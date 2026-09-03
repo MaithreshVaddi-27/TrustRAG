@@ -12,6 +12,7 @@ Includes SSRF/XSS URL sanitization, query boundary enforcement, and timeout guar
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 from typing import Any
 from urllib.parse import urlparse
 
@@ -23,9 +24,6 @@ logger = get_logger(__name__)
 # Search execution timeout guard (seconds)
 SEARCH_TIMEOUT_SECONDS = 8.0
 MAX_QUERY_LENGTH = 500
-
-
-import ipaddress
 
 # Blocked hostnames for SSRF defense-in-depth
 BLOCKED_HOSTNAMES = {
@@ -58,7 +56,11 @@ def sanitize_url(raw_url: str | None) -> str:
         if not hostname:
             return ""
 
-        if hostname in BLOCKED_HOSTNAMES or hostname.endswith(".internal") or hostname.endswith(".local"):
+        if (
+            hostname in BLOCKED_HOSTNAMES
+            or hostname.endswith(".internal")
+            or hostname.endswith(".local")
+        ):
             logger.warning("Rejected internal/metadata hostname in search citation", host=hostname)
             return ""
 

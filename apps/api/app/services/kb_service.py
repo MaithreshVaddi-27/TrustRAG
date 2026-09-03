@@ -89,15 +89,28 @@ async def get_kb(kb_id_str: str, user_id_str: str) -> KBResponse:
 
 
 async def list_kbs(user_id_str: str) -> list[KBResponse]:
-    """List all knowledge bases owned by user."""
+    """List all knowledge bases owned by user with document counts in a single aggregation."""
     kb_coll = get_collection(Collections.KNOWLEDGE_BASES)
     doc_coll = get_collection(Collections.DOCUMENTS)
 
-    kbs = []
-    async for kb in kb_coll.find({"user_id": ObjectId(user_id_str)}).sort("created_at", -1):
-        doc_count = await doc_coll.count_documents({"knowledge_base_id": kb["_id"]})
-        kbs.append(serialize_kb(kb, doc_count))
-    return kbs
+    # Fetch all KBs owned by user in one query
+    user_obj_id = ObjectId(user_id_str)
+    kbs_raw = await kb_coll.find({"user_id": user_obj_id}).sort("created_at", -1).to_list(500)
+
+    if not kbs_raw:
+        return []
+
+    # Batch-fetch document counts using a single aggregation (avoids N+1 per-KB count queries)
+    kb_ids = [kb["_id"] for kb in kbs_raw]
+    count_pipeline = [
+        {"$match": {"knowledge_base_id": {"$in": kb_ids}}},
+        {"$group": {"_id": "$knowledge_base_id", "count": {"$sum": 1}}},
+    ]
+    count_map: dict = {}
+    async for row in doc_coll.aggregate(count_pipeline):
+        count_map[row["_id"]] = row["count"]
+
+    return [serialize_kb(kb, count_map.get(kb["_id"], 0)) for kb in kbs_raw]
 
 
 async def delete_kb(kb_id_str: str, user_id_str: str) -> None:

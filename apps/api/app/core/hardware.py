@@ -32,7 +32,11 @@ def get_optimal_torch_device() -> str:
 
         if torch.cuda.is_available():
             return "cuda"
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        if (
+            hasattr(torch.backends, "mps")
+            and torch.backends.mps.is_available()
+            and torch.backends.mps.is_built()
+        ):
             return "mps"
     except Exception as exc:
         logger.debug("Torch device detection fallback to cpu", error=str(exc))
@@ -162,10 +166,14 @@ def detect_hardware_profile() -> dict[str, Any]:
 
     if mem["usage_pct"] > 92.0:
         health_status = "critical"
-        health_notes.append("System memory is under heavy pressure (>92% used). Freeing background caches recommended.")
+        health_notes.append(
+            "System memory is under heavy pressure (>92% used). Freeing background caches recommended."
+        )
     elif mem["usage_pct"] > 85.0:
         health_status = "warning"
-        health_notes.append("System memory usage is elevated (>85% used). Quantized Q4 models are advised.")
+        health_notes.append(
+            "System memory usage is elevated (>85% used). Quantized Q4 models are advised."
+        )
     else:
         health_notes.append("Hardware resources and memory operating within optimal parameters.")
 

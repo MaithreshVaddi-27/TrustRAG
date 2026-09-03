@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import math
 import re
+import threading
 from typing import Any
 
 from app.core.logging import get_logger
@@ -27,6 +28,7 @@ logger = get_logger(__name__)
 # Format: list of dicts: {"kb_id": str, "query": str, "vector": list[float], "response": dict}
 _SEMANTIC_CACHE: list[dict[str, Any]] = []
 _MAX_CACHE_ENTRIES = 500
+_CACHE_LOCK = threading.Lock()  # Guards all reads/writes to _SEMANTIC_CACHE
 
 
 def cosine_similarity(v1: list[float], v2: list[float]) -> float:
@@ -34,7 +36,7 @@ def cosine_similarity(v1: list[float], v2: list[float]) -> float:
     if not v1 or not v2 or len(v1) != len(v2):
         return 0.0
 
-    dot = sum(a * b for a, b in zip(v1, v2))
+    dot = sum(a * b for a, b in zip(v1, v2, strict=False))
     norm_a = math.sqrt(sum(a * a for a in v1))
     norm_b = math.sqrt(sum(b * b for b in v2))
 
@@ -57,35 +59,36 @@ def check_semantic_cache(
     if not query_vector:
         return None
 
-    # 1. Exact string fast path
-    normalized_q = query.strip().lower()
-    for entry in reversed(_SEMANTIC_CACHE):
-        if entry["kb_id"] == kb_id:
-            if entry["query"].strip().lower() == normalized_q:
-                logger.info("Semantic cache exact hit", query=query, kb_id=kb_id)
-                return entry["response"]
+    with _CACHE_LOCK:
+        # 1. Exact string fast path
+        normalized_q = query.strip().lower()
+        for entry in reversed(_SEMANTIC_CACHE):
+            if entry["kb_id"] == kb_id:
+                if entry["query"].strip().lower() == normalized_q:
+                    logger.info("Semantic cache exact hit", query=query, kb_id=kb_id)
+                    return entry["response"]
 
-    # 2. Vector cosine semantic similarity path
-    best_sim = 0.0
-    best_match: dict[str, Any] | None = None
+        # 2. Vector cosine semantic similarity path
+        best_sim = 0.0
+        best_match: dict[str, Any] | None = None
 
-    for entry in reversed(_SEMANTIC_CACHE):
-        if entry["kb_id"] == kb_id:
-            sim = cosine_similarity(query_vector, entry["vector"])
-            if sim > best_sim:
-                best_sim = sim
-                if sim >= similarity_threshold:
-                    best_match = entry["response"]
+        for entry in reversed(_SEMANTIC_CACHE):
+            if entry["kb_id"] == kb_id:
+                sim = cosine_similarity(query_vector, entry["vector"])
+                if sim > best_sim:
+                    best_sim = sim
+                    if sim >= similarity_threshold:
+                        best_match = entry["response"]
 
-    if best_match and best_sim >= similarity_threshold:
-        logger.info(
-            "Semantic cache vector hit",
-            query=query,
-            matched_similarity=round(best_sim, 4),
-            threshold=similarity_threshold,
-            kb_id=kb_id,
-        )
-        return best_match
+        if best_match and best_sim >= similarity_threshold:
+            logger.info(
+                "Semantic cache vector hit",
+                query=query,
+                matched_similarity=round(best_sim, 4),
+                threshold=similarity_threshold,
+                kb_id=kb_id,
+            )
+            return best_match
 
     return None
 
@@ -103,17 +106,18 @@ def store_semantic_cache(
     if not query_vector or not response_data:
         return
 
-    global _SEMANTIC_CACHE
+    with _CACHE_LOCK:
+        if len(_SEMANTIC_CACHE) >= _MAX_CACHE_ENTRIES:
+            _SEMANTIC_CACHE.pop(0)
 
-    if len(_SEMANTIC_CACHE) >= _MAX_CACHE_ENTRIES:
-        _SEMANTIC_CACHE.pop(0)
-
-    _SEMANTIC_CACHE.append({
-        "kb_id": kb_id,
-        "query": query,
-        "vector": query_vector,
-        "response": response_data,
-    })
+        _SEMANTIC_CACHE.append(
+            {
+                "kb_id": kb_id,
+                "query": query,
+                "vector": query_vector,
+                "response": response_data,
+            }
+        )
     logger.debug("Stored response in semantic cache", query=query, kb_id=kb_id)
 
 

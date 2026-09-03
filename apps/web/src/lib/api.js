@@ -71,19 +71,39 @@ export default api
 /**
  * Open a Server-Sent Events stream for live analysis trace updates.
  *
- * Backend route: GET /api/v1/analyses/{analysisId}/stream?token=<jwt>
- * (token must be a query param — EventSource cannot send Authorization headers)
+ * Uses a short-lived stream ticket (POST /stream-ticket) instead of passing
+ * the full JWT as a query param, which would expose it in server logs and
+ * browser history. Falls back to raw ?token= if ticket issuance fails.
+ *
+ * Backend route: GET /api/v1/analyses/{analysisId}/stream?ticket=<ticket>
  *
  * @param {string} analysisId
  * @param {{ onEvent?: (data: any) => void, onError?: (err: Event) => void, onComplete?: () => void }} handlers
- * @returns {EventSource}
+ * @returns {Promise<EventSource>}
  */
-export function openAnalysisStream(analysisId, { onEvent, onError, onComplete } = {}) {
-  const { token } = authStore.getState()
-  const url = `${API_BASE_URL}/api/v1/analyses/${analysisId}/stream?token=${encodeURIComponent(token || '')}`
-  const source = new EventSource(url)
-
+export async function openAnalysisStream(analysisId, { onEvent, onError, onComplete } = {}) {
   const TERMINAL_EVENTS = new Set(['analysis.completed', 'analysis.abstained', 'analysis.failed'])
+
+  let streamUrl
+
+  // Try to get a short-lived ticket (preferred — keeps JWT out of URL)
+  try {
+    const ticketRes = await api.post(`/api/v1/analyses/${analysisId}/stream-ticket`)
+    const ticket = ticketRes.data?.ticket
+    if (ticket) {
+      streamUrl = `${API_BASE_URL}/api/v1/analyses/${analysisId}/stream?ticket=${encodeURIComponent(ticket)}`
+    }
+  } catch {
+    // Ticket endpoint unavailable — fall back to legacy token-in-URL approach
+  }
+
+  // Fallback: use raw JWT in query string (legacy, less secure)
+  if (!streamUrl) {
+    const { token } = authStore.getState()
+    streamUrl = `${API_BASE_URL}/api/v1/analyses/${analysisId}/stream?token=${encodeURIComponent(token || '')}`
+  }
+
+  const source = new EventSource(streamUrl)
 
   source.onmessage = (evt) => {
     let payload

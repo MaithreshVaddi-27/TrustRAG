@@ -99,6 +99,7 @@ async def upload_document_endpoint(
         ext if ext.startswith(".") else f".{ext}" for ext in cfg.supported_formats
     }
     from pathlib import Path
+
     raw_filename = file.filename or "document.txt"
     filename = Path(raw_filename).name.replace("\x00", "").strip() or "document.txt"
     ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
