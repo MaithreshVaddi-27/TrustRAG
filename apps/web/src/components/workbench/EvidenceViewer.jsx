@@ -151,7 +151,7 @@ function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
             {chunk.filename ?? chunk.document_id ?? (isWeb ? 'MCP Web Citation' : 'Unknown source')}
           </span>
           {isWeb && (
-            <span className="px-1.5 py-0.2 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800/40 text-[9px] font-mono shrink-0">
+            <span className="px-1.5 py-[2px] rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800/40 text-[9px] font-mono shrink-0">
               MCP
             </span>
           )}

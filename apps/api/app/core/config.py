@@ -77,24 +77,24 @@ class Settings(BaseSettings):
 
     # ── Local LLM Providers (Ollama & llama.cpp) ──────────────────────────────
     ollama_base_url: str = Field(
-        default="http://localhost:11434",
+        default="",
         validation_alias=AliasChoices("OLLAMA_BASE_URL", "OLLAMA_HOST"),
         description="Ollama local API server endpoint",
     )
     ollama_model: str = Field(
-        default="gemma4:e2b",
+        default="",
         validation_alias=AliasChoices("OLLAMA_MODEL"),
-        description="Default Ollama model name",
+        description="Override Ollama model name from models.yaml via env",
     )
     llamacpp_base_url: str = Field(
-        default="http://localhost:8081/v1",
+        default="",
         validation_alias=AliasChoices("LLAMACPP_BASE_URL", "LLAMA_CPP_BASE_URL"),
         description="llama.cpp server OpenAI-compatible base URL",
     )
     llamacpp_model: str = Field(
-        default="gemma-4-E2B-it-qat-q4_0-gguf:Q4_0",
+        default="",
         validation_alias=AliasChoices("LLAMACPP_MODEL", "LLAMA_CPP_MODEL"),
-        description="Default llama.cpp model identifier or GGUF path",
+        description="Override llama.cpp model identifier from models.yaml via env",
     )
 
     # ── NVIDIA NIM & Tavily Search ─────────────────────────────────────────────
@@ -242,34 +242,39 @@ class ModelConfig:
     # ── LLM ──────────────────────────────────────────────────────────────────
     @property
     def llm_provider(self) -> str:
+        val = self._get("llm", "provider", required=False)
         settings = get_settings()
-        fallback = str(self._get("llm", "provider", required=False) or "gemini")
-        return (settings.ai_provider or fallback).lower()
+        if settings.ai_provider:
+            return settings.ai_provider.lower()
+        return str(val or "ollama").lower()
 
     @property
     def llm_model(self) -> str:
         self._get("llm")
         settings = get_settings()
         if self.llm_provider == "ollama":
-            return settings.ollama_model or "gemma4:e2b"
+            return settings.ollama_model or str(self._get("llm", "model") or "gemma4:e2b")
         if self.llm_provider in ("llama_cpp", "llamacpp"):
-            return settings.llamacpp_model or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0"
-        val = self._get("llm", "model")
+            return settings.llamacpp_model or str(self._get("llm", "model") or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0")
         if settings.gemini_model:
             return settings.gemini_model
         if self.llm_provider in ("nvidia", "nim"):
             return "meta/llama-3.3-70b-instruct"
-        return str(val or "gemini-3.5-flash-lite")
+        return str(self._get("llm", "model") or "gemini-3.5-flash-lite")
 
     @property
     def ollama_base_url(self) -> str:
         settings = get_settings()
-        return settings.ollama_base_url or "http://localhost:11434"
+        if settings.ollama_base_url:
+            return settings.ollama_base_url
+        return str(self._get("llm", "ollama_base_url", required=False) or "http://localhost:11434")
 
     @property
     def llamacpp_base_url(self) -> str:
         settings = get_settings()
-        return settings.llamacpp_base_url or "http://localhost:8081/v1"
+        if settings.llamacpp_base_url:
+            return settings.llamacpp_base_url
+        return str(self._get("llm", "llamacpp_base_url", required=False) or "http://localhost:8081/v1")
 
     @property
     def llm_temperature(self) -> float:
@@ -294,9 +299,11 @@ class ModelConfig:
     # ── Embedding ─────────────────────────────────────────────────────────────
     @property
     def embedding_provider(self) -> str:
+        val = self._get("embedding", "provider", required=False)
         settings = get_settings()
-        fallback = str(self._get("embedding", "provider", required=False) or "huggingface")
-        return (settings.embedding_provider or fallback).lower()
+        if settings.embedding_provider:
+            return settings.embedding_provider.lower()
+        return str(val or "huggingface").lower()
 
     @property
     def embedding_model(self) -> str:
@@ -305,9 +312,9 @@ class ModelConfig:
         if settings.gemini_embedding_model:
             return settings.gemini_embedding_model
         if self.embedding_provider in ("huggingface", "local"):
-            return "BAAI/bge-small-en-v1.5"
+            return str(val or "BAAI/bge-small-en-v1.5")
         if self.embedding_provider in ("nvidia", "nim"):
-            return "nvidia/nv-embedqa-e5-v5"
+            return str(val or "nvidia/nv-embedqa-e5-v5")
         return str(val or "models/gemini-embedding-001")
 
     @property
@@ -327,17 +334,19 @@ class ModelConfig:
     # ── Verification ──────────────────────────────────────────────────────────
     @property
     def verification_provider(self) -> str:
+        val = self._get("verification", "provider", required=False)
         settings = get_settings()
-        fallback = str(self._get("verification", "provider", required=False) or "gemini")
-        return (settings.ai_provider or fallback).lower()
+        if settings.ai_provider:
+            return settings.ai_provider.lower()
+        return str(val or "ollama").lower()
 
     @property
     def verification_model(self) -> str:
         settings = get_settings()
         if self.verification_provider == "ollama":
-            return settings.ollama_model or "gemma4:e2b"
+            return settings.ollama_model or str(self._get("verification", "model") or "gemma4:e2b")
         if self.verification_provider in ("llama_cpp", "llamacpp"):
-            return settings.llamacpp_model or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0"
+            return settings.llamacpp_model or str(self._get("verification", "model") or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0")
         val = self._get("verification", "model")
         if settings.gemini_verification_model:
             return settings.gemini_verification_model

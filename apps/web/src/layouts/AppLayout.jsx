@@ -192,7 +192,7 @@ export default function AppLayout({ children }) {
             'flex flex-col border-r border-slate-800/80 bg-surface-900/95 backdrop-blur-xl z-50 transition-all duration-300 ease-in-out shrink-0',
             // Desktop width behavior
             'hidden md:flex',
-            isCollapsed ? 'w-18' : 'w-60',
+            isCollapsed ? 'w-[72px]' : 'w-60',
             // Mobile drawer positioning
             'fixed md:static inset-y-0 left-0 top-16 md:top-0',
             isMobileOpen && '!flex w-64 shadow-2xl shadow-black',

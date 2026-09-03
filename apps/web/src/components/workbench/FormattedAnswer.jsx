@@ -68,7 +68,8 @@ export function FormattedAnswer({ content, className = '' }) {
             </blockquote>
           ),
           code: ({ inline, children }) => {
-            if (inline) {
+            const isInline = inline ?? false
+            if (isInline) {
               return (
                 <code className="font-mono text-xs text-cyan-300 bg-surface-900/80 border border-slate-800 px-1.5 py-0.5 rounded">
                   {children}

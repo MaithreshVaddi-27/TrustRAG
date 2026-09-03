@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter
 
 from app.core.config import get_model_config, get_settings
-from app.core.hardware import detect_hardware_profile
+from app.core.hardware import get_cached_hardware_profile
 from app.core.local_llm import check_llamacpp_status, check_ollama_status
 
 router = APIRouter(prefix="/models", tags=["models"])
@@ -183,7 +183,7 @@ async def get_providers_endpoint() -> dict[str, Any]:
             },
         },
         "embedding_providers": embedding_providers,
-        "hardware": detect_hardware_profile(),
+        "hardware": get_cached_hardware_profile(),
     }
 
 
@@ -192,9 +192,7 @@ async def get_hardware_endpoint() -> dict[str, Any]:
     """
     Return host hardware profile, GPU/MPS acceleration status, and system health recommendations.
     """
-    from app.core.hardware import detect_hardware_profile
-
-    return detect_hardware_profile()
+    return get_cached_hardware_profile()
 
 
 @router.post("/memory/trim", summary="Trigger proactive heap compaction and GC")
@@ -202,10 +200,11 @@ async def trim_memory_endpoint() -> dict[str, Any]:
     """
     Manually invoke garbage collection and glibc malloc_trim to free resident memory.
     """
+    import asyncio
     from app.core.memory import get_memory_usage_mb, trim_memory
 
     before_mb = get_memory_usage_mb()
-    trim_memory()
+    await asyncio.to_thread(trim_memory)
     after_mb = get_memory_usage_mb()
     return {
         "status": "ok",

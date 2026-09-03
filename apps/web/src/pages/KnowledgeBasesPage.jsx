@@ -245,6 +245,7 @@ function KnowledgeBaseCard({ kb }) {
   const { data: documents = [], isLoading: docsLoading } = useQuery({
     queryKey: ['documents', kb.id],
     queryFn: () => kbService.listDocuments(kb.id),
+    enabled: isExpanded,
   })
 
   // Delete KB Mutation

@@ -59,7 +59,7 @@ const PIPELINE_PHASES = [
 ]
 
 export default function DashboardPage() {
-  const [autoRefresh, setAutoRefresh] = useState(true)
+  const [autoRefresh, setAutoRefresh] = useState(false)
   const [historyWindow, setHistoryWindow] = useState('10') // '10' | '20' | 'all'
   const [lastSync, setLastSync] = useState(new Date())
 

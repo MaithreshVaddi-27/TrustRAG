@@ -209,6 +209,11 @@ async def create_indexes() -> None:
         name="doc_kb_time",
     )
     await db[Collections.DOCUMENTS].create_index(
+        [("knowledge_base_id", pymongo.ASCENDING), ("content_hash", pymongo.ASCENDING)],
+        unique=True,
+        name="doc_kb_content_hash_unique",
+    )
+    await db[Collections.DOCUMENTS].create_index(
         [("content_hash", pymongo.ASCENDING)], name="doc_content_hash"
     )
     await db[Collections.DOCUMENTS].create_index([("user_id", pymongo.ASCENDING)], name="doc_user")

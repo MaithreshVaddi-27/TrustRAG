@@ -19,11 +19,12 @@ from app.core.logging import get_logger
 from app.core.model_registry import get_verification_model
 from app.db.mongodb import Collections, get_collection
 from app.generation.generator import generate_grounded_answer
+from app.retrieval.retriever import retrieve_hybrid_chunks, _query_cache
 from app.retrieval.reranker import rerank_candidate_chunks
-from app.retrieval.retriever import retrieve_hybrid_chunks
 from app.services.analysis_service import add_trace_event
 from app.verification.integrity import audit_evidence_integrity
 from app.verification.verifier import execute_claim_verification
+from app.verification.verdict import VerdictStatus, compute_verdict, Thresholds
 
 logger = get_logger(__name__)
 
@@ -104,10 +105,11 @@ async def retrieval_node(state: AgentState) -> AgentState:
         from app.db.qdrant import get_collection_name, get_qdrant_client, init_kb_collection
 
         try:
-            q_client = get_qdrant_client()
+            q_client = await get_qdrant_client()
             col_name = get_collection_name(state["kb_id"])
-            col_exists = q_client.collection_exists(col_name)
-            points_count = q_client.get_collection(col_name).points_count if col_exists else 0
+            col_exists = await q_client.collection_exists(col_name)
+            col_info = await q_client.get_collection(col_name) if col_exists else None
+            points_count = col_info.points_count if col_info else 0
 
             # Check if MongoDB has chunks for this KB
             chunks_coll = get_collection(Collections.DOCUMENT_CHUNKS)
@@ -210,7 +212,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
             logger.warning("Error during collection point verification/sync", error=str(exc))
 
     # 2. Rerank
-    top_chunks = rerank_candidate_chunks(
+    top_chunks = await rerank_candidate_chunks(
         state["current_query"], candidates, max_context_override=max_context_override
     )
 
@@ -448,44 +450,33 @@ async def verification_node(state: AgentState) -> AgentState:
         },
     )
 
-    # Evaluate reliability thresholds
-    coverage = supported / total
-    contradiction_rate = contradicted / total
-
-    logger.info(
-        "Evaluating verification thresholds",
-        coverage=coverage,
-        required_coverage=cfg.minimum_evidence_coverage,
-        contradiction_rate=contradiction_rate,
-        max_contradiction=cfg.maximum_contradiction_rate,
+    # Compute unified verdict
+    thresholds = Thresholds(
+        minimum_evidence_coverage=cfg.minimum_evidence_coverage,
+        maximum_contradiction_rate=cfg.maximum_contradiction_rate,
+        abstain_below=cfg.abstain_below,
     )
 
-    if (
-        coverage >= cfg.minimum_evidence_coverage
-        and contradiction_rate <= cfg.maximum_contradiction_rate
-    ):
-        state["verdict_status"] = "PASS"
-        logger.info("Reliability thresholds verified successfully")
-    else:
-        state["verdict_status"] = "FAIL"
-        logger.info("Reliability thresholds check failed")
+    verdict = compute_verdict(
+        supported=supported,
+        contradicted=contradicted,
+        neutral=neutral,
+        total=total,
+        thresholds=thresholds,
+        answer=state.get("answer"),
+    )
 
-    # Reliability score: coverage discounted by contradiction rate, clamped to [0, 1].
-    state["reliability_score"] = max(0.0, min(1.0, coverage * (1 - contradiction_rate)))
+    state["verdict_status"] = verdict.verdict_status.value
+    state["reliability_score"] = verdict.reliability_score
+    state["diagnosis_type"] = verdict.diagnosis_type.value
+    state["diagnosis_failures"] = verdict.diagnosis_failures
 
-    failures = []
-    if contradiction_rate > cfg.maximum_contradiction_rate:
-        failures.append(f"{contradicted}/{total} claims contradicted by evidence")
-    if coverage < cfg.minimum_evidence_coverage:
-        failures.append(f"Only {supported}/{total} claims supported by evidence")
-
-    if not failures:
-        state["diagnosis_type"] = None
-    elif contradiction_rate > cfg.maximum_contradiction_rate:
-        state["diagnosis_type"] = "EVIDENCE_CONFLICT"
-    else:
-        state["diagnosis_type"] = "LOW_COVERAGE"
-    state["diagnosis_failures"] = failures
+    logger.info(
+        "Unified verdict computed",
+        verdict=verdict.verdict_status.value,
+        reliability_score=verdict.reliability_score,
+        diagnosis_type=verdict.diagnosis_type.value,
+    )
 
     return state
 
@@ -694,11 +685,15 @@ async def execute_agentic_rag_flow(
             from app.core.model_registry import get_embedding_model
             from app.core.semantic_cache import check_semantic_cache
 
-            emb_model = get_embedding_model(provider=embedding_provider, model=embedding_model)
-            try:
-                q_vec = await emb_model.aembed_query(query)
-            except Exception:
-                q_vec = emb_model.embed_query(query)
+            cache_key = f"{embedding_provider or ''}:{embedding_model or ''}:{query}"
+            q_vec = _query_cache.get(cache_key)
+            if q_vec is None:
+                emb_model = get_embedding_model(provider=embedding_provider, model=embedding_model)
+                try:
+                    q_vec = await emb_model.aembed_query(query)
+                except Exception:
+                    q_vec = emb_model.embed_query(query)
+                _query_cache.set(cache_key, q_vec)
 
             cached_resp = check_semantic_cache(query, kb_id_str, q_vec, similarity_threshold=0.94)
             if cached_resp:
@@ -755,6 +750,7 @@ async def execute_agentic_rag_flow(
 
         return final_state
     finally:
+        import asyncio
         from app.core.memory import trim_memory
 
-        trim_memory()
+        await asyncio.to_thread(trim_memory)

@@ -147,7 +147,10 @@ async def add_document(
 ) -> DocResponse:
     """
     Add a document metadata record. Verifies KB ownership first.
+    Returns 409 Conflict if a document with the same content_hash already exists in the KB.
     """
+    import pymongo.errors
+
     # Verify owner
     await get_kb(kb_id_str, user_id_str)
 
@@ -165,9 +168,18 @@ async def add_document(
         "created_at": datetime.now(UTC),
     }
 
-    result = await doc_coll.insert_one(doc_doc)
-    doc_doc["_id"] = result.inserted_id
-    return serialize_doc(doc_doc)
+    try:
+        result = await doc_coll.insert_one(doc_doc)
+        doc_doc["_id"] = result.inserted_id
+        return serialize_doc(doc_doc)
+    except pymongo.errors.DuplicateKeyError as exc:
+        if "doc_kb_content_hash_unique" in str(exc):
+            from app.core.exceptions import ConflictError
+            raise ConflictError(
+                "Document with identical content already exists in this knowledge base",
+                detail=f"content_hash: {content_hash}",
+            ) from exc
+        raise
 
 
 async def list_kb_documents(kb_id_str: str, user_id_str: str) -> list[DocResponse]:
@@ -208,11 +220,11 @@ async def delete_document(doc_id_str: str, user_id_str: str) -> None:
     await get_collection(Collections.DOCUMENT_CHUNKS).delete_many({"document_id": doc_id})
 
     # 2. Delete points from Qdrant collection
-    client = get_qdrant_client()
+    client = await get_qdrant_client()
     collection_name = get_collection_name(kb_id_str)
     try:
-        if client.collection_exists(collection_name):
-            client.delete(
+        if await client.collection_exists(collection_name):
+            await client.delete(
                 collection_name=collection_name,
                 points_selector=models.FilterSelector(
                     filter=models.Filter(

@@ -15,35 +15,179 @@ Techniques to reduce system compute load and latency:
 
 from __future__ import annotations
 
+import json
 import math
+import os
 import re
 import threading
+import time
+from collections import deque
+from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# In-memory fast semantic cache storage
-# Format: list of dicts: {"kb_id": str, "query": str, "vector": list[float], "response": dict}
-_SEMANTIC_CACHE: list[dict[str, Any]] = []
+# Cache directory for persistence
+CACHE_DIR = Path(
+    os.getenv(
+        "CACHE_DIR",
+        Path(__file__).resolve().parents[3] / "data" / "cache",
+    )
+)
+PERSISTENCE_FILE = CACHE_DIR / "semantic_cache.json"
+
+# In-memory fast semantic cache storage using deque for O(1) FIFO eviction
+# Each entry: {"kb_id": str, "query": str, "vector": np.ndarray, "response": dict, "timestamp": float}
+_SEMANTIC_CACHE: deque[dict[str, Any]] = deque(maxlen=500)
+_CACHE_LOCK = threading.RLock()  # Guards all reads/writes to _SEMANTIC_CACHE
+_MATRIX_CACHE: np.ndarray | None = None  # Stacked vectors for vectorized cosine
+_MATRIX_DIRTY = True  # Flag to rebuild matrix when cache changes
 _MAX_CACHE_ENTRIES = 500
-_CACHE_LOCK = threading.Lock()  # Guards all reads/writes to _SEMANTIC_CACHE
+_PERSISTENCE_INTERVAL_SECONDS = 300  # Persist every 5 minutes
+_last_persist_time = 0.0
 
 
-def cosine_similarity(v1: list[float], v2: list[float]) -> float:
+def _ensure_cache_dir() -> None:
+    """Ensure cache directory exists."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _rebuild_matrix() -> None:
+    """Rebuild the stacked vector matrix for vectorized cosine similarity."""
+    global _MATRIX_CACHE, _MATRIX_DIRTY
+    if not _SEMANTIC_CACHE:
+        _MATRIX_CACHE = None
+        _MATRIX_DIRTY = False
+        return
+
+    vectors = [entry["vector"] for entry in _SEMANTIC_CACHE]
+    # Ensure all vectors are numpy arrays and same dimension
+    try:
+        _MATRIX_CACHE = np.vstack(vectors).astype(np.float32)
+        # Pre-normalize for cosine similarity (assumes vectors may not be normalized)
+        norms = np.linalg.norm(_MATRIX_CACHE, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        _MATRIX_CACHE = _MATRIX_CACHE / norms
+        _MATRIX_DIRTY = False
+    except ValueError:
+        # Inconsistent dimensions - fallback to list-based search
+        _MATRIX_CACHE = None
+        _MATRIX_DIRTY = False
+
+
+def _load_persisted_cache() -> None:
+    """Load semantic cache from disk on startup."""
+    global _SEMANTIC_CACHE, _MATRIX_DIRTY, _last_persist_time
+    if not PERSISTENCE_FILE.exists():
+        return
+
+    try:
+        with open(PERSISTENCE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        if not isinstance(data, list):
+            return
+
+        _SEMANTIC_CACHE.clear()
+        for entry in data:
+            if not all(k in entry for k in ("kb_id", "query", "vector", "response", "timestamp")):
+                continue
+            # Convert vector back to numpy array
+            entry["vector"] = np.array(entry["vector"], dtype=np.float32)
+            _SEMANTIC_CACHE.append(entry)
+
+        _MATRIX_DIRTY = True
+        _last_persist_time = time.time()
+        logger.info("Loaded semantic cache from disk", entries=len(_SEMANTIC_CACHE))
+    except Exception as exc:
+        logger.warning("Failed to load semantic cache from disk", error=str(exc))
+
+
+def _persist_cache() -> None:
+    """Persist semantic cache to disk."""
+    global _last_persist_time
+    if not _SEMANTIC_CACHE:
+        return
+
+    try:
+        _ensure_cache_dir()
+        # Convert numpy arrays to lists for JSON serialization
+        serializable = []
+        for entry in _SEMANTIC_CACHE:
+            serializable.append(
+                {
+                    "kb_id": entry["kb_id"],
+                    "query": entry["query"],
+                    "vector": entry["vector"].tolist() if isinstance(entry["vector"], np.ndarray) else entry["vector"],
+                    "response": entry["response"],
+                    "timestamp": entry["timestamp"],
+                }
+            )
+
+        # Write atomically
+        temp_file = PERSISTENCE_FILE.with_suffix(".tmp")
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(serializable, f)
+        temp_file.replace(PERSISTENCE_FILE)
+
+        _last_persist_time = time.time()
+        logger.debug("Persisted semantic cache to disk", entries=len(_SEMANTIC_CACHE))
+    except Exception as exc:
+        logger.warning("Failed to persist semantic cache to disk", error=str(exc))
+
+
+def _maybe_persist() -> None:
+    """Persist cache if enough time has passed since last persist."""
+    global _last_persist_time
+    if time.time() - _last_persist_time >= _PERSISTENCE_INTERVAL_SECONDS:
+        _persist_cache()
+
+
+def cosine_similarity(v1: list[float] | np.ndarray, v2: list[float] | np.ndarray) -> float:
     """Compute cosine similarity between two normalized or raw floating point vectors."""
-    if not v1 or not v2 or len(v1) != len(v2):
+    v1_arr = np.asarray(v1, dtype=np.float32)
+    v2_arr = np.asarray(v2, dtype=np.float32)
+
+    if v1_arr.size == 0 or v2_arr.size == 0 or v1_arr.shape != v2_arr.shape:
         return 0.0
 
-    dot = sum(a * b for a, b in zip(v1, v2, strict=False))
-    norm_a = math.sqrt(sum(a * a for a in v1))
-    norm_b = math.sqrt(sum(b * b for b in v2))
+    norm_a = np.linalg.norm(v1_arr)
+    norm_b = np.linalg.norm(v2_arr)
 
     if norm_a == 0.0 or norm_b == 0.0:
         return 0.0
 
-    return dot / (norm_a * norm_b)
+    return float(np.dot(v1_arr, v2_arr) / (norm_a * norm_b))
+
+
+def _vectorized_cosine(query_vector: np.ndarray) -> np.ndarray:
+    """
+    Compute cosine similarity between query vector and all cached vectors using vectorized operations.
+
+    Returns array of similarity scores (one per cache entry).
+    """
+    global _MATRIX_CACHE, _MATRIX_DIRTY
+
+    if _MATRIX_DIRTY:
+        _rebuild_matrix()
+
+    if _MATRIX_CACHE is None or _MATRIX_CACHE.size == 0:
+        return np.array([])
+
+    # Normalize query vector
+    query_norm = np.linalg.norm(query_vector)
+    if query_norm == 0.0:
+        return np.zeros(_MATRIX_CACHE.shape[0], dtype=np.float32)
+
+    query_normalized = query_vector / query_norm
+
+    # Vectorized cosine similarity: matrix @ query_vector
+    similarities = _MATRIX_CACHE @ query_normalized
+    return similarities
 
 
 def check_semantic_cache(
@@ -59,8 +203,10 @@ def check_semantic_cache(
     if not query_vector:
         return None
 
+    query_arr = np.asarray(query_vector, dtype=np.float32)
+
     with _CACHE_LOCK:
-        # 1. Exact string fast path
+        # 1. Exact string fast path (check recent entries first)
         normalized_q = query.strip().lower()
         for entry in reversed(_SEMANTIC_CACHE):
             if entry["kb_id"] == kb_id:
@@ -68,27 +214,60 @@ def check_semantic_cache(
                     logger.info("Semantic cache exact hit", query=query, kb_id=kb_id)
                     return entry["response"]
 
-        # 2. Vector cosine semantic similarity path
-        best_sim = 0.0
-        best_match: dict[str, Any] | None = None
+        # 2. Vector cosine semantic similarity path using vectorized operations
+        if len(_SEMANTIC_CACHE) == 0:
+            return None
 
-        for entry in reversed(_SEMANTIC_CACHE):
-            if entry["kb_id"] == kb_id:
-                sim = cosine_similarity(query_vector, entry["vector"])
+        # Filter entries by kb_id for vectorized search
+        kb_indices = [i for i, e in enumerate(_SEMANTIC_CACHE) if e["kb_id"] == kb_id]
+        if not kb_indices:
+            return None
+
+        # Get similarities for this KB's entries only
+        if _MATRIX_DIRTY:
+            _rebuild_matrix()
+
+        if _MATRIX_CACHE is not None:
+            # Use vectorized cosine for this KB's subset
+            kb_matrix = _MATRIX_CACHE[kb_indices]
+            query_norm = np.linalg.norm(query_arr)
+            if query_norm > 0:
+                query_normalized = query_arr / query_norm
+                similarities = kb_matrix @ query_normalized
+                best_idx = int(np.argmax(similarities))
+                best_sim = float(similarities[best_idx])
+
+                if best_sim >= similarity_threshold:
+                    best_entry = _SEMANTIC_CACHE[kb_indices[best_idx]]
+                    logger.info(
+                        "Semantic cache vector hit",
+                        query=query,
+                        matched_similarity=round(best_sim, 4),
+                        threshold=similarity_threshold,
+                        kb_id=kb_id,
+                    )
+                    return best_entry["response"]
+        else:
+            # Fallback to scalar cosine
+            best_sim = 0.0
+            best_match: dict[str, Any] | None = None
+            for idx in kb_indices:
+                entry = _SEMANTIC_CACHE[idx]
+                sim = cosine_similarity(query_arr, entry["vector"])
                 if sim > best_sim:
                     best_sim = sim
                     if sim >= similarity_threshold:
                         best_match = entry["response"]
 
-        if best_match and best_sim >= similarity_threshold:
-            logger.info(
-                "Semantic cache vector hit",
-                query=query,
-                matched_similarity=round(best_sim, 4),
-                threshold=similarity_threshold,
-                kb_id=kb_id,
-            )
-            return best_match
+            if best_match and best_sim >= similarity_threshold:
+                logger.info(
+                    "Semantic cache vector hit (fallback)",
+                    query=query,
+                    matched_similarity=round(best_sim, 4),
+                    threshold=similarity_threshold,
+                    kb_id=kb_id,
+                )
+                return best_match
 
     return None
 
@@ -101,24 +280,32 @@ def store_semantic_cache(
 ) -> None:
     """
     Save a successfully verified analysis to the semantic cache.
-    Evicts oldest entries when capacity exceeds _MAX_CACHE_ENTRIES.
+    Evicts oldest entries when capacity exceeds _MAX_CACHE_ENTRIES (handled by deque).
     """
     if not query_vector or not response_data:
         return
 
     with _CACHE_LOCK:
-        if len(_SEMANTIC_CACHE) >= _MAX_CACHE_ENTRIES:
-            _SEMANTIC_CACHE.pop(0)
+        entry = {
+            "kb_id": kb_id,
+            "query": query,
+            "vector": np.asarray(query_vector, dtype=np.float32),
+            "response": response_data,
+            "timestamp": time.time(),
+        }
+        _SEMANTIC_CACHE.append(entry)
+        _MATRIX_DIRTY = True
 
-        _SEMANTIC_CACHE.append(
-            {
-                "kb_id": kb_id,
-                "query": query,
-                "vector": query_vector,
-                "response": response_data,
-            }
-        )
+    _maybe_persist()
     logger.debug("Stored response in semantic cache", query=query, kb_id=kb_id)
+
+
+def clear_semantic_cache() -> None:
+    """Clear the semantic cache (useful for testing)."""
+    global _SEMANTIC_CACHE, _MATRIX_DIRTY
+    with _CACHE_LOCK:
+        _SEMANTIC_CACHE.clear()
+        _MATRIX_DIRTY = True
 
 
 def prune_context_tokens(context: str, max_chars: int = 6000) -> str:
@@ -165,3 +352,7 @@ def prune_context_tokens(context: str, max_chars: int = 6000) -> str:
             pruned = truncated + "..."
 
     return pruned
+
+
+# Load persisted cache on module import
+_load_persisted_cache()

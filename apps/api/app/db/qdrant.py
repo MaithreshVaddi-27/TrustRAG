@@ -1,5 +1,5 @@
 """
-TRUSTRAG — Qdrant vector database client.
+TRUSTRAG — Qdrant vector database client (Async).
 
 Handles collection initialization and drops.
 Separates knowledge bases into independent Qdrant collections.
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models
 
 from app.core.config import get_model_config, get_settings
@@ -19,15 +19,15 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-_client: QdrantClient | None = None
+_client: AsyncQdrantClient | None = None
 
 
-def get_qdrant_client() -> QdrantClient:
-    """Return a thread-safe Qdrant client singleton."""
+async def get_qdrant_client() -> AsyncQdrantClient:
+    """Return an async Qdrant client singleton."""
     global _client
     if _client is None:
         settings = get_settings()
-        logger.info("Initializing Qdrant client", url=settings.qdrant_url)
+        logger.info("Initializing async Qdrant client", url=settings.qdrant_url)
         try:
             # Support embedded local Qdrant directly via pip qdrant-client rust engine
             if (
@@ -45,16 +45,21 @@ def get_qdrant_client() -> QdrantClient:
 
                 if isinstance(storage_path, Path):
                     storage_path.mkdir(parents=True, exist_ok=True)
-                    _client = QdrantClient(path=str(storage_path))
+                    _client = AsyncQdrantClient(path=str(storage_path))
                 else:
-                    _client = QdrantClient(location=str(storage_path))
+                    _client = AsyncQdrantClient(location=str(storage_path))
             elif settings.qdrant_api_key:
-                _client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+                _client = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
             else:
-                _client = QdrantClient(url=settings.qdrant_url)
+                _client = AsyncQdrantClient(url=settings.qdrant_url)
         except Exception as exc:
-            raise VectorStoreError("Failed to initialize Qdrant client", detail=str(exc)) from exc
+            raise VectorStoreError("Failed to initialize async Qdrant client", detail=str(exc)) from exc
     return _client
+
+
+def get_qdrant_client_sync() -> AsyncQdrantClient:
+    """Return the async Qdrant client singleton (for sync callers)."""
+    return get_qdrant_client()
 
 
 def get_collection_name(kb_id: str) -> str:
@@ -70,13 +75,13 @@ async def init_kb_collection(kb_id: str) -> None:
       - Dense vector parameters: Cosine distance, 384 dimensions (HuggingFace)
       - Sparse vector parameters: BM25/keyword sparse query configuration
     """
-    client = get_qdrant_client()
+    client = await get_qdrant_client()
     collection_name = get_collection_name(kb_id)
     cfg = get_model_config()
 
     try:
         # Check if already exists
-        exists = client.collection_exists(collection_name)
+        exists = await client.collection_exists(collection_name)
         if exists:
             logger.debug("Qdrant collection already exists", collection=collection_name)
             return
@@ -87,7 +92,7 @@ async def init_kb_collection(kb_id: str) -> None:
             dense_dim=cfg.embedding_dimensionality,
         )
 
-        client.create_collection(
+        await client.create_collection(
             collection_name=collection_name,
             vectors_config=models.VectorParams(
                 size=cfg.embedding_dimensionality,
@@ -123,13 +128,13 @@ async def init_kb_collection(kb_id: str) -> None:
 
 async def delete_kb_collection(kb_id: str) -> None:
     """Drop the Qdrant collection associated with this KB."""
-    client = get_qdrant_client()
+    client = await get_qdrant_client()
     collection_name = get_collection_name(kb_id)
 
     try:
-        if client.collection_exists(collection_name):
+        if await client.collection_exists(collection_name):
             logger.info("Dropping Qdrant collection", collection=collection_name)
-            client.delete_collection(collection_name)
+            await client.delete_collection(collection_name)
             logger.info("Qdrant collection dropped", collection=collection_name)
     except Exception as exc:
         raise VectorStoreError(
@@ -137,11 +142,11 @@ async def delete_kb_collection(kb_id: str) -> None:
         ) from exc
 
 
-def health_check() -> bool:
+async def health_check() -> bool:
     """Verify connectivity to Qdrant cluster."""
     try:
-        client = get_qdrant_client()
-        client.get_collections()
+        client = await get_qdrant_client()
+        await client.get_collections()
         return True
     except Exception as exc:
         logger.warning("Qdrant health check failed", error=str(exc))

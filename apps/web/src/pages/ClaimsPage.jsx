@@ -68,7 +68,7 @@ export default function ClaimsPage() {
               >
                 <span>{st}</span>
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  className={`text-[10px] px-1.5 py-[2px] rounded-full font-mono ${
                     active ? 'bg-primary-700/80 text-white' : 'bg-surface-800 text-slate-400'
                   }`}
                 >

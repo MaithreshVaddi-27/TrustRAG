@@ -123,7 +123,7 @@ async def index_parsed_chunks(
             if has_more and cfg.embedding_provider == "google_genai":
                 await asyncio.sleep(1.0)
 
-        qdrant_client = get_qdrant_client()
+        qdrant_client = await get_qdrant_client()
         collection_name = get_collection_name(kb_id_str)
 
         # 4. Construct Qdrant points
@@ -166,7 +166,7 @@ async def index_parsed_chunks(
         batch_size = 100
         for offset in range(0, len(points), batch_size):
             batch = points[offset : offset + batch_size]
-            qdrant_client.upsert(collection_name=collection_name, points=batch)
+            await qdrant_client.upsert(collection_name=collection_name, points=batch)
 
         # 5. Mark document completed
         await doc_coll.update_one({"_id": doc_id}, {"$set": {"ingestion_status": "completed"}})
@@ -190,7 +190,7 @@ async def index_parsed_chunks(
     finally:
         from app.core.memory import trim_memory
 
-        trim_memory()
+        await asyncio.to_thread(trim_memory)
 
 
 def hashlib_qdrant_id(doc_id_str: str, chunk_index: int) -> str:

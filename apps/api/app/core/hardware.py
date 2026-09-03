@@ -18,6 +18,10 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Module-level cache for hardware profile
+_hardware_profile_cache: dict[str, Any] | None = None
+_HARDWARE_PROFILE_TTL_SECONDS = 300  # 5 minutes
+
 
 def get_optimal_torch_device() -> str:
     """
@@ -101,6 +105,33 @@ def get_system_memory_info() -> dict[str, Any]:
         "used_gb": used_gb,
         "usage_pct": usage_pct,
     }
+
+
+def get_cached_hardware_profile() -> dict[str, Any]:
+    """
+    Get hardware profile with caching.
+    Only runs the expensive subprocess probe once per TTL period.
+    """
+    global _hardware_profile_cache
+    import time
+    
+    if _hardware_profile_cache is not None:
+        # Check if cache is still valid
+        cache_time = _hardware_profile_cache.get("_cache_time", 0)
+        if time.time() - cache_time < _HARDWARE_PROFILE_TTL_SECONDS:
+            return _hardware_profile_cache
+    
+    # Cache miss or expired - run fresh detection
+    profile = detect_hardware_profile()
+    profile["_cache_time"] = time.time()
+    _hardware_profile_cache = profile
+    return profile
+
+
+def clear_hardware_profile_cache() -> None:
+    """Clear the hardware profile cache (e.g., on admin request)."""
+    global _hardware_profile_cache
+    _hardware_profile_cache = None
 
 
 def detect_hardware_profile() -> dict[str, Any]:

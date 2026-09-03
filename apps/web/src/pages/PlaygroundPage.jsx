@@ -34,8 +34,9 @@ export default function PlaygroundPage() {
   const [copied, setCopied] = useState(false)
   const [elapsedSec, setElapsedSec] = useState(0)
 
-  const streamRef = useRef(null)
-  const pollTimerRef = useRef(null)
+const streamRef = useRef(null)
+const pollTimerRef = useRef(null)
+const finalizedRef = useRef(false)
 
   // Track elapsed timer during execution
   useEffect(() => {
@@ -77,7 +78,6 @@ export default function PlaygroundPage() {
   const { data: providersData } = useQuery({
     queryKey: ['model-providers'],
     queryFn: modelService.getProviders,
-    refetchInterval: 15000,
   })
 
   const [selectedProvider, setSelectedProvider] = useState('ollama')
@@ -86,7 +86,7 @@ export default function PlaygroundPage() {
   const [selectedEmbeddingProvider, setSelectedEmbeddingProvider] = useState('ollama')
   const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState('embeddinggemma:300m-qat-q8_0')
 
-  // Auto-sync embedding defaults when provider data loads
+  // Auto-sync embedding defaults when provider data loads (once on mount)
   useEffect(() => {
     if (providersData?.active_embedding_provider) {
       setSelectedEmbeddingProvider(providersData.active_embedding_provider)
@@ -94,7 +94,7 @@ export default function PlaygroundPage() {
     if (providersData?.active_embedding_model) {
       setSelectedEmbeddingModel(providersData.active_embedding_model)
     }
-  }, [providersData?.active_embedding_provider, providersData?.active_embedding_model])
+  }, [])
 
   const activeProviderInfo = providersData?.providers?.[selectedProvider]
   const availableModels = activeProviderInfo?.models?.length 
@@ -173,7 +173,10 @@ export default function PlaygroundPage() {
         if (snap && (snap.status === 'completed' || snap.status === 'abstained' || snap.status === 'failed')) {
           clearInterval(pollTimerRef.current)
           pollTimerRef.current = null
-          await fetchFinalAnalysis(analysisId)
+          if (!finalizedRef.current) {
+            finalizedRef.current = true
+            await fetchFinalAnalysis(analysisId)
+          }
         }
       } catch {
         // Ignore background polling errors
@@ -205,16 +208,23 @@ export default function PlaygroundPage() {
       })
 
       // 2. Connect to SSE stream
+      finalizedRef.current = false
       streamRef.current = openAnalysisStream(analysisCreated.id, {
         onEvent: (eventData) => {
           setTraceEvents(prev => [...prev, eventData])
         },
         onError: async () => {
           // If SSE fails, wait a bit then fetch final state anyway
-          await fetchFinalAnalysis(analysisCreated.id)
+          if (!finalizedRef.current) {
+            finalizedRef.current = true
+            await fetchFinalAnalysis(analysisCreated.id)
+          }
         },
         onComplete: async () => {
-          await fetchFinalAnalysis(analysisCreated.id)
+          if (!finalizedRef.current) {
+            finalizedRef.current = true
+            await fetchFinalAnalysis(analysisCreated.id)
+          }
         }
       })
 
@@ -237,6 +247,8 @@ export default function PlaygroundPage() {
   }
 
   async function fetchFinalAnalysis(analysisId, maxPollAttempts = 45) {
+    if (finalizedRef.current) return
+    finalizedRef.current = true
     let attempts = 0
     let lastFetched = null
 
@@ -487,7 +499,7 @@ export default function PlaygroundPage() {
                     }`}
                   >
                     <span>Ollama</span>
-                    <span className="text-[9px] px-1 py-0.2 rounded bg-surface-950 border border-slate-700/60 text-emerald-400 font-mono">:11434</span>
+                    <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-emerald-400 font-mono">:11434</span>
                   </button>
                   <button
                     type="button"
@@ -500,7 +512,7 @@ export default function PlaygroundPage() {
                     }`}
                   >
                     <span>llama.cpp</span>
-                    <span className="text-[9px] px-1 py-0.2 rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">:8081</span>
+                    <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">:8081</span>
                   </button>
                   <button
                     type="button"
@@ -601,7 +613,7 @@ export default function PlaygroundPage() {
                     }`}
                   >
                     <span>Local Ollama</span>
-                    <span className="text-[9px] px-1 py-0.2 rounded bg-surface-950 border border-slate-700/60 text-emerald-400 font-mono">768d</span>
+                    <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-emerald-400 font-mono">768d</span>
                   </button>
                   <button
                     type="button"
@@ -614,7 +626,7 @@ export default function PlaygroundPage() {
                     }`}
                   >
                     <span>Local llama.cpp</span>
-                    <span className="text-[9px] px-1 py-0.2 rounded bg-surface-950 border border-slate-700/60 text-amber-400 font-mono">768d</span>
+                    <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-amber-400 font-mono">768d</span>
                   </button>
                   <button
                     type="button"
@@ -627,7 +639,7 @@ export default function PlaygroundPage() {
                     }`}
                   >
                     <span>Local BGE</span>
-                    <span className="text-[9px] px-1 py-0.2 rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">384d</span>
+                    <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">384d</span>
                   </button>
                   <button
                     type="button"

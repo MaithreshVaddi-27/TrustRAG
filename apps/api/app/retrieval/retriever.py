@@ -60,7 +60,7 @@ async def dense_search(
 ) -> list[Any]:
     """Retrieve top_k chunks using dense vector embeddings with LRU cache."""
     try:
-        client = get_qdrant_client()
+        client = await get_qdrant_client()
         collection_name = get_collection_name(kb_id)
 
         # Check LRU cache first to eliminate redundant computation
@@ -76,7 +76,7 @@ async def dense_search(
 
         # Safely align query vector dimension to collection's expected dimension
         try:
-            col_info = client.get_collection(collection_name)
+            col_info = await client.get_collection(collection_name)
             target_dim = getattr(col_info.config.params.vectors, "size", None)
             if target_dim:
                 if len(query_vector) > target_dim:
@@ -107,7 +107,7 @@ async def dense_search(
 async def sparse_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
     """Retrieve top_k chunks using token-frequency sparse representations."""
     try:
-        client = get_qdrant_client()
+        client = await get_qdrant_client()
         collection_name = get_collection_name(kb_id)
 
         # Generate token weights with query-noise stopword filtering
@@ -117,7 +117,7 @@ async def sparse_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
 
         sparse_vec = models.SparseVector(indices=sparse_rep["indices"], values=sparse_rep["values"])
 
-        response = client.query_points(
+        response = await client.query_points(
             collection_name=collection_name,
             query=sparse_vec,
             using="sparse-text",

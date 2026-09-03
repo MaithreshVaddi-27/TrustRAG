@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter
 
 from app.core.config import get_model_config, get_settings
+from app.core.hardware import get_cached_hardware_profile
 from app.core.model_registry import registry_status
 from app.db.mongodb import health_check as mongo_health_check
 from app.db.qdrant import health_check as qdrant_health_check
@@ -35,7 +36,7 @@ async def health() -> dict:
     Individual service statuses are in `services`.
     """
     mongo_ok = await mongo_health_check()
-    qdrant_ok = qdrant_health_check()
+    qdrant_ok = await qdrant_health_check()
 
     services = {
         "mongodb": "ok" if mongo_ok else "degraded",
@@ -47,8 +48,6 @@ async def health() -> dict:
     cfg = get_model_config()
     settings = get_settings()
 
-    from app.core.hardware import detect_hardware_profile
-
     return {
         "status": overall_status,
         "timestamp": datetime.now(UTC).isoformat(),
@@ -57,6 +56,6 @@ async def health() -> dict:
         "environment": settings.app_env,
         "services": services,
         "models": registry_status(),
-        "hardware": detect_hardware_profile(),
+        "hardware": get_cached_hardware_profile(),
         "supported_formats": cfg.supported_formats,
     }

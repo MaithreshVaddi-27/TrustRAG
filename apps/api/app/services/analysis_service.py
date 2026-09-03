@@ -26,8 +26,56 @@ from app.core.exceptions import AuthorizationError, NotFoundError
 from app.core.logging import get_logger
 from app.db.mongodb import Collections, get_collection
 from app.services.kb_service import get_kb
+from app.verification.verdict import (
+    ReliabilityStatus,
+    Thresholds,
+    compute_verdict,
+    verdict_from_state,
+)
 
 logger = get_logger(__name__)
+
+# ─── In-process SSE Pub/Sub ──────────────────────────────────────────────────
+# Maps analysis_id -> set of asyncio.Queue subscribers
+_analysis_subscribers: dict[str, set[asyncio.Queue]] = {}
+_subscribers_lock = asyncio.Lock()
+
+
+async def _subscribe_to_analysis(analysis_id: str) -> asyncio.Queue:
+    """Subscribe to real-time events for an analysis."""
+    queue: asyncio.Queue = asyncio.Queue()
+    async with _subscribers_lock:
+        if analysis_id not in _analysis_subscribers:
+            _analysis_subscribers[analysis_id] = set()
+        _analysis_subscribers[analysis_id].add(queue)
+    return queue
+
+
+async def _unsubscribe_from_analysis(analysis_id: str, queue: asyncio.Queue) -> None:
+    """Unsubscribe from analysis events."""
+    async with _subscribers_lock:
+        if analysis_id in _analysis_subscribers:
+            _analysis_subscribers[analysis_id].discard(queue)
+            if not _analysis_subscribers[analysis_id]:
+                del _analysis_subscribers[analysis_id]
+
+
+async def _publish_analysis_event(
+    analysis_id: str, event: str, data: dict[str, Any]
+) -> None:
+    """Publish an event to all subscribers of an analysis."""
+    async with _subscribers_lock:
+        if analysis_id in _analysis_subscribers:
+            event_data = {
+                "event": event,
+                "timestamp": datetime.now(UTC).isoformat(),
+                "data": data,
+            }
+            for queue in _analysis_subscribers[analysis_id]:
+                try:
+                    queue.put_nowait(event_data)
+                except asyncio.QueueFull:
+                    logger.warning("SSE subscriber queue full, dropping event", analysis_id=analysis_id)
 
 
 def serialize_analysis(doc: Mapping[str, Any]) -> AnalysisResponse:
@@ -244,7 +292,7 @@ async def get_analysis_trace(analysis_id_str: str, user_id_str: str) -> list[Tra
 async def add_trace_event(
     analysis_id_str: str, event: str, data: dict[str, Any] | None = None
 ) -> TraceEventResponse:
-    """Insert a new trace event into MongoDB."""
+    """Insert a new trace event into MongoDB and publish to SSE subscribers."""
     if data is None:
         data = {}
     trace_coll = get_collection(Collections.TRACE_EVENTS)
@@ -255,6 +303,10 @@ async def add_trace_event(
         "data": data,
     }
     await trace_coll.insert_one(evt_doc)
+
+    # Publish to in-process SSE subscribers (replaces MongoDB polling)
+    await _publish_analysis_event(analysis_id_str, event, data)
+
     return serialize_trace(evt_doc)
 
 
@@ -262,52 +314,41 @@ async def sse_event_generator(
     analysis_id_str: str, user_id_str: str
 ) -> AsyncGenerator[dict[str, Any], None]:
     """
-    Generator yielding trace events as Server-Sent Events (SSE).
-    Frontend relies on this for real-time trace logging.
+    Generator yielding trace events as Server-Sent Events (SSE) via in-process pub/sub.
 
+    Frontend relies on this for real-time trace logging.
     If the connection drops, trace history is fully stored in MongoDB
     and retrieved via the get_analysis_trace function.
     """
     # Verify access permission first
     await get_analysis(analysis_id_str, user_id_str)
 
-    last_seen_id = None
-    trace_coll = get_collection(Collections.TRACE_EVENTS)
+    # Subscribe to real-time events
+    queue = await _subscribe_to_analysis(analysis_id_str)
 
-    # Loop until terminal event or 120 seconds of no new trace events
-    no_event_ticks = 0
-    while no_event_ticks < 120:
-        query = {"analysis_id": ObjectId(analysis_id_str)}
-        if last_seen_id:
-            query["_id"] = {"$gt": last_seen_id}
+    try:
+        no_event_ticks = 0
+        while no_event_ticks < 120:
+            try:
+                # Wait for event with timeout (1 second)
+                event_data = await asyncio.wait_for(queue.get(), timeout=1.0)
+                no_event_ticks = 0
+                yield event_data
 
-        cursor = trace_coll.find(query).sort("timestamp", 1)
-        has_new = False
-        async for doc in cursor:
-            has_new = True
-            no_event_ticks = 0
-            last_seen_id = doc["_id"]
-            yield {
-                "event": doc["event"],
-                "timestamp": doc["timestamp"].isoformat(),
-                "data": doc.get("data", {}),
-            }
-
-            # Terminal event checks
-            if doc["event"] in ["analysis.completed", "analysis.abstained", "analysis.failed"]:
-                return
-
-        if not has_new:
-            no_event_ticks += 1
-            # Periodic heartbeat ping keeps reverse proxies (Render/Cloudflare) alive
-            if no_event_ticks % 3 == 0:
-                yield {
-                    "event": "ping",
-                    "timestamp": datetime.now(UTC).isoformat(),
-                    "data": {},
-                }
-
-        await asyncio.sleep(1.0)
+                # Terminal event checks
+                if event_data["event"] in ["analysis.completed", "analysis.abstained", "analysis.failed"]:
+                    return
+            except asyncio.TimeoutError:
+                no_event_ticks += 1
+                # Periodic heartbeat ping keeps reverse proxies (Render/Cloudflare) alive
+                if no_event_ticks % 3 == 0:
+                    yield {
+                        "event": "ping",
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "data": {},
+                    }
+    finally:
+        await _unsubscribe_from_analysis(analysis_id_str, queue)
 
 
 # Hardware-aware global concurrency limiter to protect system resources
@@ -397,17 +438,23 @@ async def run_analysis_pipeline(
             )
 
         answer = final_state["answer"]
-        score = final_state.get("reliability_score")
         cfg = get_model_config()
 
-        if answer == "ABSTAIN":
+        thresholds = Thresholds(
+            minimum_evidence_coverage=cfg.minimum_evidence_coverage,
+            maximum_contradiction_rate=cfg.maximum_contradiction_rate,
+            abstain_below=cfg.abstain_below,
+        )
+
+        verdict = verdict_from_state(final_state, thresholds)
+
+        if verdict.reliability_status == ReliabilityStatus.ABSTAINED:
             await add_trace_event(
                 analysis_id_str,
                 "analysis.abstained",
                 {"message": "Agent reasoning resulted in abstention"},
             )
             status_value = "abstained"
-            reliability_status = "ABSTAINED"
         else:
             await add_trace_event(
                 analysis_id_str,
@@ -415,12 +462,6 @@ async def run_analysis_pipeline(
                 {"message": "Answer generation completed successfully"},
             )
             status_value = "completed"
-            if final_state["verdict_status"] == "PASS":
-                reliability_status = "TRUSTED"
-            elif score is not None and score >= cfg.abstain_below:
-                reliability_status = "UNCERTAIN"
-            else:
-                reliability_status = "FAILED"
 
         # Update final state in database
         await analyses_coll.update_one(
@@ -429,10 +470,13 @@ async def run_analysis_pipeline(
                 "$set": {
                     "status": status_value,
                     "answer": answer,
-                    "reliability": {"score": score, "status": reliability_status},
+                    "reliability": {
+                        "score": verdict.reliability_score,
+                        "status": verdict.reliability_status.value,
+                    },
                     "diagnosis": {
-                        "type": final_state.get("diagnosis_type"),
-                        "failures": final_state.get("diagnosis_failures", []),
+                        "type": verdict.diagnosis_type.value,
+                        "failures": verdict.diagnosis_failures,
                     },
                     "updated_at": datetime.now(UTC),
                 }
@@ -482,9 +526,10 @@ async def run_analysis_pipeline(
         )
     finally:
         try:
+            import asyncio
             from app.core.memory import trim_memory
 
-            trim_memory()
+            await asyncio.to_thread(trim_memory)
         except Exception as trim_exc:
             logger.debug("Post-analysis memory compaction skipped", error=str(trim_exc))
 

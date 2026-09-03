@@ -242,7 +242,7 @@ async def execute_web_search(
             elif not url:
                 combined.append(d_items[i])
 
-    # Cap to max_results * 2
-    final_results = combined[: max_results * 2]
+    # Cap to max_results total
+    final_results = combined[:max_results]
     logger.info("Hybrid web search completed", count=len(final_results))
     return final_results

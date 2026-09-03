@@ -23,6 +23,8 @@ llm:
   framework: langchain
   # Provider options: ollama, llama_cpp, google_genai, nvidia
   provider: ollama
+  ollama_base_url: "http://localhost:11434"
+  llamacpp_base_url: "http://localhost:8081/v1"
   # Supported local models:
   #   ollama:
   #     - granite4.2:3b-q4_K_M

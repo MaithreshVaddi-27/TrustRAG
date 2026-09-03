@@ -378,7 +378,7 @@ class CachedEmbeddingsWrapper(Embeddings):
 @lru_cache(maxsize=8)
 def get_embedding_model(provider: str | None = None, model: str | None = None) -> Embeddings:
     """
-    Return the embedding model.
+    Return the embedding model wrapped with persistent disk cache.
 
     Supports:
       - ollama: Local Ollama embeddings (e.g. embeddinggemma:300m-qat-q8_0, nomic-embed-text)
@@ -391,6 +391,11 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
 
     active_provider = (provider or cfg.embedding_provider).lower()
     active_model = model or cfg.embedding_model
+
+    def _wrap_with_cache(base_emb):
+        """Wrap embedding model with persistent disk cache."""
+        from app.core.model_registry import CachedEmbeddingsWrapper
+        return CachedEmbeddingsWrapper(base_emb, model_name=active_model)
 
     # ── Option 1: Local Ollama Embeddings ───────────────────────────────────────
     if active_provider == "ollama" or (
@@ -405,10 +410,10 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
             model=active_model,
             base_url=settings.ollama_base_url,
         )
-        return OllamaEmbeddings(
+        return _wrap_with_cache(OllamaEmbeddings(
             model=active_model or "embeddinggemma:300m-qat-q8_0",
             base_url=settings.ollama_base_url,
-        )
+        ))
 
     # ── Option 1b: Local llama.cpp Embeddings ───────────────────────────────────
     if active_provider in ("llamacpp", "llama_cpp") or (
@@ -421,10 +426,10 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
             model=active_model,
             base_url=settings.llamacpp_base_url,
         )
-        return LlamaCppEmbeddings(
+        return _wrap_with_cache(LlamaCppEmbeddings(
             model=active_model or "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
             base_url=settings.llamacpp_base_url,
-        )
+        ))
 
     # ── Option 2: NVIDIA NIM Embeddings ─────────────────────────────────────────
     if active_provider in ("nvidia", "nim"):
@@ -440,11 +445,11 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
             model=active_model,
         )
         try:
-            return NVIDIAEmbeddings(
+            return _wrap_with_cache(NVIDIAEmbeddings(
                 model=active_model,
                 api_key=settings.nvidia_api_key,
                 truncate="END",
-            )
+            ))
         except Exception as exc:
             raise ConfigurationError(
                 f"Failed to initialize NVIDIA embedding model '{active_model}'",
@@ -461,11 +466,11 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
             dimensionality=cfg.embedding_dimensionality,
         )
         try:
-            return GoogleGenerativeAIEmbeddings(
+            return _wrap_with_cache(GoogleGenerativeAIEmbeddings(
                 model=active_model,
                 google_api_key=settings.gemini_api_key,
                 output_dimensionality=cfg.embedding_dimensionality,
-            )
+            ))
         except Exception as exc:
             raise ConfigurationError(
                 f"Failed to initialize Google embedding model '{active_model}'",
@@ -523,7 +528,7 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
                     "Loaded local embedding model directly from snapshot cache",
                     path=str(local_snapshot),
                 )
-                return BGEAwareHuggingFaceEmbeddings(base_emb, active_model)  # type: ignore[return-value]
+                return _wrap_with_cache(BGEAwareHuggingFaceEmbeddings(base_emb, active_model))
             except Exception as snap_err:
                 logger.debug(
                     "Local snapshot load failed, falling back to standard loader",
@@ -540,7 +545,7 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
                     encode_kwargs={"normalize_embeddings": True},
                     model_kwargs=offline_kwargs,
                 )
-                return BGEAwareHuggingFaceEmbeddings(base_emb, active_model)  # type: ignore[return-value]
+                return _wrap_with_cache(BGEAwareHuggingFaceEmbeddings(base_emb, active_model))
             except Exception as offline_err:
                 logger.debug(
                     "Offline cache fast-path fallback, attempting standard load",
@@ -553,7 +558,7 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
             encode_kwargs={"normalize_embeddings": True},
             model_kwargs=model_kwargs,
         )
-        return BGEAwareHuggingFaceEmbeddings(base_emb, active_model)  # type: ignore[return-value]
+        return _wrap_with_cache(BGEAwareHuggingFaceEmbeddings(base_emb, active_model))
     except Exception as exc:
         raise ConfigurationError(
             f"Failed to initialize embedding model '{active_model}'",
