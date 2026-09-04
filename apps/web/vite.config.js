@@ -41,6 +41,7 @@ export default defineConfig({
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'query-vendor': ['@tanstack/react-query'],
           'chart-vendor': ['recharts'],
+          'motion-vendor': ['motion/react'],
           'ui-vendor': ['lucide-react', 'clsx', 'date-fns', 'axios'],
         },
       },
