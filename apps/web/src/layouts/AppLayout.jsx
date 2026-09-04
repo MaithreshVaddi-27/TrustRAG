@@ -52,9 +52,9 @@ export default function AppLayout({ children }) {
   const [isMobileOpen, setIsMobileOpen] = useState(false)
 
   // Motion values for spring animations
-  const sidebarWidth = useSpring(isCollapsed ? 72 : 240, { damping: 1.0, stiffness: 300 })
+  const sidebarWidth = useSpring(isCollapsed ? 72 : 240, { damping: 15, stiffness: 150 })
   const sidebarOpacity = useMotionValue(1)
-  const mobileDrawerX = useSpring(isMobileOpen ? 0 : -256, { damping: 0.8, stiffness: 300 })
+  const mobileDrawerX = useSpring(isMobileOpen ? 0 : -256, { damping: 15, stiffness: 150 })
   
   // Track if we're currently animating
 
@@ -165,7 +165,7 @@ export default function AppLayout({ children }) {
           <motion.div
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ type: 'spring', damping: 1.0, response: 0.4 }}
+            transition={{ type: 'spring', damping: 15, stiffness: 150 }}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/40 border border-emerald-800/50 text-[11px] font-mono text-emerald-300 shadow-sm shadow-emerald-950/30"
           >
             <motion.span
@@ -259,7 +259,7 @@ export default function AppLayout({ children }) {
             'flex flex-col border-r border-slate-800/80 bg-surface-900/95 backdrop-blur-xl z-50 shrink-0',
             'hidden md:flex',
           )}
-          transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+          transition={{ type: 'spring', damping: 15, stiffness: 150 }}
         >
           {/* Navigation Links */}
           <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
@@ -283,7 +283,7 @@ export default function AppLayout({ children }) {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+                transition={{ type: 'spring', damping: 15, stiffness: 150 }}
                 className="p-2.5 rounded-xl bg-surface-800/40 border border-slate-800 flex items-center gap-2.5"
               >
                 <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
@@ -314,7 +314,7 @@ export default function AppLayout({ children }) {
           drag="x"
           dragConstraints={{ left: -drawerWidth, right: 0 }}
           dragElastic={0.2}
-          transition={{ type: 'spring', damping: 0.8, response: 0.3 }}
+          transition={{ type: 'spring', damping: 15, stiffness: 150 }}
         >
           {/* Mobile close button header */}
           <div className="flex items-center justify-between p-3 border-b border-slate-800">
@@ -350,7 +350,7 @@ export default function AppLayout({ children }) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+              transition={{ type: 'spring', damping: 15, stiffness: 150 }}
               className="p-2.5 rounded-xl bg-surface-800/40 border border-slate-800 flex items-center gap-2.5"
             >
               <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
@@ -397,7 +397,7 @@ function SidebarLink({ to, label, icon: Icon, badge, isCollapsed }) {
               initial={{ height: 0 }}
               animate={{ height: 'calc(100% - 8px)' }}
               exit={{ height: 0 }}
-              transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+              transition={{ type: 'spring', damping: 15, stiffness: 150 }}
               className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-cyan-400 shadow-sm shadow-cyan-400"
             />
           )}
@@ -424,7 +424,7 @@ function SidebarLink({ to, label, icon: Icon, badge, isCollapsed }) {
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
-              transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+              transition={{ type: 'spring', damping: 15, stiffness: 150 }}
               className="px-1.5 py-[2px] rounded text-[10px] font-mono font-semibold bg-primary-500/20 text-primary-300 border border-primary-500/30"
             >
               {badge}
@@ -437,7 +437,7 @@ function SidebarLink({ to, label, icon: Icon, badge, isCollapsed }) {
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -8 }}
-              transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+              transition={{ type: 'spring', damping: 15, stiffness: 150 }}
               className="absolute left-full ml-2 px-2.5 py-1 rounded-lg bg-surface-800 border border-slate-700 text-xs text-slate-200 font-medium whitespace-nowrap pointer-events-none shadow-xl z-50"
             >
               {label}

@@ -77,11 +77,23 @@
 
 .animate-fade-in {
   animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--stagger-delay, 0s);
 }
 
 .animate-slide-up {
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--stagger-delay, 0s);
 }
+
+/* Auto-stagger direct children by 60ms each */
+.stagger-children > *:nth-child(1) { --stagger-delay: 0s; }
+.stagger-children > *:nth-child(2) { --stagger-delay: 0.06s; }
+.stagger-children > *:nth-child(3) { --stagger-delay: 0.12s; }
+.stagger-children > *:nth-child(4) { --stagger-delay: 0.18s; }
+.stagger-children > *:nth-child(5) { --stagger-delay: 0.24s; }
+.stagger-children > *:nth-child(6) { --stagger-delay: 0.30s; }
+.stagger-children > *:nth-child(7) { --stagger-delay: 0.36s; }
+.stagger-children > *:nth-child(8) { --stagger-delay: 0.42s; }
 
 .animate-pulse-slow {
   animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;

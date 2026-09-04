@@ -35,7 +35,7 @@ export default function ClaimsPage() {
 
   return (
     <AppLayout>
-      <div className="p-6 max-w-5xl mx-auto space-y-6 animate-fade-in">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6 animate-fade-in stagger-children">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -80,7 +80,7 @@ export default function ClaimsPage() {
         </div>
 
         {/* Search bar */}
-        <div className="glass-card p-3 flex items-center gap-3">
+        <div className="glass-card p-3.5 flex items-center gap-3">
           <Search size={16} className="text-slate-500 shrink-0 ml-1" />
           <input
             type="text"
@@ -120,7 +120,7 @@ export default function ClaimsPage() {
             </p>
           </div>
         ) : (
-          <div className="glass-card p-4 space-y-3">
+          <div className="glass-card p-5 space-y-3">
             <ClaimInspector claims={filteredClaims} />
           </div>
         )}

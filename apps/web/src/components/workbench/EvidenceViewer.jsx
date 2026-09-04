@@ -1,13 +1,14 @@
 import { useState, useMemo } from 'react'
 import { clsx } from 'clsx'
 import { BookOpen, Calendar, ExternalLink, Hash, Shield, ShieldAlert, Search, Globe, Database, Copy, Check } from 'lucide-react'
-import { motion } from 'motion/react'
+import { motion, useReducedMotion } from 'motion/react'
 
 /**
  * EvidenceViewer — Ultra-refined retrieved evidence viewer with live keyword filter,
  * source segregation (KB vs MCP Web), and score bars.
  */
 export function EvidenceViewer({ chunks = [] }) {
+  const reducedMotion = useReducedMotion()
   const [searchTerm, setSearchTerm] = useState('')
   const [sourceFilter, setSourceFilter] = useState('ALL') // 'ALL' | 'KB' | 'WEB'
   const [copiedIndex, setCopiedIndex] = useState(null)
@@ -141,8 +142,8 @@ function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
-      className="glass-card p-4 space-y-3 hover:border-cyan-500/40 hover:shadow-lg transition-all duration-200"
+      transition={reducedMotion ? { duration: 0 } : { type: 'spring', damping: 15, stiffness: 150 }}
+      className="glass-card p-5 space-y-3 hover:border-cyan-500/40 hover:shadow-lg transition-all duration-200"
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
@@ -191,7 +192,7 @@ function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
           )}
           initial={!expanded && isLong ? { maxHeight: 120 } : { maxHeight: 'none' }}
           animate={expanded || !isLong ? { maxHeight: 'none' } : { maxHeight: 120 }}
-          transition={{ type: 'spring', damping: 1.0, response: 0.4 }}
+          transition={reducedMotion ? { duration: 0 } : { type: 'spring', damping: 15, stiffness: 150 }}
           style={{ overflow: 'hidden' }}
         >
           {chunk.text}
@@ -205,7 +206,7 @@ function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
           >
             <motion.span
               animate={{ rotate: expanded ? 180 : 0 }}
-              transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+              transition={reducedMotion ? { duration: 0 } : { type: 'spring', damping: 15, stiffness: 150 }}
               className="inline-block"
             >
               {expanded ? '▲' : '▼'}

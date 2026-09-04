@@ -58,7 +58,7 @@ export default function ExperimentsPage() {
 
   return (
     <AppLayout>
-      <div className="p-6 max-w-5xl mx-auto space-y-6 animate-fade-in">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6 animate-fade-in stagger-children">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-white tracking-tight">Experiments</h1>
@@ -78,7 +78,7 @@ export default function ExperimentsPage() {
           <p className="section-heading">Available Configurations</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {EXPERIMENT_CONFIGS.map(({ name, label }) => (
-              <div key={name} className="glass-card p-3 flex items-center gap-3">
+              <div key={name} className="glass-card p-3.5 flex items-center gap-3">
                 <FlaskConical size={14} className="text-primary-400 shrink-0" />
                 <div>
                   <p className="text-sm font-medium text-slate-200">{label}</p>

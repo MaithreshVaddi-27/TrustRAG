@@ -53,7 +53,7 @@ export default function KnowledgeBasesPage() {
 
   return (
     <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-8 animate-fade-in">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-8 animate-fade-in stagger-children">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -80,7 +80,7 @@ export default function KnowledgeBasesPage() {
 
         {/* Search & Filter Bar */}
         {!isLoading && knowledgeBases.length > 0 && (
-          <div className="glass-card p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="glass-card p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="relative flex-1 max-w-md">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input

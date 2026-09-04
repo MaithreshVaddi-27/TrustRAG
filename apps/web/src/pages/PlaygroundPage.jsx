@@ -4,7 +4,7 @@ import {
   RotateCcw, Clock, AlertTriangle, ArrowRight, CornerDownLeft, Shield, FileCheck, Layers
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { motion } from 'motion/react'
+import { motion, useReducedMotion } from 'motion/react'
 import AppLayout from '@/layouts/AppLayout'
 import { ReliabilityBadge, StatusDot } from '@/components/workbench/ReliabilityBadge'
 import { ClaimInspector } from '@/components/workbench/ClaimInspector'
@@ -23,6 +23,7 @@ const SAMPLE_PRESETS = [
 ]
 
 export default function PlaygroundPage() {
+  const reducedMotion = useReducedMotion()
   const [query, setQuery] = useState('')
   const [kbId, setKbId] = useState('')
   const [loading, setLoading] = useState(false)
@@ -1020,7 +1021,7 @@ const finalizedRef = useRef(false)
               <div className="shrink-0 relative border-b border-slate-800/80 px-4 bg-surface-900/30">
                 <motion.div
                   layoutId="active-tab"
-                  transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+                  transition={reducedMotion ? { duration: 0 } : { type: 'spring', damping: 15, stiffness: 150 }}
                   className="absolute bottom-0 h-0.5 bg-gradient-to-r from-primary-500 to-cyan-400 shadow-glow-cyan"
                   style={{ width: 0 }} // width set by layout
                 />

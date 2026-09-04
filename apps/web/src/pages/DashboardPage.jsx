@@ -195,7 +195,7 @@ export default function DashboardPage() {
 
   return (
     <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-8 animate-fade-in">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-8 animate-fade-in stagger-children">
         {/* ── HERO BANNER ─────────────────────────────────────────────── */}
         <div className="glass-card relative overflow-hidden p-6 sm:p-8 border-primary-500/20 bg-gradient-to-br from-surface-900/90 via-surface-900/60 to-primary-950/20">
           {/* Subtle glowing ambient orb */}
