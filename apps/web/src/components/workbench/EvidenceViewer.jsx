@@ -125,6 +125,7 @@ export function EvidenceViewer({ chunks = [] }) {
             rank={i + 1}
             onCopy={() => handleCopy(chunk.text, i + 1)}
             isCopied={copiedIndex === i + 1}
+            reducedMotion={reducedMotion}
           />
         ))}
       </div>
@@ -132,7 +133,7 @@ export function EvidenceViewer({ chunks = [] }) {
   )
 }
 
-function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
+function EvidenceChunk({ chunk, rank, onCopy, isCopied, reducedMotion }) {
   const [expanded, setExpanded] = useState(false)
   const integrityOk = chunk.integrity_status === 'VERIFIED' || !chunk.integrity_status
   const isWeb = Boolean(chunk.url || chunk.method?.includes('web') || chunk.method?.includes('mcp') || chunk.chunk_id?.startsWith('web_'))
