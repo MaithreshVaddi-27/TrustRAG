@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useQuery } from '@tanstack/react-query'
-import { motion, useReducedMotion, useMotionValue, useDragControls, useTransform } from 'motion/react'
+import { motion, useReducedMotion, useMotionValue, useSpring, useDragControls, useTransform } from 'motion/react'
 import {
   Brain, Database, FileSearch,
   FlaskConical, GitMerge, LayoutDashboard, LogOut,
@@ -52,9 +52,9 @@ export default function AppLayout({ children }) {
   const [isMobileOpen, setIsMobileOpen] = useState(false)
 
   // Motion values for spring animations
-  const sidebarWidth = useMotionValue(isCollapsed ? 72 : 240) // w-[72px] = 72px, w-60 = 240px
+  const sidebarWidth = useSpring(isCollapsed ? 72 : 240, { damping: 1.0, stiffness: 300 })
   const sidebarOpacity = useMotionValue(1)
-  const mobileDrawerX = useMotionValue(isMobileOpen ? 0 : -256) // w-64 = 256px
+  const mobileDrawerX = useSpring(isMobileOpen ? 0 : -256, { damping: 0.8, stiffness: 300 })
   
   // Track if we're currently animating
 
@@ -67,10 +67,7 @@ export default function AppLayout({ children }) {
   useEffect(() => {
     const targetWidth = isCollapsed ? 72 : 240
     if (!reducedMotion) {
-      sidebarWidth.spring(targetWidth, { 
-        damping: 1.0, // Critically damped - no overshoot
-        response: 0.3,
-      })
+      sidebarWidth.set(targetWidth)
     } else {
       sidebarWidth.set(targetWidth)
     }
@@ -80,10 +77,7 @@ export default function AppLayout({ children }) {
   useEffect(() => {
     const targetX = isMobileOpen ? 0 : -256
     if (!reducedMotion) {
-      mobileDrawerX.spring(targetX, { 
-        damping: 0.8, // Slight bounce for momentum feel
-        response: 0.3,
-      })
+      mobileDrawerX.set(targetX)
     } else {
       mobileDrawerX.set(targetX)
     }
