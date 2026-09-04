@@ -67,7 +67,7 @@ export function FormattedAnswer({ content, className = '' }) {
               {children}
             </blockquote>
           ),
-          code: ({ node, className, children, ...props }) => {
+          code: ({ className, children, ...props }) => {
             const isBlock = className?.includes('language-')
             if (!isBlock) {
               return (

@@ -9,7 +9,7 @@ export default function NotFoundPage() {
           <ShieldAlert size={32} className="text-slate-500" />
         </div>
         <h1 className="text-display-sm text-white mb-3">404</h1>
-        <p className="text-body text-slate-400 mb-8">This page doesn't exist or has been moved.</p>
+        <p className="text-body text-slate-400 mb-8">This page doesn&apos;t exist or has been moved.</p>
         <Link
           to="/"
           className="btn-primary inline-flex"

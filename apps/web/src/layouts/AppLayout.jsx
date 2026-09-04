@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useQuery } from '@tanstack/react-query'
-import { motion, useReducedMotion, useMotionValue, useSpring, useDragControls, useTransform } from 'motion/react'
+import { motion, useReducedMotion, useMotionValue, useDragControls, useTransform } from 'motion/react'
 import {
   Brain, Database, FileSearch,
   FlaskConical, GitMerge, LayoutDashboard, LogOut,
@@ -57,7 +57,6 @@ export default function AppLayout({ children }) {
   const mobileDrawerX = useMotionValue(isMobileOpen ? 0 : -256) // w-64 = 256px
   
   // Track if we're currently animating
-  const [isAnimating, setIsAnimating] = useState(false)
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -68,11 +67,9 @@ export default function AppLayout({ children }) {
   useEffect(() => {
     const targetWidth = isCollapsed ? 72 : 240
     if (!reducedMotion) {
-      setIsAnimating(true)
       sidebarWidth.spring(targetWidth, { 
         damping: 1.0, // Critically damped - no overshoot
         response: 0.3,
-        onComplete: () => setIsAnimating(false)
       })
     } else {
       sidebarWidth.set(targetWidth)
@@ -381,8 +378,6 @@ export default function AppLayout({ children }) {
 }
 
 function SidebarLink({ to, label, icon: Icon, badge, isCollapsed }) {
-  const [isPressed, setIsPressed] = useState(false)
-  
   return (
     <NavLink
       to={to}
@@ -396,9 +391,6 @@ function SidebarLink({ to, label, icon: Icon, badge, isCollapsed }) {
           ? 'bg-primary-500/15 text-primary-300 border border-primary-500/30 shadow-sm shadow-primary-950/80'
           : 'text-slate-400 hover:text-slate-100 hover:bg-surface-800/60 border border-transparent',
       )}
-      onMouseDown={() => setIsPressed(true)}
-      onMouseUp={() => setIsPressed(false)}
-      onMouseLeave={() => setIsPressed(false)}
     >
       {({ isActive }) => (
         <motion.div

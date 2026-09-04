@@ -4,7 +4,7 @@ import {
   RotateCcw, Clock, AlertTriangle, ArrowRight, CornerDownLeft, Shield, FileCheck, Layers
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { motion, useSpring, useMotionValue } from 'motion/react'
+import { motion } from 'motion/react'
 import AppLayout from '@/layouts/AppLayout'
 import { ReliabilityBadge, StatusDot } from '@/components/workbench/ReliabilityBadge'
 import { ClaimInspector } from '@/components/workbench/ClaimInspector'
@@ -95,7 +95,7 @@ const finalizedRef = useRef(false)
     if (providersData?.active_embedding_model) {
       setSelectedEmbeddingModel(providersData.active_embedding_model)
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- run once on mount
 
   const activeProviderInfo = providersData?.providers?.[selectedProvider]
   const availableModels = activeProviderInfo?.models?.length 
