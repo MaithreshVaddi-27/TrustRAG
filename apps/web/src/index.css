@@ -2,7 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Custom base styles ──────────────────────────────────────────────────── */
+/* ── External CSS imports ──────────────────────────────────────────────────── */
+@import './styles/typography.css';
+@import './styles/animations.css';
+@import './styles/materials.css';
+
+/* ── Base resets ───────────────────────────────────────────────────────────── */
 @layer base {
   html {
     scroll-behavior: smooth;
@@ -12,446 +17,68 @@
   body {
     @apply bg-surface-950 text-slate-100 font-sans antialiased selection:bg-primary-500/20 selection:text-primary-300;
     font-feature-settings: 'cv11', 'ss01';
-    /* Optical sizing - system font automatically adjusts */
     font-optical-sizing: auto;
-    /* Size-specific tracking handled by utility classes */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
-  /* Display typography - negative tracking for large text */
-  .text-display {
-    @apply text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight;
-    letter-spacing: -0.02em;
-    line-height: 1.05;
-  }
-
-  .text-display-sm {
-    @apply text-2xl md:text-3xl font-bold tracking-tight;
-    letter-spacing: -0.015em;
-    line-height: 1.1;
-  }
-
-  /* Heading typography */
-  .text-heading-1 {
-    @apply text-3xl md:text-4xl font-bold tracking-tight;
-    letter-spacing: -0.01em;
-    line-height: 1.15;
-  }
-
-  .text-heading-2 {
-    @apply text-2xl md:text-3xl font-semibold tracking-tight;
-    letter-spacing: -0.005em;
-    line-height: 1.2;
-  }
-
-  .text-heading-3 {
-    @apply text-xl md:text-2xl font-semibold tracking-tight;
-    letter-spacing: 0;
-    line-height: 1.25;
-  }
-
-  /* Body typography - comfortable leading, near-zero tracking */
-  .text-body-lg {
-    @apply text-lg leading-relaxed;
-    letter-spacing: 0;
-  }
-
-  .text-body {
-    @apply text-base leading-relaxed;
-    letter-spacing: 0;
-  }
-
-  .text-body-sm {
-    @apply text-sm leading-relaxed;
-    letter-spacing: 0;
-  }
-
-  /* Caption / UI text - slight positive tracking for legibility at small sizes */
-  .text-caption {
-    @apply text-xs leading-normal;
-    letter-spacing: 0.01em;
-  }
-
-  .text-micro {
-    @apply text-[10px] leading-normal font-mono;
-    letter-spacing: 0.02em;
-  }
-
-  /* Code typography */
-  .text-code {
-    @apply font-mono text-sm;
-    letter-spacing: 0;
-  }
-
-  /* Focus ring — cyber cyan */
   :focus-visible {
     @apply outline-none ring-2 ring-primary-400 ring-offset-2 ring-offset-surface-950;
-  }
-
-  /* Scrollbar styling (sleek dark theme) */
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    @apply bg-surface-900;
-  }
-  ::-webkit-scrollbar-thumb {
-    @apply bg-slate-700/80 rounded-full hover:bg-primary-500/50 transition-colors;
   }
 }
 
 /* ── Component utilities ─────────────────────────────────────────────────── */
 @layer components {
-  /* Subtle cyber matrix grid background */
-  .bg-cyber-grid {
-    background-image: radial-gradient(rgba(14, 165, 233, 0.07) 1px, transparent 1px);
-    background-size: 28px 28px;
-  }
-
-  /* Ultra-premium glassmorphism card */
-  .glass-card {
-    @apply bg-surface-900/80 backdrop-blur-md border border-slate-800/80 rounded-2xl shadow-xl shadow-black/40 transition-all duration-200;
-  }
-
-  .glass-card-hover {
-    @apply glass-card hover:border-primary-500/40 hover:shadow-primary-950/30 hover:-translate-y-0.5;
-  }
-
-  /* Claim state badges */
   .badge-supported {
     @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium
            bg-emerald-950/60 text-emerald-300 border border-emerald-700/50 shadow-sm shadow-emerald-950/50;
   }
+
   .badge-contradicted {
     @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium
            bg-red-950/60 text-red-300 border border-red-700/50 shadow-sm shadow-red-950/50;
   }
+
   .badge-neutral {
     @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium
            bg-amber-950/60 text-amber-300 border border-amber-700/50 shadow-sm shadow-amber-950/50;
   }
+
   .badge-unknown {
     @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium
            bg-slate-800/80 text-slate-400 border border-slate-700/60;
   }
 
-  /* Reliability score band */
   .reliability-high   { @apply text-emerald-400; }
   .reliability-medium { @apply text-amber-400; }
   .reliability-low    { @apply text-red-400; }
 
-  /* Cyber primary button */
   .btn-primary {
     @apply px-4 py-2 bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-500 hover:to-cyan-500 active:from-primary-700 active:to-cyan-700 text-white text-sm font-semibold
            rounded-xl shadow-lg shadow-primary-950/60 hover:shadow-primary-900/50 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2;
   }
 
-  /* Secondary button */
   .btn-secondary {
     @apply px-4 py-2 bg-surface-800/80 hover:bg-surface-700/80 text-slate-300 hover:text-white text-sm font-medium
            rounded-xl border border-slate-700/80 hover:border-slate-600 transition-all duration-200 flex items-center justify-center gap-2;
   }
 
-  /* Danger button */
   .btn-danger {
     @apply px-3 py-1.5 bg-red-950/50 hover:bg-red-900/50 text-red-300 hover:text-red-100 text-xs font-medium
            rounded-lg border border-red-800/60 hover:border-red-700 transition-all duration-200 flex items-center justify-center gap-1.5;
   }
 
-  /* Code/mono text block */
   .code-block {
     @apply font-mono text-sm bg-surface-950 rounded-xl p-4 overflow-x-auto
            border border-slate-800/80 text-slate-300 shadow-inner;
   }
 
-  /* Live trace event row */
   .trace-event {
     @apply flex items-start gap-3 py-2.5 px-3 rounded-xl hover:bg-surface-800/40 transition-colors;
   }
 
-  /* Section heading */
   .section-heading {
     @apply text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2;
   }
 }
-
-/* ── Utility overrides ───────────────────────────────────────────────────── */
-@layer utilities {
-  .text-gradient {
-    @apply bg-gradient-to-r from-sky-400 via-cyan-400 to-teal-300 bg-clip-text text-transparent;
-  }
-
-  .border-glow {
-    box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.35),
-                0 0 20px rgba(14, 165, 233, 0.12);
-  }
-
-  .border-glow-emerald {
-    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.35),
-                0 0 20px rgba(16, 185, 129, 0.12);
-  }
-
-  /* SSE stream pulse indicator */
-  .stream-pulse {
-    @apply relative;
-  }
-  .stream-pulse::before {
-    content: '';
-    @apply absolute inset-0 rounded-full bg-primary-400 animate-ping opacity-40;
-  }
-}
-
-/* ── Ultra-Premium Minute Details ─────────────────────────────────────────── */
-
-/* Smooth document scrolling & dark scheme */
-html {
-  scroll-behavior: smooth;
-  color-scheme: dark;
-}
-
-/* Cyber Selection Glow */
-::selection {
-  background: rgba(2, 132, 199, 0.35);
-  color: #38bdf8;
-}
-
-/* Custom Minimalist Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: #040711;
-}
-::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #0284c7;
-  box-shadow: 0 0 10px rgba(2, 132, 199, 0.5);
-}
-
-/* Accessible Precision Focus Rings */
-:focus-visible {
-  outline: 2px solid #0ea5e9;
-  outline-offset: 2px;
-}
-
-/* ── Accessibility: Reduced Motion ─────────────────────────────────────────── */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-  
-  /* Disable spring animations via Motion */
-  [data-reduced-motion] {
-    animation: none !important;
-    transition: none !important;
-  }
-}
-
-/* ── Accessibility: Reduced Transparency ───────────────────────────────────── */
-@media (prefers-reduced-transparency: reduce) {
-  .backdrop-blur-xl,
-  .backdrop-blur-md,
-  .backdrop-blur-sm {
-    backdrop-filter: none !important;
-    background-color: rgba(4, 7, 17, 0.98) !important;
-  }
-  
-  .bg-surface-900\/80,
-  .bg-surface-900\/90,
-  .bg-surface-900\/95 {
-    background-color: rgb(4 7 17) !important;
-  }
-}
-
-/* ── Accessibility: High Contrast ──────────────────────────────────────────── */
-@media (prefers-contrast: more) {
-  :root {
-    --border-color: rgba(255, 255, 255, 0.3);
-    --text-muted: rgba(255, 255, 255, 0.8);
-  }
-  
-  .border-slate-800\/80,
-  .border-slate-700\/60,
-  .border-slate-700\/80 {
-    border-color: var(--border-color) !important;
-  }
-  
-  .text-slate-400,
-  .text-slate-500 {
-    color: var(--text-muted) !important;
-  }
-}
-
-/* ── Border Beam & High-Tech Animations ───────────────────────────────────── */
-@property --beam-angle {
-  syntax: '<angle>';
-  initial-value: 0deg;
-  inherits: false;
-}
-
-.border-beam {
-  position: relative;
-}
-
-.border-beam::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  padding: 1px;
-  background: conic-gradient(
-    from var(--beam-angle, 0deg) at 50% 50%,
-    transparent 0%,
-    #0284c7 15%,
-    #06b6d4 25%,
-    #38bdf8 35%,
-    transparent 50%
-  );
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-  animation: rotateBeam 4s linear infinite;
-}
-
-@keyframes rotateBeam {
-  0% {
-    --beam-angle: 0deg;
-  }
-  100% {
-    --beam-angle: 360deg;
-  }
-}
-
-.shimmer-text {
-  background: linear-gradient(
-    90deg,
-    #38bdf8 0%,
-    #22d3ee 25%,
-    #ffffff 50%,
-    #22d3ee 75%,
-    #38bdf8 100%
-  );
-  background-size: 200% auto;
-  color: transparent;
-  -webkit-background-clip: text;
-  background-clip: text;
-  animation: shine 4s linear infinite;
-}
-
-@keyframes shine {
-  to {
-    background-position: 200% center;
-  }
-}
-
-.laser-scanline {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    #38bdf8 20%,
-    #06b6d4 50%,
-    #38bdf8 80%,
-    transparent 100%
-  );
-  box-shadow: 0 0 16px rgba(6, 182, 212, 0.9);
-  animation: scanlineMove 3s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 20;
-}
-
-@keyframes scanlineMove {
-  0%, 100% {
-    top: 6%;
-    opacity: 0.3;
-  }
-  50% {
-    top: 92%;
-    opacity: 1;
-  }
-}
-
-/* ── Cyber Radar & Telemetry Console FX ───────────────────────────────────── */
-.cyber-radar-screen {
-  position: relative;
-  overflow: hidden;
-  background: radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.08) 0%, rgba(4, 7, 17, 0.95) 75%);
-  border: 1px solid rgba(6, 182, 212, 0.25);
-  box-shadow: 0 0 35px rgba(6, 182, 212, 0.12) inset;
-}
-
-.cyber-radar-sweep {
-  position: absolute;
-  inset: -50%;
-  background: conic-gradient(
-    from 0deg at 50% 50%,
-    transparent 0deg,
-    transparent 280deg,
-    rgba(6, 182, 212, 0.1) 320deg,
-    rgba(56, 189, 248, 0.35) 360deg
-  );
-  animation: radarSweep 2.5s linear infinite;
-  pointer-events: none;
-}
-
-.cyber-radar-grid {
-  position: absolute;
-  inset: 0;
-  background-image: 
-    radial-gradient(circle at 50% 50%, transparent 20%, rgba(6, 182, 212, 0.15) 21%, transparent 22%),
-    radial-gradient(circle at 50% 50%, transparent 45%, rgba(6, 182, 212, 0.15) 46%, transparent 47%),
-    radial-gradient(circle at 50% 50%, transparent 70%, rgba(6, 182, 212, 0.15) 71%, transparent 72%),
-    linear-gradient(to right, transparent 49.5%, rgba(6, 182, 212, 0.2) 50%, transparent 50.5%),
-    linear-gradient(to bottom, transparent 49.5%, rgba(6, 182, 212, 0.2) 50%, transparent 50.5%);
-  pointer-events: none;
-}
-
-/* ── Neon Verdict Cards ────────────────────────────────────────────────────── */
-.neon-verdict-supported {
-  background: linear-gradient(135deg, rgba(6, 78, 59, 0.15) 0%, rgba(8, 12, 22, 0.85) 100%);
-  border: 1px solid rgba(16, 185, 129, 0.4);
-  box-shadow: 0 4px 20px -2px rgba(16, 185, 129, 0.15);
-}
-
-.neon-verdict-contradicted {
-  background: linear-gradient(135deg, rgba(127, 29, 29, 0.18) 0%, rgba(8, 12, 22, 0.85) 100%);
-  border: 1px solid rgba(239, 68, 68, 0.45);
-  box-shadow: 0 4px 20px -2px rgba(239, 68, 68, 0.2);
-}
-
-.neon-verdict-neutral {
-  background: linear-gradient(135deg, rgba(120, 53, 15, 0.15) 0%, rgba(8, 12, 22, 0.85) 100%);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  box-shadow: 0 4px 20px -2px rgba(245, 158, 11, 0.12);
-}
-
-/* ── Animated Cyber Ping Badge ────────────────────────────────────────────── */
-.cyber-ping-emerald {
-  position: relative;
-}
-.cyber-ping-emerald::after {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: 9999px;
-  background: rgba(16, 185, 129, 0.4);
-  animation: haloPulse 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-  pointer-events: none;
-}
-
-
