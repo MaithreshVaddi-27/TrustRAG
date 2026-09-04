@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { useAuthStore, authStore } from '@/store/authStore'
@@ -23,6 +24,7 @@ import {
 } from 'lucide-react'
 
 export default function SettingsPage() {
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const [copied, setCopied] = useState(false)
   const [trimming, setTrimming] = useState(false)
@@ -64,7 +66,7 @@ export default function SettingsPage() {
   const handleLogout = () => {
     if (confirm('Are you sure you want to sign out?')) {
       authStore.clearSession()
-      window.location.href = '/login'
+      navigate('/login')
     }
   }
 

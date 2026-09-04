@@ -20,6 +20,7 @@ const ConflictsPage      = lazy(() => import('@/pages/ConflictsPage'))
 const ExperimentsPage    = lazy(() => import('@/pages/ExperimentsPage'))
 const SettingsPage       = lazy(() => import('@/pages/SettingsPage'))
 const TracePage          = lazy(() => import('@/pages/TracePage'))
+const NotFoundPage       = lazy(() => import('@/pages/NotFoundPage'))
 
 function PageLoading() {
   return (
@@ -76,7 +77,7 @@ export default function App() {
         <Route path="/traces/:id"      element={<RequireAuth><TracePage /></RequireAuth>} />
 
         {/* ── Fallback ────────────────────────────────────────── */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
   )

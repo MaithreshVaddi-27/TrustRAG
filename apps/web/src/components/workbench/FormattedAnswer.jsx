@@ -67,18 +67,18 @@ export function FormattedAnswer({ content, className = '' }) {
               {children}
             </blockquote>
           ),
-          code: ({ inline, children }) => {
-            const isInline = inline ?? false
-            if (isInline) {
+          code: ({ node, className, children, ...props }) => {
+            const isBlock = className?.includes('language-')
+            if (!isBlock) {
               return (
-                <code className="font-mono text-xs text-cyan-300 bg-surface-900/80 border border-slate-800 px-1.5 py-0.5 rounded">
+                <code className="font-mono text-xs text-cyan-300 bg-surface-900/80 border border-slate-800 px-1.5 py-0.5 rounded" {...props}>
                   {children}
                 </code>
               )
             }
             return (
               <pre className="font-mono text-xs text-slate-300 bg-surface-900/90 border border-slate-800 p-3 rounded-xl overflow-x-auto my-3">
-                <code>{children}</code>
+                <code className={className} {...props}>{children}</code>
               </pre>
             )
           },
