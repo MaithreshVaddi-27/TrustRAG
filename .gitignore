@@ -24,7 +24,6 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -44,19 +43,10 @@ MANIFEST
 *.spec
 pip-log.txt
 pip-delete-this-directory.txt
-htmlcov/
 .tox/
 .nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
 .hypothesis/
 .pytest_cache/
-cover/
 instance/
 .webassets-cache
 .scrapy
@@ -72,7 +62,6 @@ __pypackages__/
 celerybeat-schedule
 celerybeat.pid
 *.sage.py
-.env.local
 /app
 .venv
 .venv*
@@ -93,6 +82,20 @@ dmypy.json
 .pytype/
 cython_debug/
 poetry.lock
+
+# ─── Coverage / test output ──────────────────────────────────────────────────
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.py,cover
+htmlcov/
+nosetests.xml
+test-results/
+junit.xml
+playwright-report/
+blob-report/
+playwright/.cache/
 
 # ─── Ruff cache ───────────────────────────────────────────────────────────────
 .ruff_cache/
@@ -117,9 +120,10 @@ apps/web/*.local
 .yarn/install-state.gz
 .pnp.*
 
-# ─── Build / dist ─────────────────────────────────────────────────────────────
-dist/
-build/
+# ─── Root package lock (accidental installs) ──────────────────────────────────
+# Root-level package.json/lock are ignored — deps live in apps/web and apps/api
+/package.json
+/package-lock.json
 
 # ─── IDE ──────────────────────────────────────────────────────────────────────
 .idea/
@@ -178,42 +182,18 @@ llama-server.log
 .huggingface/
 data/qdrant/
 
-# ─── Test output ──────────────────────────────────────────────────────────────
-.pytest_cache/
-htmlcov/
-.coverage
-.coverage.*
-coverage.xml
-test-results/
-junit.xml
-playwright-report/
-blob-report/
-playwright/.cache/
-
-# ─── Temporary / scratch ──────────────────────────────────────────────────────
-tmp/
-temp/
-scratch/
-*.tmp
-*.bak
-*.orig
-
 # ─── Security scan output ─────────────────────────────────────────────────────
 bandit-report.json
 safety-report.json
 trivy-report.json
 semgrep-report.json
 
-# ─── Package manager lockfiles (keep one, ignore others) ──────────────────────
-# Uncomment the lockfile your project does NOT use to avoid conflicting locks:
-# package-lock.json
-# yarn.lock
-# pnpm-lock.yaml
+# ─── Package manager lockfiles ────────────────────────────────────────────────
+# apps/web uses npm (package-lock.json is committed)
 bun.lockb
 uv.lock
 
 # ─── AI / Agentic tool directories ────────────────────────────────────────────
-# IDE AI assistants and agent runtimes may write local config here
 .agents/
 .aider*
 .continue/
