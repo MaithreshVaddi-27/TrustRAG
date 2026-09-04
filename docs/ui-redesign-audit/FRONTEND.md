@@ -4,6 +4,37 @@
 
 ---
 
+## ✅ UI Polish Fixes (Completed — commits `91746b1`, `bbcfe53`)
+
+The following audit findings have been addressed in the `ui-redesign` branch:
+
+| Finding | Status | Commit | Detail |
+|---------|--------|--------|--------|
+| **react-markdown v10 `inline` prop** (Critical) | ✅ Fixed | `e4eb783` | Removed deprecated `inline` prop; inline code renders correctly |
+| **Fabricated benchmark metrics POSTed** (Critical) | ⚠️ Pending Phase 1.6 | — | Requires backend change to accept config_name only |
+| **SSE/polling race** (Critical) | ⚠️ Pending Phase 2.9 | — | Requires `finalizedRef` guard |
+| **Stale closure trace fallback** (High) | ⚠️ Pending Phase 2.9 | — | Requires `traceEventsRef` |
+| **Delete mutations no `onError`** (High) | ⚠️ Pending Phase 1.7 | — | Requires `onError` callbacks |
+| **Settings logout hard reload** (Low) | ✅ Fixed | `e4eb783` | Now uses `navigate('/login')` consistently |
+| **NotFoundPage 404** (Low) | ✅ Fixed | `e4eb783` | Proper 404 page with navigation |
+| **Brand casing inconsistency** | ✅ Fixed | `91746b1` | Normalized to "TrustRAG" everywhere |
+| **"Get Started" CTA routing** | ✅ Fixed | `91746b1` | Now routes to `/register` instead of `/login` |
+| **Internal detail leakage** | ✅ Fixed | `91746b1` | "Qdrant Cloud", "tenant collection" replaced with user-friendly copy |
+| **Invalid Tailwind classes** (9 sites) | ⚠️ Pending Phase 1.7 | — | `w-18`, `py-0.2` still need replacement |
+| **Hardcoded tenant ID** | ✅ Fixed | `91746b1` | Shows "Not available" instead of MongoDB ObjectId |
+| **Missing aria-label on modal close** | ✅ Fixed | `91746b1` | Experiments modal close button now has `aria-label` |
+| **Font sizes below legible minimum** | ✅ Fixed | `91746b1` | `text-[9px]` → `text-[10px]` across 11 files |
+| **Missing press feedback** | ✅ Fixed | `91746b1` | Global `:active` on all buttons/links/interactive elements |
+| **Inconsistent spring damping** | ✅ Fixed | `bbcfe53` | Standardized to damping: 15, stiffness: 150 (Apple HIG) |
+| **Missing useReducedMotion** | ✅ Fixed | `bbcfe53` | Added to EvidenceViewer, PlaygroundPage (AppLayout already had it) |
+| **No staggered entrance animations** | ✅ Fixed | `bbcfe53` | CSS `--stagger-delay` + `.stagger-children` utility |
+| **Inconsistent page padding** | ✅ Fixed | `bbcfe53` | Standardized to `p-4 sm:p-6 lg:p-8` across all pages |
+| **Inconsistent card padding** | ✅ Fixed | `bbcfe53` | p-3.5 (list items), p-5 (content cards) |
+| **Duplicate keyframes cascade** | ✅ Fixed | `91746b1` | Removed duplicate `fadeIn`/`slideUp` from landing.css |
+| **glass-card-hover wrong border color** | ✅ Fixed | `91746b1` | Emerald → primary/cyan |
+| **btn-danger rounded inconsistency** | ✅ Fixed | `91746b1` | rounded-lg → rounded-xl |
+| **Vendor chunk optimization** | ✅ Fixed | `320386c` | motion/react extracted to 127 kB vendor chunk |
+
 ## Critical
 
 **[Critical] SSE stream and fallback polling race — both can finalize the same analysis concurrently** (Confirmed)

@@ -4,6 +4,28 @@
 
 ---
 
+## ✅ UI/UX Fixes Completed (commits `91746b1`, `bbcfe53`)
+
+| Finding | Status | Commit | Detail |
+|---------|--------|--------|--------|
+| **Orphaned `/traces/:id` route** (High) | ⚠️ Pending Phase 4.6 | — | Still needs linking or deletion |
+| **Invalid Tailwind classes** (High) | ⚠️ Pending Phase 1.7 | — | 9 sites with `w-18`, `py-0.2` |
+| **Settings "Degraded/Disconnected" during load** (Medium) | ⚠️ Pending | — | Needs `isLoading` gate |
+| **Trim-memory silent failure** (Medium) | ⚠️ Pending | — | Needs toast feedback |
+| **Settings hardcoded model names** (Low) | ⚠️ Pending Phase 1.6 | — | Needs providers payload |
+| **Duplicate provider polling** (Low) | ⚠️ Pending Phase 2.9 | — | Needs shared cache key |
+| **Brand casing inconsistency** | ✅ Fixed | `91746b1` | TRUSTRAG → TrustRAG everywhere |
+| **"Get Started" CTA routing** | ✅ Fixed | `91746b1` | /login → /register |
+| **Internal detail leakage** | ✅ Fixed | `91746b1` | Qdrant/tenant references removed |
+| **Missing press feedback** | ✅ Fixed | `91746b1` | Global :active on all interactive elements |
+| **Font sizes below minimum** | ✅ Fixed | `91746b1` | text-[9px] → text-[10px] |
+| **Inconsistent spring damping** | ✅ Fixed | `bbcfe53` | Standardized to Apple HIG values |
+| **Missing reduced-motion** | ✅ Fixed | `bbcfe53` | Added to EvidenceViewer, PlaygroundPage |
+| **No staggered animations** | ✅ Fixed | `bbcfe53` | CSS --stagger-delay utility |
+| **Inconsistent page/card padding** | ✅ Fixed | `bbcfe53` | Standardized across all pages |
+| **Duplicate keyframes cascade** | ✅ Fixed | `91746b1` | Removed landing.css overrides |
+| **glass-card-hover wrong color** | ✅ Fixed | `91746b1` | Emerald → primary/cyan |
+
 ## Findings from the completed pass
 
 **[High] Orphaned route: `/traces/:id` registered but reachable from nowhere** (Confirmed)

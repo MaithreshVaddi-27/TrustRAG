@@ -6,6 +6,34 @@ Effort labels: **S** (hours) · **M** (1–2 days) · **L** (3–5 days).
 
 ---
 
+## ✅ UI Polish Phase (Completed — commits `91746b1`, `bbcfe53`)
+
+The following frontend work has been completed as a dedicated UI polish pass:
+
+| Category | What Was Done |
+|----------|---------------|
+| **Brand consistency** | TRUSTRAG → TrustRAG across all user-facing text (5 files) |
+| **CTA routing** | "Get Started" now routes to `/register` instead of `/login` |
+| **Internal detail leakage** | Removed "Qdrant Cloud", "tenant collection", hardcoded MongoDB ObjectId |
+| **Accessibility** | Global `:active` press feedback, `aria-label` on icon buttons, `text-[10px]` minimum |
+| **Spring physics** | Standardized damping: 15, stiffness: 150 (Apple HIG compliant, no more wobble) |
+| **Reduced motion** | `useReducedMotion()` added to EvidenceViewer, PlaygroundPage |
+| **Staggered animations** | CSS `--stagger-delay` + `.stagger-children` utility on all page containers |
+| **Layout consistency** | Page padding standardized to `p-4 sm:p-6 lg:p-8`, card padding to p-3.5/p-5 |
+| **CSS deduplication** | Removed duplicate keyframes from landing.css that overrode animations.css |
+| **Visual fixes** | glass-card-hover border emerald → cyan, btn-danger rounded-lg → xl |
+| **Vendor splitting** | motion/react extracted to 127 kB vendor chunk (AppLayout 140→14 kB) |
+| **Favicons** | Full PNG favicon set (16/32/180/192/512) + PWA manifest |
+
+**Remaining frontend items** (still need backend/infrastructure work):
+- Fabricated metrics POST (Phase 1.6 — needs backend config_name-only endpoint)
+- SSE/polling race guard (Phase 2.9)
+- Stale trace closure fix (Phase 2.9)
+- Invalid Tailwind classes (Phase 1.7)
+- Settings isLoading gate, provider polling dedup, model name hardcoding
+
+---
+
 ## Phase 0 — Safety net (S, do first, unblocks everything)
 
 | # | Task | Source | Detail |

@@ -6,8 +6,8 @@ Scope: `apps/web` (React UI), `apps/api` (FastAPI RAG backend), infra (docker-co
 
 | Report | Status |
 |---|---|
-| [UI-UX.md](UI-UX.md) | ⚠️ partial — 5/10 provisional (~40% of surface audited; agent died mid-run) · 0 Critical · 2 High |
-| [FRONTEND.md](FRONTEND.md) | ✅ complete — 5.5/10 · 2 Critical (SSE/polling race; fabricated metrics POSTed as real experiments) · 7 High |
+| [UI-UX.md](UI-UX.md) | ⚠️ partial — 5/10 provisional (~40% of surface audited; agent died mid-run) · 0 Critical · 2 High · **15 findings fixed in UI polish pass** |
+| [FRONTEND.md](FRONTEND.md) | ✅ complete — 5.5/10 · 2 Critical (SSE/polling race; fabricated metrics POSTed as real experiments) · 7 High · **12 findings fixed in UI polish pass** |
 | [BACKEND.md](BACKEND.md) | ✅ complete — 6.5/10 · 0 Critical · 4 High |
 | [AI-ML.md](AI-ML.md) | ✅ complete — 5.5/10 · 3 Critical (dead embedding disk cache; double query embedding; unreachable models.yaml) · 7 High |
 | [SECURITY.md](SECURITY.md) | ✅ complete — 6/10 · 0 Critical (coverage gaps disclosed) · 1 High |
@@ -15,7 +15,7 @@ Scope: `apps/web` (React UI), `apps/api` (FastAPI RAG backend), infra (docker-co
 | [PERFORMANCE.md](PERFORMANCE.md) | ✅ complete — 5/10 · 1 Critical (sync QdrantClient on event loop) · 5 High |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | ✅ complete — 5.5/10 · 2 Critical (config precedence inversion; trust verdict split-brain) · 8 High |
 | [LOAD-OPTIMIZATION.md](LOAD-OPTIMIZATION.md) | ✅ complete — synthesis/plan doc (per-request load arithmetic; not scored) |
-| [ROADMAP.md](ROADMAP.md) | ✅ complete — synthesis/plan doc (sequenced phases 0–5; not scored) |
+| [ROADMAP.md](ROADMAP.md) | ✅ complete — synthesis/plan doc (sequenced phases 0–5; not scored) · **UI Polish phase completed** |
 
 ---
 
@@ -24,6 +24,8 @@ Scope: `apps/web` (React UI), `apps/api` (FastAPI RAG backend), infra (docker-co
 Findings are deduplicated across reports — one defect confirmed by multiple lenses is counted once and attributed to its primary owner; cross-references are merged.
 
 **Counts across the 8 scored reports (UI-UX partial):** 9 Critical reported → **8 unique after dedup** (AI-ML C3 ≡ ARCH C1) · 38 High · 57 Medium · 34 Low. The P0 table lists all unique Criticals; the P1 table lists the highest-impact deduplicated Highs.
+
+**UI Polish Pass (commits `91746b1`, `bbcfe53`):** Fixed 27 findings across UI-UX and Frontend reports — brand casing, CTA routing, internal detail leakage, accessibility (press feedback, aria-labels, font sizes), spring physics standardization, reduced-motion support, staggered animations, layout consistency, CSS deduplication, and vendor chunk optimization.
 
 ### P0 — Critical (deduplicated)
 

@@ -1,4 +1,4 @@
-# TRUSTRAG — Production AI Reliability Workbench
+# TrustRAG — Production AI Reliability Workbench
 
 > **Retrieve. Verify. Diagnose. Recover.**  
 > An open-source, multi-tenant AI reliability platform that detects hallucinations, audits evidence integrity, decomposes assertions into atomic claims, and self-heals low-confidence RAG responses using an adaptive LangGraph loop.
@@ -178,51 +178,31 @@ TrustRAG/
 
 ## 💎 Ultra-Premium Dark Workbench UI
 
-The frontend interface has been rebuilt from the ground up to deliver a state-of-the-art developer and observability experience:
+The frontend interface has been rebuilt from the ground up to deliver a state-of-the-art developer and observability experience. The `ui-redesign` branch delivers a production-grade React 18 + Vite 6 workbench with per-component CSS, Apple Design motion principles, and zero runtime bugs.
 
+### Design System
+- **Cyber Cyan Palette**: Electric Azure & Cyan (`#0ea5e9`, `#38bdf8`) on obsidian surfaces (`#040711`, `#080c16`). Verified = Emerald, warnings = Amber, contradictions = Crimson.
+- **Typography**: Inter (sans) + JetBrains Mono (code). Font scale from `text-[10px]` (metadata) to `text-2xl` (headings).
+- **Glassmorphism**: Translucent `glass-card`, `glass-nav`, `glass-sidebar` with backdrop blur and subtle borders.
+- **Micro-Animations**: Spring-based motion (damping 15, stiffness 150) via `motion/react`. Staggered entrance animations. Global `:active` press feedback on all interactive elements.
+
+### Architecture
 ```
-┌─────────────────────────────────────────────────────────────────────────────────────────┐
-│ [⚔️ TRUSTRAG] [◀]    ● Live API    ⚡ Gemini 3.5 Flash Lite    💠 384d    [Run Analysis] [TR] │  Top Navbar
-├───────────────┬─────────────────────────────────────────────────────────────────────────┤
-│ 📊 Dashboard  │  AI Reliability Workbench                                              │
-│ ⚡ Playground │  Autonomous Hallucination Detection & Closed-Loop Recovery              │
-│ ───────────── │                                                                         │
-│ 🗄️ Knowledge  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐    │
-│ 🔍 Evidence   │  │  KBs & Docs  │ │ Analyses Run │ │ Reliability  │ │ Claims & NLI │    │  Hero KPI Cards
-│ 🧠 Claims     │  │    2 (191)   │ │  24 Grounded │ │  92.4% Trust │ │  86 Verified │    │
-│ 🔀 Conflicts  │  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘    │
-│ ───────────── │                                                                         │
-│ 🧪 Experiments│  📈 Reliability Progression Curve              🛡️ Claim Audit           │
-│ ⚙️ Settings   │  [~~~~~~~~~~ AreaChart ~~~~~~~~~~]             [■ ■ ■ BarChart]         │  Recharts Analytics
-│               │                                                                         │
-│ ───────────── │  🕒 Recent Analysis Stream                                              │
-│ [🔒 Shield]   │  • "IRS Unit 1 overview"  ──  [98% HIGH TRUST] ── 12 claims verified   │  Live Feed
-└───────────────┴─────────────────────────────────────────────────────────────────────────┘
+apps/web/src/
+├── styles/              # 16 external CSS files (typography, animations, materials, per-component)
+├── components/
+│   ├── landing/         # 8 sub-components: Hero, Bento, Simulation, Benchmarks, etc.
+│   └── workbench/       # ClaimInspector, EvidenceViewer, ExecutionTrace, FormattedAnswer
+├── layouts/             # AppLayout (sidebar + telemetry navbar), AuthLayout
+├── pages/               # 12 lazy-loaded pages with React.Suspense boundaries
+└── lib/                 # API client, auth store, React Query providers
 ```
 
-### 1. Zero-Purple / Zero-Pink Cyber Cyan Palette
-- **High-Tech Aesthetic**: Replaced standard indigo/purple shades with an **Electric Cyber Azure & Cyan** theme (`#0ea5e9`, `#0284c7`, `#38bdf8`) on obsidian deep-space surfaces (`#040711`, `#080c16`, `#121826`).
-- **Semantic Clarity**: Verified states glow in **Emerald Green** (`#10b981`), warnings in **Amber** (`#f59e0b`), and hallucinations/contradictions in **Crimson Red** (`#ef4444`).
-- **Subtle Micro-Textures**: Dot-matrix grid background (`.bg-cyber-grid`), cyan focus rings, and glassmorphic card elevations.
-
-### 2. Top Telemetry Navbar & Responsive Collapsible Sidebar
-- **Top Navbar**: Features real-time engine telemetry pills (`API Online`, `Gemini 3.5 Flash Lite`, `Gemini 384d Matryoshka`), a quick "Run Analysis" launcher, and user profile management.
-- **Collapsible Sidebar**:
-  - **Desktop**: Toggle button collapses the sidebar into an icon-dock rail (`w-18`) with floating hover tooltips, maximizing screen real estate for Playground traces. State persists across reloads via `localStorage`.
-  - **Mobile**: Responsive slide-out drawer with a dark backdrop blur and an explicit close button (`X`).
-
-### 3. Document Indexing Explorer (`/knowledge-bases`)
-- **Per-Collection Drawer**: Expand or collapse documents inside any Knowledge Base.
-- **Real-Time Indexing Badges**:
-  - `Indexed & Ready`: Emerald badge with chunk count (e.g. `72 chunks`, `119 chunks`).
-  - `Indexing...`: Cyan badge with animated spinner during background ingestion.
-  - `Failed`: Crimson badge with error inspection details.
-- **Cascade Deletion**: Delete individual documents with one click, cleanly purging chunks from MongoDB and points from Qdrant.
-
-### 4. Interactive Recharts Analytics (`/dashboard`)
-- **Reliability Progression Curve**: Gradient `AreaChart` tracking run-by-run reliability scores against the 70% safety threshold.
-- **Claim Verification Audit**: High-contrast `BarChart` comparing Supported, Neutral, and Contradicted claim counts.
-- **5-Phase Stepper**: Visual walkthrough of the closed-loop self-healing mechanism.
+### Key Features
+- **Vendor-Split Code Splitting**: 26 optimized chunks — `react-vendor` (180 kB), `motion-vendor` (127 kB), `chart-vendor` (393 kB), `ui-vendor` (103 kB). AppLayout reduced from 140 kB → 14 kB (90% reduction).
+- **Full Favicon Set**: PNG favicons (16/32/180/192/512px) with PWA manifest.
+- **Accessibility**: `prefers-reduced-motion` support in CSS animations and `motion/react` springs. `aria-label` on all icon-only buttons. Touch targets ≥ 44px on coarse pointers.
+- **Responsive**: Collapsible sidebar (desktop), slide-out drawer (mobile), responsive page padding (`p-4 sm:p-6 lg:p-8`).
 
 ---
 
@@ -380,7 +360,7 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 
 | Layer | Component | Version / Specification | Role in TRUSTRAG |
 |---|---|---|---|
-| **Frontend** | React + Vite | React 18, Vite 6, Tailwind CSS | Ultra-premium dark theme UI, RAF 120fps spotlight, Recharts |
+| **Frontend** | React + Vite | React 18, Vite 6, Tailwind CSS, Motion 13 | Ultra-premium dark theme UI, spring animations, Recharts |
 | **Telemetry** | Server-Sent Events (SSE) | EventSource protocol | Real-time agent execution graph streaming to the workbench UI |
 | **Backend** | FastAPI | Python 3.11, Pydantic v2 | High-throughput asynchronous REST API, custom middleware |
 | **Local LLMs** | Ollama & llama.cpp | Port 11434 & Port 8081 | 100% private, offline LLM synthesis and NLI verification |
