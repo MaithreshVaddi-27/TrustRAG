@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useQuery } from '@tanstack/react-query'
+import { motion, useReducedMotion, useMotionValue, useSpring, useDragControls, useTransform } from 'motion/react'
 import {
   Brain, Database, FileSearch,
   FlaskConical, GitMerge, LayoutDashboard, LogOut,
@@ -29,6 +30,7 @@ export default function AppLayout({ children }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuthStore()
+  const reducedMotion = useReducedMotion()
 
   // Dynamic model telemetry query
   const { data: providersData } = useQuery({
@@ -49,10 +51,46 @@ export default function AppLayout({ children }) {
   // Mobile drawer state
   const [isMobileOpen, setIsMobileOpen] = useState(false)
 
+  // Motion values for spring animations
+  const sidebarWidth = useMotionValue(isCollapsed ? 72 : 240) // w-[72px] = 72px, w-60 = 240px
+  const sidebarOpacity = useMotionValue(1)
+  const mobileDrawerX = useMotionValue(isMobileOpen ? 0 : -256) // w-64 = 256px
+  
+  // Track if we're currently animating
+  const [isAnimating, setIsAnimating] = useState(false)
+
   // Close mobile drawer on route change
   useEffect(() => {
     setIsMobileOpen(false)
   }, [location.pathname])
+
+  // Animate sidebar width on collapse/expand with spring
+  useEffect(() => {
+    const targetWidth = isCollapsed ? 72 : 240
+    if (!reducedMotion) {
+      setIsAnimating(true)
+      sidebarWidth.spring(targetWidth, { 
+        damping: 1.0, // Critically damped - no overshoot
+        response: 0.3,
+        onComplete: () => setIsAnimating(false)
+      })
+    } else {
+      sidebarWidth.set(targetWidth)
+    }
+  }, [isCollapsed, sidebarWidth, reducedMotion])
+
+  // Animate mobile drawer
+  useEffect(() => {
+    const targetX = isMobileOpen ? 0 : -256
+    if (!reducedMotion) {
+      mobileDrawerX.spring(targetX, { 
+        damping: 0.8, // Slight bounce for momentum feel
+        response: 0.3,
+      })
+    } else {
+      mobileDrawerX.set(targetX)
+    }
+  }, [isMobileOpen, mobileDrawerX, reducedMotion])
 
   const toggleSidebar = () => {
     setIsCollapsed(prev => {
@@ -66,6 +104,18 @@ export default function AppLayout({ children }) {
     })
   }
 
+  // Rubber-band drag for mobile drawer
+  const dragX = useMotionValue(0)
+  const drawerWidth = 256 // w-64 = 256px
+  
+  // Transform dragX with rubber-banding: resist progressively past boundaries
+  const rubberBandTransform = useTransform(dragX, 
+    [-drawerWidth, 0, drawerWidth], // input range
+    [-drawerWidth * 1.5, 0, drawerWidth * 1.5] // output range with rubber-band
+  )
+
+  const dragControls = useDragControls()
+
   function handleLogout() {
     authStore.clearSession()
     navigate('/login')
@@ -78,20 +128,25 @@ export default function AppLayout({ children }) {
         {/* Left: Brand + Sidebar Toggle Button */}
         <div className="flex items-center gap-3">
           {/* Mobile hamburger button */}
-          <button
+          <motion.button
             onClick={() => setIsMobileOpen(true)}
+            whileTap={{ scale: 0.95 }}
             className="md:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-surface-800 border border-slate-800 transition-colors"
             title="Open Navigation Menu"
             aria-label="Open Navigation Menu"
           >
             <Menu size={18} />
-          </button>
+          </motion.button>
 
           {/* Logo */}
           <Link to="/dashboard" className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-primary-950/60 group-hover:scale-105 transition-transform">
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-primary-950/60"
+            >
               <Swords size={16} className="text-white" />
-            </div>
+            </motion.div>
             <div className="flex flex-col">
               <span className="font-extrabold text-sm tracking-tight text-white flex items-center gap-1">
                 TRUST<span className="text-primary-400">RAG</span>
@@ -103,22 +158,32 @@ export default function AppLayout({ children }) {
           </Link>
 
           {/* Desktop Sidebar Collapse / Expand Toggle Button */}
-          <button
+          <motion.button
             onClick={toggleSidebar}
+            whileTap={{ scale: 0.9 }}
             className="hidden md:flex items-center justify-center w-8 h-8 rounded-xl text-slate-400 hover:text-white hover:bg-surface-800/90 border border-slate-800 transition-all ml-2"
             title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-          </button>
+          </motion.button>
         </div>
 
         {/* Center: Live Engine Telemetry Badges (Desktop) */}
         <div className="hidden lg:flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/40 border border-emerald-800/50 text-[11px] font-mono text-emerald-300 shadow-sm shadow-emerald-950/30">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: 'spring', damping: 1.0, response: 0.4 }}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/40 border border-emerald-800/50 text-[11px] font-mono text-emerald-300 shadow-sm shadow-emerald-950/30"
+          >
+            <motion.span
+              animate={{ scale: [1, 1.2, 1] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+              className="w-2 h-2 rounded-full bg-emerald-400"
+            />
             <span>API Online</span>
-          </div>
+          </motion.div>
 
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300">
             <Cpu size={12} className="text-primary-400" />
@@ -151,27 +216,30 @@ export default function AppLayout({ children }) {
 
         {/* Right: Quick Action & User Profile */}
         <div className="flex items-center gap-3">
-          <Link
-            to="/playground"
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => navigate('/playground')}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-md shadow-primary-950/50 transition-all"
           >
             <Zap size={13} />
             <span>Run Analysis</span>
-          </Link>
+          </motion.button>
 
           {/* User initials & logout */}
           <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
             <div className="w-8 h-8 rounded-full bg-surface-800 border border-slate-700 flex items-center justify-center text-xs font-mono font-bold text-slate-300 shadow-inner">
               {user?.email ? user.email.slice(0, 2).toUpperCase() : 'TR'}
             </div>
-            <button
+            <motion.button
               onClick={handleLogout}
+              whileTap={{ scale: 0.9, rotate: 180 }}
               className="p-2 rounded-xl text-slate-400 hover:text-red-400 hover:bg-surface-800/80 border border-transparent hover:border-red-900/30 transition-colors"
               title="Logout"
               aria-label="Logout"
             >
               <LogOut size={16} />
-            </button>
+            </motion.button>
           </div>
         </div>
       </header>
@@ -180,36 +248,28 @@ export default function AppLayout({ children }) {
       <div className="flex flex-1 min-h-0 overflow-hidden relative">
         {/* Mobile Backdrop Overlay */}
         {isMobileOpen && (
-          <div
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             onClick={() => setIsMobileOpen(false)}
-            className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm md:hidden animate-fade-in"
+            className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm md:hidden"
           />
         )}
 
-        {/* ── SIDEBAR ──────────────────────────────────────────────────── */}
-        <aside
+        {/* ── DESKTOP SIDEBAR ──────────────────────────────────────────────────── */}
+        <motion.aside
+          style={{
+            width: sidebarWidth,
+            opacity: sidebarOpacity,
+            flexShrink: 0,
+          }}
           className={clsx(
-            'flex flex-col border-r border-slate-800/80 bg-surface-900/95 backdrop-blur-xl z-50 transition-all duration-300 ease-in-out shrink-0',
-            // Desktop width behavior
+            'flex flex-col border-r border-slate-800/80 bg-surface-900/95 backdrop-blur-xl z-50 shrink-0',
             'hidden md:flex',
-            isCollapsed ? 'w-[72px]' : 'w-60',
-            // Mobile drawer positioning
-            'fixed md:static inset-y-0 left-0 top-16 md:top-0',
-            isMobileOpen && '!flex w-64 shadow-2xl shadow-black',
           )}
+          transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
         >
-          {/* Mobile close button header */}
-          <div className="md:hidden flex items-center justify-between p-3 border-b border-slate-800">
-            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">Navigation</span>
-            <button
-              onClick={() => setIsMobileOpen(false)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-surface-800 transition-colors"
-              title="Close sidebar"
-            >
-              <X size={16} />
-            </button>
-          </div>
-
           {/* Navigation Links */}
           <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
             {NAV.map((item, i) =>
@@ -228,20 +288,88 @@ export default function AppLayout({ children }) {
           {/* Sidebar Footer / Quick Status */}
           <div className="p-3 border-t border-slate-800/80">
             {!isCollapsed ? (
-              <div className="p-2.5 rounded-xl bg-surface-800/40 border border-slate-800 flex items-center gap-2.5">
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+                className="p-2.5 rounded-xl bg-surface-800/40 border border-slate-800 flex items-center gap-2.5"
+              >
                 <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold text-slate-300 truncate">Self-Healing Loop</p>
                   <p className="text-[10px] text-slate-500 truncate">StateGraph v1.0 Active</p>
                 </div>
-              </div>
+              </motion.div>
             ) : (
               <div className="flex justify-center" title="Self-Healing Loop Active">
                 <ShieldCheck size={18} className="text-emerald-400" />
               </div>
             )}
           </div>
-        </aside>
+        </motion.aside>
+
+        {/* ── MOBILE DRAWER with Rubber-Banding ────────────────────────── */}
+        <motion.div
+          {...dragControls}
+          style={{
+            x: isMobileOpen ? dragX : rubberBandTransform,
+            display: isMobileOpen ? 'flex' : 'none',
+          }}
+          className={clsx(
+            'flex flex-col border-r border-slate-800/80 bg-surface-900/95 backdrop-blur-xl z-50 shrink-0',
+            'md:hidden fixed inset-y-0 left-0 top-16 w-64 shadow-2xl shadow-black',
+          )}
+          drag="x"
+          dragConstraints={{ left: -drawerWidth, right: 0 }}
+          dragElastic={0.2}
+          transition={{ type: 'spring', damping: 0.8, response: 0.3 }}
+        >
+          {/* Mobile close button header */}
+          <div className="flex items-center justify-between p-3 border-b border-slate-800">
+            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">Navigation</span>
+            <motion.button
+              onClick={() => setIsMobileOpen(false)}
+              whileTap={{ scale: 0.9 }}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-surface-800 transition-colors"
+              title="Close sidebar"
+            >
+              <X size={16} />
+            </motion.button>
+          </div>
+
+          {/* Navigation Links */}
+          <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
+            {NAV.map((item, i) =>
+              item === null ? (
+                <div key={i} className="my-2 border-t border-slate-800/60" />
+              ) : (
+                <SidebarLink
+                  key={item.to}
+                  {...item}
+                  isCollapsed={false}
+                />
+              )
+            )}
+          </nav>
+
+          {/* Sidebar Footer / Quick Status */}
+          <div className="p-3 border-t border-slate-800/80">
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+              className="p-2.5 rounded-xl bg-surface-800/40 border border-slate-800 flex items-center gap-2.5"
+            >
+              <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold text-slate-300 truncate">Self-Healing Loop</p>
+                <p className="text-[10px] text-slate-500 truncate">StateGraph v1.0 Active</p>
+              </div>
+            </motion.div>
+          </div>
+        </motion.div>
 
         {/* ── MAIN CONTENT AREA ─────────────────────────────────────────── */}
         <main className="flex-1 min-w-0 overflow-y-auto bg-surface-950 bg-cyber-grid relative h-full flex flex-col">
@@ -253,6 +381,8 @@ export default function AppLayout({ children }) {
 }
 
 function SidebarLink({ to, label, icon: Icon, badge, isCollapsed }) {
+  const [isPressed, setIsPressed] = useState(false)
+  
   return (
     <NavLink
       to={to}
@@ -266,39 +396,68 @@ function SidebarLink({ to, label, icon: Icon, badge, isCollapsed }) {
           ? 'bg-primary-500/15 text-primary-300 border border-primary-500/30 shadow-sm shadow-primary-950/80'
           : 'text-slate-400 hover:text-slate-100 hover:bg-surface-800/60 border border-transparent',
       )}
+      onMouseDown={() => setIsPressed(true)}
+      onMouseUp={() => setIsPressed(false)}
+      onMouseLeave={() => setIsPressed(false)}
     >
       {({ isActive }) => (
-        <>
+        <motion.div
+          whileTap={{ scale: isCollapsed ? 0.9 : 0.98 }}
+          className="w-full flex items-center"
+        >
           {/* Active cyan indicator bar */}
           {isActive && !isCollapsed && (
-            <span className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-cyan-400 shadow-sm shadow-cyan-400" />
+            <motion.span
+              initial={{ height: 0 }}
+              animate={{ height: 'calc(100% - 8px)' }}
+              exit={{ height: 0 }}
+              transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+              className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-cyan-400 shadow-sm shadow-cyan-400"
+            />
           )}
 
-          <Icon
-            size={18}
-            className={clsx(
-              'shrink-0 transition-transform group-hover:scale-110',
-              isActive ? 'text-primary-400' : 'text-slate-400 group-hover:text-slate-200'
-            )}
-          />
+          <motion.div
+            whileTap={{ scale: 0.9 }}
+            className="shrink-0 transition-transform group-hover:scale-110"
+          >
+            <Icon
+              size={18}
+              className={clsx(
+                'shrink-0 transition-transform group-hover:scale-110',
+                isActive ? 'text-primary-400' : 'text-slate-400 group-hover:text-slate-200'
+              )}
+            />
+          </motion.div>
 
           {!isCollapsed && (
             <span className="truncate flex-1">{label}</span>
           )}
 
           {!isCollapsed && badge && (
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-primary-500/20 text-primary-300 border border-primary-500/30">
+            <motion.span
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+              className="px-1.5 py-[2px] rounded text-[10px] font-mono font-semibold bg-primary-500/20 text-primary-300 border border-primary-500/30"
+            >
               {badge}
-            </span>
+            </motion.span>
           )}
 
           {/* Floating Tooltip in Collapsed Mode */}
           {isCollapsed && (
-            <div className="absolute left-full ml-2 px-2.5 py-1 rounded-lg bg-surface-800 border border-slate-700 text-xs text-slate-200 font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none shadow-xl z-50 transition-opacity">
+            <motion.div
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -8 }}
+              transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+              className="absolute left-full ml-2 px-2.5 py-1 rounded-lg bg-surface-800 border border-slate-700 text-xs text-slate-200 font-medium whitespace-nowrap pointer-events-none shadow-xl z-50"
+            >
               {label}
-            </div>
+            </motion.div>
           )}
-        </>
+        </motion.div>
       )}
     </NavLink>
   )

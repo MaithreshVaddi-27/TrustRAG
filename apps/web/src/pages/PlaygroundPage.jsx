@@ -4,6 +4,7 @@ import {
   RotateCcw, Clock, AlertTriangle, ArrowRight, CornerDownLeft, Shield, FileCheck, Layers
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { motion, useSpring, useMotionValue } from 'motion/react'
 import AppLayout from '@/layouts/AppLayout'
 import { ReliabilityBadge, StatusDot } from '@/components/workbench/ReliabilityBadge'
 import { ClaimInspector } from '@/components/workbench/ClaimInspector'
@@ -488,11 +489,12 @@ const finalizedRef = useRef(false)
 
                 {/* Provider Selector Grid */}
                 <div className="grid grid-cols-2 gap-1.5 bg-surface-900 p-1 rounded-lg border border-slate-800">
-                  <button
+                  <motion.button
                     type="button"
                     onClick={() => handleProviderChange('ollama')}
                     disabled={loading}
-                    className={`text-xs py-1.5 px-2 rounded-md font-medium transition-all flex items-center justify-between ${
+                    whileTap={{ scale: 0.95 }}
+                    className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between ${
                       selectedProvider === 'ollama'
                         ? 'bg-primary-600/30 text-primary-200 border border-primary-500/50 shadow-sm'
                         : 'text-slate-400 hover:text-slate-200'
@@ -500,12 +502,13 @@ const finalizedRef = useRef(false)
                   >
                     <span>Ollama</span>
                     <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-emerald-400 font-mono">:11434</span>
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
                     type="button"
                     onClick={() => handleProviderChange('llama_cpp')}
                     disabled={loading}
-                    className={`text-xs py-1.5 px-2 rounded-md font-medium transition-all flex items-center justify-between ${
+                    whileTap={{ scale: 0.95 }}
+                    className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between ${
                       selectedProvider === 'llama_cpp'
                         ? 'bg-cyan-600/30 text-cyan-200 border border-cyan-500/50 shadow-sm'
                         : 'text-slate-400 hover:text-slate-200'
@@ -513,12 +516,13 @@ const finalizedRef = useRef(false)
                   >
                     <span>llama.cpp</span>
                     <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">:8081</span>
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
                     type="button"
                     onClick={() => handleProviderChange('gemini')}
                     disabled={loading}
-                    className={`text-xs py-1 px-2 rounded-md font-medium transition-all flex items-center justify-between ${
+                    whileTap={{ scale: 0.95 }}
+                    className={`text-xs py-1 px-2 rounded-md font-medium flex items-center justify-between ${
                       selectedProvider === 'gemini'
                         ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/50 shadow-sm'
                         : 'text-slate-400 hover:text-slate-200'
@@ -526,12 +530,13 @@ const finalizedRef = useRef(false)
                   >
                     <span>Gemini</span>
                     <span className="text-[9px] text-slate-500">Cloud</span>
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
                     type="button"
                     onClick={() => handleProviderChange('nvidia')}
                     disabled={loading}
-                    className={`text-xs py-1 px-2 rounded-md font-medium transition-all flex items-center justify-between ${
+                    whileTap={{ scale: 0.95 }}
+                    className={`text-xs py-1 px-2 rounded-md font-medium flex items-center justify-between ${
                       selectedProvider === 'nvidia'
                         ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 shadow-sm'
                         : 'text-slate-400 hover:text-slate-200'
@@ -539,7 +544,7 @@ const finalizedRef = useRef(false)
                   >
                     <span>NVIDIA</span>
                     <span className="text-[9px] text-slate-500">Cloud</span>
-                  </button>
+                  </motion.button>
                 </div>
 
                 {/* Model Selection Dropdown */}
@@ -602,11 +607,12 @@ const finalizedRef = useRef(false)
 
                 {/* Embedding Provider Selector Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 bg-surface-900 p-1 rounded-lg border border-slate-800">
-                  <button
+                  <motion.button
                     type="button"
                     onClick={() => handleEmbeddingProviderChange('ollama')}
                     disabled={loading}
-                    className={`text-xs py-1.5 px-2 rounded-md font-medium transition-all flex items-center justify-between ${
+                    whileTap={{ scale: 0.95 }}
+                    className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between ${
                       selectedEmbeddingProvider === 'ollama'
                         ? 'bg-emerald-600/30 text-emerald-200 border border-emerald-500/50 shadow-sm'
                         : 'text-slate-400 hover:text-slate-200'
@@ -614,12 +620,13 @@ const finalizedRef = useRef(false)
                   >
                     <span>Local Ollama</span>
                     <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-emerald-400 font-mono">768d</span>
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
                     type="button"
                     onClick={() => handleEmbeddingProviderChange('llamacpp')}
                     disabled={loading}
-                    className={`text-xs py-1.5 px-2 rounded-md font-medium transition-all flex items-center justify-between ${
+                    whileTap={{ scale: 0.95 }}
+                    className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between ${
                       selectedEmbeddingProvider === 'llamacpp'
                         ? 'bg-amber-600/30 text-amber-200 border border-amber-500/50 shadow-sm'
                         : 'text-slate-400 hover:text-slate-200'
@@ -627,12 +634,13 @@ const finalizedRef = useRef(false)
                   >
                     <span>Local llama.cpp</span>
                     <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-amber-400 font-mono">768d</span>
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
                     type="button"
                     onClick={() => handleEmbeddingProviderChange('huggingface')}
                     disabled={loading}
-                    className={`text-xs py-1.5 px-2 rounded-md font-medium transition-all flex items-center justify-between ${
+                    whileTap={{ scale: 0.95 }}
+                    className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between ${
                       selectedEmbeddingProvider === 'huggingface'
                         ? 'bg-cyan-600/30 text-cyan-200 border border-cyan-500/50 shadow-sm'
                         : 'text-slate-400 hover:text-slate-200'
@@ -640,12 +648,13 @@ const finalizedRef = useRef(false)
                   >
                     <span>Local BGE</span>
                     <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">384d</span>
-                  </button>
-                  <button
+                  </motion.button>
+                  <motion.button
                     type="button"
                     onClick={() => handleEmbeddingProviderChange('google_genai')}
                     disabled={loading}
-                    className={`text-xs py-1 px-2 rounded-md font-medium transition-all flex items-center justify-between ${
+                    whileTap={{ scale: 0.95 }}
+                    className={`text-xs py-1 px-2 rounded-md font-medium flex items-center justify-between ${
                       selectedEmbeddingProvider === 'google_genai'
                         ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/50 shadow-sm'
                         : 'text-slate-400 hover:text-slate-200'
@@ -653,20 +662,7 @@ const finalizedRef = useRef(false)
                   >
                     <span>Gemini Embed</span>
                     <span className="text-[9px] text-slate-500">Cloud</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleEmbeddingProviderChange('nvidia')}
-                    disabled={loading}
-                    className={`text-xs py-1 px-2 rounded-md font-medium transition-all flex items-center justify-between col-span-2 sm:col-span-1 ${
-                      selectedEmbeddingProvider === 'nvidia'
-                        ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <span>NVIDIA Embed</span>
-                    <span className="text-[9px] text-slate-500">Cloud</span>
-                  </button>
+                  </motion.button>
                 </div>
 
                 {/* Embedding Model Dropdown */}
@@ -723,15 +719,16 @@ const finalizedRef = useRef(false)
                   </span>
                   <div className="flex flex-col gap-1">
                     {SAMPLE_PRESETS.map((preset, idx) => (
-                      <button
+                      <motion.button
                         key={idx}
                         type="button"
                         onClick={() => handlePresetSelect(preset)}
                         disabled={loading}
-                        className="text-left text-[11px] text-slate-400 hover:text-cyan-300 hover:bg-surface-800/80 px-2 py-1 rounded-md border border-slate-800/80 hover:border-cyan-500/30 transition-all truncate"
+                        whileTap={{ scale: 0.98 }}
+                        className="text-left text-[11px] text-slate-400 hover:text-cyan-300 hover:bg-surface-800/80 px-2 py-1 rounded-md border border-slate-800/80 hover:border-cyan-500/30 truncate"
                       >
                         {preset}
-                      </button>
+                      </motion.button>
                     ))}
                   </div>
                 </div>
@@ -1019,23 +1016,28 @@ const finalizedRef = useRef(false)
                 </div>
               </div>
 
-              {/* Tabs with glowing indicator */}
-              <div className="shrink-0 flex border-b border-slate-800/80 px-4 bg-surface-900/30">
+              {/* Tabs with spring-animated indicator */}
+              <div className="shrink-0 relative border-b border-slate-800/80 px-4 bg-surface-900/30">
+                <motion.div
+                  layoutId="active-tab"
+                  transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+                  className="absolute bottom-0 h-0.5 bg-gradient-to-r from-primary-500 to-cyan-400 shadow-glow-cyan"
+                  style={{ width: 0 }} // width set by layout
+                />
                 {TABS.map(tab => (
-                  <button
+                  <motion.button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`relative px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition-all mr-2 ${
+                    whileTap={{ scale: 0.98 }}
+                    className={`relative px-4 py-2.5 text-xs font-semibold uppercase tracking-wider ${
                       activeTab === tab.id
                         ? 'text-cyan-300'
                         : 'text-slate-500 hover:text-slate-300'
                     }`}
+                    layout
                   >
                     <span>{tab.label}</span>
-                    {activeTab === tab.id && (
-                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary-500 to-cyan-400 shadow-glow-cyan" />
-                    )}
-                  </button>
+                  </motion.button>
                 ))}
               </div>
 

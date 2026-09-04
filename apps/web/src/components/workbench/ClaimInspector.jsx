@@ -1,6 +1,7 @@
 import { clsx } from 'clsx'
 import { ChevronDown, ChevronRight, FileText, Quote, Check, Copy, Sparkles } from 'lucide-react'
 import { useState, useMemo } from 'react'
+import { motion } from 'motion/react'
 import { ClaimStateBadge } from './ReliabilityBadge'
 
 /**

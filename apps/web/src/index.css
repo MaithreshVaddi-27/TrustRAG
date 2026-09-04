@@ -6,11 +6,80 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    color-scheme: dark;
   }
 
   body {
     @apply bg-surface-950 text-slate-100 font-sans antialiased selection:bg-primary-500/20 selection:text-primary-300;
     font-feature-settings: 'cv11', 'ss01';
+    /* Optical sizing - system font automatically adjusts */
+    font-optical-sizing: auto;
+    /* Size-specific tracking handled by utility classes */
+  }
+
+  /* Display typography - negative tracking for large text */
+  .text-display {
+    @apply text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+
+  .text-display-sm {
+    @apply text-2xl md:text-3xl font-bold tracking-tight;
+    letter-spacing: -0.015em;
+    line-height: 1.1;
+  }
+
+  /* Heading typography */
+  .text-heading-1 {
+    @apply text-3xl md:text-4xl font-bold tracking-tight;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+  }
+
+  .text-heading-2 {
+    @apply text-2xl md:text-3xl font-semibold tracking-tight;
+    letter-spacing: -0.005em;
+    line-height: 1.2;
+  }
+
+  .text-heading-3 {
+    @apply text-xl md:text-2xl font-semibold tracking-tight;
+    letter-spacing: 0;
+    line-height: 1.25;
+  }
+
+  /* Body typography - comfortable leading, near-zero tracking */
+  .text-body-lg {
+    @apply text-lg leading-relaxed;
+    letter-spacing: 0;
+  }
+
+  .text-body {
+    @apply text-base leading-relaxed;
+    letter-spacing: 0;
+  }
+
+  .text-body-sm {
+    @apply text-sm leading-relaxed;
+    letter-spacing: 0;
+  }
+
+  /* Caption / UI text - slight positive tracking for legibility at small sizes */
+  .text-caption {
+    @apply text-xs leading-normal;
+    letter-spacing: 0.01em;
+  }
+
+  .text-micro {
+    @apply text-[10px] leading-normal font-mono;
+    letter-spacing: 0.02em;
+  }
+
+  /* Code typography */
+  .text-code {
+    @apply font-mono text-sm;
+    letter-spacing: 0;
   }
 
   /* Focus ring — cyber cyan */
@@ -168,6 +237,59 @@ html {
 :focus-visible {
   outline: 2px solid #0ea5e9;
   outline-offset: 2px;
+}
+
+/* ── Accessibility: Reduced Motion ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  
+  /* Disable spring animations via Motion */
+  [data-reduced-motion] {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ── Accessibility: Reduced Transparency ───────────────────────────────────── */
+@media (prefers-reduced-transparency: reduce) {
+  .backdrop-blur-xl,
+  .backdrop-blur-md,
+  .backdrop-blur-sm {
+    backdrop-filter: none !important;
+    background-color: rgba(4, 7, 17, 0.98) !important;
+  }
+  
+  .bg-surface-900\/80,
+  .bg-surface-900\/90,
+  .bg-surface-900\/95 {
+    background-color: rgb(4 7 17) !important;
+  }
+}
+
+/* ── Accessibility: High Contrast ──────────────────────────────────────────── */
+@media (prefers-contrast: more) {
+  :root {
+    --border-color: rgba(255, 255, 255, 0.3);
+    --text-muted: rgba(255, 255, 255, 0.8);
+  }
+  
+  .border-slate-800\/80,
+  .border-slate-700\/60,
+  .border-slate-700\/80 {
+    border-color: var(--border-color) !important;
+  }
+  
+  .text-slate-400,
+  .text-slate-500 {
+    color: var(--text-muted) !important;
+  }
 }
 
 /* ── Border Beam & High-Tech Animations ───────────────────────────────────── */

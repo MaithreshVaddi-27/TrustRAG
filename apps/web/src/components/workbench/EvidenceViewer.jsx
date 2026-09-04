@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { clsx } from 'clsx'
 import { BookOpen, Calendar, ExternalLink, Hash, Shield, ShieldAlert, Search, Globe, Database, Copy, Check } from 'lucide-react'
+import { motion } from 'motion/react'
 
 /**
  * EvidenceViewer — Ultra-refined retrieved evidence viewer with live keyword filter,
@@ -137,7 +138,12 @@ function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
   const isLong = chunk.text && chunk.text.length > 260
 
   return (
-    <div className="glass-card p-4 space-y-3 hover:border-cyan-500/40 hover:shadow-lg transition-all duration-200">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+      className="glass-card p-4 space-y-3 hover:border-cyan-500/40 hover:shadow-lg transition-all duration-200"
+    >
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
@@ -157,14 +163,15 @@ function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button
+          <motion.button
             type="button"
             onClick={onCopy}
+            whileTap={{ scale: 0.9 }}
             className="text-slate-500 hover:text-slate-300 p-1 rounded hover:bg-surface-800 transition-colors"
             title="Copy evidence snippet"
           >
             {isCopied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-          </button>
+          </motion.button>
           {integrityOk
             ? <Shield size={13} className="text-emerald-400" title="Cryptographic provenance verified" />
             : <ShieldAlert size={13} className="text-amber-400" title={chunk.integrity_status} />
@@ -175,23 +182,36 @@ function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
         </div>
       </div>
 
-      {/* Evidence text with expand/collapse */}
+      {/* Evidence text with spring expand/collapse */}
       <div className="space-y-1.5">
-        <blockquote className={clsx(
-          "border-l-2 pl-3 text-sm text-slate-300 leading-relaxed break-words font-normal",
-          isWeb ? "border-cyan-500/60 bg-cyan-950/10 py-1 rounded-r-md" : "border-primary-600/60 bg-surface-900/40 py-1 rounded-r-md",
-          !expanded && isLong && "line-clamp-4"
-        )}>
+        <motion.div
+          className={clsx(
+            "border-l-2 pl-3 text-sm text-slate-300 leading-relaxed break-words font-normal",
+            isWeb ? "border-cyan-500/60 bg-cyan-950/10 py-1 rounded-r-md" : "border-primary-600/60 bg-surface-900/40 py-1 rounded-r-md",
+          )}
+          initial={!expanded && isLong ? { maxHeight: 120 } : { maxHeight: 'none' }}
+          animate={expanded || !isLong ? { maxHeight: 'none' } : { maxHeight: 120 }}
+          transition={{ type: 'spring', damping: 1.0, response: 0.4 }}
+          style={{ overflow: 'hidden' }}
+        >
           {chunk.text}
-        </blockquote>
+        </motion.div>
         {isLong && (
-          <button
+          <motion.button
             type="button"
             onClick={() => setExpanded(e => !e)}
+            whileTap={{ scale: 0.98 }}
             className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium pl-3 transition-colors"
           >
-            {expanded ? 'Show less ▲' : 'Read full segment ▼'}
-          </button>
+            <motion.span
+              animate={{ rotate: expanded ? 180 : 0 }}
+              transition={{ type: 'spring', damping: 1.0, response: 0.3 }}
+              className="inline-block"
+            >
+              {expanded ? '▲' : '▼'}
+            </motion.span>
+            <span className="ml-1">Show {expanded ? 'less' : 'full segment'}</span>
+          </motion.button>
         )}
       </div>
 
@@ -236,6 +256,6 @@ function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
           </a>
         ) : null}
       </div>
-    </div>
+    </motion.div>
   )
 }
