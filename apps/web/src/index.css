@@ -1,11 +1,11 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 /* ── External CSS imports ──────────────────────────────────────────────────── */
 @import './styles/typography.css';
 @import './styles/animations.css';
 @import './styles/materials.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* ── Base resets ───────────────────────────────────────────────────────────── */
 @layer base {
