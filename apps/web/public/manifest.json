@@ -1,17 +1,27 @@
 {
-  "short_name": "TrustRAG",
   "name": "TRUSTRAG — AI Reliability Workbench",
+  "short_name": "TrustRAG",
   "description": "Autonomous Hallucination Detection & Closed-Loop Recovery Platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#040711",
+  "theme_color": "#040711",
   "icons": [
     {
       "src": "/trustrag-icon.svg",
       "type": "image/svg+xml",
-      "sizes": "48x48 72x72 96x96 128x128 256x256 512x512",
-      "purpose": "any maskable"
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/android-chrome-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icons/android-chrome-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
     }
-  ],
-  "start_url": "/",
-  "display": "standalone",
-  "theme_color": "#040711",
-  "background_color": "#040711"
+  ]
 }
