@@ -2,6 +2,19 @@
 @import './styles/typography.css';
 @import './styles/animations.css';
 @import './styles/materials.css';
+@import './styles/landing.css';
+@import './styles/app-layout.css';
+@import './styles/dashboard.css';
+@import './styles/playground.css';
+@import './styles/auth.css';
+@import './styles/knowledge-bases.css';
+@import './styles/evidence.css';
+@import './styles/claims.css';
+@import './styles/conflicts.css';
+@import './styles/experiments.css';
+@import './styles/settings.css';
+@import './styles/trace.css';
+@import './styles/components.css';
 
 @tailwind base;
 @tailwind components;

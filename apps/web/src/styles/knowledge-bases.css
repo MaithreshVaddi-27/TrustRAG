@@ -1,0 +1,186 @@
+/* ── KnowledgeBasesPage List, Modals ──────────────────────────────────────── */
+
+/* Modal overlay */
+.kb-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 1rem;
+  animation: fadeIn 0.2s ease;
+}
+
+/* Modal panel */
+.kb-modal-panel {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 1rem;
+  box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.6);
+  width: 100%;
+  max-width: 28rem;
+  overflow: hidden;
+  animation: slideUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Modal header */
+.kb-modal-header {
+  padding: 1.25rem;
+  border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.25);
+}
+
+/* Format tag pill (repeated 7+ times) */
+.format-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 0.75rem;
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: #cbd5e1;
+}
+
+/* KB card top header */
+.kb-card-header {
+  padding: 1.25rem 1.5rem;
+  background: rgba(15, 23, 42, 0.4);
+  border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .kb-card-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+/* Document list row */
+.kb-doc-row {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: background-color 0.15s ease;
+}
+
+@media (min-width: 640px) {
+  .kb-doc-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.kb-doc-row:hover {
+  background: rgba(15, 23, 42, 0.25);
+}
+
+/* Upload status banner */
+.kb-upload-banner {
+  padding: 0.625rem 1.5rem;
+  background: rgba(15, 23, 42, 0.5);
+  border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  animation: fadeIn 0.2s ease;
+}
+
+/* Indexing badge */
+.kb-indexing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: #67e8f9;
+  background: rgba(22, 78, 99, 0.4);
+  border: 1px solid rgba(21, 94, 117, 0.4);
+}
+
+/* Empty document state */
+.kb-empty-docs {
+  padding: 2rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.2);
+  border: 1px solid rgba(30, 41, 59, 0.5);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Document icon box */
+.kb-doc-icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-400, #38bdf8);
+  flex-shrink: 0;
+}
+
+/* KB icon box */
+.kb-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.75rem;
+  background: rgba(6, 182, 212, 0.06);
+  border: 1px solid rgba(6, 182, 212, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #22d3ee;
+  flex-shrink: 0;
+}
+
+/* Search input (with icon) */
+.kb-search {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.75rem 0.5rem 2.25rem;
+  font-size: 0.875rem;
+  color: #f1f5f9;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.kb-search::placeholder {
+  color: #64748b;
+}
+
+.kb-search:focus {
+  border-color: var(--primary-500, #0ea5e9);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kb-modal-overlay { animation: none; }
+  .kb-modal-panel { animation: none; }
+  .kb-upload-banner { animation: none; }
+}
