@@ -633,7 +633,7 @@ export default function DashboardPage() {
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
               <Layers size={18} className="text-primary-400" />
-              The TRUSTRAG Closed-Loop Reliability Engine
+              The TrustRAG Closed-Loop Reliability Engine
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
               Deterministic 5-phase pipeline preventing silent hallucinations through active verification

@@ -342,7 +342,7 @@ function KnowledgeBaseCard({ kb }) {
 
           <button
             onClick={() => {
-              if (confirm(`Are you sure you want to delete "${kb.name}"? All points in Qdrant will be purged.`)) {
+              if (confirm(`Are you sure you want to delete "${kb.name}"? All indexed documents will be removed permanently.`)) {
                 deleteKbMutation.mutate(kb.id)
               }
             }}
@@ -374,7 +374,7 @@ function KnowledgeBaseCard({ kb }) {
           {uploadStatus === 'success' && (
             <span className="text-emerald-400 flex items-center gap-2 font-mono">
               <CheckCircle2 size={14} />
-              Document successfully indexed into Qdrant Cloud!
+              Document successfully indexed and ready for queries!
             </span>
           )}
           {uploadStatus === 'error' && (

@@ -57,7 +57,7 @@ export default function LandingNavbar() {
                 Sign In
               </Link>
               <Link
-                to="/login"
+                to="/register"
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-lg shadow-cyan-950/50 border border-cyan-400/30 transition-all hover:scale-[1.02]"
               >
                 <span>Get Started</span>
@@ -105,7 +105,7 @@ export default function LandingNavbar() {
               <Link to="/login" onClick={() => setIsMobileNavOpen(false)} className="flex-1 py-2.5 rounded-xl text-center text-xs font-semibold text-slate-300 bg-surface-900 border border-slate-800">
                 Sign In
               </Link>
-              <Link to="/login" onClick={() => setIsMobileNavOpen(false)} className="flex-1 py-2.5 rounded-xl text-center text-xs font-semibold text-white bg-gradient-to-r from-primary-600 to-cyan-600 shadow-md">
+              <Link to="/register" onClick={() => setIsMobileNavOpen(false)} className="flex-1 py-2.5 rounded-xl text-center text-xs font-semibold text-white bg-gradient-to-r from-primary-600 to-cyan-600 shadow-md">
                 Get Started
               </Link>
             </div>

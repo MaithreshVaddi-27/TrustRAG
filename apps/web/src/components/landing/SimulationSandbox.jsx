@@ -208,7 +208,7 @@ export default function SimulationSandbox() {
                 <span className="text-lg font-mono font-extrabold text-cyan-300">
                   {currentScenario.recovery.finalScore}
                 </span>
-                <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-700 text-[9px] font-mono text-emerald-300 font-bold">
+                <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-700 text-[10px] font-mono text-emerald-300 font-bold">
                   VERIFIED & GROUNDED
                 </span>
               </div>

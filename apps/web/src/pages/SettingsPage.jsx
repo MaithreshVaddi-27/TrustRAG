@@ -608,7 +608,7 @@ export default function SettingsPage() {
               <span className="text-slate-500 font-medium">Tenant ID</span>
               <div className="flex items-center justify-between gap-2">
                 <span className="font-mono text-slate-300 text-xs truncate max-w-[220px]">
-                  {user?.id || '64ee39d09c6292376e191981'}
+                  {user?.id || 'Not available'}
                 </span>
                 <button
                   onClick={copyUserId}

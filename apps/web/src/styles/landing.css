@@ -1,6 +1,8 @@
 /* ── Landing Page Specific Styles ─────────────────────────────────────────── */
+/* Note: Common keyframes (fadeIn, slideUp, float, scanlineMove, rotateBeam, etc.)
+   are defined in animations.css. Only landing-specific overrides live here.      */
 
-/* Shimmer text effect */
+/* Shimmer text effect — landing-only variant with different gradient */
 .shimmer-text {
   background: linear-gradient(
     90deg,
@@ -17,7 +19,7 @@
   animation: shimmer 3s linear infinite;
 }
 
-/* Cyber grid background */
+/* Cyber grid background — landing variant with 60px grid */
 .bg-cyber-grid {
   background-image:
     linear-gradient(rgba(14, 165, 233, 0.03) 1px, transparent 1px),
@@ -25,32 +27,7 @@
   background-size: 60px 60px;
 }
 
-/* Floating animation for hero cards */
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-8px); }
-}
-
-.animate-float {
-  animation: float 5s ease-in-out infinite;
-}
-
-/* Spin slow for icons */
-@keyframes spinSlow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.animate-spin-slow {
-  animation: spinSlow 8s linear infinite;
-}
-
-/* Laser scanline for simulation */
-@keyframes scanlineMove {
-  0%, 100% { top: 6%; opacity: 0.3; }
-  50% { top: 92%; opacity: 1; }
-}
-
+/* Laser scanline for simulation — slightly different from animations.css */
 .laser-scanline {
   position: absolute;
   left: 0;
@@ -63,18 +40,7 @@
   pointer-events: none;
 }
 
-/* Border beam rotation */
-@property --beam-angle {
-  syntax: '<angle>';
-  initial-value: 0deg;
-  inherits: false;
-}
-
-@keyframes rotateBeam {
-  from { --beam-angle: 0deg; }
-  to { --beam-angle: 360deg; }
-}
-
+/* Border beam — landing-only structural styles (keyframe in animations.css) */
 .border-beam {
   position: relative;
 }
@@ -101,32 +67,8 @@
   animation: rotateBeam 4s linear infinite;
 }
 
-/* Slide up animation */
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-slide-up {
-  animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-}
-
-/* Fade in */
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.3s ease forwards;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .shimmer-text { animation: none; }
-  .animate-float { animation: none; }
-  .animate-spin-slow { animation: none; }
   .laser-scanline { animation: none; opacity: 0; }
   .border-beam::before { animation: none; }
-  .animate-slide-up { animation: none; opacity: 1; }
-  .animate-fade-in { animation: none; opacity: 1; }
 }

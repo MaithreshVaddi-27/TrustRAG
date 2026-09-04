@@ -48,7 +48,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <AuthLayout title="Create account" subtitle="Get started with TRUSTRAG">
+    <AuthLayout title="Create account" subtitle="Get started with TrustRAG">
       <form onSubmit={handleSubmit} className="space-y-4" id="register-form">
         {error && (
           <div className="rounded-lg border border-red-800/50 bg-red-950/40 px-3 py-2 text-sm text-red-400">
@@ -62,7 +62,7 @@ export default function RegisterPage() {
               ⚡ Creating TrustRAG Account ({loadingTime}s elapsed)
             </p>
             <p className="text-slate-400 text-[11px] leading-relaxed">
-              Provisioning isolated tenant collection in local database. Please wait while your workspace initializes.
+              Setting up your isolated workspace. This usually takes less than a minute.
             </p>
           </div>
         )}

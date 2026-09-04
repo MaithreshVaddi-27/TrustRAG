@@ -10,7 +10,7 @@ const EXPERIMENT_CONFIGS = [
   { name: 'hybrid_rag',        label: 'Hybrid RAG' },
   { name: 'hybrid_rerank',     label: 'Hybrid + Rerank' },
   { name: 'verified_rag',      label: 'Verified RAG' },
-  { name: 'trustrag_full',     label: 'TRUSTRAG Full' },
+  { name: 'trustrag_full',     label: 'TrustRAG Full' },
 ]
 
 export default function ExperimentsPage() {
@@ -143,6 +143,7 @@ export default function ExperimentsPage() {
                 <button 
                   onClick={() => setIsModalOpen(false)}
                   className="text-slate-500 hover:text-slate-300"
+                  aria-label="Close modal"
                 >
                   <X size={18} />
                 </button>

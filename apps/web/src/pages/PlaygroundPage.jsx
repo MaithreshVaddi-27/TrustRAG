@@ -501,7 +501,7 @@ const finalizedRef = useRef(false)
                     }`}
                   >
                     <span>Ollama</span>
-                    <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-emerald-400 font-mono">:11434</span>
+                    <span className="text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-emerald-400 font-mono">:11434</span>
                   </motion.button>
                   <motion.button
                     type="button"
@@ -515,7 +515,7 @@ const finalizedRef = useRef(false)
                     }`}
                   >
                     <span>llama.cpp</span>
-                    <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">:8081</span>
+                    <span className="text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">:8081</span>
                   </motion.button>
                   <motion.button
                     type="button"
@@ -529,7 +529,7 @@ const finalizedRef = useRef(false)
                     }`}
                   >
                     <span>Gemini</span>
-                    <span className="text-[9px] text-slate-500">Cloud</span>
+                    <span className="text-[10px] text-slate-500">Cloud</span>
                   </motion.button>
                   <motion.button
                     type="button"
@@ -543,7 +543,7 @@ const finalizedRef = useRef(false)
                     }`}
                   >
                     <span>NVIDIA</span>
-                    <span className="text-[9px] text-slate-500">Cloud</span>
+                    <span className="text-[10px] text-slate-500">Cloud</span>
                   </motion.button>
                 </div>
 
@@ -577,7 +577,7 @@ const finalizedRef = useRef(false)
                         <Sparkles size={12} className="text-cyan-400" />
                         <span>MCP Tool Grounding</span>
                       </div>
-                      <span className="px-1.5 py-0.5 rounded bg-cyan-950/90 text-cyan-300 border border-cyan-700/50 text-[9px] font-mono">
+                      <span className="px-1.5 py-0.5 rounded bg-cyan-950/90 text-cyan-300 border border-cyan-700/50 text-[10px] font-mono">
                         Active
                       </span>
                     </div>
@@ -619,7 +619,7 @@ const finalizedRef = useRef(false)
                     }`}
                   >
                     <span>Local Ollama</span>
-                    <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-emerald-400 font-mono">768d</span>
+                    <span className="text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-emerald-400 font-mono">768d</span>
                   </motion.button>
                   <motion.button
                     type="button"
@@ -633,7 +633,7 @@ const finalizedRef = useRef(false)
                     }`}
                   >
                     <span>Local llama.cpp</span>
-                    <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-amber-400 font-mono">768d</span>
+                    <span className="text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-amber-400 font-mono">768d</span>
                   </motion.button>
                   <motion.button
                     type="button"
@@ -647,7 +647,7 @@ const finalizedRef = useRef(false)
                     }`}
                   >
                     <span>Local BGE</span>
-                    <span className="text-[9px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">384d</span>
+                    <span className="text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">384d</span>
                   </motion.button>
                   <motion.button
                     type="button"
@@ -661,7 +661,7 @@ const finalizedRef = useRef(false)
                     }`}
                   >
                     <span>Gemini Embed</span>
-                    <span className="text-[9px] text-slate-500">Cloud</span>
+                    <span className="text-[10px] text-slate-500">Cloud</span>
                   </motion.button>
                 </div>
 

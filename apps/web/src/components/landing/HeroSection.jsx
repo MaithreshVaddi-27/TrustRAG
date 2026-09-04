@@ -58,7 +58,7 @@ export default function HeroSection() {
 
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
         <button
-          onClick={() => navigate('/login')}
+          onClick={() => navigate('/register')}
           className="w-full sm:w-auto px-9 py-4 rounded-xl bg-gradient-to-r from-primary-600 via-sky-500 to-cyan-500 hover:from-primary-500 hover:to-cyan-400 text-white font-bold text-sm shadow-2xl shadow-cyan-950/80 border border-cyan-400/50 flex items-center justify-center gap-2.5 transition-all hover:scale-[1.04] active:scale-[0.98] group cursor-pointer relative overflow-hidden"
         >
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full duration-700 transition-transform pointer-events-none" />

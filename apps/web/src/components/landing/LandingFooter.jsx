@@ -9,7 +9,7 @@ export default function LandingFooter() {
           <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-primary-600 to-cyan-500 flex items-center justify-center text-white shadow-md">
             <Swords size={13} />
           </div>
-          <span className="font-bold text-slate-200 text-sm">TRUSTRAG</span>
+          <span className="font-bold text-slate-200 text-sm">TrustRAG</span>
           <span className="text-slate-500">Autonomous AI Reliability Platform</span>
         </div>
 
@@ -24,7 +24,7 @@ export default function LandingFooter() {
             <ExternalLink size={12} />
           </a>
           <Link to="/login" className="hover:text-cyan-400 transition-colors">Sign In</Link>
-          <Link to="/login" className="hover:text-cyan-400 transition-colors">Get Started</Link>
+          <Link to="/register" className="hover:text-cyan-400 transition-colors">Get Started</Link>
         </div>
       </div>
     </footer>

@@ -81,7 +81,7 @@
 
   .btn-danger {
     @apply px-3 py-1.5 bg-red-950/50 hover:bg-red-900/50 text-red-300 hover:text-red-100 text-xs font-medium
-           rounded-lg border border-red-800/60 hover:border-red-700 transition-all duration-200 flex items-center justify-center gap-1.5;
+           rounded-xl border border-red-800/60 hover:border-red-700 transition-all duration-200 flex items-center justify-center gap-1.5;
   }
 
   .code-block {
@@ -95,5 +95,24 @@
 
   .section-heading {
     @apply text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2;
+  }
+}
+
+/* Global press feedback — Apple HIG: "Give people consistent feedback" */
+@media (hover: hover) and (pointer: fine) {
+  button:not(:disabled):active,
+  a:active,
+  [role="button"]:active {
+    transform: scale(0.97);
+    transition: transform 80ms ease-out;
+  }
+}
+
+@media (hover: hover) and (pointer: coarse) {
+  button:not(:disabled):active,
+  a:active,
+  [role="button"]:active {
+    transform: scale(0.98);
+    transition: transform 80ms ease-out;
   }
 }

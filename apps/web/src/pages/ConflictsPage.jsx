@@ -38,7 +38,7 @@ export default function ConflictsPage() {
             <p className="text-sm font-semibold text-amber-300">Deterministic Conflict Detection</p>
             <p className="text-xs text-slate-300 leading-relaxed">
               When documents contain opposing assertions or when NLI verification detects a direct contradiction
-              against source evidence, TRUSTRAG isolates and surfaces the conflict rather than making an arbitrary or hallucinated choice.
+              against source evidence, TrustRAG isolates and surfaces the conflict rather than making an arbitrary or hallucinated choice.
             </p>
           </div>
         </div>
