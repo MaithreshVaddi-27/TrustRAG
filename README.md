@@ -8,8 +8,11 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![Ollama](https://img.shields.io/badge/Ollama-Local_Offline-000000?logo=ollama&logoColor=white)](https://ollama.com)
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF_Server-orange)](https://github.com/ggerganov/llama.cpp)
-[![Tests](https://img.shields.io/badge/Tests-103%20Passing-brightgreen)](apps/api/tests)
-[![Bandit](https://img.shields.io/badge/Bandit%20SAST-0%20Issues-brightgreen)](docs/audits/final-audit-report.md)
+[![Tests](https://img.shields.io/badge/Backend%20Tests-111%20Passing-brightgreen)](apps/api/tests)
+[![Tests](https://img.shields.io/badge/Frontend%20Tests-15%20Passing-brightgreen)](apps/web)
+[![E2E](https://img.shields.io/badge/Playwright%20E2E-2%20Passing-brightgreen)](apps/web/e2e)
+[![Load](https://img.shields.io/badge/k6%20Load%20Smoke-Passing-brightgreen)](load-test/smoke.js)
+[![Bandit](https://img.shields.io/badge/Bandit%20SAST-0%20Issues-brightgreen)](docs/AUDIT_REPORT.md)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 ### 🔗 Local Workbench Quick Links (Branch: `ui-redesign`)
@@ -160,7 +163,7 @@ TrustRAG/
 │       │   └── verification/         # Batch NLI verifier & SHA-256 evidence integrity auditor
 │       ├── config/
 │       │   └── models.yaml           # Centralized configuration registry for models and thresholds
-│       └── tests/                    # 79 automated unit & integration test suites (100% pass)
+│       └── tests/                    # 111 automated unit & integration test suites (100% pass)
 │
 ├── docs/                             # Engineering documentation repository
 │   ├── architecture/                 # End-to-end design specifications and ADRs
@@ -407,8 +410,8 @@ JWT_SECRET=replace_with_a_secure_random_64_character_hex_string
 JWT_EXPIRY_MINUTES=60
 
 # ── AI Provider Selection ─────────────────────────────────────────────────────
-# Options: 'gemini' (Google AI Studio) or 'nvidia' (NVIDIA NIM)
-AI_PROVIDER=gemini
+# Options: 'ollama' (local, zero-key), 'llama_cpp' (local, zero-key), 'gemini' (Google AI Studio) or 'nvidia' (NVIDIA NIM)
+AI_PROVIDER=ollama
 
 # Google Gemini API (Required if AI_PROVIDER=gemini or EMBEDDING_PROVIDER=google_genai)
 GEMINI_API_KEY=your_gemini_api_key_here
@@ -646,6 +649,7 @@ All protected endpoints require `Authorization: Bearer <JWT>`.
 | `GET` | `/api/v1/health` | Public | Live readiness probe checking MongoDB and Qdrant vector store |
 | `POST` | `/api/v1/auth/register` | Public | User registration (rate-limited: 20/min) |
 | `POST` | `/api/v1/auth/login` | Public | Credential verification & JWT issuance |
+| `POST` | `/api/v1/auth/logout` | User | Revoke the current JWT server-side (deny-list + TTL expiry) — a signed-out token can never be reused |
 | `GET` | `/api/v1/auth/me` | User | Fetch authenticated user profile |
 | `GET` | `/api/v1/knowledge-bases` | User | List all Knowledge Bases owned by current user |
 | `POST` | `/api/v1/knowledge-bases` | User | Create a new Knowledge Base |
@@ -671,20 +675,45 @@ Interactive Swagger documentation is available at `http://localhost:8080/docs` i
 
 ## 🧪 Testing & Quality Assurance
 
-TRUSTRAG enforces automated quality checks across both backend and frontend layers:
+TRUSTRAG enforces automated quality checks across both backend and frontend layers, all wired into GitHub Actions:
 
+**Backend — 111 tests, ruff-clean (check + format):**
 ```bash
-# 1. Run complete pytest test suite (69 tests covering agent, NLI, auth, and IDOR)
-docker exec trustrag_api pytest -v
+cd apps/api
+.venv/bin/python -m pytest tests/ -q --no-header --no-cov   # 111 passed
+.venv/bin/python -m ruff check app/ tests/                  # All checks passed!
+.venv/bin/python -m ruff format --check app/ tests/         # formatted
+```
+Includes **rate-limiter threshold tests** (`tests/test_rate_limit.py`) asserting `429 Too Many Requests` once the per-minute auth ceiling is exceeded.
 
-# 2. Run backend static analysis and style formatting
-docker exec trustrag_api ruff check app/ tests/
-
-# 3. Run frontend code linting and production bundle compilation
+**Frontend — 17 tests (15 Vitest unit/component + 2 Playwright E2E), 0 lint errors:**
+```bash
 cd apps/web
+npm run test          # Vitest unit & component tests
+npm run test:e2e      # Playwright E2E smoke (requires backend on :8080 — starts Vite preview + Chromium for you)
 npm run lint
 npm run build
 ```
+Frontend coverage includes the **SSE recovery contract** (`src/lib/api.test.js`): on stream-ticket failure the UI gets `onError` and falls back to polling, the JWT never appears in the stream URL, terminal events close the stream, keep-alive pings are ignored, and mid-flight stream errors are surfaced.
+
+**E2E coverage** (`apps/web/e2e/auth.spec.js`) verifies the critical user path against a live backend: unauthenticated route guard, API health, registration, UI login, session persistence, and **server-side JWT revocation** after `POST /auth/logout` (SEC-H1).
+
+**Load testing** (`load-test/smoke.js`) runs a k6 ramp (5→10 VUs, ~3,300 requests / 35s) against `health` + an authenticated knowledge-base read — matching the exact request pattern of live dashboard usage:
+```bash
+k6 run load-test/smoke.js                     # default: http://localhost:8080
+API_BASE_URL=http://localhost:8080 k6 run load-test/smoke.js
+```
+Gated on exit code + thresholds: **<1% failed requests, p95 < 300ms, p99 < 500ms**. Locally verified: 0.00% failures, p95 ≈ 9ms.
+
+**CI pipeline** (`.github/workflows/ci.yml`):
+| Job | Checks |
+|---|---|
+| `backend-lint` | `ruff check` + `ruff format --check` |
+| `backend-test` | Full 111-test pytest suite + `models.yaml` config validation |
+| `frontend-lint` | ESLint + 15 Vitest tests |
+| `frontend-build` | Production bundle compilation (artifact uploaded) |
+| `e2e` | MongoDB service + live API + Chromium Playwright smoke **+ k6 load smoke** (artifacts on failure) |
+| `docker-build` | Multi-stage image build **+ Trivy HIGH/CRITICAL vulnerability gate** |
 
 ---
 
@@ -715,18 +744,18 @@ npm run build
 
 ## 📚 Documentation Index
 
-- 📊 [**Master Architecture & Systems Audit (`docs/audit/comprehensive_audit_report.md`)**](docs/audit/comprehensive_audit_report.md) — Multi-disciplinary evaluation across Systems, Security, AI/ML, and QA.
-- 🛡️ [**Deep Security & DevSecOps Audit (`docs/audit/security_audit.md`)**](docs/audit/security_audit.md) — Physical collection isolation, anti-IDOR defense, XXE protection, and cryptographic SHA-256 provenance.
-- 🧠 [**AI/ML Performance & Latency Audit (`docs/audit/ai_ml_performance_audit.md`)**](docs/audit/ai_ml_performance_audit.md) — Matryoshka 384d MRL embeddings, hybrid RRF search, and zero local GPU RAM operation.
-- 🧪 [**Quality Assurance Testing Report (`docs/audit/qa_testing_report.md`)**](docs/audit/qa_testing_report.md) — 79/79 automated tests across whitebox and blackbox test suites.
-- 🛠️ [**Modernization & Refactoring Blueprint (`docs/audit/areas_for_improvement_and_refactoring.md`)**](docs/audit/areas_for_improvement_and_refactoring.md) — Qdrant on-disk INT8 quantization, LRU embedding caching, and container pruning.
+- 📊 [**Master Architecture & Systems Audit (`docs/audits/comprehensive_system_audit.md`)**](docs/audits/comprehensive_system_audit.md) — Multi-disciplinary evaluation across Systems, Security, AI/ML, and QA.
+- 📋 [**Senior Engineering Audit Report (`docs/AUDIT_REPORT.md`)**](docs/AUDIT_REPORT.md) — Comprehensive technical quality report with zero open defects across P0–P3.
+- 🛡️ [**Security & DevSecOps Audit (`docs/ui-redesign-audit/SECURITY.md`)**](docs/ui-redesign-audit/SECURITY.md) — Physical collection isolation, anti-IDOR defense, SSRF protection, and cryptographic SHA-256 provenance.
+- 🧠 [**AI/ML Performance & Latency Audit (`docs/ui-redesign-audit/AI-ML.md`)**](docs/ui-redesign-audit/AI-ML.md) — Matryoshka 384d MRL embeddings, hybrid RRF search, and zero local GPU RAM operation.
+- 🧪 [**Quality Assurance Testing Report (`docs/ui-redesign-audit/QA.md`)**](docs/ui-redesign-audit/QA.md) — Automated tests across whitebox, blackbox, and E2E test suites.
 - 🏛️ [**System Architecture (`docs/architecture/architecture.md`)**](docs/architecture/architecture.md) — Comprehensive technical design of the LangGraph state machine, hybrid search, and claim decomposition.
 - 📐 [**Decision Log (`docs/architecture/decision-log.md`)**](docs/architecture/decision-log.md) — Architectural Decision Records (ADRs) explaining technology selections and tradeoffs.
 - 🛡️ [**Security Controls (`docs/security/security-controls.md`)**](docs/security/security-controls.md) — Deep dive into JWT authentication, anti-IDOR validation, and defensive headers.
 - 🔒 [**Threat Model (`docs/security/threat-model.md`)**](docs/security/threat-model.md) — STRIDE threat modeling, attack surface analysis, and countermeasure matrix.
-- 🔍 [**Multi-Tenant Isolation Audit (`docs/audits/multi-tenant-isolation-audit.md`)**](docs/audits/multi-tenant-isolation-audit.md) — Independent audit validating tenant data scoping and cascade deletion.
-- 📋 [**Quality Audit Dossier (`docs/audits/final-audit-report.md`)**](docs/audits/final-audit-report.md) — Formal quality sign-off verifying 0 open defects across P0–P3 categories.
-- 🗺️ [**Product Roadmap (`docs/ROADMAP.md`)**](docs/ROADMAP.md) — Milestones, completed phases, and future releases.
+- 🚀 [**Deployment Guide (`docs/deployment/DEPLOYMENT_GUIDE.md`)**](docs/deployment/DEPLOYMENT_GUIDE.md) — Production container orchestration, cloud hosting, and environment management.
+- 📑 [**UI Redesign Audit Suite (`docs/ui-redesign-audit/INDEX.md`)**](docs/ui-redesign-audit/INDEX.md) — Complete audit suite index for the modern dark workbench frontend.
+- 🗺️ [**Product Roadmap (`docs/ROADMAP.md`)**](docs/ROADMAP.md) — Milestones, completed phases, and upcoming releases.
 
 ---
 

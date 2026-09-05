@@ -6,12 +6,9 @@
 
 ## Critical
 
-**[Critical] C1 — Config precedence inversion: models.yaml is unreachable; hardcoded Settings defaults always win** (Confirmed)
-- Location: `app/core/config.py:113-122,250-262,302-311,338-346`; `apps/api/config/models.yaml:10-15` (whose header explicitly says "NEVER hardcode values from this file")
-- Evidence: Getters resolve `settings.X or yaml_value`, but every `Settings` default is non-empty (`llm_provider="ollama"`, `embedding_provider="huggingface"`, …) — the `or` never falls through to yaml. The yaml-declared LLM, verifier, and embedding models, plus every `optimization:` block (prompt_caching, KV quantization), are silently dead.
-- Impact: The declared model architecture is fiction. Operators editing models.yaml get zero effect with no warning — a spec-violating (D-07) and operationally dangerous inversion.
-- Recommendation: Invert the getters to yaml-first (or make Settings fields `Optional` so "unset" is distinguishable), delete the 6 hardcoded model IDs from Python, and log the resolved provider/model triple at startup.
-- (Same root cause as AI-ML.md Critical 3 — owned here for the architectural contract violation.)
+**[Critical] ~~C1 — Config precedence inversion: models.yaml is unreachable; hardcoded Settings defaults always win~~** ✅ Fixed
+- Location: `app/core/config.py`
+- Fix: Replaced all `getattr(settings, "X", None)` with `os.environ.get("X")` across `llm_provider`, `llm_model`, `ollama_base_url`, `llamacpp_base_url`, `embedding_provider`, `embedding_model`, `embedding_dimensionality`, `verification_provider`, `verification_model`. Precedence is now: env vars > `models.yaml` (via `ModelsConfig` wrapper) > hardcoded defaults. (Same root cause as AI-ML.md Critical 3 — fixed here for the architectural contract violation.)
 
 **[Critical] C2 — Trust verdict is split-brained across the agent graph and the service layer** (Confirmed)
 - Location: `app/agent/graph.py:463-471` (decides only PASS/FAIL) vs `app/services/analysis_service.py:384-408` (owns the full ABSTAIN→ABSTAINED / PASS→TRUSTED / score≥abstain_below→UNCERTAIN / else FAILED taxonomy); string contracts at `graph.py:355` (`answer == "ABSTAIN"`, `state.get("diagnosis_failures") == ["Knowledge base contains 0 indexed chunks"]`)

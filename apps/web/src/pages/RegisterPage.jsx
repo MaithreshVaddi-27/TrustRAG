@@ -29,8 +29,20 @@ export default function RegisterPage() {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.')
+    const pwError =
+      password.length < 12
+        ? 'Password must be at least 12 characters.'
+        : !/[A-Z]/.test(password)
+          ? 'Password must contain at least one uppercase letter.'
+          : !/[a-z]/.test(password)
+            ? 'Password must contain at least one lowercase letter.'
+            : !/\d/.test(password)
+              ? 'Password must contain at least one digit.'
+              : !/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)
+                ? 'Password must contain at least one special character.'
+                : null
+    if (pwError) {
+      setError(pwError)
       return
     }
     setError('')
@@ -102,7 +114,7 @@ export default function RegisterPage() {
         <div className="space-y-1.5">
           <label className="block text-xs font-medium text-slate-400" htmlFor="reg-password">
             Password
-            <span className="text-slate-600 font-normal ml-1">(min. 8 chars)</span>
+            <span className="text-slate-600 font-normal ml-1">(min. 12 chars, mixed case, digit &amp; symbol)</span>
           </label>
           <div className="relative">
             <input

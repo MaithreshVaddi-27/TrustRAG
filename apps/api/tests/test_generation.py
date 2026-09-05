@@ -23,6 +23,30 @@ def test_context_formatting():
     assert "[Source: doc2.txt, Page 4]" in formatted
 
 
+def test_context_format_is_byte_stable_regardless_of_input_order():
+    """OPT-H11: identical chunks in any provider order must produce an
+    identical byte string so repeated queries hit Ollama's KV cache."""
+    chunk_a = {"filename": "doc_a.txt", "page": 1, "text": "Alpha facts about the policy."}
+    chunk_b = {"filename": "doc_b.txt", "page": 7, "text": "Beta facts about the policy."}
+
+    first = format_context([chunk_a, chunk_b])
+    # Same documents, retrieved in the opposite order by the hybrid provider.
+    second = format_context([chunk_b, chunk_a])
+
+    assert first == second
+    assert "Alpha facts" in first and "Beta facts" in first
+
+
+def test_context_format_orders_by_score_then_text():
+    """Higher-scoring chunks are always emitted first so the most relevant
+    evidence forms a stable prompt prefix."""
+    low = {"filename": "doc.txt", "page": 1, "text": "low relevance chunk text", "rrf_score": 0.2}
+    high = {"filename": "doc.txt", "page": 2, "text": "high relevance chunk text", "rrf_score": 0.9}
+
+    formatted = format_context([low, high])
+    assert formatted.index("high relevance") < formatted.index("low relevance")
+
+
 @pytest.mark.asyncio
 async def test_generation_abstention_on_empty_context():
     # Enforces immediate abstention without calling LLM when no segments are available

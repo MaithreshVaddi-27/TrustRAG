@@ -1,7 +1,7 @@
 # TRUSTRAG — Project Roadmap & Remaining Steps
 
-> Last updated: 2026-08-29  
-> Current status: All 12 core phases complete + Post-Launch Quality & Audit Cycle complete (v1 → v4). 79 automated test suites passing (100% pass rate). Active and upcoming work below.
+> Last updated: 2026-09-05  
+> Current status: All 12 core phases complete + Post-Launch Quality & Audit Cycle complete (v1 → v4). **111 backend tests, 15 frontend Vitest, 2 Playwright E2E, k6 load smoke — 100% pass rate.** Active and upcoming work below.
 
 ---
 
@@ -53,9 +53,10 @@
 - [ ] **Managed Qdrant Cloud** — Provision cluster at https://cloud.qdrant.io; set `QDRANT_URL` and `QDRANT_API_KEY`.
 
 ### Testing & Verification Expansion
-- [ ] **End-to-End Browser Automation** — Playwright / Cypress suite covering Playground query submission, KB upload, Evidence inspection, and Claim review flows.
-- [ ] **Live Integration Tests** — Automated test suite executed against live MongoDB and Qdrant instances without mocks.
-- [ ] **Rate Limiter Threshold Tests** — Integration test asserting 429 response when hitting `@limiter.limit()` ceilings.
+- [x] **End-to-End Browser Automation** — Playwright suite in `apps/web/e2e/auth.spec.js`: route guard, register, UI login, dashboard, **JWT revocation after logout**; CI job with live Mongo + API + Chromium
+- [x] **Live Integration Tests** — E2E suite runs against live MongoDB and the real FastAPI app (no mocks); k6 smoke also hits live Mongo/Qdrant reads
+- [x] **Rate Limiter Threshold Tests** — `apps/api/tests/test_rate_limit.py` asserts 429 when the per-minute auth ceiling is exceeded
+- [x] **Load Testing in CI** — k6 smoke (`load-test/smoke.js`) runs in the `e2e` CI job: health + authenticated reads, ~3.3k requests/35s, p95<300ms gate
 
 ---
 

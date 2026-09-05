@@ -1,7 +1,8 @@
-import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { lazy, Suspense, useEffect } from 'react'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
+import ErrorBoundary from '@/components/ErrorBoundary'
 
 // Public Landing page
 const LandingPage = lazy(() => import('@/pages/LandingPage'))
@@ -56,28 +57,61 @@ function RedirectIfAuth({ children }) {
   return children
 }
 
+/**
+ * Wraps a route element in an ErrorBoundary so a crash on one page
+ * shows a recovery UI instead of unmounting the entire app (FE-H3).
+ */
+function guarded(element) {
+  return <ErrorBoundary>{element}</ErrorBoundary>
+}
+
+const PATH_TITLES = {
+  '/': 'TRUSTRAG — AI Reliability & Hallucination Audit Workbench',
+  '/login': 'Sign In — TRUSTRAG',
+  '/register': 'Create Account — TRUSTRAG',
+  '/dashboard': 'Dashboard — TRUSTRAG',
+  '/playground': 'Playground — TRUSTRAG',
+  '/knowledge-bases': 'Knowledge Bases — TRUSTRAG',
+  '/evidence': 'Evidence Vault — TRUSTRAG',
+  '/claims': 'Claim Inspector — TRUSTRAG',
+  '/conflicts': 'Source & Claim Conflicts — TRUSTRAG',
+  '/experiments': 'Experiments — TRUSTRAG',
+  '/settings': 'Settings — TRUSTRAG',
+}
+
+function TitleSync() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    const title = PATH_TITLES[pathname]
+    if (title) document.title = title
+    else if (pathname.startsWith('/traces/')) document.title = 'Execution Trace — TRUSTRAG'
+  }, [pathname])
+  return null
+}
+
 export default function App() {
   return (
     <Suspense fallback={<PageLoading />}>
+      <TitleSync />
       <Routes>
         {/* ── Public ──────────────────────────────────────────── */}
-        <Route path="/"         element={<LandingPage />} />
-        <Route path="/login"    element={<RedirectIfAuth><LoginPage /></RedirectIfAuth>} />
-        <Route path="/register" element={<RedirectIfAuth><RegisterPage /></RedirectIfAuth>} />
+        <Route path="/"         element={guarded(<LandingPage />)} />
+        <Route path="/login"    element={guarded(<RedirectIfAuth><LoginPage /></RedirectIfAuth>)} />
+        <Route path="/register" element={guarded(<RedirectIfAuth><RegisterPage /></RedirectIfAuth>)} />
 
         {/* ── Protected ───────────────────────────────────────── */}
-        <Route path="/dashboard"       element={<RequireAuth><DashboardPage /></RequireAuth>} />
-        <Route path="/playground"      element={<RequireAuth><PlaygroundPage /></RequireAuth>} />
-        <Route path="/knowledge-bases" element={<RequireAuth><KnowledgeBasesPage /></RequireAuth>} />
-        <Route path="/evidence"        element={<RequireAuth><EvidencePage /></RequireAuth>} />
-        <Route path="/claims"          element={<RequireAuth><ClaimsPage /></RequireAuth>} />
-        <Route path="/conflicts"       element={<RequireAuth><ConflictsPage /></RequireAuth>} />
-        <Route path="/experiments"     element={<RequireAuth><ExperimentsPage /></RequireAuth>} />
-        <Route path="/settings"        element={<RequireAuth><SettingsPage /></RequireAuth>} />
-        <Route path="/traces/:id"      element={<RequireAuth><TracePage /></RequireAuth>} />
+        <Route path="/dashboard"       element={guarded(<RequireAuth><DashboardPage /></RequireAuth>)} />
+        <Route path="/playground"      element={guarded(<RequireAuth><PlaygroundPage /></RequireAuth>)} />
+        <Route path="/knowledge-bases" element={guarded(<RequireAuth><KnowledgeBasesPage /></RequireAuth>)} />
+        <Route path="/evidence"        element={guarded(<RequireAuth><EvidencePage /></RequireAuth>)} />
+        <Route path="/claims"          element={guarded(<RequireAuth><ClaimsPage /></RequireAuth>)} />
+        <Route path="/conflicts"       element={guarded(<RequireAuth><ConflictsPage /></RequireAuth>)} />
+        <Route path="/experiments"     element={guarded(<RequireAuth><ExperimentsPage /></RequireAuth>)} />
+        <Route path="/settings"        element={guarded(<RequireAuth><SettingsPage /></RequireAuth>)} />
+        <Route path="/traces/:id"      element={guarded(<RequireAuth><TracePage /></RequireAuth>)} />
 
         {/* ── Fallback ────────────────────────────────────────── */}
-        <Route path="*" element={<NotFoundPage />} />
+        <Route path="*" element={guarded(<NotFoundPage />)} />
       </Routes>
     </Suspense>
   )

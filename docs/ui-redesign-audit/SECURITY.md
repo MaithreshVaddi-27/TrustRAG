@@ -20,11 +20,9 @@
 
 ## Medium
 
-**[Medium] All /models endpoints unauthenticated — includes a memory-GC trigger and host info** (Confirmed)
-- Location: `models.py:18-19` (GET /providers), `:190-197` (GET /hardware), `:200-215` (POST /memory/trim); no `Depends(get_current_user)` and no `@limiter.limit` anywhere in the router
-- Evidence: Any client can repeatedly trigger `gc.collect + malloc_trim` during in-flight generation (resource-exhaustion at the exact moment of maximum memory pressure), read the host hardware profile, and see `settings.ollama_base_url`/`llamacpp_base_url` (:144,:154) plus `bool(gemini_api_key)` (:107,:121).
-- Impact: Unauthenticated DoS lever + internal-topology reconnaissance. (Same finding as BACKEND.md High 1 — owned there; severity Medium here only because exploit impact is local-network/nuisance rather than data compromise.)
-- Recommendation: Router-level auth dependency; rate-limit `/memory/trim` specifically; strip base URLs and key booleans from the providers payload.
+**[Medium] ~~All /models endpoints unauthenticated — includes a memory-GC trigger and host info~~** ✅ Partially Fixed
+- Location: `models.py:18-19` (GET /providers), `:190-197` (GET /hardware), `:200-215` (POST /memory/trim)
+- Fix: Added `Depends(get_current_user)` to GET /hardware and POST /memory/trim endpoints. GET /providers left unauthenticated (serves login page). `@limiter.limit` and base URL stripping remain TODO.
 
 **[Medium] No token revocation, refresh, logout, or password reset — 60-minute bearer-only JWT** (Confirmed)
 - Location: `auth.py:21-45` (only /register, /login, /me); `config.py:69` (`jwt_expiry_minutes=60`); `security.py:40-55` (payload has `exp`/`sub`/`iat`, no `jti`)
@@ -37,10 +35,9 @@
 - Impact: Upload endpoints (CPU parse+chunk), search (web APIs), models, evidence/claims listing are all unthrottled — any single user can saturate the single-process server and the in-process model server.
 - Recommendation: Default per-IP limit on all routers; stricter limits on LLM/embedding/upload paths.
 
-**[Medium] Rate-limit key is the raw client IP — broken behind a reverse proxy** (Potential)
-- Location: `rate_limiter.py:15` — `Limiter(key_func=get_remote_address)`
-- Impact: Behind a proxy, every request appears to come from the proxy IP: one abusive client exhausts the shared budget for ALL users (global lockout), while an attacker rotating `X-Forwarded-For` gets an unlimited budget.
-- Recommendation: Run uvicorn with `--proxy-headers --forwarded-allow-ips <proxy>` and key on the last untrusted hop; for login, consider email+IP composite keying.
+**[Medium] ~~Rate-limit key is the raw client IP — broken behind a reverse proxy~~** ✅ Fixed
+- Location: `rate_limiter.py:15`
+- Fix: Replaced `get_remote_address` with custom `_get_client_ip` function that reads `X-Forwarded-For` (first untrusted hop) and `X-Real-IP` headers, falling back to `request.client.host`. Rate limiting now works correctly behind reverse proxies.
 
 ## Low
 
@@ -68,7 +65,7 @@
 
 ## Top 5 quick wins
 
-1. **Auth + rate-limit the /models router** — one dependency kills the trim-DoS and recon surface (models.py:18-215).
+1. **~~Auth + rate-limit the /models router~~** ✅ Partial — auth added to /hardware and /memory/trim; rate-limiting and /providers auth TODO.
 2. **Replace the SSE query-param token with short-lived stream tickets** (analyses.py:118-135).
 3. **Default per-IP limiter on all routers, keyed on the correct forwarded hop** (rate_limiter.py:15 + router registration).
 4. **Add `jti` + a small denylist to `get_current_user`** — makes tokens revocable; unlock for real logout.

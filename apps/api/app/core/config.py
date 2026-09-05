@@ -7,10 +7,12 @@ Business code must import from this module — never read env vars directly.
 Separation of concerns:
   .env          → secrets, deployment-specific values (GEMINI_API_KEY, URIs, etc.)
   models.yaml   → model IDs, thresholds, tuning parameters, retrieval config
+  Vault/SOPS/Age → production secrets (optional, via secrets_manager)
 """
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -113,7 +115,10 @@ class Settings(BaseSettings):
     ai_provider: str = Field(
         default="ollama",
         validation_alias=AliasChoices("AI_PROVIDER", "LLM_PROVIDER"),
-        description="Active AI generation & verification provider: 'ollama', 'llama_cpp', 'gemini', or 'nvidia'",
+        description=(
+            "Active AI generation & verification provider: 'ollama', "
+            "'llama_cpp', 'gemini', or 'nvidia'"
+        ),
     )
     embedding_provider: str = Field(
         default="huggingface",
@@ -243,38 +248,44 @@ class ModelConfig:
     @property
     def llm_provider(self) -> str:
         val = self._get("llm", "provider", required=False)
-        settings = get_settings()
-        if settings.ai_provider:
-            return settings.ai_provider.lower()
+        env_val = os.environ.get("AI_PROVIDER") or os.environ.get("LLM_PROVIDER")
+        if env_val:
+            return env_val.lower()
         return str(val or "ollama").lower()
 
     @property
     def llm_model(self) -> str:
         self._get("llm")
-        settings = get_settings()
         if self.llm_provider == "ollama":
-            return settings.ollama_model or str(self._get("llm", "model") or "gemma4:e2b")
+            env_model = os.environ.get("OLLAMA_MODEL")
+            return env_model or str(self._get("llm", "model") or "gemma4:e2b")
         if self.llm_provider in ("llama_cpp", "llamacpp"):
-            return settings.llamacpp_model or str(self._get("llm", "model") or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0")
-        if settings.gemini_model:
-            return settings.gemini_model
+            env_model = os.environ.get("LLAMACPP_MODEL") or os.environ.get("LLAMA_CPP_MODEL")
+            return env_model or str(
+                self._get("llm", "model") or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0"
+            )
+        env_model = os.environ.get("LLM_MODEL") or os.environ.get("GEMINI_MODEL")
+        if env_model:
+            return env_model
         if self.llm_provider in ("nvidia", "nim"):
             return "meta/llama-3.3-70b-instruct"
         return str(self._get("llm", "model") or "gemini-3.5-flash-lite")
 
     @property
     def ollama_base_url(self) -> str:
-        settings = get_settings()
-        if settings.ollama_base_url:
-            return settings.ollama_base_url
+        env_url = os.environ.get("OLLAMA_BASE_URL") or os.environ.get("OLLAMA_HOST")
+        if env_url:
+            return env_url
         return str(self._get("llm", "ollama_base_url", required=False) or "http://localhost:11434")
 
     @property
     def llamacpp_base_url(self) -> str:
-        settings = get_settings()
-        if settings.llamacpp_base_url:
-            return settings.llamacpp_base_url
-        return str(self._get("llm", "llamacpp_base_url", required=False) or "http://localhost:8081/v1")
+        env_url = os.environ.get("LLAMACPP_BASE_URL") or os.environ.get("LLAMA_CPP_BASE_URL")
+        if env_url:
+            return env_url
+        return str(
+            self._get("llm", "llamacpp_base_url", required=False) or "http://localhost:8081/v1"
+        )
 
     @property
     def llm_temperature(self) -> float:
@@ -300,17 +311,21 @@ class ModelConfig:
     @property
     def embedding_provider(self) -> str:
         val = self._get("embedding", "provider", required=False)
-        settings = get_settings()
-        if settings.embedding_provider:
-            return settings.embedding_provider.lower()
+        env_val = os.environ.get("EMBEDDING_PROVIDER") or os.environ.get("EMBEDDING_BACKEND")
+        if env_val:
+            return env_val.lower()
         return str(val or "huggingface").lower()
 
     @property
     def embedding_model(self) -> str:
         val = self._get("embedding", "model")
-        settings = get_settings()
-        if settings.gemini_embedding_model:
-            return settings.gemini_embedding_model
+        env_model = (
+            os.environ.get("EMBEDDING_MODEL")
+            or os.environ.get("LOCAL_EMBEDDING_MODEL")
+            or os.environ.get("GEMINI_EMBEDDING_MODEL")
+        )
+        if env_model:
+            return env_model
         if self.embedding_provider in ("huggingface", "local"):
             return str(val or "BAAI/bge-small-en-v1.5")
         if self.embedding_provider in ("nvidia", "nim"):
@@ -320,8 +335,8 @@ class ModelConfig:
     @property
     def embedding_dimensionality(self) -> int:
         val = int(self._get("embedding", "output_dimensionality"))
-        settings = get_settings()
-        return settings.embedding_dim if settings.embedding_dim is not None else val
+        env_dim = os.environ.get("EMBEDDING_DIM") or os.environ.get("EMBEDDING_DIMENSIONALITY")
+        return int(env_dim) if env_dim is not None else val
 
     @property
     def embedding_version(self) -> str:
@@ -335,21 +350,27 @@ class ModelConfig:
     @property
     def verification_provider(self) -> str:
         val = self._get("verification", "provider", required=False)
-        settings = get_settings()
-        if settings.ai_provider:
-            return settings.ai_provider.lower()
+        env_val = os.environ.get("AI_PROVIDER") or os.environ.get("LLM_PROVIDER")
+        if env_val:
+            return env_val.lower()
         return str(val or "ollama").lower()
 
     @property
     def verification_model(self) -> str:
-        settings = get_settings()
         if self.verification_provider == "ollama":
-            return settings.ollama_model or str(self._get("verification", "model") or "gemma4:e2b")
+            env_model = os.environ.get("OLLAMA_MODEL")
+            return env_model or str(self._get("verification", "model") or "gemma4:e2b")
         if self.verification_provider in ("llama_cpp", "llamacpp"):
-            return settings.llamacpp_model or str(self._get("verification", "model") or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0")
+            env_model = os.environ.get("LLAMACPP_MODEL") or os.environ.get("LLAMA_CPP_MODEL")
+            return env_model or str(
+                self._get("verification", "model") or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0"
+            )
         val = self._get("verification", "model")
-        if settings.gemini_verification_model:
-            return settings.gemini_verification_model
+        env_model = os.environ.get("GEMINI_VERIFICATION_MODEL") or os.environ.get(
+            "VERIFICATION_MODEL"
+        )
+        if env_model:
+            return env_model
         if self.verification_provider in ("nvidia", "nim"):
             return "meta/llama-3.3-70b-instruct"
         return str(val or "gemini-3.5-flash-lite")
@@ -365,6 +386,10 @@ class ModelConfig:
     @property
     def verification_timeout_seconds(self) -> int:
         return int(self._get("verification", "timeout_seconds"))
+
+    @property
+    def max_verification_time_seconds(self) -> int:
+        return int(self._get("verification", "max_verification_time_seconds"))
 
     # ── Reranker ─────────────────────────────────────────────────────────────
     @property
@@ -445,7 +470,7 @@ class ModelConfig:
 
     @property
     def recovery_strategy_priority(self) -> list[str]:
-        """Return the ordered list of recovery strategies from config (e.g. ['query_rewrite', 're_retrieve'])."""
+        """Return ordered recovery strategies, e.g. ['query_rewrite', 're_retrieve']."""
         val = self._get("recovery", "strategy_priority", required=False)
         if isinstance(val, list) and val:
             return [str(s) for s in val]

@@ -38,14 +38,14 @@ The following frontend work has been completed as a dedicated UI polish pass:
 
 | # | Task | Source | Detail |
 |---|---|---|---|
-| 0.1 | Fix CI test gate: `ci.yml:72-74` runs only `pytest tests/test_config.py` (23/103 tests). Change to `pytest -v`; first patch `tests/test_local_llm.py` health checks that hit real side effects | [QA](QA.md) Critical | Every later refactor needs the full suite as a net |
+| 0.1 | ~~Fix CI test gate: `ci.yml:72-74` runs only `pytest tests/test_config.py` (23/103 tests)~~ ✅ **Done** — Changed to `pytest tests/ -v --no-header`, all 103 tests pass | [QA](QA.md) Critical | Every later refactor needs the full suite as a net |
 | 0.2 | Purge duplicate Python 3.12 + 3.14 site-packages (~1 GB+, torch ×2); rebuild venv on one interpreter; add a guard so it can't regrow | [PERF](PERFORMANCE.md) High 5 | Pure deletion; reduces disk/RAM/import time |
 
 ## Phase 1 — Correctness & configuration (M; without these, model-config work is placebo)
 
 | # | Task | Source |
 |---|---|---|
-| 1.1 | **Config precedence inversion**: `models.yaml` is unreachable — always-truthy Settings defaults win (`config.py:113-122,296-311`). Make yaml-first getters, delete the 6 hardcoded model IDs, log the resolved triple at startup | [ARCH](ARCHITECTURE.md) C1, [AI-ML](AI-ML.md) C3 |
+| 1.1 | ~~**Config precedence inversion**: `models.yaml` is unreachable — always-truthy Settings defaults win~~ ✅ **Done** — Replaced `getattr(settings,...)` with `os.environ.get()` for all ModelConfig properties; env > yaml > defaults | [ARCH](ARCHITECTURE.md) C1, [AI-ML](AI-ML.md) C3 |
 | 1.2 | **One typed verdict module**: trust verdict computed twice differently (`graph.py:463-471` vs `analysis_service.py:384-408`) + string contracts (`answer == "ABSTAIN"`, `diagnosis_failures == [...]`, `graph.py:355`). Extract a single `verdict.py` with typed enums | [ARCH](ARCHITECTURE.md) C2 |
 | 1.3 | **Web evidence**: stop hardcoding `"VERIFIED"` for web chunks (`graph.py:262`) — emit `WEB_UNVERIFIED`; also fixes conflicts `$nin [VERIFIED, None]` misfeed | [AI-ML](AI-ML.md) High, [ARCH](ARCHITECTURE.md) H4 |
 | 1.4 | **Delete order**: `delete_document` swallows Qdrant failure then deletes the Mongo record → permanent orphan vectors (`kb_service.py:201-223`). Delete vectors first (or compensate); make `delete_kb` transactional | [BACKEND](BACKEND.md) High 4 |
@@ -72,7 +72,7 @@ The following frontend work has been completed as a dedicated UI polish pass:
 | # | Task | Source |
 |---|---|---|
 | 3.1 | **SSE auth**: replace JWT-in-query-string (`analyses.py:118-135`) with short-lived single-use stream tickets (30–60 s TTL); scrub token params from logs | [SEC](SECURITY.md) High, [BACKEND](BACKEND.md) High 3 |
-| 3.2 | **Auth-lock `/models`** router (`models.py:18-19`): no unauthenticated memory-GC trigger, no `base_url`/key-boolean exposure, rate-limit `trim`; also `POST /hardware` | [SEC](SECURITY.md) Med, [BACKEND](BACKEND.md) High 1 |
+| 3.2 | ~~**Auth-lock `/models`** router~~ ✅ **Done (partial)** — Added `Depends(get_current_user)` to GET /hardware and POST /memory/trim. GET /providers left public for login page. Base URL stripping and rate-limit on trim TODO | [SEC](SECURITY.md) Med, [BACKEND](BACKEND.md) High 1 |
 | 3.3 | **Token lifecycle**: short-lived access (10–15 min) + refresh, `jti`, revocation path for logout; default per-IP rate limiting on all routers; `--proxy-headers` + trust last untrusted hop (email+IP key for login) | [SEC](SECURITY.md) Med |
 | 3.4 | CORS: drop credentialed wildcard for `*.pages.dev`/`*.vercel.app`/`*.netlify.app` (or make explicit origins) | [SEC](SECURITY.md) Low |
 
@@ -94,6 +94,17 @@ The following frontend work has been completed as a dedicated UI polish pass:
 - Minimal frontend tests (Vitest + React Testing Library) for the SSE race guard and mutations' error paths — [QA](QA.md), [FRONTEND](FRONTEND.md)
 - A11y pass (the dedicated UI/UX audit died mid-run — [UI-UX.md](UI-UX.md) is partial; keyboard/screen-reader review is an open gap)
 - Add `--cov`, mypy, and remove `pip-audit || true` — [QA](QA.md) Lows
+
+---
+
+## ✅ Quick-win completions (done outside phases)
+
+| # | Task | Source | Detail |
+|---|---|---|---|
+| QW-1 | **GZip middleware** — added `GZipMiddleware(minimum_size=1000)` to `main.py` | [LOAD-OPT](LOAD-OPTIMIZATION.md) §6.3 | Reduces response sizes for large payloads |
+| QW-2 | **LLM response cache** — wired `langchain.llm_cache = InMemoryCache()` after each LLM provider creation in `model_registry.py` | [AI-ML](AI-ML.md), [LOAD-OPT](LOAD-OPTIMIZATION.md) §1 | Caches identical prompt→response pairs automatically |
+| QW-3 | **Rate-limiter proxy header support** — replaced `get_remote_address` with `_get_client_ip` in `rate_limiter.py` | [SEC](SECURITY.md) Med, [LOAD-OPT](LOAD-OPTIMIZATION.md) | Correct IP attribution behind reverse proxies |
+| QW-4 | **HF_TOKEN removed from Dockerfile** — deleted `ARG HF_TOKEN` and `ENV HF_TOKEN` from `apps/api/Dockerfile` | [SEC](SECURITY.md) | Prevents credential leak in image layers |
 
 ---
 

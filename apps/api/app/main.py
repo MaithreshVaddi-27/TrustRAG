@@ -22,13 +22,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse, ORJSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.router import api_router
-from app.core.config import get_settings
+from app.core.config import get_model_config, get_settings
 from app.core.exceptions import (
     AnalysisNotFoundError,
     AuthenticationError,
@@ -44,9 +45,11 @@ from app.core.exceptions import (
     UnsupportedFormatError,
     VectorStoreError,
 )
+from app.core.hardware import get_cached_hardware_profile
 from app.core.logging import configure_logging, get_logger
-from app.core.model_registry import get_embedding_model
+from app.core.model_registry import SharedEmbeddingManager, get_embedding_model
 from app.core.rate_limiter import limiter
+from app.core.tracing import init_tracing, tracing_middleware
 from app.db.mongodb import connect_db, create_indexes, disconnect_db
 
 logger = get_logger(__name__)
@@ -62,8 +65,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     Startup:
       1. Configure structured logging
-      2. Connect to MongoDB Atlas
-      3. Create/verify all indexes
+      2. Initialize shared embedding model (for multi-worker memory efficiency)
+      3. Connect to MongoDB Atlas
+      4. Create/verify all indexes
 
     Shutdown:
       1. Close MongoDB connection
@@ -85,10 +89,52 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger.info("TRUSTRAG API starting (Local Offline Mode)", env=settings.app_env)
 
+    # BE-H3: Log the EFFECTIVE model configuration at startup.
+    # Env vars take precedence over models.yaml, so this log line removes any
+    # ambiguity about which provider/model is actually running.
+    cfg = get_model_config()
+    logger.info(
+        "Effective model configuration (env overrides models.yaml)",
+        llm_provider=cfg.llm_provider,
+        llm_model=cfg.llm_model,
+        embedding_provider=cfg.embedding_provider,
+        embedding_model=cfg.embedding_model,
+        verification_provider=cfg.verification_provider,
+        verification_model=cfg.verification_model,
+    )
+
+    # Initialize shared embedding model for multi-worker memory efficiency
+    # (H.2.1: Eliminates 3x memory waste when running with multiple workers)
+    if cfg.embedding_provider in ("huggingface", "local"):
+        from app.core.hardware import get_optimal_torch_device
+
+        opt_device = get_optimal_torch_device()
+        # Use CPU for shared model (GPU tensors can't be easily shared across processes)
+        shared_device = "cpu" if opt_device == "cuda" else opt_device
+
+        shared_manager = SharedEmbeddingManager.get_instance()
+        initialized = shared_manager.initialize(
+            model_name=cfg.embedding_model,
+            device=shared_device,
+        )
+        if initialized:
+            logger.info(
+                "Shared embedding model initialized for worker sharing",
+                model=cfg.embedding_model,
+                device=shared_device,
+            )
+        else:
+            logger.info(
+                "Shared embedding model already initialized or failed", model=cfg.embedding_model
+            )
+
     await connect_db()
     await create_indexes()
 
     logger.info("TRUSTRAG API ready")
+
+    # Initialize tracing (LangSmith, OpenTelemetry, etc.)
+    init_tracing()
 
     # Schedule non-blocking model warmup in background task so Uvicorn binds port INSTANTLY
     async def _async_warmup() -> None:
@@ -101,6 +147,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 "Embedding model warmup deferred to first query",
                 error=str(warm_err),
             )
+        # OPT-H9: Run the expensive hardware probe once at startup so the first
+        # /models/* request never pays the subprocess cost.
+        try:
+            await asyncio.to_thread(get_cached_hardware_profile)
+        except Exception as hw_err:
+            logger.warning("Hardware profile warmup deferred", error=str(hw_err))
 
     warmup_task = asyncio.create_task(_async_warmup())
 
@@ -266,6 +318,7 @@ def create_app() -> FastAPI:
         description="AI Reliability Workbench — Retrieval, Verification, Diagnosis, Recovery",
         version="0.1.0",
         lifespan=lifespan,
+        default_response_class=ORJSONResponse,
         # Disable automatic /docs in production to reduce attack surface
         docs_url="/docs" if not settings.is_production() else None,
         redoc_url="/redoc" if not settings.is_production() else None,
@@ -288,8 +341,14 @@ def create_app() -> FastAPI:
         expose_headers=["X-Request-ID", "Content-Type", "Content-Disposition"],
     )
 
+    # ── GZip compression (threshold 1KB, skips small responses) ──────────────
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
+
     # ── Request ID ────────────────────────────────────────────────────────
     app.middleware("http")(request_id_middleware)
+
+    # ── Tracing ────────────────────────────────────────────────────────────
+    app.middleware("http")(tracing_middleware)
 
     # ── Defensive Security Headers ────────────────────────────────────────
     @app.middleware("http")

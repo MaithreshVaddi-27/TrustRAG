@@ -10,6 +10,8 @@ dependencies = [
     # ── Web framework ────────────────────────────────────────────────────────
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
+    "orjson>=3.10.0",             # Fast JSON serializer (20-30% serialization savings)
+    "orjson>=3.10.0",             # Fast JSON serialization
     "python-multipart>=0.0.12",   # File uploads
 
     # ── Configuration & settings ─────────────────────────────────────────────
@@ -50,6 +52,8 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",            # Password hashing
     "slowapi>=0.1.9",                    # Rate limiting for FastAPI
     "email-validator>=2.0.0",            # Email format validation for Pydantic EmailStr
+    "hvac>=2.2.0",                       # HashiCorp Vault client (open source)
+    "python-dotenv>=1.0.0",              # .env file loading
 
     # ── Observability ────────────────────────────────────────────────────────
     "structlog>=24.1.0",          # Structured JSON logging
@@ -103,6 +107,21 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "N"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI dependency injection uses function calls in parameter defaults
+# (Depends/Query/File/...) — this is intentional and bytes-stable, so treat
+# them as immutable like FastAPI's own lint config does.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.Body",
+    "fastapi.File",
+    "fastapi.Form",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

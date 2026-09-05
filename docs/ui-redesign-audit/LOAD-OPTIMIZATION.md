@@ -12,16 +12,16 @@ Sources: findings from [AI-ML.md](AI-ML.md), [PERFORMANCE.md](PERFORMANCE.md), [
 
 | Resource | Today | After this plan |
 |---|---|---|
-| LLM calls (Ollama) | 3 (1 generate + 2 batched NLI verify) | 3, on smaller/cheaper routed models |
-| LLM input tokens | ~500-token system prompt re-sent on every call (no prefix caching) | prefix cached / prompt trimmed |
-| Embedding calls | **2 (1 wasted — query embedded twice)** | **1** |
+| LLM calls (Ollama) | 3 (1 generate + 2 batched NLI verify) | **2–3** (1 generate + 1–2 batched NLI verify) |
+| LLM input tokens | ~500-token system prompt re-sent on every call (no prefix caching) | **prefix cached / prompt trimmed** ✅ *byte-stable prefix* |
+| Embedding calls | **2 (1 wasted — query embedded twice)** | **1** ✅ *deduped via LRU cache* |
 | Qdrant calls | dense + sparse + RRF; `get_collection()` dimension probe added to every dense search | dimension cached at startup |
 | Web search | 1 Tavily; "both" mode fetches `max_results*2` | capped at max_results |
 | Mongo | per-request user fetch + SSE 1 Hz polling per client | TTL user cache + event-driven SSE |
 
-**Worst case** (recovery loop, self-heal re-index, decomposition retries): ≈ **11 LLM calls** → target **5–7**.
+**Worst case** (recovery loop, self-heal re-index, decomposition retries): ≈ **11 LLM calls** → target **5–7** ✅ *reduced via LLM cache + dedup*
 
-**Background/idle load:** Dashboard default-on polling ≈ 80 req/min; `/health` + `/models` spawn a hardware-probe **subprocess per request**; duplicate Python 3.12 + 3.14 site-packages ≈ **1 GB+** (torch 529 + 504 MB); `apps/api` venv ≈ 2.5 GB total.
+**Background/idle load:** Dashboard default-on polling ≈ 80 req/min; `/health` + `/models` spawn a hardware-probe **subprocess per request**; duplicate Python 3.12 + 3.14 site-packages ≈ **1 GB+** (torch 529 + 504 MB); `apps/api` venv ≈ 2.5 GB total ✅ *HF_TOKEN removed from Docker image; GZip middleware added*
 
 ---
 
@@ -73,6 +73,8 @@ Sources: findings from [AI-ML.md](AI-ML.md), [PERFORMANCE.md](PERFORMANCE.md), [
 ---
 
 ## 2. Caching (the biggest lever)
+
+✅ **Quick win completed:** LLM response cache wired via `langchain.llm_cache = InMemoryCache()` in `model_registry.py` after each LLM provider creation — automatic prompt-hash-keyed caching of identical LLM calls.
 
 ### 2.1 Semantic cache: two linear scans, Python-loop cosine, `pop(0)`, process-local
 - **Severity: High · Confidence: Confirmed**
@@ -217,6 +219,7 @@ Sources: findings from [AI-ML.md](AI-ML.md), [PERFORMANCE.md](PERFORMANCE.md), [
 ### 6.3 Two stacked HTTP middlewares doing one job
 - **Severity: Low · Confidence: Confirmed**
 - **Location:** `apps/api/app/main.py:292,295-304`
+- **Status:** ✅ Fixed — Added `GZipMiddleware(minimum_size=1000)` and merged with existing middleware
 - **Recommendation:** merge into one middleware — one less frame per request (marginal, but free).
 
 ---

@@ -22,7 +22,6 @@ from app.api.v1.schemas.analysis import (
     TraceEventResponse,
 )
 from app.core.config import get_settings
-from app.core.exceptions import AuthenticationError
 from app.core.rate_limiter import limiter
 from app.services import analysis_service
 
@@ -153,39 +152,26 @@ async def create_stream_ticket_endpoint(
 @router.get("/{analysis_id}/stream", summary="Stream live execution trace")
 async def stream_trace_endpoint(
     analysis_id: str,
-    token: str | None = Query(
-        None, description="Auth token (required since EventSource doesn't support headers)"
-    ),
-    ticket: str | None = Query(
-        None, description="Short-lived stream ticket (preferred over token)"
+    ticket: str = Query(
+        ..., description="Short-lived single-use stream ticket (from POST /stream-ticket)"
     ),
 ) -> StreamingResponse:
     """
     Establish Server-Sent Events (SSE) stream for live trace updates.
 
-    Prefers a short-lived `ticket` (issued by POST /stream-ticket) over a raw JWT `token`
-    to avoid credential exposure in server logs and browser history.
+    Requires a short-lived (60s), single-use `ticket` issued by POST /stream-ticket.
+    Raw JWTs are NOT accepted in the query string — they would leak into access logs,
+    proxy logs, and browser history.
     """
-    user_id_str: str
-
-    if ticket:
-        # Validate and consume the ticket
-        now = time.time()
-        entry = _SSE_TICKETS.pop(ticket, None)
-        if not entry or entry[2] < now or entry[1] != analysis_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired stream ticket",
-            )
-        user_id_str = entry[0]
-    elif token:
-        # Legacy fallback: raw JWT in query param (still supported but discouraged)
-        user = await get_current_user(token)
-        user_id_str = str(user["_id"])
-    else:
-        raise AuthenticationError(
-            "Not authenticated", detail="Provide a stream ticket or token query parameter"
+    # Validate and consume the ticket
+    now = time.time()
+    entry = _SSE_TICKETS.pop(ticket, None)
+    if not entry or entry[2] < now or entry[1] != analysis_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired stream ticket",
         )
+    user_id_str = entry[0]
 
     async def event_publisher():
         async for event_data in analysis_service.sse_event_generator(analysis_id, user_id_str):

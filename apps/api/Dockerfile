@@ -58,8 +58,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY --chown=trustrag:trustrag app/ ./app/
 COPY --chown=trustrag:trustrag config/ ./config/
 
-ARG HF_TOKEN=""
-ENV HF_TOKEN=${HF_TOKEN}
+# Give the non-root user a writable HOME and model cache dir so HF/sentence-transformers
+# caches and the named model_cache volume (docker-compose) are writable without root.
+RUN mkdir -p /app/.model_cache && chown -R trustrag:trustrag /app
+ENV HOME=/app
 
 # Drop to non-root
 USER trustrag
@@ -76,4 +78,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
     CMD sh -c 'wget -qO- "http://localhost:${PORT:-8080}/api/v1/health" || exit 1'
 
 # Use exec in shell form so $PORT provided by Render/Cloud Run is dynamically respected
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --log-level info"]
+# Use uvloop + httptools for 10-15% latency improvement (requires uvicorn[standard])
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --log-level info --loop uvloop --http httptools"]

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { useAuthStore, authStore } from '@/store/authStore'
 import { healthService, modelService } from '@/services/api'
+import { copyToClipboard } from '@/lib/clipboard'
 import {
   Server,
   ShieldCheck,
@@ -55,9 +56,10 @@ export default function SettingsPage() {
     refetchInterval: 15000,
   })
 
-  const copyUserId = () => {
+  const copyUserId = async () => {
     if (user?.id) {
-      navigator.clipboard.writeText(user.id)
+      const ok = await copyToClipboard(user.id)
+      if (!ok) return
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }

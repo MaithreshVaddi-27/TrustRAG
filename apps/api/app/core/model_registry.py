@@ -29,8 +29,26 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# ─── LLM Response Cache ────────────────────────────────────────────────────────
+# Enable LangChain's in-memory LLM cache to avoid redundant calls for identical prompts.
+# This reduces load on both local and cloud LLMs for repeated/similar queries.
+_llm_cache_enabled = False
 
-# ─── LLM ─────────────────────────────────────────────────────────────────────
+
+def _enable_llm_cache() -> None:
+    """Set up LangChain in-memory cache for LLM responses (idempotent)."""
+    global _llm_cache_enabled
+    if _llm_cache_enabled:
+        return
+    try:
+        import langchain
+        from langchain_core.caches import InMemoryCache
+
+        langchain.llm_cache = InMemoryCache()
+        _llm_cache_enabled = True
+        logger.info("LLM response cache enabled (InMemoryCache)")
+    except Exception as exc:
+        logger.debug("Could not enable LLM cache", error=str(exc))
 
 
 # ─── LLM ─────────────────────────────────────────────────────────────────────
@@ -76,18 +94,20 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
         if active_provider == "ollama":
             from app.core.local_llm import ChatOllamaClient
 
-            return ChatOllamaClient(
+            llm = ChatOllamaClient(
                 base_url=settings.ollama_base_url,
                 model=active_model or "gemma4:e2b",
                 temperature=cfg.llm_temperature,
                 top_p=cfg.llm_top_p,
                 timeout=float(cfg.llm_timeout_seconds),
             )
+            _enable_llm_cache()
+            return llm
 
         if active_provider in ("llama_cpp", "llamacpp"):
             from app.core.local_llm import ChatLlamaCppClient
 
-            return ChatLlamaCppClient(
+            llm = ChatLlamaCppClient(
                 base_url=settings.llamacpp_base_url,
                 model=active_model or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0",
                 temperature=cfg.llm_temperature,
@@ -95,6 +115,8 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
                 max_tokens=cfg.llm_max_output_tokens,
                 timeout=float(cfg.llm_timeout_seconds),
             )
+            _enable_llm_cache()
+            return llm
 
         if active_provider in ("nvidia", "nim"):
             from langchain_nvidia_ai_endpoints import ChatNVIDIA
@@ -102,13 +124,15 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
             if not settings.nvidia_api_key:
                 raise ConfigurationError("NVIDIA_API_KEY must be set when AI_PROVIDER is 'nvidia'")
 
-            return ChatNVIDIA(
+            llm = ChatNVIDIA(
                 model=active_model,
                 api_key=settings.nvidia_api_key,
                 temperature=cfg.llm_temperature,
                 max_tokens=cfg.llm_max_output_tokens,
                 timeout=cfg.llm_timeout_seconds,
             )
+            _enable_llm_cache()
+            return llm
 
         from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -118,7 +142,7 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
                 "Switch to 'ollama' or 'llama_cpp' to run completely locally without an API key."
             )
 
-        return ChatGoogleGenerativeAI(
+        llm = ChatGoogleGenerativeAI(
             model=active_model,
             google_api_key=settings.gemini_api_key,
             temperature=cfg.llm_temperature,
@@ -127,6 +151,8 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
             timeout=cfg.llm_timeout_seconds,
             max_retries=cfg.llm_max_retries,
         )
+        _enable_llm_cache()
+        return llm
     except Exception as exc:
         raise ConfigurationError(
             f"Failed to initialize LLM '{active_model}' (provider: {active_provider})",
@@ -392,9 +418,14 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
     active_provider = (provider or cfg.embedding_provider).lower()
     active_model = model or cfg.embedding_model
 
+    # Normalize provider to include splade option
+    if active_provider == "splade":
+        active_provider = "huggingface"  # SPLADE uses sentence-transformers under the hood
+
     def _wrap_with_cache(base_emb):
         """Wrap embedding model with persistent disk cache."""
         from app.core.model_registry import CachedEmbeddingsWrapper
+
         return CachedEmbeddingsWrapper(base_emb, model_name=active_model)
 
     # ── Option 1: Local Ollama Embeddings ───────────────────────────────────────
@@ -410,10 +441,12 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
             model=active_model,
             base_url=settings.ollama_base_url,
         )
-        return _wrap_with_cache(OllamaEmbeddings(
-            model=active_model or "embeddinggemma:300m-qat-q8_0",
-            base_url=settings.ollama_base_url,
-        ))
+        return _wrap_with_cache(
+            OllamaEmbeddings(
+                model=active_model or "embeddinggemma:300m-qat-q8_0",
+                base_url=settings.ollama_base_url,
+            )
+        )
 
     # ── Option 1b: Local llama.cpp Embeddings ───────────────────────────────────
     if active_provider in ("llamacpp", "llama_cpp") or (
@@ -426,10 +459,12 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
             model=active_model,
             base_url=settings.llamacpp_base_url,
         )
-        return _wrap_with_cache(LlamaCppEmbeddings(
-            model=active_model or "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
-            base_url=settings.llamacpp_base_url,
-        ))
+        return _wrap_with_cache(
+            LlamaCppEmbeddings(
+                model=active_model or "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
+                base_url=settings.llamacpp_base_url,
+            )
+        )
 
     # ── Option 2: NVIDIA NIM Embeddings ─────────────────────────────────────────
     if active_provider in ("nvidia", "nim"):
@@ -445,11 +480,13 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
             model=active_model,
         )
         try:
-            return _wrap_with_cache(NVIDIAEmbeddings(
-                model=active_model,
-                api_key=settings.nvidia_api_key,
-                truncate="END",
-            ))
+            return _wrap_with_cache(
+                NVIDIAEmbeddings(
+                    model=active_model,
+                    api_key=settings.nvidia_api_key,
+                    truncate="END",
+                )
+            )
         except Exception as exc:
             raise ConfigurationError(
                 f"Failed to initialize NVIDIA embedding model '{active_model}'",
@@ -466,11 +503,13 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
             dimensionality=cfg.embedding_dimensionality,
         )
         try:
-            return _wrap_with_cache(GoogleGenerativeAIEmbeddings(
-                model=active_model,
-                google_api_key=settings.gemini_api_key,
-                output_dimensionality=cfg.embedding_dimensionality,
-            ))
+            return _wrap_with_cache(
+                GoogleGenerativeAIEmbeddings(
+                    model=active_model,
+                    google_api_key=settings.gemini_api_key,
+                    output_dimensionality=cfg.embedding_dimensionality,
+                )
+            )
         except Exception as exc:
             raise ConfigurationError(
                 f"Failed to initialize Google embedding model '{active_model}'",
@@ -607,6 +646,56 @@ def get_reranker():  # type: ignore[return]
             f"Failed to initialize reranker '{cfg.reranker_model}'",
             detail=str(exc),
         ) from exc
+
+
+# ─── Shared Embedding Manager ────────────────────────────────────────────────
+# Provides a shared embedding model instance across workers for memory efficiency.
+
+
+class SharedEmbeddingManager:
+    """Singleton manager for shared embedding models across workers."""
+
+    _instance: SharedEmbeddingManager | None = None
+
+    def __new__(cls) -> SharedEmbeddingManager:
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+            cls._instance._model = None
+            cls._instance._device = None
+        return cls._instance
+
+    def initialize(self, model_name: str, device: str) -> bool:
+        """Initialize the shared embedding model.
+
+        Returns True if successfully initialized, False if already initialized.
+        """
+        if self._initialized:
+            return False
+
+        try:
+            from langchain_huggingface import HuggingFaceEmbeddings
+
+            self._model = HuggingFaceEmbeddings(
+                model_name=model_name,
+                model_kwargs={"device": device},
+                encode_kwargs={"normalize_embeddings": True},
+            )
+            self._device = device
+            self._initialized = True
+            return True
+        except Exception as exc:
+            logger.error(
+                "Failed to initialize shared embedding model",
+                model=model_name,
+                device=device,
+                error=str(exc),
+            )
+            return False
+
+    def get_model(self) -> Any:
+        """Get the initialized embedding model instance."""
+        return self._model
 
 
 # ─── Registry info ────────────────────────────────────────────────────────────

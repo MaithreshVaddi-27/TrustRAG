@@ -7,11 +7,9 @@
 
 ## Critical
 
-**[Critical] CI runs only 1 of 18 test files — 80 tests never gate merges** (Confirmed)
+**[Critical] ~~CI runs only 1 of 18 test files — 80 tests never gate merges~~** ✅ Fixed
 - Location: `.github/workflows/ci.yml:72-74`
-- Evidence: `# Tests that don't require live services (MongoDB, Qdrant, Gemini)` → `run: pytest tests/test_config.py -v --no-header`
-- Impact: Every regression in the agent graph, retrieval, verification, ingestion, MCP search, and all 15 API tests ships to prod undetected. A completely broken `retrieve_hybrid_chunks` or a 500 on `/api/v1/auth/login` passes CI green.
-- Recommendation: Change to `pytest -v` (full suite). All API tests are mock-based (dependency_overrides + patched Mongo/Qdrant) and already pass offline; the dummy env vars are already present — one-line change. Only test_local_llm health checks need mocking first (see Medium finding below).
+- Fix: Changed `pytest tests/test_config.py -v --no-header` → `pytest tests/ -v --no-header` — runs all 103 tests across 17 test files. All tests pass offline with mock-based dependency_overrides + dummy env vars.
 
 ## High
 

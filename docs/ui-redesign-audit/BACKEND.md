@@ -6,11 +6,9 @@
 
 ## High
 
-**[High] Operational endpoints are unauthenticated — memory-trim DoS and internal-URL reconnaissance** (Confirmed)
-- Location: `app/api/v1/models.py:200-215` (POST `/memory/trim`), `:186-197` (GET `/hardware` — runs blocking `detect_hardware_profile()`), `:31-54` (GET `/providers` — hardcoded `"connected": True` and internal `base_url` exposure at `:144,154`)
-- Evidence: The models router has no auth dependency; any client can trigger `POST /memory/trim` (a global `gc.collect` + `malloc_trim`) repeatedly, or read backend topology (hardware profile, Ollama/llama.cpp base URLs).
-- Impact: Unauthenticated resource-exhaustion (trim during in-flight generation) and infrastructure reconnaissance; the providers list also lies about connectivity.
-- Recommendation: Admin-scoped router dependency (re-use `get_current_user` + role check); remove internal `base_url` from the providers payload or gate it.
+**[High] ~~Operational endpoints are unauthenticated — memory-trim DoS and internal-URL reconnaissance~~** ✅ Partially Fixed
+- Location: `app/api/v1/models.py`
+- Fix: Added `Depends(get_current_user)` to GET /hardware and POST /memory/trim. GET /providers left unauthenticated (login page). Base URL exposure and connectivity lie remain TODO.
 
 **[High] Synchronous QdrantClient is called directly on the event loop — systemic blocking** (Confirmed)
 - Location: `app/db/qdrant.py:12,25-57` (sync singleton, module-level client); called from `async def` in `pipeline.py:91,173` (upsert), `kb_service.py:198-214` (delete), `health.py:38`, retrieval paths (see PERFORMANCE.md)

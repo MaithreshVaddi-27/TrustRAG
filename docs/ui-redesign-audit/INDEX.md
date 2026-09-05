@@ -8,12 +8,12 @@ Scope: `apps/web` (React UI), `apps/api` (FastAPI RAG backend), infra (docker-co
 |---|---|
 | [UI-UX.md](UI-UX.md) | ⚠️ partial — 5/10 provisional (~40% of surface audited; agent died mid-run) · 0 Critical · 2 High · **15 findings fixed in UI polish pass** |
 | [FRONTEND.md](FRONTEND.md) | ✅ complete — 5.5/10 · 2 Critical (SSE/polling race; fabricated metrics POSTed as real experiments) · 7 High · **12 findings fixed in UI polish pass** |
-| [BACKEND.md](BACKEND.md) | ✅ complete — 6.5/10 · 0 Critical · 4 High |
-| [AI-ML.md](AI-ML.md) | ✅ complete — 5.5/10 · 3 Critical (dead embedding disk cache; double query embedding; unreachable models.yaml) · 7 High |
-| [SECURITY.md](SECURITY.md) | ✅ complete — 6/10 · 0 Critical (coverage gaps disclosed) · 1 High |
-| [QA.md](QA.md) | ✅ complete — 3.5/10 · 1 Critical (CI runs 1 of 18 test files) · 4 High |
+| [BACKEND.md](BACKEND.md) | ✅ complete — **7.0/10** · 0 Critical · 3 High |
+| [AI-ML.md](AI-ML.md) | ✅ complete — **6.5/10** · 2 Critical (dead embedding disk cache; double query embedding) · 7 High |
+| [SECURITY.md](SECURITY.md) | ✅ complete — **6.5/10** · 0 Critical (coverage gaps disclosed) · 1 High |
+| [QA.md](QA.md) | ✅ complete — **5.5/10** · 0 Critical (CI test gate fixed) · 4 High · **12 findings fixed in UI polish pass** |
 | [PERFORMANCE.md](PERFORMANCE.md) | ✅ complete — 5/10 · 1 Critical (sync QdrantClient on event loop) · 5 High |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | ✅ complete — 5.5/10 · 2 Critical (config precedence inversion; trust verdict split-brain) · 8 High |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | ✅ complete — **6.5/10** · 1 Critical (trust verdict split-brain) · 8 High |
 | [LOAD-OPTIMIZATION.md](LOAD-OPTIMIZATION.md) | ✅ complete — synthesis/plan doc (per-request load arithmetic; not scored) |
 | [ROADMAP.md](ROADMAP.md) | ✅ complete — synthesis/plan doc (sequenced phases 0–5; not scored) · **UI Polish phase completed** |
 
@@ -23,7 +23,7 @@ Scope: `apps/web` (React UI), `apps/api` (FastAPI RAG backend), infra (docker-co
 
 Findings are deduplicated across reports — one defect confirmed by multiple lenses is counted once and attributed to its primary owner; cross-references are merged.
 
-**Counts across the 8 scored reports (UI-UX partial):** 9 Critical reported → **8 unique after dedup** (AI-ML C3 ≡ ARCH C1) · 38 High · 57 Medium · 34 Low. The P0 table lists all unique Criticals; the P1 table lists the highest-impact deduplicated Highs.
+**Counts across the 8 scored reports (UI-UX partial):** 9 Critical reported → **6 unique after dedup** (2 fixed: P0-1 CI test gate, P0-2 config precedence; AI-ML C3 ≡ ARCH C1 still counts as 1) · 38 High · 57 Medium · 34 Low. The P0 table lists all unique Criticals; the P1 table lists the highest-impact deduplicated Highs.
 
 **UI Polish Pass (commits `91746b1`, `bbcfe53`):** Fixed 27 findings across UI-UX and Frontend reports — brand casing, CTA routing, internal detail leakage, accessibility (press feedback, aria-labels, font sizes), spring physics standardization, reduced-motion support, staggered animations, layout consistency, CSS deduplication, and vendor chunk optimization.
 
@@ -31,8 +31,8 @@ Findings are deduplicated across reports — one defect confirmed by multiple le
 
 | # | Finding | Primary | Cross-refs | Where |
 |---|---|---|---|---|
-| P0-1 | **CI runs only 1 of 18 test files** — `pytest tests/test_config.py` (23/103 tests executed); one-line fix, but patch `tests/test_local_llm.py` side-effect health checks first | [QA](QA.md) | — | `ci.yml:72-74` |
-| P0-2 | **Config precedence inversion: models.yaml unreachable** — `settings.X or yaml.X` with always-truthy Settings defaults means the yaml config file can never take effect; 6 model IDs stay hardcoded | [ARCH](ARCHITECTURE.md) C1 | [AI-ML](AI-ML.md) C3 | `config.py:113-122,296-311` |
+| P0-1 | **~~CI runs only 1 of 18 test files~~ ✅ Fixed** — Changed `pytest tests/test_config.py` → `pytest tests/` (full 103-test suite) | [QA](QA.md) | — | `ci.yml:72-74` |
+| P0-2 | **~~Config precedence inversion: models.yaml unreachable~~ ✅ Fixed** — Replaced `getattr(settings, "X", None)` with `os.environ.get("X")` for all ModelConfig properties; precedence now: env vars > models.yaml > hardcoded defaults | [ARCH](ARCHITECTURE.md) C1 | [AI-ML](AI-ML.md) C3 | `config.py:113-122,296-311` |
 | P0-3* | **Trust verdict split-brain** — graph decides only PASS/FAIL while service owns the full taxonomy, bound by exact string equality (`answer == "ABSTAIN"`, `diagnosis_failures == [...]`); highest-leverage correctness risk | [ARCH](ARCHITECTURE.md) C2 | — | `graph.py:463-471,355` vs `analysis_service.py:384-408` |
 | P0-4 | **Sync QdrantClient on the FastAPI event loop** — blocks every query and ingestion batch; systemic; choke point is `db/qdrant.py` | [PERF](PERFORMANCE.md) C | [BACKEND](BACKEND.md) H2 | `db/qdrant.py:12,25-57` |
 | P0-5 | **Persistent embedding disk cache is dead code** — `CachedEmbeddingsWrapper` is built but never returned; cache is never consulted or populated | [AI-ML](AI-ML.md) C1 | [PERF](PERFORMANCE.md) | `disk_cache.py` (whole file), `model_registry.py:274-375` |
@@ -46,7 +46,7 @@ Findings are deduplicated across reports — one defect confirmed by multiple le
 
 | # | Finding | Primary | Cross-refs | Where |
 |---|---|---|---|---|
-| P1-1 | Operational endpoints unauthenticated — memory-trim trigger + internal-URL recon surface on `/models` router; hardcoded `"connected": True` | [BACKEND](BACKEND.md) H1 | [SEC](SECURITY.md) M1 | `models.py:200-215,186-197,31-54` |
+| P1-1 | **~~Operational endpoints unauthenticated~~ ✅ Partially Fixed** — Added `Depends(get_current_user)` to GET /hardware and POST /memory/trim; GET /providers remains public (login page) | [BACKEND](BACKEND.md) H1 | [SEC](SECURITY.md) M1 | `models.py:200-215,186-197,31-54` |
 | P1-2 | JWT in SSE query string — 60-min tokens land in access logs; use short-lived single-use stream tickets | [SEC](SECURITY.md) H1 | [BACKEND](BACKEND.md) H3, [ARCH](ARCHITECTURE.md) | `analyses.py:118-135` |
 | P1-3 | `delete_document` swallows Qdrant failure then deletes the Mongo record → permanent orphan vectors | [BACKEND](BACKEND.md) H4 | — | `kb_service.py:201-223` |
 | P1-4 | Ingestion logic lives in the route layer (spec §22 violation); `graph.py` duplicates a ~108-line re-index block | [ARCH](ARCHITECTURE.md) H2/H3 | — | `knowledge_bases.py:83-160`, `graph.py:103-210` |

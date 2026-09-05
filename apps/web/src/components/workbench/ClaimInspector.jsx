@@ -1,13 +1,17 @@
 import { clsx } from 'clsx'
 import { ChevronDown, ChevronRight, FileText, Quote, Check, Copy, Sparkles } from 'lucide-react'
-import { useState, useMemo } from 'react'
+import { memo, useState, useMemo } from 'react'
 import { ClaimStateBadge } from './ReliabilityBadge'
+import { copyToClipboard } from '@/lib/clipboard'
 
 /**
  * ClaimInspector — Ultra-refined expandable claim inspector with filter tabs,
  * triple decomposition chips, citation references, and one-click copy.
+ *
+ * Memoized (FE-M3): this subtree re-renders only when the claims array
+ * reference changes — not on every parent tick (e.g. SSE trace updates).
  */
-export function ClaimInspector({ claims = [] }) {
+export const ClaimInspector = memo(function ClaimInspector({ claims = [] }) {
   const [filter, setFilter] = useState('ALL')
   const [allExpanded, setAllExpanded] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
@@ -31,8 +35,9 @@ export function ClaimInspector({ claims = [] }) {
     })
   }, [claims, filter])
 
-  const handleCopy = (claimText, id) => {
-    navigator.clipboard.writeText(claimText)
+  const handleCopy = async (claimText, id) => {
+    const ok = await copyToClipboard(claimText)
+    if (!ok) return
     setCopiedId(id)
     setTimeout(() => setCopiedId(null), 1800)
   }
@@ -144,7 +149,7 @@ export function ClaimInspector({ claims = [] }) {
       </div>
     </div>
   )
-}
+})
 
 function ClaimRow({ claim, index, isForceExpanded, onCopy, isCopied }) {
   const [open, setOpen] = useState(false)

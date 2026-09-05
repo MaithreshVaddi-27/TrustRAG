@@ -49,17 +49,16 @@ async def get_qdrant_client() -> AsyncQdrantClient:
                 else:
                     _client = AsyncQdrantClient(location=str(storage_path))
             elif settings.qdrant_api_key:
-                _client = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+                _client = AsyncQdrantClient(
+                    url=settings.qdrant_url, api_key=settings.qdrant_api_key
+                )
             else:
                 _client = AsyncQdrantClient(url=settings.qdrant_url)
         except Exception as exc:
-            raise VectorStoreError("Failed to initialize async Qdrant client", detail=str(exc)) from exc
+            raise VectorStoreError(
+                "Failed to initialize async Qdrant client", detail=str(exc)
+            ) from exc
     return _client
-
-
-def get_qdrant_client_sync() -> AsyncQdrantClient:
-    """Return the async Qdrant client singleton (for sync callers)."""
-    return get_qdrant_client()
 
 
 def get_collection_name(kb_id: str) -> str:

@@ -23,6 +23,95 @@ from app.ingestion.sparse_vector import generate_sparse_vector
 logger = get_logger(__name__)
 
 
+# ─── Query Ambiguity Detection ──────────────────────────────────────────────
+# Detects ambiguous queries using score entropy and adjusts retrieval depth.
+
+
+class AmbiguityDetector:
+    """Detects query ambiguity based on retrieval score distribution."""
+
+    def __init__(self, entropy_threshold: float = 1.5, low_score_threshold: float = 0.5):
+        self.entropy_threshold = entropy_threshold
+        self.low_score_threshold = low_score_threshold
+
+    def detect(self, scores: list[float]) -> dict[str, Any]:
+        """
+        Detect ambiguity in retrieval scores.
+
+        Args:
+            scores: List of retrieval scores from initial fetch
+
+        Returns:
+            dict with 'is_ambiguous', 'entropy', 'avg_score', 'recommendation'
+        """
+        if not scores:
+            return {
+                "is_ambiguous": False,
+                "entropy": 0.0,
+                "avg_score": 0.0,
+                "recommendation": "none",
+            }
+
+        import math
+
+        # Calculate Shannon entropy of score distribution
+        positive_scores = [max(0, s) for s in scores]
+        min_score = min(positive_scores) if positive_scores else 0
+        adjusted_scores = [s - min_score + 0.001 for s in positive_scores]
+
+        total = sum(adjusted_scores)
+        if total == 0:
+            probabilities = [1.0 / len(adjusted_scores)] * len(adjusted_scores)
+        else:
+            probabilities = [s / total for s in adjusted_scores]
+
+        entropy = -sum(p * math.log2(p) for p in probabilities if p > 0)
+        avg_score = sum(scores) / len(scores)
+
+        is_ambiguous = entropy > self.entropy_threshold or avg_score < self.low_score_threshold
+
+        if is_ambiguous and avg_score < self.low_score_threshold:
+            recommendation = "increase_k"
+        elif is_ambiguous and entropy > self.entropy_threshold:
+            recommendation = "diversify"
+        else:
+            recommendation = "none"
+
+        return {
+            "is_ambiguous": is_ambiguous,
+            "entropy": round(entropy, 2),
+            "avg_score": round(avg_score, 3),
+            "recommendation": recommendation,
+        }
+
+
+def detect_query_ambiguity(scores: list[float]) -> dict[str, Any]:
+    """Detect ambiguity in query retrieval scores.
+
+    Convenience function for external use.
+    """
+    detector = AmbiguityDetector()
+    return detector.detect(scores)
+
+
+# Global instance
+_ambiguity_detector: AmbiguityDetector | None = None
+
+
+def get_ambiguity_detector() -> AmbiguityDetector:
+    """Get the global ambiguity detector instance."""
+    global _ambiguity_detector
+    if _ambiguity_detector is None:
+        _ambiguity_detector = AmbiguityDetector()
+    return _ambiguity_detector
+
+
+def clear_ambiguity_detector() -> None:
+    """Clear the cached ambiguity detector."""
+    global _ambiguity_detector
+    _ambiguity_detector = None
+
+
 class QueryEmbeddingLRUCache:
     """Thread-safe LRU cache for query vector embeddings to prevent redundant API calls."""
 
@@ -92,7 +181,7 @@ async def dense_search(
         except Exception as col_err:
             logger.debug("Could not inspect collection dimensions", error=str(col_err))
 
-        response = client.query_points(
+        response = await client.query_points(
             collection_name=collection_name,
             query=query_vector,
             limit=top_k,

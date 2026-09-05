@@ -128,7 +128,9 @@ MCP_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "local_llm_chat",
-        "description": "Invoke local LLM (Ollama or llama.cpp) for grounded reasoning, summarization, or chat.",
+        "description": (
+            "Invoke local LLM (Ollama or llama.cpp) for grounded reasoning, summarization, or chat."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -139,7 +141,10 @@ MCP_TOOLS: list[dict[str, Any]] = [
                 },
                 "model": {
                     "type": "string",
-                    "description": "Model identifier (e.g. 'gemma4:e2b' or 'gemma-4-E2B-it-qat-q4_0-gguf:Q4_0')",
+                    "description": (
+                        "Model identifier (e.g. 'gemma4:e2b' or "
+                        "'gemma-4-E2B-it-qat-q4_0-gguf:Q4_0')"
+                    ),
                 },
             },
             "required": ["prompt"],
@@ -147,7 +152,9 @@ MCP_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "local_llm_status",
-        "description": "Query status and available models for local LLM engines (Ollama and llama.cpp).",
+        "description": (
+            "Query status and available models for local LLM engines (Ollama and llama.cpp)."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {

@@ -16,7 +16,6 @@ Techniques to reduce system compute load and latency:
 from __future__ import annotations
 
 import json
-import math
 import os
 import re
 import threading
@@ -41,7 +40,7 @@ CACHE_DIR = Path(
 PERSISTENCE_FILE = CACHE_DIR / "semantic_cache.json"
 
 # In-memory fast semantic cache storage using deque for O(1) FIFO eviction
-# Each entry: {"kb_id": str, "query": str, "vector": np.ndarray, "response": dict, "timestamp": float}
+# Each entry: {"kb_id", "query", "vector", "response", "timestamp"} — see insert()
 _SEMANTIC_CACHE: deque[dict[str, Any]] = deque(maxlen=500)
 _CACHE_LOCK = threading.RLock()  # Guards all reads/writes to _SEMANTIC_CACHE
 _MATRIX_CACHE: np.ndarray | None = None  # Stacked vectors for vectorized cosine
@@ -86,7 +85,7 @@ def _load_persisted_cache() -> None:
         return
 
     try:
-        with open(PERSISTENCE_FILE, "r", encoding="utf-8") as f:
+        with open(PERSISTENCE_FILE, encoding="utf-8") as f:
             data = json.load(f)
 
         if not isinstance(data, list):
@@ -122,7 +121,9 @@ def _persist_cache() -> None:
                 {
                     "kb_id": entry["kb_id"],
                     "query": entry["query"],
-                    "vector": entry["vector"].tolist() if isinstance(entry["vector"], np.ndarray) else entry["vector"],
+                    "vector": entry["vector"].tolist()
+                    if isinstance(entry["vector"], np.ndarray)
+                    else entry["vector"],
                     "response": entry["response"],
                     "timestamp": entry["timestamp"],
                 }
@@ -166,7 +167,7 @@ def cosine_similarity(v1: list[float] | np.ndarray, v2: list[float] | np.ndarray
 
 def _vectorized_cosine(query_vector: np.ndarray) -> np.ndarray:
     """
-    Compute cosine similarity between query vector and all cached vectors using vectorized operations.
+    Compute cosine similarity of query vector vs all cached vectors (vectorized).
 
     Returns array of similarity scores (one per cache entry).
     """
@@ -285,6 +286,7 @@ def store_semantic_cache(
     if not query_vector or not response_data:
         return
 
+    global _SEMANTIC_CACHE, _MATRIX_DIRTY
     with _CACHE_LOCK:
         entry = {
             "kb_id": kb_id,

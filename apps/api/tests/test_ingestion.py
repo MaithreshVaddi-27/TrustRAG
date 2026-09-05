@@ -90,22 +90,19 @@ def test_sparse_vectorizer_generation():
 
 
 @patch("app.ingestion.pipeline.init_kb_collection", AsyncMock())
-@patch("app.ingestion.pipeline.get_qdrant_client")
 @patch("app.ingestion.pipeline.get_embedding_model")
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
 @pytest.mark.asyncio
-async def test_indexing_pipeline_execution(
-    mock_create_indexes, mock_connect, mock_embed, mock_qdrant
-):
-    # Mock Qdrant client
+async def test_indexing_pipeline_execution(mock_create_indexes, mock_connect, mock_embed):
+    # Mock Qdrant client (async client — methods are awaited by the pipeline)
     mock_client = MagicMock()
     mock_client.collection_exists = MagicMock(return_value=True)
-    mock_qdrant.return_value = mock_client
+    mock_client.upsert = AsyncMock()
 
     # Mock embedding model
     mock_embeddings = MagicMock()
-    mock_embeddings.embed_documents = MagicMock(return_value=[[0.1] * 384, [0.2] * 384])
+    mock_embeddings.aembed_documents = AsyncMock(return_value=[[0.1] * 384, [0.2] * 384])
     mock_embed.return_value = mock_embeddings
 
     # Mock MongoDB updates
@@ -119,7 +116,13 @@ async def test_indexing_pipeline_execution(
     mock_collection.update_one = AsyncMock()
     mock_collection.insert_many = AsyncMock()
 
-    with patch("app.ingestion.pipeline.get_collection", return_value=mock_collection):
+    with (
+        patch("app.ingestion.pipeline.get_collection", return_value=mock_collection),
+        patch(
+            "app.ingestion.pipeline.get_qdrant_client",
+            AsyncMock(return_value=mock_client),
+        ),
+    ):
         from app.ingestion.pipeline import index_parsed_chunks
 
         chunks = [

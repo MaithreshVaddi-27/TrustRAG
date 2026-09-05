@@ -1,13 +1,16 @@
-import { useState, useMemo } from 'react'
+import { memo, useState, useMemo } from 'react'
 import { clsx } from 'clsx'
 import { BookOpen, Calendar, ExternalLink, Hash, Shield, ShieldAlert, Search, Globe, Database, Copy, Check } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
+import { copyToClipboard } from '@/lib/clipboard'
 
 /**
  * EvidenceViewer — Ultra-refined retrieved evidence viewer with live keyword filter,
  * source segregation (KB vs MCP Web), and score bars.
+ *
+ * Memoized (FE-M3): re-renders only when the chunks array reference changes.
  */
-export function EvidenceViewer({ chunks = [] }) {
+export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
   const reducedMotion = useReducedMotion()
   const [searchTerm, setSearchTerm] = useState('')
   const [sourceFilter, setSourceFilter] = useState('ALL') // 'ALL' | 'KB' | 'WEB'
@@ -40,8 +43,9 @@ export function EvidenceViewer({ chunks = [] }) {
     })
   }, [chunks, searchTerm, sourceFilter])
 
-  const handleCopy = (text, rank) => {
-    navigator.clipboard.writeText(text)
+  const handleCopy = async (text, rank) => {
+    const ok = await copyToClipboard(text)
+    if (!ok) return
     setCopiedIndex(rank)
     setTimeout(() => setCopiedIndex(null), 1800)
   }
@@ -131,7 +135,7 @@ export function EvidenceViewer({ chunks = [] }) {
       </div>
     </div>
   )
-}
+})
 
 function EvidenceChunk({ chunk, rank, onCopy, isCopied, reducedMotion }) {
   const [expanded, setExpanded] = useState(false)

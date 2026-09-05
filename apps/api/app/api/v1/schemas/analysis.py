@@ -36,11 +36,16 @@ class AnalysisCreate(BaseModel):
     )
     embedding_provider: str | None = Field(
         default=None,
-        description="Active embedding provider override ('huggingface', 'ollama', 'google_genai', 'nvidia')",
+        description=(
+            "Active embedding provider override ('huggingface', 'ollama', 'google_genai', 'nvidia')"
+        ),
     )
     embedding_model: str | None = Field(
         default=None,
-        description="Specific embedding model identifier override (e.g. 'BAAI/bge-small-en-v1.5', 'embeddinggemma:300m-qat-q8_0')",
+        description=(
+            "Specific embedding model identifier override "
+            "(e.g. 'BAAI/bge-small-en-v1.5', 'embeddinggemma:300m-qat-q8_0')"
+        ),
     )
 
 

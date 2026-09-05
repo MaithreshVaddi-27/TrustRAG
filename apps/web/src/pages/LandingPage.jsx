@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion, useMotionValue, useMotionTemplate } from 'motion/react'
 import {
   LandingNavbar, HeroSection, SimulationSandbox,
   CapabilitiesExplorer, BentoArchitecture, BenchmarksSection,
@@ -8,17 +9,19 @@ import {
 
 export default function LandingPage() {
   const navigate = useNavigate()
-  const [mousePos, setMousePos] = useState({ x: -1000, y: -1000 })
   const containerRef = useRef(null)
-  const rafId = useRef(null)
+
+  // FE-M2: cursor position lives in MotionValues updated outside React's render
+  // cycle, so mousemove NEVER triggers a React re-render of the whole page.
+  const mouseX = useMotionValue(-1000)
+  const mouseY = useMotionValue(-1000)
+  const spotlight = useMotionTemplate`radial-gradient(650px circle at ${mouseX}px ${mouseY}px, rgba(14, 165, 233, 0.12), transparent 80%)`
 
   const handleMouseMove = (e) => {
     if (!containerRef.current) return
-    if (rafId.current) cancelAnimationFrame(rafId.current)
-    rafId.current = requestAnimationFrame(() => {
-      const rect = containerRef.current.getBoundingClientRect()
-      setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top })
-    })
+    const rect = containerRef.current.getBoundingClientRect()
+    mouseX.set(e.clientX - rect.left)
+    mouseY.set(e.clientY - rect.top)
   }
 
   return (
@@ -28,11 +31,9 @@ export default function LandingPage() {
       className="min-h-screen bg-surface-950 text-slate-100 font-sans selection:bg-sky-500/30 selection:text-sky-300 relative overflow-hidden bg-cyber-grid"
     >
       {/* Interactive Cursor Spotlight */}
-      <div
+      <motion.div
         className="pointer-events-none fixed inset-0 z-10 transition-opacity duration-300 opacity-60"
-        style={{
-          background: `radial-gradient(650px circle at ${mousePos.x}px ${mousePos.y}px, rgba(14, 165, 233, 0.12), transparent 80%)`,
-        }}
+        style={{ background: spotlight }}
       />
 
       {/* Ambient Radial Flares */}

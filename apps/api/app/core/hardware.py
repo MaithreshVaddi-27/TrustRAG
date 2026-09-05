@@ -67,7 +67,7 @@ def get_system_memory_info() -> dict[str, Any]:
     # macOS free memory calculation via vm_stat
     if sys.platform == "darwin":
         try:
-            vm = subprocess.check_output(["vm_stat"], stderr=subprocess.DEVNULL).decode()
+            vm = subprocess.check_output(["/usr/sbin/vm_stat"], stderr=subprocess.DEVNULL).decode()
             v_page_size = 4096
             free_pages = 0
             speculative_pages = 0
@@ -114,13 +114,13 @@ def get_cached_hardware_profile() -> dict[str, Any]:
     """
     global _hardware_profile_cache
     import time
-    
+
     if _hardware_profile_cache is not None:
         # Check if cache is still valid
         cache_time = _hardware_profile_cache.get("_cache_time", 0)
         if time.time() - cache_time < _HARDWARE_PROFILE_TTL_SECONDS:
             return _hardware_profile_cache
-    
+
     # Cache miss or expired - run fresh detection
     profile = detect_hardware_profile()
     profile["_cache_time"] = time.time()
@@ -198,7 +198,8 @@ def detect_hardware_profile() -> dict[str, Any]:
     if mem["usage_pct"] > 92.0:
         health_status = "critical"
         health_notes.append(
-            "System memory is under heavy pressure (>92% used). Freeing background caches recommended."
+            "System memory is under heavy pressure (>92% used). "
+            "Freeing background caches recommended."
         )
     elif mem["usage_pct"] > 85.0:
         health_status = "warning"

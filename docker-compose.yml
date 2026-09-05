@@ -35,34 +35,38 @@ services:
     restart: unless-stopped
 
   # ── FastAPI backend ────────────────────────────────────────────────────────
+  # NOTE: targets the hardened `runtime` stage (non-root, no build tools),
+  # NOT the `builder` stage. Hot-reload still works because source is bind-mounted.
   api:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
-      target: builder
+      target: runtime
     container_name: trustrag_api
-    working_dir: /build
+    working_dir: /app
     command: >
-      sh -c "PYTHONPATH=/build uvicorn app.main:app
+      sh -c "PYTHONPATH=/app uvicorn app.main:app
       --host 0.0.0.0
       --port 8080
       --reload
-      --reload-dir /build/app
+      --reload-dir /app/app
       --log-level info"
     ports:
       - "8080:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./apps/api/app:/build/app:ro
-      - ./apps/api/config:/build/config:ro
-      - ./apps/api/tests:/build/tests:ro
-      - model_cache:/build/.model_cache
+      - ./apps/api/app:/app/app:ro
+      - ./apps/api/config:/app/config:ro
+      - ./apps/api/tests:/app/tests:ro
+      - model_cache:/app/.model_cache
     env_file:
       - .env
     environment:
       QDRANT_URL: http://qdrant:6333
-      MONGODB_URI: mongodb://host.docker.internal:27017/trustrag_db
+      # No database name suffix here: MONGODB_DATABASE (in .env) is the single
+      # source of truth for the DB name — never encode it in the URI.
+      MONGODB_URI: mongodb://host.docker.internal:27017
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       LLAMACPP_BASE_URL: http://host.docker.internal:8081/v1
     depends_on:
@@ -88,7 +92,9 @@ services:
       - /app/node_modules
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     environment:
-      VITE_API_BASE_URL: http://localhost:8080/api/v1
+      # API ORIGIN only — the frontend appends /api/v1/... itself. Including the
+      # prefix here would double it (baseURL + service path -> 2x /api/v1).
+      VITE_API_BASE_URL: http://localhost:8080
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

@@ -63,6 +63,8 @@ verification:
   max_output_tokens: 1024
   timeout_seconds: 180
   max_retries: 2
+  # Circuit breaker: maximum time allowed for verification node execution
+  max_verification_time_seconds: 120
 
 # ─── Reranker ─────────────────────────────────────────────────────────────────
 reranker:

@@ -238,7 +238,7 @@ export default function KnowledgeBasesPage() {
 
 function KnowledgeBaseCard({ kb }) {
   const queryClient = useQueryClient()
-  const [isExpanded, setIsExpanded] = useState(true)
+  const [isExpanded, setIsExpanded] = useState(false)
   const fileInputRef = useRef(null)
 
   // Query documents inside this KB

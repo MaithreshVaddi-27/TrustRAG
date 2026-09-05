@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -160,7 +161,7 @@ class ChatOllamaClient(BaseChatModel):
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 res = await client.post(endpoint, json=payload)
                 if res.status_code == 404:
-                    try:
+                    with suppress(Exception):
                         tags_res = await client.get(f"{self.base_url.rstrip('/')}/api/tags")
                         if tags_res.is_success:
                             avail = [m.get("name", "") for m in tags_res.json().get("models", [])]
@@ -169,12 +170,12 @@ class ChatOllamaClient(BaseChatModel):
                             if match:
                                 payload["model"] = match
                                 res = await client.post(endpoint, json=payload)
-                    except Exception:
-                        pass
 
                 if res.status_code == 404:
                     raise ConfigurationError(
-                        f"Ollama model '{self.model}' not found. Please run 'ollama pull {self.model}' in your terminal."
+                        "Ollama model "
+                        f"'{self.model}' not found. Please run 'ollama pull {self.model}' "
+                        "in your terminal."
                     )
                 res.raise_for_status()
                 data = res.json()
@@ -182,7 +183,8 @@ class ChatOllamaClient(BaseChatModel):
                 return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
         except httpx.ConnectError as exc:
             raise ConfigurationError(
-                f"Cannot connect to Ollama at '{self.base_url}'. Is Ollama running? Run 'ollama serve' in your terminal.",
+                "Cannot connect to Ollama at "
+                f"'{self.base_url}'. Is Ollama running? Run 'ollama serve' in your terminal.",
                 detail=str(exc),
             ) from exc
         except Exception as exc:
@@ -194,7 +196,7 @@ class ChatOllamaClient(BaseChatModel):
 
     def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:
         """
-        Return a Runnable that prompts for structured JSON and parses into the given Pydantic schema.
+        Return a Runnable that prompts for structured JSON and parses into the Pydantic schema.
         """
         schema_dict = schema.model_json_schema()
         schema_json = json.dumps(schema_dict, indent=2)
@@ -214,7 +216,8 @@ class ChatOllamaClient(BaseChatModel):
                 f"\n\nYou MUST respond ONLY with valid JSON using the keys {list(props.keys())}.\n"
                 f"Required JSON structure:\n{template_str}\n"
                 f"Full schema reference:\n{schema_json}\n"
-                "Return raw JSON only, without markdown fences, explanation, or meta-schema wrapper."
+                "Return raw JSON only, without markdown fences, explanation, "
+                "or meta-schema wrapper."
             )
 
             # Append to last message or add new human message
@@ -248,20 +251,16 @@ class ChatOllamaClient(BaseChatModel):
                     if isinstance(data, dict):
                         # 1. Check if model wrapped inside "properties" (common with small LLMs)
                         if "properties" in data and isinstance(data["properties"], dict):
-                            try:
+                            with suppress(Exception):
                                 return schema.model_validate(data["properties"])
-                            except Exception:
-                                pass
                         # 2. Check if model wrapped inside another sub-dict
                         for v in data.values():
                             if isinstance(v, dict):
-                                try:
+                                with suppress(Exception):
                                     return schema.model_validate(v)
-                                except Exception:
-                                    pass
                     return schema.model_validate(data)
                 except Exception:
-                    raise parse_err
+                    raise parse_err from None
 
         return RunnableLambda(_invoke_structured)  # type: ignore[return-value]
 
@@ -271,7 +270,8 @@ class ChatOllamaClient(BaseChatModel):
 
 class ChatLlamaCppClient(BaseChatModel):
     """
-    Client for llama.cpp HTTP server (llama-server) using its OpenAI-compatible /v1/chat/completions API.
+    Client for llama.cpp HTTP server (llama-server) via its OpenAI-compatible
+    /v1/chat/completions API.
     """
 
     base_url: str = Field(default="http://localhost:8081/v1")
@@ -342,74 +342,72 @@ class ChatLlamaCppClient(BaseChatModel):
                 f"llama.cpp generation failed for model '{self.model}'", detail=str(exc)
             ) from exc
 
-    def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:
-        """
-        Return a Runnable that prompts llama.cpp for structured JSON and parses into Pydantic schema.
-        """
-        schema_dict = schema.model_json_schema()
-        schema_json = json.dumps(schema_dict, indent=2)
-        props = schema_dict.get("properties", {})
-        template = {k: f"<{v.get('type', 'value')}>" for k, v in props.items()}
-        template_str = json.dumps(template)
 
-        async def _invoke_structured(input_messages: Any) -> T:
-            if isinstance(input_messages, (str, BaseMessage, tuple)):
-                msgs = [input_messages]
-            else:
-                msgs = list(input_messages)
+def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:
+    """
+    Return a Runnable prompting llama.cpp for structured JSON, parsed into Pydantic.
+    """
+    schema_dict = schema.model_json_schema()
+    schema_json = json.dumps(schema_dict, indent=2)
+    props = schema_dict.get("properties", {})
+    template = {k: f"<{v.get('type', 'value')}>" for k, v in props.items()}
+    template_str = json.dumps(template)
 
-            instruction = (
-                f"\n\nYou MUST respond ONLY with valid JSON using the keys {list(props.keys())}.\n"
-                f"Required JSON structure:\n{template_str}\n"
-                f"Full schema reference:\n{schema_json}\n"
-                "Return raw JSON only, without markdown fences, explanation, or meta-schema wrapper."
-            )
+    async def _invoke_structured(input_messages: Any) -> T:
+        if isinstance(input_messages, (str, BaseMessage, tuple)):
+            msgs = [input_messages]
+        else:
+            msgs = list(input_messages)
 
-            augmented_messages = list(msgs)
-            if augmented_messages:
-                last = augmented_messages[-1]
-                if isinstance(last, tuple) and len(last) == 2:
-                    augmented_messages[-1] = (last[0], f"{last[1]}{instruction}")
-                elif isinstance(last, HumanMessage):
-                    augmented_messages[-1] = HumanMessage(content=f"{last.content}{instruction}")
-                else:
-                    augmented_messages.append(HumanMessage(content=instruction))
+        instruction = (
+            f"\n\nYou MUST respond ONLY with valid JSON using the keys {list(props.keys())}.\n"
+            f"Required JSON structure:\n{template_str}\n"
+            f"Full schema reference:\n{schema_json}\n"
+            "Return raw JSON only, without markdown fences, explanation, "
+            "or meta-schema wrapper."
+        )
+
+        augmented_messages = list(msgs)
+        if augmented_messages:
+            last = augmented_messages[-1]
+            if isinstance(last, tuple) and len(last) == 2:
+                augmented_messages[-1] = (last[0], f"{last[1]}{instruction}")
+            elif isinstance(last, HumanMessage):
+                augmented_messages[-1] = HumanMessage(content=f"{last.content}{instruction}")
             else:
                 augmented_messages.append(HumanMessage(content=instruction))
+        else:
+            augmented_messages.append(HumanMessage(content=instruction))
 
-            result = await self._agenerate(
-                augmented_messages, response_format={"type": "json_object"}, **kwargs
+        result = await self._agenerate(
+            augmented_messages, response_format={"type": "json_object"}, **kwargs
+        )
+        raw_text = result.generations[0].message.content
+        cleaned_json = _extract_json_substring(raw_text)
+
+        try:
+            return schema.model_validate_json(cleaned_json)
+        except Exception as parse_err:
+            logger.warning(
+                "llama.cpp JSON schema validation failed, attempting parse",
+                raw=raw_text[:200],
+                error=str(parse_err),
             )
-            raw_text = result.generations[0].message.content
-            cleaned_json = _extract_json_substring(raw_text)
-
             try:
-                return schema.model_validate_json(cleaned_json)
-            except Exception as parse_err:
-                logger.warning(
-                    "llama.cpp JSON schema validation failed, attempting parse",
-                    raw=raw_text[:200],
-                    error=str(parse_err),
-                )
-                try:
-                    data = json.loads(cleaned_json)
-                    if isinstance(data, dict):
-                        if "properties" in data and isinstance(data["properties"], dict):
-                            try:
-                                return schema.model_validate(data["properties"])
-                            except Exception:
-                                pass
-                        for v in data.values():
-                            if isinstance(v, dict):
-                                try:
-                                    return schema.model_validate(v)
-                                except Exception:
-                                    pass
-                    return schema.model_validate(data)
-                except Exception:
-                    raise parse_err
+                data = json.loads(cleaned_json)
+                if isinstance(data, dict):
+                    if "properties" in data and isinstance(data["properties"], dict):
+                        with suppress(Exception):
+                            return schema.model_validate(data["properties"])
+                    for v in data.values():
+                        if isinstance(v, dict):
+                            with suppress(Exception):
+                                return schema.model_validate(v)
+                return schema.model_validate(data)
+            except Exception:
+                raise parse_err from None
 
-        return RunnableLambda(_invoke_structured)  # type: ignore[return-value]
+    return RunnableLambda(_invoke_structured)  # type: ignore[return-value]
 
 
 # ─── Ollama Embeddings ─────────────────────────────────────────────────────────

@@ -79,7 +79,8 @@ def set_cached_embedding(text: str, model: str, vector: Sequence[float]) -> None
     try:
         conn = _get_connection()
         conn.execute(
-            "INSERT OR REPLACE INTO embedding_cache (key, model, vector, dim, created_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO embedding_cache "
+            "(key, model, vector, dim, created_at) VALUES (?, ?, ?, ?, ?)",
             (key, model, blob, dim, time.time()),
         )
         conn.commit()

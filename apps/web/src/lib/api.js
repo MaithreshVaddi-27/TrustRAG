@@ -71,36 +71,30 @@ export default api
 /**
  * Open a Server-Sent Events stream for live analysis trace updates.
  *
- * Uses a short-lived stream ticket (POST /stream-ticket) instead of passing
- * the full JWT as a query param, which would expose it in server logs and
- * browser history. Falls back to raw ?token= if ticket issuance fails.
+ * Uses a short-lived, single-use stream ticket (POST /stream-ticket) — the JWT
+ * is NEVER placed in the URL, where it would leak into server logs, proxy logs,
+ * and browser history. If ticket issuance fails, onError is invoked so callers
+ * can fall back to polling (no stream is opened).
  *
  * Backend route: GET /api/v1/analyses/{analysisId}/stream?ticket=<ticket>
  *
  * @param {string} analysisId
- * @param {{ onEvent?: (data: any) => void, onError?: (err: Event) => void, onComplete?: () => void }} handlers
- * @returns {Promise<EventSource>}
+ * @param {{ onEvent?: (data: any) => void, onError?: (err: Event|Error) => void, onComplete?: () => void }} handlers
+ * @returns {Promise<EventSource|null>}
  */
 export async function openAnalysisStream(analysisId, { onEvent, onError, onComplete } = {}) {
   const TERMINAL_EVENTS = new Set(['analysis.completed', 'analysis.abstained', 'analysis.failed'])
 
+  // Mint a short-lived ticket — keeps the JWT out of the URL entirely.
   let streamUrl
-
-  // Try to get a short-lived ticket (preferred — keeps JWT out of URL)
   try {
     const ticketRes = await api.post(`/api/v1/analyses/${analysisId}/stream-ticket`)
     const ticket = ticketRes.data?.ticket
-    if (ticket) {
-      streamUrl = `${API_BASE_URL}/api/v1/analyses/${analysisId}/stream?ticket=${encodeURIComponent(ticket)}`
-    }
-  } catch {
-    // Ticket endpoint unavailable — fall back to legacy token-in-URL approach
-  }
-
-  // Fallback: use raw JWT in query string (legacy, less secure)
-  if (!streamUrl) {
-    const { token } = authStore.getState()
-    streamUrl = `${API_BASE_URL}/api/v1/analyses/${analysisId}/stream?token=${encodeURIComponent(token || '')}`
+    if (!ticket) throw new Error('Stream ticket endpoint returned no ticket')
+    streamUrl = `${API_BASE_URL}/api/v1/analyses/${analysisId}/stream?ticket=${encodeURIComponent(ticket)}`
+  } catch (err) {
+    onError?.(err)
+    return null
   }
 
   const source = new EventSource(streamUrl)

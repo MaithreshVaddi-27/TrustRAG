@@ -8,17 +8,17 @@ Eliminates split-brain between graph.py and analysis_service.py.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class VerdictStatus(str, Enum):
+class VerdictStatus(StrEnum):
     """Normalized verdict outcomes from the reliability engine."""
 
-    PASS = "PASS"
+    PASS = "PASS"  # noqa: S105 — verdict outcome string, not a credential
     FAIL = "FAIL"
 
 
-class ReliabilityStatus(str, Enum):
+class ReliabilityStatus(StrEnum):
     """Final user-facing reliability statuses."""
 
     TRUSTED = "TRUSTED"
@@ -27,7 +27,7 @@ class ReliabilityStatus(str, Enum):
     ABSTAINED = "ABSTAINED"
 
 
-class DiagnosisType(str, Enum):
+class DiagnosisType(StrEnum):
     """Diagnosis categories for failed/abstained analyses."""
 
     RETRIEVAL_FAILURE = "RETRIEVAL_FAILURE"

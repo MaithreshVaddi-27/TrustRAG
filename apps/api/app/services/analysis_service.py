@@ -29,7 +29,6 @@ from app.services.kb_service import get_kb
 from app.verification.verdict import (
     ReliabilityStatus,
     Thresholds,
-    compute_verdict,
     verdict_from_state,
 )
 
@@ -60,9 +59,7 @@ async def _unsubscribe_from_analysis(analysis_id: str, queue: asyncio.Queue) -> 
                 del _analysis_subscribers[analysis_id]
 
 
-async def _publish_analysis_event(
-    analysis_id: str, event: str, data: dict[str, Any]
-) -> None:
+async def _publish_analysis_event(analysis_id: str, event: str, data: dict[str, Any]) -> None:
     """Publish an event to all subscribers of an analysis."""
     async with _subscribers_lock:
         if analysis_id in _analysis_subscribers:
@@ -75,7 +72,9 @@ async def _publish_analysis_event(
                 try:
                     queue.put_nowait(event_data)
                 except asyncio.QueueFull:
-                    logger.warning("SSE subscriber queue full, dropping event", analysis_id=analysis_id)
+                    logger.warning(
+                        "SSE subscriber queue full, dropping event", analysis_id=analysis_id
+                    )
 
 
 def serialize_analysis(doc: Mapping[str, Any]) -> AnalysisResponse:
@@ -328,6 +327,11 @@ async def sse_event_generator(
 
     try:
         no_event_ticks = 0
+        terminal_events = {
+            "analysis.completed",
+            "analysis.abstained",
+            "analysis.failed",
+        }
         while no_event_ticks < 120:
             try:
                 # Wait for event with timeout (1 second)
@@ -336,9 +340,9 @@ async def sse_event_generator(
                 yield event_data
 
                 # Terminal event checks
-                if event_data["event"] in ["analysis.completed", "analysis.abstained", "analysis.failed"]:
+                if event_data["event"] in terminal_events:
                     return
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 no_event_ticks += 1
                 # Periodic heartbeat ping keeps reverse proxies (Render/Cloudflare) alive
                 if no_event_ticks % 3 == 0:
@@ -381,7 +385,6 @@ async def _get_concurrency_semaphore() -> asyncio.Semaphore:
                 max_conc = 2
             _analysis_semaphore = asyncio.Semaphore(max_conc)
     return _analysis_semaphore
-
 
 
 async def run_analysis_pipeline(
@@ -449,39 +452,59 @@ async def run_analysis_pipeline(
         verdict = verdict_from_state(final_state, thresholds)
 
         if verdict.reliability_status == ReliabilityStatus.ABSTAINED:
+            # Update database first, then publish trace event
+            await analyses_coll.update_one(
+                {"_id": analysis_id},
+                {
+                    "$set": {
+                        "status": "abstained",
+                        "answer": answer,
+                        "reliability": {
+                            "score": verdict.reliability_score,
+                            "status": verdict.reliability_status.value,
+                        },
+                        "diagnosis": {
+                            "type": verdict.diagnosis_type.value,
+                            "failures": verdict.diagnosis_failures,
+                        },
+                        "updated_at": datetime.now(UTC),
+                    }
+                },
+            )
             await add_trace_event(
                 analysis_id_str,
                 "analysis.abstained",
                 {"message": "Agent reasoning resulted in abstention"},
             )
-            status_value = "abstained"
         else:
+            # Update database first, then publish trace event with answer
+            await analyses_coll.update_one(
+                {"_id": analysis_id},
+                {
+                    "$set": {
+                        "status": "completed",
+                        "answer": answer,
+                        "reliability": {
+                            "score": verdict.reliability_score,
+                            "status": verdict.reliability_status.value,
+                        },
+                        "diagnosis": {
+                            "type": verdict.diagnosis_type.value,
+                            "failures": verdict.diagnosis_failures,
+                        },
+                        "updated_at": datetime.now(UTC),
+                    }
+                },
+            )
             await add_trace_event(
                 analysis_id_str,
                 "analysis.completed",
-                {"message": "Answer generation completed successfully"},
-            )
-            status_value = "completed"
-
-        # Update final state in database
-        await analyses_coll.update_one(
-            {"_id": analysis_id},
-            {
-                "$set": {
-                    "status": status_value,
+                {
+                    "message": "Answer generation completed successfully",
                     "answer": answer,
-                    "reliability": {
-                        "score": verdict.reliability_score,
-                        "status": verdict.reliability_status.value,
-                    },
-                    "diagnosis": {
-                        "type": verdict.diagnosis_type.value,
-                        "failures": verdict.diagnosis_failures,
-                    },
-                    "updated_at": datetime.now(UTC),
-                }
-            },
-        )
+                    "verdict": verdict.diagnosis_type.value,
+                },
+            )
 
     except Exception as exc:
         logger.error(
@@ -503,7 +526,8 @@ async def run_analysis_pipeline(
             )
         elif "timeout" in err_str or "timed out" in err_str:
             client_msg = (
-                "Inference timed out. The local model may still be loading or system is under heavy load."
+                "Inference timed out. The local model may still be loading "
+                "or system is under heavy load."
             )
         else:
             client_msg = f"Pipeline execution error ({type(exc).__name__}). Check server logs."
@@ -527,6 +551,7 @@ async def run_analysis_pipeline(
     finally:
         try:
             import asyncio
+
             from app.core.memory import trim_memory
 
             await asyncio.to_thread(trim_memory)
@@ -654,6 +679,131 @@ async def list_all_user_conflicts(
         )
 
     return conflicts
+
+
+# ─── Analytics Dashboard ──────────────────────────────────────────────────────
+# Provides aggregated analytics for monitoring and optimization.
+
+
+async def get_analytics_dashboard(user_id_str: str) -> dict[str, Any]:
+    """Generate a comprehensive analytics dashboard for a user.
+
+    Includes:
+    - Analysis summary (counts, status distribution)
+    - Retrieval effectiveness metrics
+    - Verification patterns
+    - Conflict and integrity statistics
+    - Cost and performance indicators
+    """
+    from app.core.config import get_model_config
+
+    uid = ObjectId(user_id_str)
+    analyses_coll = get_collection(Collections.ANALYSES)
+    claims_coll = get_collection(Collections.CLAIMS)
+    evidence_coll = get_collection(Collections.EVIDENCE)
+
+    # Fetch user's analyses
+    user_analyses = await analyses_coll.find({"user_id": uid}).to_list(500)
+    a_ids = [a["_id"] for a in user_analyses]
+
+    if not a_ids:
+        return {
+            "total_analyses": 0,
+            "analyses_by_status": {},
+            "total_claims": 0,
+            "claims_by_state": {},
+            "total_evidence": 0,
+            "evidence_integrity": {},
+            "conflict_count": 0,
+            "average_reliability": 0.0,
+            "cost_indicators": {
+                "total_llm_calls": 0,
+                "total_embedding_calls": 0,
+            },
+        }
+
+    # 1. Analyses by status
+    status_pipeline = [
+        {"$match": {"_id": {"$in": a_ids}}},
+        {
+            "$group": {
+                "_id": "$status",
+                "count": {"$sum": 1},
+                "average_reliability": {"$avg": "$reliability.score"},
+            }
+        },
+    ]
+    analyses_by_status = {}
+    avg_reliability_sum = 0
+    analyses_with_reliability = 0
+    async for row in analyses_coll.aggregate(status_pipeline):
+        analyses_by_status[row["_id"]] = {
+            "count": row["count"],
+            "average_reliability": round(row["average_reliability"], 2)
+            if row["average_reliability"]
+            else 0.0,
+        }
+        avg_reliability_sum += row.get("average_reliability", 0) or 0
+        analyses_with_reliability += 1
+
+    if analyses_with_reliability > 0:
+        average_reliability = round(avg_reliability_sum / analyses_with_reliability, 2)
+    else:
+        average_reliability = 0.0
+
+    # 2. Claims by state
+    if a_ids:
+        claims_pipeline = [
+            {"$match": {"analysis_id": {"$in": a_ids}}},
+            {"$group": {"_id": "$state", "count": {"$sum": 1}}},
+        ]
+        claims_by_state = {}
+        total_claims = 0
+        async for row in claims_coll.aggregate(claims_pipeline):
+            claims_by_state[row["_id"]] = row["count"]
+            total_claims += row["count"]
+    else:
+        claims_by_state = {}
+        total_claims = 0
+
+    # 3. Evidence count and integrity
+    if a_ids:
+        evidence_count = await evidence_coll.count_documents({"analysis_id": {"$in": a_ids}})
+
+        # Evidence integrity breakdown
+        integrity_pipeline = [
+            {"$match": {"analysis_id": {"$in": a_ids}}},
+            {"$group": {"_id": "$integrity_status", "count": {"$sum": 1}}},
+        ]
+        evidence_integrity = {}
+        async for row in evidence_coll.aggregate(integrity_pipeline):
+            evidence_integrity[row["_id"]] = row["count"]
+    else:
+        evidence_count = 0
+        evidence_integrity = {}
+
+    # 4. Conflicts
+    conflict_count = len(await list_all_user_conflicts(user_id_str))
+
+    # 5. Cost indicators (from config and trace events)
+    cfg = get_model_config()
+    cost_indicators = {
+        "config_version": cfg.config_version,
+        "embedding_provider": cfg.embedding_provider,
+        "llm_provider": cfg.llm_provider,
+    }
+
+    return {
+        "total_analyses": len(user_analyses),
+        "analyses_by_status": analyses_by_status,
+        "total_claims": total_claims,
+        "claims_by_state": claims_by_state,
+        "total_evidence": evidence_count,
+        "evidence_integrity": evidence_integrity,
+        "conflict_count": conflict_count,
+        "average_reliability": average_reliability,
+        "cost_indicators": cost_indicators,
+    }
 
 
 async def export_analysis_dossier(

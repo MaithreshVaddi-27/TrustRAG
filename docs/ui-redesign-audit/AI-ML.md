@@ -22,11 +22,9 @@
 - Impact: ~2x query-embedding compute on every uncached request; the graph-level embedding never populates the retrieval LRU.
 - Recommendation: Resolve the query vector once through the cached wrapper (or pass `q_vec` into `hybrid_search`). Saves ~50% of per-request embedding calls.
 
-**[Critical] models.yaml provider/model settings are unreachable — env defaults always win** (Confirmed)
-- Location: `app/core/config.py:296-311` (embedding; same pattern for llm/verification)
-- Evidence: `embedding_provider` does `settings.embedding_provider or fallback`, but `Settings.embedding_provider` defaults to `"huggingface"` (config.py:118-122) and is therefore always truthy — the models.yaml value can never apply. Same always-truthy bug for `llm_provider` ("ollama") and `verification_provider`.
-- Impact: The declared models in models.yaml are fiction; operators editing it silently get no effect. All yaml-declared optimizations (prompt_caching, embedding choice, KV q4_0) are unreachable.
-- Recommendation: Distinguish "unset" (None) from "default" in Settings; log the *resolved* provider/model triple at startup.
+**[Critical] ~~models.yaml provider/model settings are unreachable — env defaults always win~~** ✅ Fixed
+- Location: `app/core/config.py`
+- Fix: Replaced `getattr(settings, "X", None)` with `os.environ.get("X")` for all ModelConfig properties. Precedence is now env vars > models.yaml > hardcoded defaults. Same fix as ARCHITECTURE.md C1.
 
 ## High
 

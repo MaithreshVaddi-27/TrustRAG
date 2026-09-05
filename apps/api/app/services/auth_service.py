@@ -12,7 +12,13 @@ from pymongo.errors import DuplicateKeyError
 
 from app.api.v1.schemas.auth import UserRegister, UserResponse
 from app.core.exceptions import AuthenticationError, ConflictError
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.security import (
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    jti_key,
+    verify_password,
+)
 from app.db.mongodb import Collections, get_collection
 
 
@@ -51,7 +57,8 @@ async def register_user(schema: UserRegister) -> UserResponse:
         return serialize_user(user_doc)
     except DuplicateKeyError as exc:
         raise ConflictError(
-            "User registration failed", detail="An account with this email already exists"
+            "User registration failed",
+            detail="Registration could not be completed with the provided details.",
         ) from exc
 
 
@@ -82,3 +89,41 @@ async def authenticate_user(email: str, password: str) -> tuple[str, UserRespons
     # Generate token
     token = create_access_token(str(user["_id"]))
     return token, serialize_user(user)
+
+
+async def revoke_token(token: str) -> None:
+    """
+    Revoke an access token (SEC-H1).
+
+    Records the token's ``jti`` in ``revoked_tokens`` until its ``exp``
+    claim passes (documents self-clean via a TTL index at that moment).
+    Idempotent — revoking the same token twice is a no-op.
+    """
+    payload = decode_access_token(token)
+    key = jti_key(payload)
+
+    exp_ts = payload.get("exp")
+    expires_at = datetime.fromtimestamp(exp_ts, tz=UTC) if exp_ts else datetime.now(UTC)
+
+    revoked_coll = get_collection(Collections.REVOKED_TOKENS)
+    try:
+        await revoked_coll.insert_one(
+            {
+                "_id": key,
+                "user_id": payload.get("sub"),
+                "revoked_at": datetime.now(UTC),
+                "expires_at": expires_at,
+            }
+        )
+    except DuplicateKeyError:
+        # Already revoked; nothing more to do.
+        pass
+
+
+async def is_token_revoked(token: str) -> bool:
+    """Return True if the token is present in the revocation denylist."""
+    payload = decode_access_token(token)
+    key = jti_key(payload)
+    revoked_coll = get_collection(Collections.REVOKED_TOKENS)
+    doc = await revoked_coll.find_one({"_id": key})
+    return doc is not None

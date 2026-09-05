@@ -87,15 +87,19 @@ poetry.lock
 .coverage
 .coverage.*
 coverage.xml
+coverage/
+htmlcov/
+apps/web/coverage/
+apps/api/coverage/
 *.cover
 *.py,cover
-htmlcov/
 nosetests.xml
 test-results/
 junit.xml
 playwright-report/
 blob-report/
 playwright/.cache/
+test-results/.last-run.json
 
 # ─── Ruff cache ───────────────────────────────────────────────────────────────
 .ruff_cache/
@@ -110,6 +114,8 @@ lerna-debug.log*
 apps/web/dist/
 apps/web/dist-ssr/
 apps/web/*.local
+.vite/
+.vitest/
 .npm
 .eslintcache
 .stylelintcache
@@ -208,3 +214,13 @@ uv.lock
 *.seed
 *.pid.lock
 .python-version
+
+# ─── Temporary / Scratch files ────────────────────────────────────────────────
+*.tmp
+*.bak
+*.orig
+test.txt
+test_*.txt
+.superpowers/
+.claude/worktrees/
+

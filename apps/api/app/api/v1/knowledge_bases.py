@@ -9,7 +9,8 @@ import io
 from collections.abc import Mapping
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from pydantic import BaseModel, Field, HttpUrl
 
 from app.api.deps import get_current_user
 from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
@@ -19,8 +20,20 @@ from app.ingestion.chunker import chunk_text
 from app.ingestion.parser import parse_document
 from app.ingestion.pipeline import index_parsed_chunks
 from app.services import kb_service
+from app.services.search_service import fetch_document_from_url, validate_ingestion_url
 
 router = APIRouter(prefix="/knowledge-bases", tags=["knowledge-bases"])
+
+
+# ─── URL Ingestion Schema ─────────────────────────────────────────────────────
+
+
+class URLDocumentRequest(BaseModel):
+    """Request model for URL-based document ingestion."""
+
+    url: HttpUrl = Field(..., description="URL of the document to ingest")
+    filename: str | None = Field(None, description="Optional custom filename")
+    allowlist: list[str] | None = Field(None, description="Optional custom URL allowlist prefixes")
 
 
 @router.post(
@@ -83,7 +96,7 @@ async def list_documents_endpoint(
 async def upload_document_endpoint(
     kb_id: str,
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),  # noqa: B008
+    file: UploadFile = File(...),
     current_user: Mapping[str, Any] = Depends(get_current_user),
 ) -> DocResponse:
     """
@@ -135,6 +148,125 @@ async def upload_document_endpoint(
 
     # Parse document immediately to extract pages and dates
     # Wrap bytes in a StringIO/BytesIO stream
+    stream = io.BytesIO(content)
+    pages, eff_from, eff_until = parse_document(filename, stream)
+
+    # Chunk text
+    chunks = chunk_text(pages, chunk_size=cfg.chunk_size, chunk_overlap=cfg.chunk_overlap)
+
+    # Save metadata record in MongoDB
+    doc = await kb_service.add_document(
+        kb_id_str=kb_id,
+        filename=filename,
+        file_size=file_size,
+        content_hash=content_hash,
+        user_id_str=str(current_user["_id"]),
+        effective_from=eff_from,
+        effective_until=eff_until,
+    )
+
+    # Trigger background indexing
+    background_tasks.add_task(
+        index_parsed_chunks, doc_id_str=doc.id, kb_id_str=kb_id, chunks=chunks
+    )
+
+    return doc
+
+
+@router.post(
+    "/{kb_id}/documents/from-url",
+    response_model=DocResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Ingest document from URL",
+)
+async def ingest_document_from_url_endpoint(
+    kb_id: str,
+    background_tasks: BackgroundTasks,
+    request: URLDocumentRequest,
+    current_user: Mapping[str, Any] = Depends(get_current_user),
+) -> DocResponse:
+    """
+    Ingest a document from a URL with SSRF protection.
+
+    Implements defense-in-depth SSRF protection:
+    - URL allowlist validation (configurable per-request or global defaults)
+    - Internal IP/hostname blocking (loopback, private ranges, cloud metadata)
+    - DNS resolution verification
+    - Response size limits (10MB default)
+    - Request timeout (15s default)
+    - Content type validation (text, PDF, JSON, XML, CSV, MD)
+    - No automatic redirects to internal addresses
+
+    Allowed content types: text/*, application/pdf, application/json,
+    application/xml, text/csv, text/markdown
+
+    Default allowlist includes: wikipedia.org, arxiv.org, github.com,
+    python.org, mozilla.org, w3.org, ietf.org, rfc-editor.org
+    """
+    cfg = get_model_config()
+
+    # Validate URL with SSRF protection
+    url_str = str(request.url)
+    allowlist = set(request.allowlist) if request.allowlist else None
+
+    is_valid, error = validate_ingestion_url(url_str, allowlist)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"URL validation failed: {error}",
+        )
+
+    # Fetch document content with SSRF protection
+    content, error = await fetch_document_from_url(url_str, allowlist)
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to fetch document: {error}",
+        )
+
+    assert content is not None
+    file_size = len(content)
+
+    # Verify file size limit
+    max_file_size = cfg.max_file_size_mb * 1024 * 1024
+    if file_size > max_file_size:
+        raise FileTooLargeError(
+            "Document from URL exceeds size limit",
+            detail=f"Document size {file_size / (1024 * 1024):.2f}MB exceeds limit of {cfg.max_file_size_mb}MB",
+        )
+
+    # Determine filename
+    if request.filename:
+        filename = request.filename
+    else:
+        # Extract filename from URL path
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url_str)
+        filename = parsed.path.split("/")[-1] or "document"
+        # Ensure it has an extension
+        if "." not in filename:
+            # Guess from content type or default to .txt
+            filename += ".txt"
+
+    # Clean filename
+    from pathlib import Path
+
+    filename = Path(filename).name.replace("\x00", "").strip() or "document.txt"
+    ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
+    allowed_extensions = {
+        ext if ext.startswith(".") else f".{ext}" for ext in cfg.supported_formats
+    }
+    if ext not in allowed_extensions:
+        raise UnsupportedFormatError(
+            f"Unsupported file format '{ext}'",
+            detail=f"Only the following formats are accepted: {sorted(allowed_extensions)}",
+        )
+
+    # Compute content hash
+    content_hash = hashlib.sha256(content).hexdigest()
+
+    # Parse document immediately to extract pages and dates
     stream = io.BytesIO(content)
     pages, eff_from, eff_until = parse_document(filename, stream)
 

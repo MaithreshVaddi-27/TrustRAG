@@ -56,6 +56,7 @@ class Collections:
     TRACE_EVENTS = "trace_events"
     EXPERIMENTS = "experiments"
     FEEDBACK = "feedback"
+    REVOKED_TOKENS = "revoked_tokens"
 
 
 # ─── Client singleton ─────────────────────────────────────────────────────────
@@ -192,115 +193,182 @@ async def create_indexes() -> None:
     """
     db = get_database()
 
+    # Collect all index creation coroutines and run them in parallel for faster startup
+    index_tasks = []
+
     # ── users ──────────────────────────────────────────────────────────────
-    await db[Collections.USERS].create_index(
-        [("email", pymongo.ASCENDING)], unique=True, name="email_unique"
+    index_tasks.append(
+        db[Collections.USERS].create_index(
+            [("email", pymongo.ASCENDING)], unique=True, name="email_unique"
+        )
     )
 
     # ── knowledge_bases ────────────────────────────────────────────────────
-    await db[Collections.KNOWLEDGE_BASES].create_index(
-        [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
-        name="kb_owner_time",
+    index_tasks.append(
+        db[Collections.KNOWLEDGE_BASES].create_index(
+            [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="kb_owner_time",
+        )
     )
 
     # ── documents ──────────────────────────────────────────────────────────
-    await db[Collections.DOCUMENTS].create_index(
-        [("knowledge_base_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
-        name="doc_kb_time",
+    index_tasks.append(
+        db[Collections.DOCUMENTS].create_index(
+            [("knowledge_base_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="doc_kb_time",
+        )
     )
-    await db[Collections.DOCUMENTS].create_index(
-        [("knowledge_base_id", pymongo.ASCENDING), ("content_hash", pymongo.ASCENDING)],
-        unique=True,
-        name="doc_kb_content_hash_unique",
+    index_tasks.append(
+        db[Collections.DOCUMENTS].create_index(
+            [("knowledge_base_id", pymongo.ASCENDING), ("content_hash", pymongo.ASCENDING)],
+            unique=True,
+            name="doc_kb_content_hash_unique",
+        )
     )
-    await db[Collections.DOCUMENTS].create_index(
-        [("content_hash", pymongo.ASCENDING)], name="doc_content_hash"
+    index_tasks.append(
+        db[Collections.DOCUMENTS].create_index(
+            [("content_hash", pymongo.ASCENDING)], name="doc_content_hash"
+        )
     )
-    await db[Collections.DOCUMENTS].create_index([("user_id", pymongo.ASCENDING)], name="doc_user")
-    await db[Collections.DOCUMENTS].create_index(
-        [("ingestion_status", pymongo.ASCENDING)], name="doc_ingestion_status"
+    index_tasks.append(
+        db[Collections.DOCUMENTS].create_index([("user_id", pymongo.ASCENDING)], name="doc_user")
+    )
+    index_tasks.append(
+        db[Collections.DOCUMENTS].create_index(
+            [("ingestion_status", pymongo.ASCENDING)], name="doc_ingestion_status"
+        )
     )
 
     # ── document_chunks ────────────────────────────────────────────────────
-    await db[Collections.DOCUMENT_CHUNKS].create_index(
-        [("document_id", pymongo.ASCENDING), ("chunk_index", pymongo.ASCENDING)],
-        name="chunk_doc_index",
+    index_tasks.append(
+        db[Collections.DOCUMENT_CHUNKS].create_index(
+            [("document_id", pymongo.ASCENDING), ("chunk_index", pymongo.ASCENDING)],
+            name="chunk_doc_index",
+        )
     )
-    await db[Collections.DOCUMENT_CHUNKS].create_index(
-        [("knowledge_base_id", pymongo.ASCENDING)], name="chunk_kb_id"
+    index_tasks.append(
+        db[Collections.DOCUMENT_CHUNKS].create_index(
+            [("knowledge_base_id", pymongo.ASCENDING)], name="chunk_kb_id"
+        )
     )
-    await db[Collections.DOCUMENT_CHUNKS].create_index(
-        [("user_id", pymongo.ASCENDING)], name="chunk_user"
+    index_tasks.append(
+        db[Collections.DOCUMENT_CHUNKS].create_index(
+            [("user_id", pymongo.ASCENDING)], name="chunk_user"
+        )
     )
-    await db[Collections.DOCUMENT_CHUNKS].create_index(
-        [("text_hash", pymongo.ASCENDING)], name="chunk_text_hash"
+    index_tasks.append(
+        db[Collections.DOCUMENT_CHUNKS].create_index(
+            [("text_hash", pymongo.ASCENDING)], name="chunk_text_hash"
+        )
     )
 
     # ── analyses ───────────────────────────────────────────────────────────
-    await db[Collections.ANALYSES].create_index(
-        [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
-        name="analysis_owner_time",
+    index_tasks.append(
+        db[Collections.ANALYSES].create_index(
+            [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="analysis_owner_time",
+        )
     )
-    await db[Collections.ANALYSES].create_index(
-        [("knowledge_base_id", pymongo.ASCENDING)], name="analysis_kb"
+    index_tasks.append(
+        db[Collections.ANALYSES].create_index(
+            [("knowledge_base_id", pymongo.ASCENDING)], name="analysis_kb"
+        )
     )
-    await db[Collections.ANALYSES].create_index(
-        [("status", pymongo.ASCENDING)], name="analysis_status"
+    index_tasks.append(
+        db[Collections.ANALYSES].create_index(
+            [("status", pymongo.ASCENDING)], name="analysis_status"
+        )
     )
     # Compound index for user-scoped status queries (e.g. list running analyses per user)
-    await db[Collections.ANALYSES].create_index(
-        [("user_id", pymongo.ASCENDING), ("status", pymongo.ASCENDING)],
-        name="analysis_user_status",
+    index_tasks.append(
+        db[Collections.ANALYSES].create_index(
+            [("user_id", pymongo.ASCENDING), ("status", pymongo.ASCENDING)],
+            name="analysis_user_status",
+        )
     )
 
     # ── claims ─────────────────────────────────────────────────────────────
-    await db[Collections.CLAIMS].create_index(
-        [("analysis_id", pymongo.ASCENDING)], name="claim_analysis"
+    index_tasks.append(
+        db[Collections.CLAIMS].create_index(
+            [("analysis_id", pymongo.ASCENDING)], name="claim_analysis"
+        )
     )
-    await db[Collections.CLAIMS].create_index(
-        [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
-        name="claim_user_time",
+    index_tasks.append(
+        db[Collections.CLAIMS].create_index(
+            [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="claim_user_time",
+        )
     )
     # Claim documents store verdict under "state" (SUPPORTED/CONTRADICTED/NEUTRAL),
     # never "status" — index must match the actual field name to be useful.
-    await db[Collections.CLAIMS].create_index([("state", pymongo.ASCENDING)], name="claim_state")
+    index_tasks.append(
+        db[Collections.CLAIMS].create_index([("state", pymongo.ASCENDING)], name="claim_state")
+    )
 
     # ── evidence ───────────────────────────────────────────────────────────
-    await db[Collections.EVIDENCE].create_index(
-        [("analysis_id", pymongo.ASCENDING)], name="evidence_analysis"
+    index_tasks.append(
+        db[Collections.EVIDENCE].create_index(
+            [("analysis_id", pymongo.ASCENDING)], name="evidence_analysis"
+        )
     )
-    await db[Collections.EVIDENCE].create_index(
-        [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
-        name="evidence_user_time",
+    index_tasks.append(
+        db[Collections.EVIDENCE].create_index(
+            [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="evidence_user_time",
+        )
     )
-    await db[Collections.EVIDENCE].create_index(
-        [("document_id", pymongo.ASCENDING)], name="evidence_document"
+    index_tasks.append(
+        db[Collections.EVIDENCE].create_index(
+            [("document_id", pymongo.ASCENDING)], name="evidence_document"
+        )
     )
 
     # ── recovery_runs ──────────────────────────────────────────────────────
-    await db[Collections.RECOVERY_RUNS].create_index(
-        [("analysis_id", pymongo.ASCENDING), ("attempt", pymongo.ASCENDING)],
-        name="recovery_analysis_attempt",
+    index_tasks.append(
+        db[Collections.RECOVERY_RUNS].create_index(
+            [("analysis_id", pymongo.ASCENDING), ("attempt", pymongo.ASCENDING)],
+            name="recovery_analysis_attempt",
+        )
     )
 
     # ── trace_events ───────────────────────────────────────────────────────
-    await db[Collections.TRACE_EVENTS].create_index(
-        [("analysis_id", pymongo.ASCENDING), ("timestamp", pymongo.ASCENDING)],
-        name="trace_analysis_time",
+    index_tasks.append(
+        db[Collections.TRACE_EVENTS].create_index(
+            [("analysis_id", pymongo.ASCENDING), ("timestamp", pymongo.ASCENDING)],
+            name="trace_analysis_time",
+        )
     )
     # TTL index: automatically delete trace events older than 30 days to prevent
     # unbounded collection growth in production environments.
-    await db[Collections.TRACE_EVENTS].create_index(
-        [("created_at", pymongo.ASCENDING)],
-        name="trace_ttl_expiry",
-        expireAfterSeconds=2_592_000,  # 30 days
+    index_tasks.append(
+        db[Collections.TRACE_EVENTS].create_index(
+            [("created_at", pymongo.ASCENDING)],
+            name="trace_ttl_expiry",
+            expireAfterSeconds=2_592_000,  # 30 days
+        )
     )
 
     # ── experiments ────────────────────────────────────────────────────────
-    await db[Collections.EXPERIMENTS].create_index(
-        [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
-        name="exp_owner_time",
+    index_tasks.append(
+        db[Collections.EXPERIMENTS].create_index(
+            [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="exp_owner_time",
+        )
     )
+
+    # ── revoked_tokens ─────────────────────────────────────────────────────
+    # SEC-H1: logout denylist. Documents are self-cleaning via TTL — the
+    # document expires exactly when the token's own exp claim arrives.
+    index_tasks.append(
+        db[Collections.REVOKED_TOKENS].create_index(
+            [("expires_at", pymongo.ASCENDING)],
+            name="revoked_token_ttl",
+            expireAfterSeconds=0,
+        )
+    )
+
+    # Execute all index creations in parallel
+    await asyncio.gather(*index_tasks, return_exceptions=True)
 
     logger.info("MongoDB indexes created/verified")
 

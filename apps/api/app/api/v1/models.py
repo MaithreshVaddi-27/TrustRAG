@@ -6,8 +6,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.api.deps import get_current_user
 from app.core.config import get_model_config, get_settings
 from app.core.hardware import get_cached_hardware_profile
 from app.core.local_llm import check_llamacpp_status, check_ollama_status
@@ -16,10 +17,15 @@ router = APIRouter(prefix="/models", tags=["models"])
 
 
 @router.get("/providers", summary="Get status of AI providers and available models")
-async def get_providers_endpoint() -> dict[str, Any]:
+async def get_providers_endpoint(
+    _user=Depends(get_current_user),
+) -> dict[str, Any]:
     """
     Return connection status, detected models, and configuration for all supported LLM providers.
     Allows frontend to dynamically display online status and populate model dropdowns.
+
+    Requires authentication — the response includes internal base URLs
+    (ollama_base_url, llamacpp_base_url) which must not be publicly exposed.
     """
     settings = get_settings()
     cfg = get_model_config()
@@ -31,7 +37,7 @@ async def get_providers_endpoint() -> dict[str, Any]:
     target_ollama_models = ["granite4.2:3b-q4_K_M", "qwen3.5:4b", "gemma4:e2b-it-qat"]
     for m in reversed(target_ollama_models):
         if m not in ollama_info.get("models", []):
-            ollama_info["models"] = [m] + ollama_info.get("models", [])
+            ollama_info["models"] = [m, *ollama_info.get("models", [])]
 
     target_llamacpp_models = [
         "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
@@ -40,12 +46,12 @@ async def get_providers_endpoint() -> dict[str, Any]:
     ]
     for m in reversed(target_llamacpp_models):
         if m not in llamacpp_info.get("models", []):
-            llamacpp_info["models"] = [m] + llamacpp_info.get("models", [])
+            llamacpp_info["models"] = [m, *llamacpp_info.get("models", [])]
 
     # Embedding models list
     ollama_emb_models = ollama_info.get("embedding_models", [])
     if "embeddinggemma:300m-qat-q8_0" not in ollama_emb_models:
-        ollama_emb_models = ["embeddinggemma:300m-qat-q8_0"] + ollama_emb_models
+        ollama_emb_models = ["embeddinggemma:300m-qat-q8_0", *ollama_emb_models]
 
     embedding_providers = {
         "huggingface": {
@@ -188,7 +194,9 @@ async def get_providers_endpoint() -> dict[str, Any]:
 
 
 @router.get("/hardware", summary="Hardware acceleration and resource health profile")
-async def get_hardware_endpoint() -> dict[str, Any]:
+async def get_hardware_endpoint(
+    _user=Depends(get_current_user),
+) -> dict[str, Any]:
     """
     Return host hardware profile, GPU/MPS acceleration status, and system health recommendations.
     """
@@ -196,11 +204,14 @@ async def get_hardware_endpoint() -> dict[str, Any]:
 
 
 @router.post("/memory/trim", summary="Trigger proactive heap compaction and GC")
-async def trim_memory_endpoint() -> dict[str, Any]:
+async def trim_memory_endpoint(
+    _user=Depends(get_current_user),
+) -> dict[str, Any]:
     """
     Manually invoke garbage collection and glibc malloc_trim to free resident memory.
     """
     import asyncio
+
     from app.core.memory import get_memory_usage_mb, trim_memory
 
     before_mb = get_memory_usage_mb()
