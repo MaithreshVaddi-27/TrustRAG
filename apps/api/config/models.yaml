@@ -16,38 +16,42 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 runtime:
-  config_version: "1.0"
+  config_version: "1.3"
 
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
   framework: langchain
   # Provider options: ollama, llama_cpp, google_genai, nvidia
-  provider: ollama
+  provider: llama_cpp
   ollama_base_url: "http://localhost:11434"
-  llamacpp_base_url: "http://localhost:8081/v1"
-  # Supported local models:
-  #   ollama:
-  #     - granite4.2:3b-q4_K_M
-  #     - qwen3.5:4b
-  #     - gemma4:e2b-it-qat
-  #   llama_cpp:
+  llamacpp_base_url: "http://127.0.0.1:8080/v1"
+  # Supported local models (exactly what is installed):
+  #   ollama (`ollama list`):
+  #     - granite4.2:3b-q4_K_M      # 2.2GB
+  #     - gemma3:1b                  # 815MB fallback
+  #   llama_cpp (`llama-server --cache-list`):
+  #     - occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M   # ACTIVE: 1.7B RAG-tuned, ~1.1GB
+  #     - occ-ai/OCC-RAG-0.6B-GGUF:Q4_K_M
   #     - ibm-granite/granite-4.2-3b-GGUF:Q4_K_M
-  #     - psychopenguin/Qwen3.5-4B-Q4_K_M-GGUF:Q4_K_M
-  #     - google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0
-  model: gemma4:e2b-it-qat
+  #     - ibm-granite/granite-4.0-h-1b-GGUF:Q4_K_M
+  model: occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M
+  # Per-provider yaml defaults (used when the env override is empty).
+  model_ollama: granite4.2:3b-q4_K_M
+  model_llamacpp: occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M
   temperature: 0.2
   top_p: 0.9
-  max_output_tokens: 2048
-  timeout_seconds: 180
-  max_retries: 2
+  max_output_tokens: 1024
+  timeout_seconds: 120
+  max_retries: 1
 
 # ─── Embedding ────────────────────────────────────────────────────────────────
 embedding:
   framework: langchain
-  # Google Gemini Embeddings — cloud API, ultra-low memory (<60MB total),
-  # eliminates PyTorch memory bloat, instant response, 100% free tier compatible.
-  provider: google_genai
-  model: models/gemini-embedding-001
+  # Local HuggingFace BGE — offline default, zero API cost. Cloud options
+  # (google_genai, nvidia) remain selectable via EMBEDDING_* env overrides.
+  # NOTE: ollama / llama.cpp are LLM-only — never embedding providers.
+  provider: huggingface
+  model: BAAI/bge-small-en-v1.5
   # 384 dimensions matches Qdrant collection configuration via Matryoshka embeddings.
   output_dimensionality: 384
   # Increment this version when you change the embedding model.
@@ -57,12 +61,15 @@ embedding:
 # Used for claim-level NLI/structured verification.
 verification:
   framework: langchain
-  provider: ollama
-  model: gemma4:e2b
+  provider: llama_cpp
+  model: occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M
+  # Per-provider yaml defaults (used when the env override is empty).
+  model_ollama: granite4.2:3b-q4_K_M
+  model_llamacpp: occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M
   temperature: 0.0          # Zero temperature for deterministic verification
-  max_output_tokens: 1024
-  timeout_seconds: 180
-  max_retries: 2
+  max_output_tokens: 512
+  timeout_seconds: 120
+  max_retries: 1
   # Circuit breaker: maximum time allowed for verification node execution
   max_verification_time_seconds: 120
 
@@ -129,7 +136,7 @@ recovery:
 # ─── Context & Cost Controls ──────────────────────────────────────────────────
 cost_controls:
   max_input_tokens: 100000          # Hard limit per LLM call
-  max_verification_claims: 20       # Skip verification above this count
+  max_verification_claims: 8        # Small models choke on 20; 8 keeps NLI focused
   enable_response_caching: true     # Semantic response caching enabled
 
 # ─── Inference Acceleration & KV Cache Optimization ───────────────────────────

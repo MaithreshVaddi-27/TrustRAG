@@ -148,7 +148,7 @@ export default function KnowledgeBasesPage() {
           </div>
           <p className="text-xs text-slate-400 mt-4 leading-relaxed flex items-center gap-2">
             <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
-            Documents undergo automated Porter stemming, zone-weighting (Title: 3.0x, Abstract: 2.0x), and are indexed with Google Gemini 384d Matryoshka dense embeddings.
+            Documents undergo automated Porter stemming, zone-weighting (Title: 3.0x, Abstract: 2.0x), and are indexed with 384d dense embeddings (local BGE by default).
           </p>
         </div>
       </div>
@@ -368,7 +368,7 @@ function KnowledgeBaseCard({ kb }) {
           {uploadStatus === 'uploading' && (
             <span className="text-cyan-400 flex items-center gap-2 font-mono">
               <Loader2 size={13} className="animate-spin" />
-              Ingesting, parsing chunks, and generating 384d Gemini embeddings...
+              Ingesting, parsing chunks, and generating 384d dense embeddings...
             </span>
           )}
           {uploadStatus === 'success' && (

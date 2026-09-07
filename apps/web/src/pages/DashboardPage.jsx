@@ -19,7 +19,7 @@ const PIPELINE_PHASES = [
   {
     step: '01',
     title: 'Hybrid Retrieval',
-    desc: 'Dense embeddings (Local BGE / Ollama / Gemini) + Sparse BM25 fused via Reciprocal Rank Fusion.',
+    desc: 'Dense embeddings (Local BGE / Gemini / NVIDIA) + Sparse BM25 fused via Reciprocal Rank Fusion.',
     icon: Database,
     color: 'text-cyan-400',
     border: 'border-cyan-500/30',

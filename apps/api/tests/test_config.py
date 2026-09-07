@@ -113,10 +113,14 @@ class TestModelConfig:
         cfg = self._make_config()
         assert cfg.embedding_model and len(cfg.embedding_model) > 0
 
-    def test_embedding_dimensionality_matches_yaml(self) -> None:
+    def test_embedding_dimensionality_matches_yaml(self, monkeypatch) -> None:
+        # Isolate from developer .env so EMBEDDING_DIM overrides can't flip this.
+        monkeypatch.delenv("EMBEDDING_DIM", raising=False)
+        monkeypatch.delenv("EMBEDDING_DIMENSIONALITY", raising=False)
         cfg = self._make_config()
-        # all-MiniLM-L6-v2 produces 384-dim vectors
-        assert cfg.embedding_dimensionality == 384
+        with _MODELS_YAML.open() as f:
+            expected = int(yaml.safe_load(f)["embedding"]["output_dimensionality"])
+        assert cfg.embedding_dimensionality == expected
 
     def test_abstain_below_is_float(self) -> None:
         cfg = self._make_config()

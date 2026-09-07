@@ -9,9 +9,14 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
-from app.core.config import get_model_config, get_settings
+from app.core.config import get_model_config, get_ports, get_settings
 from app.core.hardware import get_cached_hardware_profile
-from app.core.local_llm import check_llamacpp_status, check_ollama_status
+from app.core.local_llm import (
+    INSTALLED_LLAMACPP_LLMS,
+    INSTALLED_OLLAMA_LLMS,
+    check_llamacpp_status,
+    check_ollama_status,
+)
 
 router = APIRouter(prefix="/models", tags=["models"])
 
@@ -33,26 +38,20 @@ async def get_providers_endpoint(
     ollama_info = await check_ollama_status(settings.ollama_base_url)
     llamacpp_info = await check_llamacpp_status(settings.llamacpp_base_url)
 
-    # Explicit user-configured LLM models
-    target_ollama_models = ["granite4.2:3b-q4_K_M", "qwen3.5:4b", "gemma4:e2b-it-qat"]
+    # Canonical installed models seed the selectors; live discovery merges in.
+    target_ollama_models = list(INSTALLED_OLLAMA_LLMS)
     for m in reversed(target_ollama_models):
         if m not in ollama_info.get("models", []):
             ollama_info["models"] = [m, *ollama_info.get("models", [])]
 
-    target_llamacpp_models = [
-        "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
-        "psychopenguin/Qwen3.5-4B-Q4_K_M-GGUF:Q4_K_M",
-        "google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0",
-    ]
+    target_llamacpp_models = list(INSTALLED_LLAMACPP_LLMS)
     for m in reversed(target_llamacpp_models):
         if m not in llamacpp_info.get("models", []):
             llamacpp_info["models"] = [m, *llamacpp_info.get("models", [])]
 
-    # Embedding models list
-    ollama_emb_models = ollama_info.get("embedding_models", [])
-    if "embeddinggemma:300m-qat-q8_0" not in ollama_emb_models:
-        ollama_emb_models = ["embeddinggemma:300m-qat-q8_0", *ollama_emb_models]
-
+    # Embedding providers: NOTE (2026-09-06) Ollama / llama.cpp are LLM-only —
+    # their embedding selection/usage was removed. Embeddings come from
+    # HuggingFace (local BGE) or cloud providers, fixed via EMBEDDING_* env.
     embedding_providers = {
         "huggingface": {
             "name": "Local Hugging Face (PyTorch / BGE)",
@@ -71,39 +70,6 @@ async def get_providers_endpoint(
                     "name": "all-MiniLM-L6-v2 (384d Fast)",
                     "dim": 384,
                     "tag": "Fast",
-                },
-            ],
-        },
-        "ollama": {
-            "name": "Local Ollama Embeddings",
-            "type": "local",
-            "connected": ollama_info.get("connected", False),
-            "default_model": "embeddinggemma:300m-qat-q8_0",
-            "models": [
-                {
-                    "id": "embeddinggemma:300m-qat-q8_0",
-                    "name": "embeddinggemma:300m-qat-q8_0 (768d)",
-                    "dim": 768,
-                    "tag": "Ollama SOTA",
-                },
-            ]
-            + [
-                {"id": m, "name": f"{m} (768d)", "dim": 768, "tag": "Local Ollama"}
-                for m in ollama_emb_models
-                if m != "embeddinggemma:300m-qat-q8_0"
-            ],
-        },
-        "llamacpp": {
-            "name": "Local llama.cpp Embeddings",
-            "type": "local",
-            "connected": llamacpp_info.get("connected", False),
-            "default_model": "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
-            "models": [
-                {
-                    "id": "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
-                    "name": "embeddinggemma-300M (768d GGUF)",
-                    "dim": 768,
-                    "tag": "llama.cpp Cache",
                 },
             ],
         },
@@ -142,6 +108,8 @@ async def get_providers_endpoint(
         "active_model": cfg.llm_model,
         "active_embedding_provider": cfg.embedding_provider,
         "active_embedding_model": cfg.embedding_model,
+        # Canonical port registry (repo-root config/ports.yaml)
+        "ports": get_ports(),
         "providers": {
             "ollama": {
                 "name": "Ollama (Local)",
@@ -149,8 +117,8 @@ async def get_providers_endpoint(
                 "connected": ollama_info.get("connected", False),
                 "base_url": settings.ollama_base_url,
                 "default_model": settings.ollama_model
-                or ollama_info.get("default_model", "gemma4:e2b"),
-                "models": ollama_info.get("models", ["gemma4:e2b"]),
+                or ollama_info.get("default_model", INSTALLED_OLLAMA_LLMS[0]),
+                "models": ollama_info.get("models", list(INSTALLED_OLLAMA_LLMS)),
                 "error": ollama_info.get("error"),
             },
             "llama_cpp": {
@@ -158,8 +126,8 @@ async def get_providers_endpoint(
                 "type": "local",
                 "connected": llamacpp_info.get("connected", False),
                 "base_url": settings.llamacpp_base_url,
-                "default_model": settings.llamacpp_model or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0",
-                "models": llamacpp_info.get("models", ["gemma-4-E2B-it-qat-q4_0-gguf:Q4_0"]),
+                "default_model": settings.llamacpp_model or INSTALLED_LLAMACPP_LLMS[0],
+                "models": llamacpp_info.get("models", list(INSTALLED_LLAMACPP_LLMS)),
                 "cache_models": llamacpp_info.get("cache_models", []),
                 "error": llamacpp_info.get("error"),
             },

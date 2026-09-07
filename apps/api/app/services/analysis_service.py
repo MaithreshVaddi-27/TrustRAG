@@ -22,7 +22,7 @@ from app.api.v1.schemas.analysis import (
     TraceEventResponse,
 )
 from app.core.config import get_model_config
-from app.core.exceptions import AuthorizationError, NotFoundError
+from app.core.exceptions import AuthorizationError, InputValidationError, NotFoundError
 from app.core.logging import get_logger
 from app.db.mongodb import Collections, get_collection
 from app.services.kb_service import get_kb
@@ -33,6 +33,40 @@ from app.verification.verdict import (
 )
 
 logger = get_logger(__name__)
+
+# ─── Degenerate-output detection ─────────────────────────────────────────────
+# Small local models sometimes echo the prompt scaffolding (<CONTEXT>,
+# ANSWERING_CRITERIA, FINAL_SECTION, ...) or loop one block until max tokens
+# instead of answering. Such text must never be stored as a synthesis.
+
+_SCAFFOLD_MARKERS = (
+    "<context>",
+    "<relevance>",
+    "answering_criteria",
+    "final_section",
+    "final_answer",
+    "final_output",
+)
+
+
+def _looks_like_scaffold_echo(answer: str | None) -> bool:
+    """Detect prompt-echo / repetition-loop generations."""
+    if not answer:
+        return False
+    lowered = answer.lower()
+    if any(m in lowered for m in _SCAFFOLD_MARKERS):
+        return True
+    # Same substantive sentence 3+ times = repetition loop.
+    seen: dict[str, int] = {}
+    for sentence in lowered.replace("\n", " ").split(". "):
+        s = sentence.strip()
+        if len(s) < 40:
+            continue
+        seen[s] = seen.get(s, 0) + 1
+        if seen[s] >= 3:
+            return True
+    return False
+
 
 # ─── In-process SSE Pub/Sub ──────────────────────────────────────────────────
 # Maps analysis_id -> set of asyncio.Queue subscribers
@@ -164,9 +198,51 @@ async def create_analysis(
     Verifies that target KB exists and is owned by the user.
     """
     # Verify owner & existence of KB
-    await get_kb(schema.knowledge_base_id, user_id_str)
+    kb = await get_kb(schema.knowledge_base_id, user_id_str)
 
     cfg = get_model_config()
+
+    # Fail fast on retired embedding providers: ollama/llama.cpp are LLM-only
+    # (model_registry raises ConfigurationError → 503 deep in the background
+    # pipeline). Rejecting here returns an actionable 422 synchronously.
+    # The server default is checked too — a retired EMBEDDING_PROVIDER with no
+    # per-request override would otherwise slip past and fail in background.
+    effective_provider = (schema.embedding_provider or cfg.embedding_provider).lower()
+    if effective_provider in ("ollama", "llamacpp", "llama_cpp"):
+        raise InputValidationError(
+            f"Embedding provider '{effective_provider}' is LLM-only and was removed. "
+            "Use 'huggingface' (local BGE), 'google_genai', or 'nvidia'.",
+            detail=f"requested_embedding_provider={schema.embedding_provider} "
+            f"server_default={cfg.embedding_provider}",
+        )
+
+    # EMBEDDING-SPACE GUARD 2026-09-06: a KB's vectors live in exactly one
+    # embedding space (pinned at first ingest). Querying with another model
+    # returns plausible-looking garbage → verification fails → recovery spiral
+    # (heat + minutes of wasted local inference). Fail fast with a message
+    # that tells the user exactly how to fix it.
+    if kb.embedding_model:
+        effective_model = schema.embedding_model or cfg.embedding_model
+        # Model ids are case-sensitive upstream, but a casing/whitespace-only
+        # difference is never a different embedding space — normalize the compare.
+        if effective_model.strip().lower() != kb.embedding_model.strip().lower():
+            raise InputValidationError(
+                f"Embedding mismatch: knowledge base '{kb.name}' was indexed "
+                f"with '{kb.embedding_model}' ({kb.embedding_dim or '?'}d), "
+                f"but this analysis requests '{effective_model}'. "
+                f"Switch the Playground embedding selector to '{kb.embedding_model}' "
+                f"or re-upload the documents to re-index with the new model.",
+                detail=f"kb_pin={kb.embedding_model} requested={effective_model}",
+            )
+        # Dimension pin: same model name at a different output width (e.g. a
+        # changed EMBEDDING_DIM Matryoshka override) is a different space.
+        if kb.embedding_dim and cfg.embedding_dimensionality != kb.embedding_dim:
+            raise InputValidationError(
+                f"Embedding dimension mismatch: knowledge base '{kb.name}' was indexed "
+                f"at {kb.embedding_dim}d, but the server is configured for "
+                f"{cfg.embedding_dimensionality}d. Re-upload the documents to re-index.",
+                detail=f"kb_dim={kb.embedding_dim} server_dim={cfg.embedding_dimensionality}",
+            )
     analysis_doc = {
         "user_id": ObjectId(user_id_str),
         "knowledge_base_id": ObjectId(schema.knowledge_base_id),
@@ -251,23 +327,33 @@ async def list_analyses(user_id_str: str, limit: int = 50, skip: int = 0) -> lis
     return results
 
 
-async def get_analysis_claims(analysis_id_str: str, user_id_str: str) -> list[ClaimResponse]:
-    """Fetch verified claims generated for an analysis."""
-    await get_analysis(analysis_id_str, user_id_str)
+async def _fetch_claims(analysis_id_str: str) -> list[ClaimResponse]:
+    """Fetch claims without ownership check (caller must have verified access).
 
+    Returns the latest recovery round only — earlier rounds verified superseded
+    answers, and mixing them misrepresents the stored verdict. Docs predating
+    the attempt tag (legacy) are returned as-is.
+    """
     claims_coll = get_collection(Collections.CLAIMS)
-    results = []
+    docs = []
     async for c in claims_coll.find({"analysis_id": ObjectId(analysis_id_str)}).sort(
         "created_at", 1
     ):
-        results.append(serialize_claim(c))
-    return results
+        docs.append(c)
+    if any("attempt" in d for d in docs):
+        latest = max(d.get("attempt", 0) for d in docs)
+        docs = [d for d in docs if d.get("attempt", 0) == latest]
+    return [serialize_claim(c) for c in docs]
 
 
-async def get_analysis_evidence(analysis_id_str: str, user_id_str: str) -> list[EvidenceResponse]:
-    """Fetch evidence chunks associated with an analysis."""
+async def get_analysis_claims(analysis_id_str: str, user_id_str: str) -> list[ClaimResponse]:
+    """Fetch verified claims generated for an analysis."""
     await get_analysis(analysis_id_str, user_id_str)
+    return await _fetch_claims(analysis_id_str)
 
+
+async def _fetch_evidence(analysis_id_str: str) -> list[EvidenceResponse]:
+    """Fetch evidence without ownership check (caller must have verified access)."""
     evidence_coll = get_collection(Collections.EVIDENCE)
     results = []
     async for e in evidence_coll.find({"analysis_id": ObjectId(analysis_id_str)}).sort(
@@ -277,15 +363,45 @@ async def get_analysis_evidence(analysis_id_str: str, user_id_str: str) -> list[
     return results
 
 
-async def get_analysis_trace(analysis_id_str: str, user_id_str: str) -> list[TraceEventResponse]:
-    """Fetch execution trace events for audit/recovery inspection."""
+async def get_analysis_evidence(analysis_id_str: str, user_id_str: str) -> list[EvidenceResponse]:
+    """Fetch evidence chunks associated with an analysis."""
     await get_analysis(analysis_id_str, user_id_str)
+    return await _fetch_evidence(analysis_id_str)
 
+
+async def _fetch_trace(analysis_id_str: str) -> list[TraceEventResponse]:
+    """Fetch trace events without ownership check (caller must have verified access)."""
     trace_coll = get_collection(Collections.TRACE_EVENTS)
     results = []
     async for t in trace_coll.find({"analysis_id": ObjectId(analysis_id_str)}).sort("timestamp", 1):
         results.append(serialize_trace(t))
     return results
+
+
+async def get_analysis_trace(analysis_id_str: str, user_id_str: str) -> list[TraceEventResponse]:
+    """Fetch execution trace events for audit/recovery inspection."""
+    await get_analysis(analysis_id_str, user_id_str)
+    return await _fetch_trace(analysis_id_str)
+
+
+async def get_analysis_detail(analysis_id_str: str, user_id_str: str) -> dict[str, Any]:
+    """Fetch analysis + claims + evidence + trace in one round trip.
+
+    Single ownership check, then the three collections fan out concurrently.
+    Replaces four sequential HTTP calls from the workbench finalize path.
+    """
+    analysis = await get_analysis(analysis_id_str, user_id_str)
+    claims, evidence, trace = await asyncio.gather(
+        _fetch_claims(analysis_id_str),
+        _fetch_evidence(analysis_id_str),
+        _fetch_trace(analysis_id_str),
+    )
+    return {
+        "analysis": analysis,
+        "claims": claims,
+        "evidence": evidence,
+        "trace": trace,
+    }
 
 
 async def add_trace_event(
@@ -332,7 +448,9 @@ async def sse_event_generator(
             "analysis.abstained",
             "analysis.failed",
         }
-        while no_event_ticks < 120:
+        # Local 3B pipelines can run 3-5 min with recovery; keep the stream
+        # open past the worst case (frontend also runs fallback polling).
+        while no_event_ticks < 360:
             try:
                 # Wait for event with timeout (1 second)
                 event_data = await asyncio.wait_for(queue.get(), timeout=1.0)
@@ -452,13 +570,24 @@ async def run_analysis_pipeline(
         verdict = verdict_from_state(final_state, thresholds)
 
         if verdict.reliability_status == ReliabilityStatus.ABSTAINED:
+            # Never store the bare "ABSTAIN" token as the user-facing answer.
+            stored_abstain = (
+                answer
+                if answer and answer.strip() != "ABSTAIN"
+                else (
+                    "I couldn't verify an answer from this knowledge base: the "
+                    "retrieved evidence did not support a grounded response, so "
+                    "I am abstaining rather than guessing. Try a more specific "
+                    "query or add documents covering this topic."
+                )
+            )
             # Update database first, then publish trace event
             await analyses_coll.update_one(
                 {"_id": analysis_id},
                 {
                     "$set": {
                         "status": "abstained",
-                        "answer": answer,
+                        "answer": stored_abstain,
                         "reliability": {
                             "score": verdict.reliability_score,
                             "status": verdict.reliability_status.value,
@@ -477,13 +606,45 @@ async def run_analysis_pipeline(
                 {"message": "Agent reasoning resulted in abstention"},
             )
         else:
+            # DEGENERATE-STUB GUARD 2026-09-06: when verification fails with zero
+            # claims, the stored "answer" can be a context-overflow stub (e.g. the
+            # single word "The"). Presenting that as a synthesis is dishonest —
+            # store a clean abstention sentence instead (score/diagnosis kept).
+            # Extended: small local models may echo prompt scaffolding or loop a
+            # block until max tokens — also never a synthesis, whatever claims say.
+            stored_answer = answer
+            stored_status = "completed"
+            scaffold_echo = _looks_like_scaffold_echo(answer)
+            if scaffold_echo:
+                logger.warning(
+                    "Degenerate prompt-echo generation detected, abstaining",
+                    analysis_id=analysis_id_str,
+                )
+                await add_trace_event(
+                    analysis_id_str,
+                    "generation.degenerate",
+                    {"message": "Model echoed prompt scaffolding; answer discarded"},
+                )
+            if scaffold_echo or (
+                verdict.reliability_status == ReliabilityStatus.FAILED
+                and not (final_state.get("claims") or [])
+                and (answer or "").strip() != "ABSTAIN"
+                and len((answer or "").split()) < 5
+            ):
+                stored_answer = (
+                    "I couldn't verify an answer from this knowledge base: the "
+                    "retrieved evidence did not support a grounded response, so "
+                    "I am abstaining rather than guessing. Try a more specific "
+                    "query or add documents covering this topic."
+                )
+                stored_status = "abstained"
             # Update database first, then publish trace event with answer
             await analyses_coll.update_one(
                 {"_id": analysis_id},
                 {
                     "$set": {
-                        "status": "completed",
-                        "answer": answer,
+                        "status": stored_status,
+                        "answer": stored_answer,
                         "reliability": {
                             "score": verdict.reliability_score,
                             "status": verdict.reliability_status.value,
@@ -498,10 +659,10 @@ async def run_analysis_pipeline(
             )
             await add_trace_event(
                 analysis_id_str,
-                "analysis.completed",
+                "analysis.abstained" if stored_status == "abstained" else "analysis.completed",
                 {
                     "message": "Answer generation completed successfully",
-                    "answer": answer,
+                    "answer": stored_answer,
                     "verdict": verdict.diagnosis_type.value,
                 },
             )

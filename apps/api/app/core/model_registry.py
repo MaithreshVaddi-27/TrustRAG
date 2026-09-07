@@ -72,15 +72,15 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
     cfg: ModelConfig = get_model_config()
 
     active_provider = (provider or cfg.llm_provider).lower()
-    active_model = model or (
-        settings.ollama_model
-        if active_provider == "ollama"
-        else (
-            settings.llamacpp_model
-            if active_provider in ("llama_cpp", "llamacpp")
-            else cfg.llm_model
-        )
-    )
+    # Local paths prefer the explicit Settings override but fall back to the
+    # models.yaml default FOR THE REQUESTED PROVIDER (never a hardcoded id the
+    # server may not serve, and never another provider's configured model).
+    if active_provider == "ollama":
+        active_model = model or settings.ollama_model or cfg.llm_model_for("ollama")
+    elif active_provider in ("llama_cpp", "llamacpp"):
+        active_model = model or settings.llamacpp_model or cfg.llm_model_for("llama_cpp")
+    else:
+        active_model = model or cfg.llm_model
 
     logger.info(
         "Initializing LLM",
@@ -96,7 +96,7 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
 
             llm = ChatOllamaClient(
                 base_url=settings.ollama_base_url,
-                model=active_model or "gemma4:e2b",
+                model=active_model or "granite4.2:3b-q4_K_M",
                 temperature=cfg.llm_temperature,
                 top_p=cfg.llm_top_p,
                 timeout=float(cfg.llm_timeout_seconds),
@@ -109,7 +109,7 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
 
             llm = ChatLlamaCppClient(
                 base_url=settings.llamacpp_base_url,
-                model=active_model or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0",
+                model=active_model or "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
                 temperature=cfg.llm_temperature,
                 top_p=cfg.llm_top_p,
                 max_tokens=cfg.llm_max_output_tokens,
@@ -175,15 +175,13 @@ def get_verification_model(provider: str | None = None, model: str | None = None
     cfg: ModelConfig = get_model_config()
 
     active_provider = (provider or cfg.verification_provider).lower()
-    active_model = model or (
-        settings.ollama_model
-        if active_provider == "ollama"
-        else (
-            settings.llamacpp_model
-            if active_provider in ("llama_cpp", "llamacpp")
-            else cfg.verification_model
-        )
-    )
+    # Same empty-override fallback as get_llm, per requested provider.
+    if active_provider == "ollama":
+        active_model = model or settings.ollama_model or cfg.verification_model_for("ollama")
+    elif active_provider in ("llama_cpp", "llamacpp"):
+        active_model = model or settings.llamacpp_model or cfg.verification_model_for("llama_cpp")
+    else:
+        active_model = model or cfg.verification_model
 
     logger.info(
         "Initializing verification model",
@@ -198,7 +196,7 @@ def get_verification_model(provider: str | None = None, model: str | None = None
 
             return ChatOllamaClient(
                 base_url=settings.ollama_base_url,
-                model=active_model or "gemma4:e2b",
+                model=active_model or "granite4.2:3b-q4_K_M",
                 temperature=0.0,
                 timeout=float(cfg.verification_timeout_seconds),
             )
@@ -208,7 +206,7 @@ def get_verification_model(provider: str | None = None, model: str | None = None
 
             return ChatLlamaCppClient(
                 base_url=settings.llamacpp_base_url,
-                model=active_model or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0",
+                model=active_model or "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
                 temperature=0.0,
                 max_tokens=cfg.verification_max_output_tokens,
                 timeout=float(cfg.verification_timeout_seconds),
@@ -406,11 +404,13 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
     """
     Return the embedding model wrapped with persistent disk cache.
 
-    Supports:
-      - ollama: Local Ollama embeddings (e.g. embeddinggemma:300m-qat-q8_0, nomic-embed-text)
-      - huggingface / local: Local BGE (BAAI/bge-small-en-v1.5, 0 API cost, ~32ms query latency)
+    Supported:
+      - huggingface / local: Local BGE (BAAI/bge-small-en-v1.5, 0 API cost)
       - google_genai / gemini: Cloud-hosted Google Gemini embeddings (ultra-low RAM <60MB)
       - nvidia / nim: Cloud-hosted NVIDIA NIM embeddings
+
+    NOTE (2026-09-06): Ollama / llama.cpp are LLM-only providers — their embedding
+    usage was removed. Requesting them raises ConfigurationError with a fix.
     """
     cfg: ModelConfig = get_model_config()
     settings = get_settings()
@@ -428,42 +428,18 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
 
         return CachedEmbeddingsWrapper(base_emb, model_name=active_model)
 
-    # ── Option 1: Local Ollama Embeddings ───────────────────────────────────────
-    if active_provider == "ollama" or (
-        isinstance(active_model, str)
-        and ("embeddinggemma" in active_model or "nomic" in active_model)
-        and "gguf" not in active_model.lower()
+    # ── Retired: local LLM-server embeddings (LLM-only now) ────────────────────
+    _emb_model_lower = active_model.lower() if isinstance(active_model, str) else ""
+    if active_provider in ("ollama", "llamacpp", "llama_cpp") or (
+        any(k in _emb_model_lower for k in ("embeddinggemma", "nomic-embed"))
+        and active_provider
+        not in ("huggingface", "local", "google_genai", "gemini", "nvidia", "nim")
     ):
-        from app.core.local_llm import OllamaEmbeddings
-
-        logger.info(
-            "Initializing local Ollama embedding model",
-            model=active_model,
-            base_url=settings.ollama_base_url,
-        )
-        return _wrap_with_cache(
-            OllamaEmbeddings(
-                model=active_model or "embeddinggemma:300m-qat-q8_0",
-                base_url=settings.ollama_base_url,
-            )
-        )
-
-    # ── Option 1b: Local llama.cpp Embeddings ───────────────────────────────────
-    if active_provider in ("llamacpp", "llama_cpp") or (
-        isinstance(active_model, str) and "ggml-org/embeddinggemma" in active_model
-    ):
-        from app.core.local_llm import LlamaCppEmbeddings
-
-        logger.info(
-            "Initializing local llama.cpp embedding model",
-            model=active_model,
-            base_url=settings.llamacpp_base_url,
-        )
-        return _wrap_with_cache(
-            LlamaCppEmbeddings(
-                model=active_model or "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
-                base_url=settings.llamacpp_base_url,
-            )
+        raise ConfigurationError(
+            "Ollama/llama.cpp embeddings were removed — those servers are LLM-only now. "
+            "Set EMBEDDING_PROVIDER=huggingface (local BGE, 384d) and re-upload "
+            "documents to re-index existing knowledge bases.",
+            detail=f"requested provider={active_provider} model={active_model}",
         )
 
     # ── Option 2: NVIDIA NIM Embeddings ─────────────────────────────────────────
@@ -637,10 +613,15 @@ def get_reranker():  # type: ignore[return]
 
     logger.info("Initializing reranker", model=cfg.reranker_model)
 
+    from app.core.hardware import get_optimal_torch_device
+
+    device = get_optimal_torch_device()
+    logger.debug("Reranker target device", device=device)
+
     try:
         if settings.hf_token:
-            return CrossEncoder(cfg.reranker_model, token=settings.hf_token)
-        return CrossEncoder(cfg.reranker_model)
+            return CrossEncoder(cfg.reranker_model, token=settings.hf_token, device=device)
+        return CrossEncoder(cfg.reranker_model, device=device)
     except Exception as exc:
         raise ConfigurationError(
             f"Failed to initialize reranker '{cfg.reranker_model}'",
@@ -656,6 +637,11 @@ class SharedEmbeddingManager:
     """Singleton manager for shared embedding models across workers."""
 
     _instance: SharedEmbeddingManager | None = None
+
+    @classmethod
+    def get_instance(cls) -> SharedEmbeddingManager:
+        """Return the shared singleton instance (creates it on first call)."""
+        return cls()
 
     def __new__(cls) -> SharedEmbeddingManager:
         if cls._instance is None:

@@ -23,7 +23,7 @@ from app.core.exceptions import AuthenticationError
 ALGORITHM = "HS256"
 
 # Service-to-service authentication constants
-SERVICE_TOKEN_TYPE = "service"
+SERVICE_TOKEN_TYPE = "service"  # noqa: S105 — token-type label, not a credential
 SERVICE_TOKEN_TTL_HOURS = 24  # Service tokens valid for 24 hours
 
 

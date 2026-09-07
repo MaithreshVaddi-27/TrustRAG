@@ -142,8 +142,8 @@ MCP_TOOLS: list[dict[str, Any]] = [
                 "model": {
                     "type": "string",
                     "description": (
-                        "Model identifier (e.g. 'gemma4:e2b' or "
-                        "'gemma-4-E2B-it-qat-q4_0-gguf:Q4_0')"
+                        "Model identifier (e.g. 'granite4.2:3b-q4_K_M' or "
+                        "'occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M')"
                     ),
                 },
             },
@@ -193,8 +193,14 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
     if tool_name == "trustrag_search":
         kb_id = arguments["kb_id"]
         query = arguments["query"]
-        top_k = arguments.get("top_k", 5)
-        candidates = await retrieve_hybrid_chunks(query=query, kb_id=kb_id, top_k=top_k)
+        # Clamp client-supplied depth: retrieve_hybrid_chunks fans out to
+        # dense+sparse searches plus rerank, so unbounded top_k is a DoS vector.
+        try:
+            top_k = int(arguments.get("top_k", 5))
+        except (TypeError, ValueError):
+            top_k = 5
+        top_k = max(1, min(top_k, 50))
+        candidates = await retrieve_hybrid_chunks(query=query, kb_id=kb_id, top_k_override=top_k)
         results = [
             {
                 "chunk_id": str(c.get("chunk_id")),

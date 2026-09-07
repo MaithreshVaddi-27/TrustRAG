@@ -163,20 +163,36 @@ async def dense_search(
             query_vector = await asyncio.to_thread(embed_model.embed_query, query)
             _query_cache.set(cache_key, query_vector)
 
-        # Safely align query vector dimension to collection's expected dimension
+        # Safely align query vector dimension to collection's expected dimension.
+        # NOTE: truncate/pad across embedding spaces returns plausible-looking
+        # garbage — the create-analysis pin guard (422) is the real defense;
+        # this alignment is a last resort, so any mismatch is logged loudly.
         try:
             col_info = await client.get_collection(collection_name)
             target_dim = getattr(col_info.config.params.vectors, "size", None)
             if target_dim:
                 if len(query_vector) > target_dim:
+                    logger.warning(
+                        "Query/collection dimension mismatch — truncating",
+                        query_dim=len(query_vector),
+                        collection_dim=target_dim,
+                        kb_id=kb_id,
+                    )
                     query_vector = query_vector[:target_dim]
-                    # Mathematically re-normalize truncated vector to unit length for accurate cosine similarity
+                    # Re-normalize truncated vector to unit length
+                    # for accurate cosine similarity
                     import math
 
                     norm = math.sqrt(sum(x * x for x in query_vector))
                     if norm > 0:
                         query_vector = [x / norm for x in query_vector]
                 elif len(query_vector) < target_dim:
+                    logger.warning(
+                        "Query/collection dimension mismatch — zero-padding",
+                        query_dim=len(query_vector),
+                        collection_dim=target_dim,
+                        kb_id=kb_id,
+                    )
                     query_vector = query_vector + [0.0] * (target_dim - len(query_vector))
         except Exception as col_err:
             logger.debug("Could not inspect collection dimensions", error=str(col_err))

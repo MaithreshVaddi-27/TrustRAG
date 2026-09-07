@@ -9,12 +9,11 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from fastapi import Request, Response
-from structlog.contextvars import bind_contextvars
 
-from app.core.config import get_settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -25,7 +24,6 @@ def init_tracing() -> None:
     Initialize OpenTelemetry / LangSmith tracing at application startup.
     In local offline mode, sets conservative defaults without throwing errors.
     """
-    settings = get_settings()
     langsmith_api_key = os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY")
     langsmith_project = os.getenv("LANGCHAIN_PROJECT", "trustrag-api")
 

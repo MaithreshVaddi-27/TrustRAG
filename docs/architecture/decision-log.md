@@ -234,3 +234,25 @@ Any deviation from the specification must be logged here with rationale.
 - Without `remark-gfm`, `react-markdown` strictly adheres to CommonMark and renders markdown table syntax (`| a | b |`) as raw text paragraphs with pipe characters.
 - Multi-part queries (e.g. "What is X? What is the difference between X and Y?") were previously truncated; updated instructions mandate dedicated `###` sections for all sub-inquiries.
 
+---
+
+## D-18: Reversal of D-14 — Port 8080 Returned to llama.cpp; Backend Stays on 8000
+
+**Date:** 2026-09-07
+**Status:** Accepted & Implemented (supersedes D-14)
+**Phase:** 15
+
+**Decision:** Re-run the port allocation: `llama-server` (llama.cpp) owns **port `8080`**, and the FastAPI backend runs on **port `8000`** again. This was applied in `config/ports.yaml`, `docker-compose.yml`, `apps/api/Dockerfile`, `apps/web/vite.config.js`, and all prose that referenced 8080 as the backend.
+
+**Rationale:**
+- llama.cpp's local OpenAI-compatible server is thin and conventionally sits on :8080. Conflicts with the backend broke dev setup ("`Address already in use`" for the model server).
+- `config/ports.yaml` (`config/ports.yaml`) is now the canonical registry — backend `8000`, frontend `5173`, ollama `11434`, llamacpp `8080` — and `scripts/apply_ports.py` distributes changes to all consumers.
+- macOS AirPlay conflicts on :8000 are handled by using `--host 127.0.0.1` during dev (no system clash) and honoring `PORT` on Render/GCR.
+
+**Files layered on top of D-14:**
+- `config/ports.yaml` (new canonical registry)
+- `scripts/apply_ports.py` (propagator)
+- `apps/api/app/core/config.py` (Settings defaults read ports.yaml)
+- `apps/api/app/core/local_llm.py` (`INSTALLED_*` provider lists)
+
+

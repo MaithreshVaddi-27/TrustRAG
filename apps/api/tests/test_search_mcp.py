@@ -191,7 +191,7 @@ async def test_local_llm_mcp_tools():
     with patch("app.core.model_registry.get_llm", return_value=mock_llm):
         chat_res = await handle_tool_call(
             "local_llm_chat",
-            {"prompt": "Hello local LLM", "provider": "ollama", "model": "gemma4:e2b"},
+            {"prompt": "Hello local LLM", "provider": "ollama", "model": "granite4.2:3b-q4_K_M"},
         )
         assert "content" in chat_res
         assert chat_res["content"][0]["text"] == "Mocked response from local LLM"

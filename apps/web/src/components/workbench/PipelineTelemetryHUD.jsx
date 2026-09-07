@@ -12,7 +12,7 @@ export function PipelineTelemetryHUD({
   enableWebSearch = false,
   webSearchProvider = 'both',
   provider = 'ollama',
-  model = 'gemma4:e2b',
+  model = 'granite4.2:3b-q4_K_M',
   embeddingModel = 'BAAI/bge-small-en-v1.5',
 }) {
   // Determine current active pipeline stage from events

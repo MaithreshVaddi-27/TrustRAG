@@ -7,6 +7,7 @@ against candidate evidence chunks using structured output mappings.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -18,6 +19,63 @@ from app.core.model_registry import get_verification_model
 from app.db.mongodb import Collections, get_collection
 
 logger = get_logger(__name__)
+
+
+# ─── Meta-claim filter ─────────────────────────────────────────────────────────
+# Small local models often "verify" the prompt instead of the subject matter,
+# emitting claims like "The user asks for X" or "This is a single-part
+# question". Such claims can score SUPPORTED (the query text IS in context via
+# the prompt) and launder a degenerate answer into TRUSTED. Drop them before
+# verification so echo outputs collapse to zero claims → honest FAIL/abstain.
+
+_META_CLAIM_PATTERNS = (
+    "the user asks",
+    "the user is asking",
+    "the user's query",
+    "the users query",
+    "the user query",
+    "user query is",
+    "user asks for",
+    "user prompt",
+    "original user",
+    "asks to identify",
+    "missing facts",
+    "reasoning process",
+    "single-part question",
+    "multi-part question",
+    "sub-question",
+    "the question asks",
+    "the answer must be",
+    "provided text",
+    "let me re-evaluate",
+    "let me re-read",
+    "re-evaluate",
+    "re-read",
+    "critical_path",
+    "lets look at",
+    "let's look at",
+    "let us look at",
+)
+
+# Evidence-layout references only when digit-anchored ("Segment 2 states…",
+# "Page 8 lists…", "Path A (…"), so subject-matter uses of these words
+# ("network segment", "landing page", "career path") pass through.
+_META_CLAIM_REGEXES = (
+    re.compile(r"\bsegments?\s+\d"),
+    re.compile(r"\bpage\s+\d"),
+    re.compile(r"\bpath\s+[a-c0-9]\b"),
+)
+
+
+def _is_meta_claim(text: str) -> bool:
+    lowered = text.lower().strip()
+    if lowered.startswith("#"):
+        return True
+    if "<context>" in lowered or "answering_criteria" in lowered or "final_section" in lowered:
+        return True
+    if any(p in lowered for p in _META_CLAIM_PATTERNS):
+        return True
+    return any(rx.search(lowered) for rx in _META_CLAIM_REGEXES)
 
 
 # ─── Pydantic Schemas for Structured LLM Mappings ─────────────────────────────
@@ -145,6 +203,10 @@ atomic, self-contained factual assertions.
 Each claim must be checkable independently and make sense without context
 (substitute pronouns with actual names).
 Exclude conversational fillers, greetings, and subjective opinions.
+CRITICAL: never emit claims about the question, the asker, or the answering
+process itself (e.g. "The user asks...", "This is a single-part question...").
+Only claims about the subject matter count. If the text contains no
+subject-matter facts, return an empty list.
 """
 
 NLI_PROMPT_TEMPLATE = """You are an expert Natural Language Inference (NLI) verifier.
@@ -205,6 +267,10 @@ async def decompose_answer_to_claims(
         )
 
         claims = [c.strip() for c in response.claims if c.strip()]
+        before = len(claims)
+        claims = [c for c in claims if not _is_meta_claim(c)]
+        if len(claims) != before:
+            logger.info("Filtered meta-claims about the query itself", dropped=before - len(claims))
         logger.info("Claims decomposed", count=len(claims))
         return claims
 
@@ -328,18 +394,38 @@ async def execute_claim_verification(
     user_id_str: str | None = None,
     provider: str | None = None,
     model: str | None = None,
+    attempt: int = 0,
 ) -> list[dict[str, Any]]:
     """
     Decompose answer, execute NLI verifications, and save claims to MongoDB.
 
     Uses batch verification to minimize API calls and prevent rate limiting (429).
     Links claim records to the appropriate persisted Evidence object IDs.
+    `attempt` tags the recovery round so readers can show the final round only
+    (earlier rounds verified superseded answers).
     """
     analysis_id = ObjectId(analysis_id_str)
     claims_coll = get_collection(Collections.CLAIMS)
 
     # 1. Decompose answer into atomic assertions
     claims_texts = await decompose_answer_to_claims(answer, provider=provider, model=model)
+    # Weak-model fallback: when structured decomposition fails, the fallback is
+    # the whole answer as ONE claim — a single meta sentence inside it would
+    # nuke substantive facts at the filter below. Split long blobs into
+    # sentences first so filtering stays per-assertion. Each piece is still
+    # NLI-verified individually; nothing unverified passes.
+    if len(claims_texts) == 1 and len(claims_texts[0]) > 400:
+        import re as _re
+
+        parts = [
+            s.strip() for s in _re.split(r"(?<=[.!?])\s+", claims_texts[0]) if len(s.strip()) > 40
+        ]
+        if parts:
+            logger.info("Split fallback answer blob into sentences", sentences=len(parts))
+            claims_texts = parts
+    # Belt-and-braces: the structured path already filters, but the fallback
+    # and capped paths can still carry prompt-echo claims.
+    claims_texts = [c for c in claims_texts if not _is_meta_claim(c)]
     if not claims_texts:
         return []
 
@@ -374,8 +460,9 @@ async def execute_claim_verification(
         if i in results_map:
             nli_res = results_map[i]
         else:
-            # Fallback to individual claim verification
-            nli_res = await verify_claim_nli(text, chunks)
+            # Fallback to individual claim verification (same provider/model —
+            # cfg defaults would silently switch engines mid-analysis otherwise)
+            nli_res = await verify_claim_nli(text, chunks, provider=provider, model=model)
 
         # Resolve 1-based supporting segments list to MongoDB Evidence IDs
         supporting_evidence_ids = []
@@ -394,6 +481,7 @@ async def execute_claim_verification(
             "state": nli_res.get("verdict", "NEUTRAL"),
             "explanation": nli_res.get("explanation", ""),
             "evidence_ids": supporting_evidence_ids,
+            "attempt": attempt,
             "created_at": datetime.now(UTC),
         }
         claim_docs.append(claim_doc)

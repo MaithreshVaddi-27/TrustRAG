@@ -139,7 +139,8 @@ class FeatureFlagManager:
     def _in_rollout(self, user_id: str, percentage: float) -> bool:
         """Deterministic rollout check using consistent hashing."""
         hash_input = f"{user_id}:{percentage}".encode()
-        hash_value = int(hashlib.md5(hash_input).hexdigest(), 16)
+        # Non-security use (bucketing only) — not for auth or integrity.
+        hash_value = int(hashlib.md5(hash_input, usedforsecurity=False).hexdigest(), 16)
         # Normalize to 0-1 range
         normalized = (hash_value % 10000) / 10000.0
         return normalized < percentage
@@ -314,7 +315,8 @@ class ExperimentManager:
 
         # Create hash from user_id + experiment_key for deterministic assignment
         hash_input = f"{user_id}:{experiment.key}".encode()
-        hash_value = int(hashlib.md5(hash_input).hexdigest(), 16)
+        # Non-security use (bucketing only) — not for auth or integrity.
+        hash_value = int(hashlib.md5(hash_input, usedforsecurity=False).hexdigest(), 16)
 
         # Calculate cumulative weights
         total_weight = sum(v.weight for v in experiment.variants)
@@ -448,7 +450,6 @@ class MetricsCollector:
 
     def record_assignment(self, experiment_key: str, variant_name: str, user_id: str) -> None:
         """Record a user assignment to an experiment variant."""
-        metrics_key = f"{experiment_key}:{variant_name}"
         if variant_name not in self._metrics[experiment_key]:
             self._metrics[experiment_key][variant_name] = ExperimentMetrics(
                 experiment_key=experiment_key,
@@ -661,7 +662,7 @@ async def setup_experimentation_router() -> None:
         key: str,
         enabled: bool = False,
         rollout_percentage: float = 0.0,
-        targeting_rules: list[dict[str, Any]] = None,
+        targeting_rules: list[dict[str, Any]] | None = None,
         description: str = "",
         current_user: Mapping[str, Any] = Depends(get_current_user),
     ):

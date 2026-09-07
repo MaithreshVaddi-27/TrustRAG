@@ -224,3 +224,19 @@ test_*.txt
 .superpowers/
 .claude/worktrees/
 
+# ─── Agent memory & machine-local dirs ────────────────────────────────────────
+.remember/
+
+# ─── Env-tool locals ─────────────────────────────────────────────────────────
+.envrc
+
+# ─── SQLite runtime caches (embedding disk cache, etc.) ───────────────────────
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+
+# ─── k6 / load-test raw output ────────────────────────────────────────────────
+load-test/*.har
+load-test/results/
+

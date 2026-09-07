@@ -50,7 +50,7 @@ class AgentState(TypedDict):
     diagnosis_type: (
         str | None
     )  # RETRIEVAL_FAILURE | EVIDENCE_CONFLICT | LOW_COVERAGE | VERIFICATION_TIMEOUT
-     # | VERIFICATION_ERROR | RETRIEVAL_ERROR | GENERATION_ERROR | None
+    # | VERIFICATION_ERROR | RETRIEVAL_ERROR | GENERATION_ERROR | None
     diagnosis_failures: list[str]
     web_search_enabled: bool
     web_search_provider: str  # "tavily" | "duckduckgo" | "both"
@@ -159,6 +159,20 @@ async def retrieval_node(state: AgentState) -> AgentState:
     async def _run_retrieval() -> AgentState:
         logger.info("Agent Retrieval Node starting", attempt=state["attempts"] + 1)
 
+        # Regenerate path: evidence already sufficient, prior failure was
+        # generation-side. Skip retrieval entirely (no embedding, Qdrant,
+        # rerank, or web-search spend) and retry generation on saved chunks.
+        if state.get("recovery_strategy") == "regenerate" and state.get("chunks"):
+            await add_trace_event(
+                state["analysis_id"],
+                "retrieval.reused",
+                {
+                    "message": f"Reusing {len(state['chunks'])} saved segments — "
+                    "no retrieval spend on regeneration retry",
+                },
+            )
+            return state
+
         await add_trace_event(
             state["analysis_id"],
             "retrieval.started",
@@ -169,23 +183,36 @@ async def retrieval_node(state: AgentState) -> AgentState:
         top_k_override = None
         max_context_override = None
         if state["recovery_strategy"] == "re_retrieve":
-            # Double the retrieval search size to fetch more context
-            top_k_override = cfg.dense_top_k * 2
-            max_context_override = cfg.max_context_chunks * 2
-            logger.info(
-                "Recovery: expanded search retrieval size triggered",
-                top_k=top_k_override,
-                max_context=max_context_override,
-            )
+            # Second layer (see recovery_node downgrade): only widen search when
+            # evidence is actually thin — doubling on top of sufficient chunks
+            # just burns embedding/rerank compute and overflows small contexts.
+            if len(state.get("chunks") or []) >= cfg.max_context_chunks:
+                await add_trace_event(
+                    state["analysis_id"],
+                    "recovery.re_retrieve_skipped",
+                    {
+                        "message": "Evidence already sufficient — keeping narrow "
+                        "retrieval instead of doubling search"
+                    },
+                )
+            else:
+                # Double the retrieval search size to fetch more context
+                top_k_override = cfg.dense_top_k * 2
+                max_context_override = cfg.max_context_chunks * 2
+                logger.info(
+                    "Recovery: expanded search retrieval size triggered",
+                    top_k=top_k_override,
+                    max_context=max_context_override,
+                )
 
-            await add_trace_event(
-                state["analysis_id"],
-                "recovery.re_retrieve",
-                {
-                    "message": f"Expanding search parameters to double context "
-                    f"(top_k={top_k_override})"
-                },
-            )
+                await add_trace_event(
+                    state["analysis_id"],
+                    "recovery.re_retrieve",
+                    {
+                        "message": f"Expanding search parameters to double context "
+                        f"(top_k={top_k_override})"
+                    },
+                )
 
         retrieve_kwargs: dict[str, Any] = {
             "query": state["current_query"],
@@ -372,19 +399,21 @@ async def retrieval_node(state: AgentState) -> AgentState:
                     web_sources = [
                         {"title": w.get("title"), "url": w.get("url")} for w in web_items
                     ]
+                    web_msg = f"Retrieved {len(web_items)} live citations via MCP"
                     await add_trace_event(
                         state["analysis_id"],
                         "web_search.completed",
                         {
-                            "message": f"Retrieved {len(web_items)} live web search citations via MCP",
+                            "message": web_msg,
                             "sources": web_sources,
                         },
                     )
+                web_done_msg = f"Web grounding done via MCP ({search_prov.upper()})"
                 await add_trace_event(
                     state["analysis_id"],
                     "web_search.completed",
                     {
-                        "message": f"Live web search grounding completed via MCP ({search_prov.upper()})",
+                        "message": web_done_msg,
                         "count": len(web_items) if web_items else 0,
                     },
                 )
@@ -458,6 +487,23 @@ async def retrieval_node(state: AgentState) -> AgentState:
 
         state["chunks"] = verified_chunks
         state["evidence_ids"] = verified_evidence_ids
+
+        # PERF/SPIRAL GUARD 2026-09-06: expanded recovery retrieval widens the
+        # CANDIDATE pool (top_k=40), but generation must never exceed
+        # max_context_chunks. Stuffing 16-32 chunks into a 2k-context local LLM
+        # overflows num_ctx and yields truncated stubs (e.g. answer "The").
+        gen_cap = cfg.max_context_chunks
+        if len(state["chunks"]) > gen_cap:
+            dropped = len(state["chunks"]) - gen_cap
+            state["chunks"] = state["chunks"][:gen_cap]
+            await add_trace_event(
+                state["analysis_id"],
+                "retrieval.capped",
+                {
+                    "message": f"Capped generation context at {gen_cap} chunks "
+                    f"({dropped} extra kept as evidence only)",
+                },
+            )
         return state
 
     # Fallback state for retrieval failure
@@ -560,8 +606,15 @@ async def verification_node(state: AgentState) -> AgentState:
     cfg = get_model_config()
     verification_timeout = cfg.max_verification_time_seconds
 
-    # If already diagnosed as empty KB, terminate cleanly
-    if state.get("diagnosis_type") == "RETRIEVAL_FAILURE" and state.get("answer"):
+    # Empty-KB fast path: the retrieval node already stored the final answer
+    # for a knowledge base with zero chunks. Only take it when there is still
+    # no evidence — after recovery, chunks may exist with a stale diagnosis
+    # from an earlier round, and the fresh answer MUST be verified.
+    if (
+        state.get("diagnosis_type") == "RETRIEVAL_FAILURE"
+        and state.get("answer")
+        and not state.get("chunks")
+    ):
         state["attempts"] = cfg.max_recovery_attempts
         state["verdict_status"] = "PASS"
         return state
@@ -606,6 +659,7 @@ async def verification_node(state: AgentState) -> AgentState:
             user_id_str=state.get("user_id"),
             provider=state.get("llm_provider"),
             model=state.get("llm_model"),
+            attempt=state.get("attempts", 0),
         )
 
     try:
@@ -643,10 +697,17 @@ async def verification_node(state: AgentState) -> AgentState:
 
     total = len(claims)
     if total == 0:
-        state["verdict_status"] = "PASS"
-        state["reliability_score"] = 1.0
-        state["diagnosis_type"] = None
-        state["diagnosis_failures"] = []
+        # No verifiable claims extracted — MUST NOT report TRUSTED. Mirror
+        # compute_verdict(total=0) semantics: FAIL so recovery/abstain runs.
+        await add_trace_event(
+            state["analysis_id"],
+            "claims.empty",
+            {"message": "Answer produced no verifiable claims; marking for recovery"},
+        )
+        state["verdict_status"] = "FAIL"
+        state["reliability_score"] = 0.0
+        state["diagnosis_type"] = "RETRIEVAL_FAILURE"
+        state["diagnosis_failures"] = ["No claims extracted for verification"]
         return state
 
     supported = sum(1 for c in claims if c["state"] == "SUPPORTED")
@@ -701,9 +762,22 @@ async def recovery_node(state: AgentState) -> AgentState:
     async def _run_recovery() -> AgentState:
         state["attempts"] += 1
 
+        # Snapshot failed-claim context BEFORE clearing: the query_rewrite
+        # strategy targets missing facts, but state["claims"] is reset below.
+        missing_claims_snapshot = [
+            c["text"] for c in state.get("claims", []) if c.get("state") != "SUPPORTED"
+        ]
+
         # Clear prior failed/abstained answer and claims so recovery generates and verifies freshly
         state["answer"] = None
         state["claims"] = []
+        # Clear the prior round's diagnosis/verdict too — verification_node
+        # branches on diagnosis_type, and a stale RETRIEVAL_FAILURE would
+        # short-circuit verification of the fresh answer (skipping it entirely).
+        state["diagnosis_type"] = None
+        state["diagnosis_failures"] = []
+        state["verdict_status"] = "FAIL"
+        state["reliability_score"] = None
 
         # Determine recovery strategy from public config property
         priority = cfg.recovery_strategy_priority
@@ -716,7 +790,7 @@ async def recovery_node(state: AgentState) -> AgentState:
 
         if strategy == "query_rewrite":
             # Invoke Gemini to rewrite the query targeting the missing facts
-            missing_claims = [c["text"] for c in state["claims"] if c["state"] != "SUPPORTED"]
+            missing_claims = missing_claims_snapshot
             if missing_claims:
                 missing_str = "\n".join(f"- {c}" for c in missing_claims)
                 rewrite_prompt = f"""You are a query expansion assistant.
@@ -787,8 +861,33 @@ Output only the expanded search query string. Do not include markdown or quotes.
                 state["recovery_strategy"] = None
 
         elif strategy == "re_retrieve":
-            state["recovery_strategy"] = "re_retrieve"
-            # Strategy re_retrieve is executed inside retrieval_node by doubling search parameters
+            # Load-aware downgrade (decision layer): when evidence is already
+            # sufficient, the failure is generation-side — widening search only
+            # burns embedding/rerank/compute on a small local model. Retry
+            # generation on the saved chunks instead (retrieval_node short-
+            # circuits on the "regenerate" strategy).
+            if len(state.get("chunks") or []) >= cfg.max_context_chunks:
+                strategy = "regenerate"
+                state["recovery_strategy"] = "regenerate"
+                logger.info(
+                    "Recovery downgraded re_retrieve → regenerate (evidence sufficient)",
+                    chunks=len(state.get("chunks") or []),
+                )
+                await add_trace_event(
+                    state["analysis_id"],
+                    "recovery.regenerate",
+                    {
+                        "message": "Evidence sufficient — retrying generation on "
+                        "saved segments without new retrieval spend",
+                    },
+                )
+            else:
+                state["recovery_strategy"] = "re_retrieve"
+                # re_retrieve executes in retrieval_node via doubled search params
+
+        elif strategy == "regenerate":
+            # Explicit yaml strategy: same cheap retry, no retrieval spend.
+            state["recovery_strategy"] = "regenerate"
 
         else:
             state["recovery_strategy"] = None

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import platform
+import shutil
 import subprocess
 import sys
 from typing import Any
@@ -21,6 +22,52 @@ logger = get_logger(__name__)
 # Module-level cache for hardware profile
 _hardware_profile_cache: dict[str, Any] | None = None
 _HARDWARE_PROFILE_TTL_SECONDS = 300  # 5 minutes
+
+
+def get_llamacpp_launch_args() -> list[str]:
+    """Hardware-derived llama-server launch flags.
+
+    `llama-server` vendors its own Metal/CUDA backends (no torch dependency),
+    so detection here uses platform probes, not torch. Goals: full GPU offload
+    when one exists, and tighter KV-cache/thread budgets on unified-memory
+    hosts so the model doesn't cook the machine.
+    """
+    mem = get_system_memory_info()
+    total_gb = mem["total_gb"]
+    is_arm_mac = sys.platform == "darwin" and platform.machine() == "arm64"
+
+    args: list[str] = []
+
+    if is_arm_mac:
+        # Metal is native on Apple Silicon — no further probe needed.
+        args += ["-ngl", "all", "--flash-attn", "on"]
+    else:
+        # CUDA only when a GPU both exists and responds.
+        smi = shutil.which("nvidia-smi")
+        if smi:
+            try:
+                subprocess.run(  # noqa: S603 — resolved binary path, fixed argv
+                    [smi],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                )
+                args += ["-ngl", "all", "--flash-attn", "on", "--split-mode", "layer"]
+            except Exception as exc:
+                logger.debug("nvidia-smi probe failed; no GPU flags", error=str(exc))
+    # else: CPU-only — no GPU flags.
+
+    # Context + concurrency budget by available memory.
+    # KV cache ~ n_embd(2048) x 2 (K/V) x n_ctx x 4B x slots; conservative.
+    if total_gb <= 8.5:
+        args += ["-c", "4096", "-np", "2"]
+    elif total_gb <= 16.5:
+        args += ["-c", "8192", "-np", "2"]
+    else:
+        args += ["-c", "16384", "-np", "4"]
+
+    return args
 
 
 def get_optimal_torch_device() -> str:
@@ -167,23 +214,23 @@ def detect_hardware_profile() -> dict[str, Any]:
     total_ram = mem["total_gb"]
     if total_ram <= 8.5:
         tier = "lean_accelerated" if device in ("mps", "cuda") else "lean_cpu"
-        recommended_llm = "granite4.2:3b-q4_K_M"
-        recommended_llm_alt = "gemma4:e2b-it-qat"
-        recommended_embedding = "embeddinggemma:300m-qat-q8_0"
+        recommended_llm = "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M"
+        recommended_llm_alt = "granite4.2:3b-q4_K_M"
+        recommended_embedding = "BAAI/bge-small-en-v1.5"
         max_batch_size = 16
         max_concurrency = 2
     elif total_ram <= 16.5:
         tier = "standard_accelerated" if device in ("mps", "cuda") else "standard_cpu"
-        recommended_llm = "qwen3.5:4b"
+        recommended_llm = "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M"
         recommended_llm_alt = "granite4.2:3b-q4_K_M"
-        recommended_embedding = "embeddinggemma:300m-qat-q8_0"
+        recommended_embedding = "BAAI/bge-small-en-v1.5"
         max_batch_size = 32
         max_concurrency = 4
     else:
         tier = "high_performance"
-        recommended_llm = "qwen3.5:4b"
-        recommended_llm_alt = "granite4.2:3b-q4_K_M"
-        recommended_embedding = "embeddinggemma:300m-qat-q8_0"
+        recommended_llm = "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M"
+        recommended_llm_alt = "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
+        recommended_embedding = "BAAI/bge-small-en-v1.5"
         max_batch_size = 64
         max_concurrency = 8
 

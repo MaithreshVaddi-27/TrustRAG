@@ -1,6 +1,6 @@
 # TRUSTRAG Documentation Index
 
-Welcome to the comprehensive technical documentation for the TRUSTRAG AI Reliability Workbench. This documentation directory is organized into specialized domains for architectural design, security controls, independent quality audits, evaluation methodology, and deployment operations.
+Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench. This directory is organized by domain: architecture, security, quality audits, evaluation methodology, and deployment.
 
 ---
 
@@ -8,50 +8,57 @@ Welcome to the comprehensive technical documentation for the TRUSTRAG AI Reliabi
 
 ```
 docs/
-├── README.md                     # Master Documentation Directory Index (this file)
-├── ROADMAP.md                    # Product vision, technical milestones, and phase tracking
-├── audit/                        # Comprehensive SOTA multi-perspective production audit suite
-│   ├── comprehensive_audit_report.md  # Master systems, security, AI/ML, and QA audit
-│   ├── security_audit.md              # Deep DevSecOps, anti-IDOR, and cryptographic integrity audit
-│   ├── ai_ml_performance_audit.md     # 384d MRL, zero GPU RAM, and hybrid RRF benchmark
-│   ├── qa_testing_report.md           # 86/86 Automated whitebox & blackbox test verification
-│   └── areas_for_improvement_and_refactoring.md # Technical debt & modernization blueprint
+├── README.md                  # Master index (this file)
+├── ROADMAP.md                 # Product vision, milestones, phase tracking
 ├── architecture/
-│   ├── architecture.md           # End-to-end system design, MCP tools, LangGraph loop, and data flow
-│   └── decision-log.md           # Architectural Decision Records (ADRs D-01 through D-17)
+│   ├── architecture.md        # End-to-end system design, MCP tools, LangGraph loop, data flow
+│   └── decision-log.md        # ADRs D-01 through D-17
 ├── audits/
-│   ├── final-audit-report.md     # Master quality audit sign-off matrix (35 findings FIXED / VERIFIED)
-│   └── multi-tenant-isolation-audit.md # Multi-tenant isolation, cascade deletion & Qdrant health check
+│   ├── 2026-09-07_embedding_removal_fix_audit.md  # Latest: llama.cpp-only embeddings cutover, OCC model, smart recovery
+│   ├── 2026-09-06_full_stack_working_now_audit.md # Day-1 boot fixes + local model path
+│   ├── comprehensive_system_audit.md              # Baseline systems audit
+│   └── SENIOR_AUDIT.md                            # Senior audit sign-off
 ├── security/
-│   ├── security-controls.md      # Authentication, IDOR isolation, rate limits, SSRF, and defenses
-│   └── threat-model.md           # STRIDE threat modeling and mitigations
+│   ├── security-controls.md   # Auth, anti-IDOR, SSRF, rate limits, headers
+│   └── threat-model.md        # STRIDE threat model and mitigations
 ├── evaluation/
-│   └── methodology.md            # Benchmark evaluation dataset and custom reliability metrics
-└── deployment/
-    ├── DEPLOYMENT_GUIDE.md       # Master runbook: Cloudflare Pages, Google Cloud Run (Port 8080), Atlas, Qdrant
-    └── README.md                 # Docker Compose, environment configuration, and scaling
+│   └── methodology.md         # Benchmark dataset and reliability metrics
+├── deployment/
+│   ├── DEPLOYMENT_GUIDE.md    # Cloudflare Pages + Google Cloud Run + MongoDB Atlas
+│   └── README.md              # Docker Compose / local deployment runbook
+└── ui-redesign-audit/         # Historical frontend audit notes (archived reference)
 ```
 
 ---
 
-## 📑 Core Documentation Sections
+## 📑 Core Sections
 
 ### 1. Architecture & Design
-- [**System Architecture (`architecture/architecture.md`)**](architecture/architecture.md): Detailed breakdown of the LangGraph state machine, Model Context Protocol (MCP) server/tools, hybrid retrieval (dense + sparse BM25 with RRF), and claim decomposition pipeline.
-- [**Decision Log (`architecture/decision-log.md`)**](architecture/decision-log.md): Architectural Decision Records (ADRs) covering technology choices, Port 8080 default, MCP grounding, and storage layers.
+- [**System Architecture (`architecture/architecture.md`)**](architecture/architecture.md): LangGraph agent loop, MCP tools, hybrid retrieval (dense + sparse RRF), claim decomposition → NLI verification → verdict pipeline.
+- [**Decision Log (`architecture/decision-log.md`)**](architecture/decision-log.md): Architectural Decision Records covering technology choices and storage layers.
 
-### 2. SOTA Production Audit Suite
-- [**Comprehensive Master Audit (`audit/comprehensive_audit_report.md`)**](audit/comprehensive_audit_report.md): Synthesis across Systems, Security, AI/ML, and QA with 0 open issues.
-- [**Deep Security & DevSecOps (`audit/security_audit.md`)**](audit/security_audit.md): Physical collection isolation, anti-IDOR defense, SSRF URL sanitization (private IP / metadata protection), and cryptographic SHA-256 provenance.
-- [**AI/ML Performance & Latency (`audit/ai_ml_performance_audit.md`)**](audit/ai_ml_performance_audit.md): Matryoshka 384d MRL, local HuggingFace BGE, Ollama 768d embeddings, hybrid RRF search, and offline execution.
-- [**Quality Assurance Testing Report (`audit/qa_testing_report.md`)**](audit/qa_testing_report.md): 91/91 automated tests across whitebox and blackbox test suites (100% pass rate).
-- [**Modernization & Refactoring Blueprint (`audit/areas_for_improvement_and_refactoring.md`)**](audit/areas_for_improvement_and_refactoring.md): Qdrant on-disk INT8 quantization, LRU embedding caching, dimension alignment, and container pruning.
+### 2. Audits (most current on top)
+- [**2026-09-07 — Embedding Removal & Fix Pass**](audits/2026-09-07_embedding_removal_fix_audit.md): Ollama/llama.cpp embeddings removed (LLM-only), OCC-RAG model cutover, degenerate-output guards, timeout + recovery-loop fixes, hardware-aware launcher.
+- [**2026-09-06 — Full-Stack "Working Now" Audit**](audits/2026-09-06_full_stack_working_now_audit.md): Baseline boot fixes and local-model path validation.
+- [**Comprehensive System Audit (`audits/comprehensive_system_audit.md`)**](audits/comprehensive_system_audit.md): Wide multi-domain review.
+- [**Senior Audit (`audits/SENIOR_AUDIT.md`)**](audits/SENIOR_AUDIT.md): Senior-level review sign-off.
 
-### 3. Security & Compliance
-- [**Security Controls (`security/security-controls.md`)**](security/security-controls.md): Specification of JWT tokens, bcrypt rounds, defensive HTTP response headers (`nosniff`, `DENY`), SSRF guards, and prompt injection defenses.
-- [**Threat Model (`security/threat-model.md`)**](security/threat-model.md): Detailed threat identification, attack trees, and defense-in-depth countermeasures.
+### 3. Security
+- [**Security Controls (`security/security-controls.md`)**](security/security-controls.md): JWT, bcrypt, anti-IDOR, SSRF guards, rate limiting, defensive headers.
+- [**Threat Model (`security/threat-model.md`)**](security/threat-model.md): STRIDE analysis and countermeasures.
 
-### 4. Operations & Experiments
-- [**Production Deployment Runbook (`deployment/DEPLOYMENT_GUIDE.md`)**](deployment/DEPLOYMENT_GUIDE.md): Complete step-by-step instructions for deploying to Cloudflare Pages, Google Cloud Run (Port 8080), MongoDB Atlas, and Qdrant Cloud.
-- [**Local & VPS Deployment (`deployment/README.md`)**](deployment/README.md): Instructions for launching TRUSTRAG with Docker Compose, local MongoDB community edition, and Qdrant.
-- [**Roadmap (`ROADMAP.md`)**](ROADMAP.md): Track completed development phases and upcoming roadmap initiatives.
+### 4. Evaluation
+- [**Methodology (`evaluation/methodology.md`)**](evaluation/methodology.md): datasets and reliability metrics.
+
+### 5. Deployment
+- [**Production Deployment (`deployment/DEPLOYMENT_GUIDE.md`)**](deployment/DEPLOYMENT_GUIDE.md): Cloudflare Pages, GCR, MongoDB Atlas, Qdrant Cloud.
+- [**Local/Compose Deployment (`deployment/README.md`)**](deployment/README.md): Docker Compose and local run instructions.
+
+---
+
+## Current Stack (2026-09-07)
+
+- **LLM**: llama.cpp (local, `occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M`), Ollama (installed: `granite4.2:3b-q4_K_M`, `gemma3:1b`), Gemini, NVIDIA NIM — selectable per request.
+- **Embeddings**: HuggingFace BGE (local, 384d) by default; Gemini/NVIDIA available via env.
+- **Retrieval**: Qdrant (embedded local or cloud) + sparse BM25 + RRF; reranker runs on detected device (Metal/CUDA/CPU).
+- **Local LLM server**: start via `./scripts/start_local_llm.sh` (auto GPU offload + KV budget).

@@ -66,8 +66,17 @@ def setup_dependency_override(mock_user_doc):
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
 def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
-    # Mock kb ownership check inside analysis_service
-    with patch("app.services.analysis_service.get_kb", return_value=mock_kb_doc):
+    # Mock kb ownership check inside analysis_service (real get_kb returns KBResponse)
+    from app.api.v1.schemas.kb import KBResponse
+
+    mock_kb = KBResponse(
+        id=str(mock_kb_doc["_id"]),
+        name=mock_kb_doc["name"],
+        description=mock_kb_doc["description"],
+        user_id=str(mock_kb_doc["user_id"]),
+        created_at="2026-08-27T10:00:00Z",
+    )
+    with patch("app.services.analysis_service.get_kb", return_value=mock_kb):
         mock_collection = MagicMock()
         mock_collection.insert_one = AsyncMock(
             return_value=MagicMock(inserted_id=ObjectId("64ee39d09c6292376e191983"))
@@ -94,6 +103,52 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
             assert call_kwargs["data"]["message"] == "Analysis run initiated"
 
 
+@patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_create_analysis_rejects_embedding_mismatch(mock_create_indexes, mock_connect, mock_kb_doc):
+    """A KB pinned to one embedding space must reject analyses requesting another."""
+    from app.api.v1.schemas.kb import KBResponse
+
+    mock_kb = KBResponse(
+        id=str(mock_kb_doc["_id"]),
+        name=mock_kb_doc["name"],
+        description=mock_kb_doc["description"],
+        user_id=str(mock_kb_doc["user_id"]),
+        created_at="2026-08-27T10:00:00Z",
+        embedding_model="BAAI/bge-small-en-v1.5",
+        embedding_provider="huggingface",
+        embedding_dim=384,
+    )
+    with patch("app.services.analysis_service.get_kb", return_value=mock_kb):
+        payload = {
+            "knowledge_base_id": "64ee39d09c6292376e191982",
+            "query": "Is there a 45 days policy?",
+            "embedding_model": "models/gemini-embedding-001",
+        }
+        response = client.post("/api/v1/analyses", json=payload)
+
+        assert response.status_code == 422
+        assert "Embedding mismatch" in response.json()["error"]["message"]
+
+
+def _ticket_collection():
+    """Dict-backed fake for the Mongo stream_tickets collection."""
+    store = {}
+    coll = MagicMock()
+
+    async def _insert(doc):
+        store[doc["_id"]] = doc
+        return MagicMock()
+
+    async def _consume(query):
+        return store.pop(query.get("_id"), None)
+
+    coll.insert_one = AsyncMock(side_effect=_insert)
+    coll.find_one_and_delete = AsyncMock(side_effect=_consume)
+    return coll
+
+
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
 def test_stream_trace_endpoint(mock_create_indexes, mock_connect):
@@ -102,57 +157,63 @@ def test_stream_trace_endpoint(mock_create_indexes, mock_connect):
         yield {"event": "retrieval.started", "timestamp": "2026-08-27T10:00:00Z", "data": {}}
         yield {"event": "analysis.completed", "timestamp": "2026-08-27T10:00:05Z", "data": {}}
 
-    # Mint a short-lived stream ticket (JWT is never passed in the URL)
-    ticket_response = client.post("/api/v1/analyses/64ee39d09c6292376e191983/stream-ticket")
-    assert ticket_response.status_code == 201
-    ticket = ticket_response.json()["ticket"]
+    # Mint a short-lived stream ticket (JWT is never passed in the URL).
+    # Same fake store must span mint + consume (separate HTTP requests).
+    fake_tickets = _ticket_collection()
+    with patch("app.api.v1.analyses.get_collection", return_value=fake_tickets):
+        ticket_response = client.post("/api/v1/analyses/64ee39d09c6292376e191983/stream-ticket")
+        assert ticket_response.status_code == 201
+        ticket = ticket_response.json()["ticket"]
 
-    with patch("app.services.analysis_service.sse_event_generator", side_effect=mock_generator):
-        response = client.get(f"/api/v1/analyses/64ee39d09c6292376e191983/stream?ticket={ticket}")
-        assert response.status_code == 200
-        assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
-        lines = response.content.decode("utf-8").split("\n\n")
-        assert len(lines) >= 2
-        assert "retrieval.started" in lines[0]
-        assert "analysis.completed" in lines[1]
+        with patch("app.services.analysis_service.sse_event_generator", side_effect=mock_generator):
+            response = client.get(
+                f"/api/v1/analyses/64ee39d09c6292376e191983/stream?ticket={ticket}"
+            )
+            assert response.status_code == 200
+            assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+            lines = response.content.decode("utf-8").split("\n\n")
+            assert len(lines) >= 2
+            assert "retrieval.started" in lines[0]
+            assert "analysis.completed" in lines[1]
 
 
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
 def test_stream_trace_rejects_invalid_and_reused_ticket(mock_create_indexes, mock_connect):
     analysis_id = "64ee39d09c6292376e191983"
+    fake_tickets = _ticket_collection()
 
-    # No ticket at all → 401
-    assert client.get(f"/api/v1/analyses/{analysis_id}/stream").status_code in (401, 422)
+    with patch("app.api.v1.analyses.get_collection", return_value=fake_tickets):
+        # No ticket at all → 401
+        assert client.get(f"/api/v1/analyses/{analysis_id}/stream").status_code in (401, 422)
 
-    # Bogus ticket → 401
-    assert client.get(f"/api/v1/analyses/{analysis_id}/stream?ticket=bogus").status_code == 401
+        # Bogus ticket → 401
+        assert client.get(f"/api/v1/analyses/{analysis_id}/stream?ticket=bogus").status_code == 401
 
-    # Raw JWT in query string is no longer accepted (ticket is now required)
-    assert client.get(f"/api/v1/analyses/{analysis_id}/stream?token=any-jwt").status_code in (
-        401,
-        422,
-    )
-
-    # Valid ticket for a different analysis → 401
-    ticket = client.post(f"/api/v1/analyses/{analysis_id}/stream-ticket").json()["ticket"]
-    assert (
-        client.get(f"/api/v1/analyses/64ee39d09c6292376e199999/stream?ticket={ticket}").status_code
-        == 401
-    )
-
-    # Valid ticket is single-use: first use succeeds, replay fails
-    async def mock_generator(aid, uid):
-        yield {"event": "analysis.completed", "timestamp": "2026-08-27T10:00:05Z", "data": {}}
-
-    ticket = client.post(f"/api/v1/analyses/{analysis_id}/stream-ticket").json()["ticket"]
-    with patch("app.services.analysis_service.sse_event_generator", side_effect=mock_generator):
-        assert (
-            client.get(f"/api/v1/analyses/{analysis_id}/stream?ticket={ticket}").status_code == 200
+        # Raw JWT in query string is no longer accepted (ticket is now required)
+        assert client.get(f"/api/v1/analyses/{analysis_id}/stream?token=any-jwt").status_code in (
+            401,
+            422,
         )
+
+        # Valid ticket for a different analysis → 401
+        ticket = client.post(f"/api/v1/analyses/{analysis_id}/stream-ticket").json()["ticket"]
         assert (
-            client.get(f"/api/v1/analyses/{analysis_id}/stream?ticket={ticket}").status_code == 401
+            client.get(
+                f"/api/v1/analyses/64ee39d09c6292376e199999/stream?ticket={ticket}"
+            ).status_code
+            == 401
         )
+
+        # Valid ticket is single-use: first use succeeds, replay fails
+        async def mock_generator(aid, uid):
+            yield {"event": "analysis.completed", "timestamp": "2026-08-27T10:00:05Z", "data": {}}
+
+        ticket = client.post(f"/api/v1/analyses/{analysis_id}/stream-ticket").json()["ticket"]
+        stream_url = f"/api/v1/analyses/{analysis_id}/stream?ticket={ticket}"
+        with patch("app.services.analysis_service.sse_event_generator", side_effect=mock_generator):
+            assert client.get(stream_url).status_code == 200
+            assert client.get(stream_url).status_code == 401
 
 
 @patch("app.db.mongodb.connect_db")

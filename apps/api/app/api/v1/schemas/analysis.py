@@ -32,19 +32,20 @@ class AnalysisCreate(BaseModel):
     )
     llm_model: str | None = Field(
         default=None,
-        description="Specific model identifier override (e.g. 'gemma4:e2b')",
+        description="Specific model identifier override (e.g. 'granite4.2:3b-q4_K_M')",
     )
     embedding_provider: str | None = Field(
         default=None,
         description=(
-            "Active embedding provider override ('huggingface', 'ollama', 'google_genai', 'nvidia')"
+            "Active embedding provider override ('huggingface', 'google_genai', 'nvidia'). "
+            "Ollama/llama.cpp are LLM-only and are rejected."
         ),
     )
     embedding_model: str | None = Field(
         default=None,
         description=(
             "Specific embedding model identifier override "
-            "(e.g. 'BAAI/bge-small-en-v1.5', 'embeddinggemma:300m-qat-q8_0')"
+            "(e.g. 'BAAI/bge-small-en-v1.5', 'models/gemini-embedding-001')"
         ),
     )
 

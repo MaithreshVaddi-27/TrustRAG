@@ -14,17 +14,11 @@ export default defineConfig({
 
   server: {
     port: 5173,
-    // Proxy API calls to the FastAPI backend during development.
-    // Configurable via VITE_BACKEND_PORT (default: 8080)
+    // Proxy API calls (incl. SSE streams, same /api prefix) to FastAPI.
+    // Configurable via VITE_BACKEND_PORT (default: 8000)
     proxy: {
       '/api': {
-        target: `http://localhost:${process.env.VITE_BACKEND_PORT || process.env.BACKEND_PORT || '8080'}`,
-        changeOrigin: true,
-        secure: false,
-      },
-      // Proxy SSE streams
-      '/api/v1/analyses': {
-        target: `http://localhost:${process.env.VITE_BACKEND_PORT || process.env.BACKEND_PORT || '8080'}`,
+        target: `http://localhost:${process.env.VITE_BACKEND_PORT || process.env.BACKEND_PORT || '8000'}`,
         changeOrigin: true,
         secure: false,
       },

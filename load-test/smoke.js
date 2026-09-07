@@ -10,7 +10,7 @@
  *
  * Run locally against a live backend:
  *   k6 run load-test/smoke.js
- *   API_BASE_URL=http://localhost:8080 k6 run load-test/smoke.js
+ *   API_BASE_URL=http://localhost:8000 k6 run load-test/smoke.js
  */
 
 import http from 'k6/http'
@@ -36,7 +36,7 @@ export const options = {
   },
 }
 
-const API_BASE = (__ENV.API_BASE_URL || 'http://localhost:8080').replace(/\/$/, '')
+const API_BASE = (__ENV.API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
 
 export function setup() {
   const email = `k6-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`

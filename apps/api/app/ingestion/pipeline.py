@@ -117,12 +117,14 @@ async def index_parsed_chunks(
         dense_vectors = []
         for offset in range(0, len(contextual_texts), embed_batch_size):
             batch_slice = contextual_texts[offset : offset + embed_batch_size]
+            batch_vecs: list[list[float]] | None = None
+            last_batch_err: Exception | None = None
             for attempt in range(5):
                 try:
                     batch_vecs = await embed_model.aembed_documents(batch_slice)
-                    dense_vectors.extend(batch_vecs)
                     break
                 except Exception as batch_err:
+                    last_batch_err = batch_err
                     err_msg = str(batch_err)
                     if ("429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg) and attempt < 4:
                         wait_seconds = 32 if attempt >= 1 else 15
@@ -134,6 +136,12 @@ async def index_parsed_chunks(
                         await asyncio.sleep(wait_seconds)
                     else:
                         raise batch_err
+            if batch_vecs is None:
+                # All retries exhausted on rate limits — fail loudly instead of
+                # falling through with a short vector list (which would cause
+                # a misleading IndexError below).
+                raise last_batch_err or RuntimeError("Embedding batch failed without error")
+            dense_vectors.extend(batch_vecs)
             has_more = offset + embed_batch_size < len(contextual_texts)
             if has_more and cfg.embedding_provider == "google_genai":
                 await asyncio.sleep(1.0)
@@ -191,6 +199,35 @@ async def index_parsed_chunks(
         # 5. Mark document completed
         await doc_coll.update_one({"_id": doc_id}, {"$set": {"ingestion_status": "completed"}})
         logger.info("Ingestion completed successfully", doc_id=doc_id_str, chunks=len(points))
+
+        # 6. Pin the embedding space on the KB record so future analyses can
+        # NEVER silently query these vectors with a different embedding model.
+        # (Cross-space queries return plausible-looking garbage → recovery spiral.)
+        # Pin-once: re-uploading one doc after a provider change must NOT
+        # silently re-pin while older vectors stay in the old space.
+        if dense_vectors:
+            kb_coll = get_collection(Collections.KNOWLEDGE_BASES)
+            existing_kb = await kb_coll.find_one({"_id": ObjectId(kb_id_str)})
+            if existing_kb and existing_kb.get("embedding_model"):
+                if existing_kb.get("embedding_model") != cfg.embedding_model:
+                    logger.warning(
+                        "Ingest uses a different embedding model than the KB pin; "
+                        "keeping the original pin — re-upload into a NEW KB to migrate",
+                        kb_pin=existing_kb.get("embedding_model"),
+                        current=cfg.embedding_model,
+                    )
+            else:
+                await kb_coll.update_one(
+                    {"_id": ObjectId(kb_id_str)},
+                    {
+                        "$set": {
+                            "embedding_model": cfg.embedding_model,
+                            "embedding_provider": cfg.embedding_provider,
+                            "embedding_dim": len(dense_vectors[0]),
+                            "embedding_pinned_at": datetime.now(UTC),
+                        }
+                    },
+                )
 
     except Exception as exc:
         logger.error("Ingestion pipeline failed", doc_id=doc_id_str, error=str(exc))

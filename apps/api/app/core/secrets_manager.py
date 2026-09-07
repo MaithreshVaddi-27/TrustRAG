@@ -213,7 +213,6 @@ class VaultBackend(SecretBackend):
             return None
         try:
             # Try KV v2 first
-            secret_path = f"{self._mount_point}/data/{key}"
             response = self._client.secrets.kv.v2.read_secret_version(
                 path=key, mount_point=self._mount_point
             )
@@ -293,9 +292,10 @@ class SopsBackend(SecretBackend):
     def _decrypt_file(self, file_path: Path) -> dict[str, str]:
         """Decrypt a SOPS file and return parsed secrets."""
         try:
-            # Use sops command line tool
-            result = subprocess.run(
-                ["sops", "-d", str(file_path)],
+            # Use sops command line tool (fixed args, file_path is an
+            # internal secrets-dir path — never end-user input).
+            result = subprocess.run(  # noqa: S603
+                ["sops", "-d", str(file_path)],  # noqa: S607
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -404,8 +404,9 @@ class AgeBackend(SecretBackend):
     def _decrypt_file(self, file_path: Path) -> dict[str, str]:
         """Decrypt an age file using age command line."""
         try:
-            result = subprocess.run(
-                ["age", "-d", "-i", self._identity, str(file_path)],
+            # Fixed args, internal paths only — never end-user input.
+            result = subprocess.run(  # noqa: S603
+                ["age", "-d", "-i", self._identity, str(file_path)],  # noqa: S607
                 capture_output=True,
                 text=True,
                 timeout=30,

@@ -17,7 +17,6 @@ from typing import Any, TypeVar
 
 import httpx
 from langchain_core.callbacks import CallbackManagerForLLMRun
-from langchain_core.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
@@ -98,11 +97,14 @@ class ChatOllamaClient(BaseChatModel):
     """
 
     base_url: str = Field(default="http://localhost:11434")
-    model: str = Field(default="gemma4:e2b")
+    model: str = Field(default="granite4.2:3b-q4_K_M")
     temperature: float = Field(default=0.2)
     top_p: float = Field(default=0.9)
     timeout: float = Field(default=120.0)
     format: str | None = Field(default=None)
+    # Penalize token repetition: small local models loop scaffolding
+    # (e.g. repeating a FINAL_SECTION block until max tokens). 1.1 = mild.
+    repeat_penalty: float = Field(default=1.1)
 
     @property
     def _llm_type(self) -> str:
@@ -132,18 +134,18 @@ class ChatOllamaClient(BaseChatModel):
         options: dict[str, Any] = {
             "temperature": kwargs.get("temperature", self.temperature),
             "top_p": kwargs.get("top_p", self.top_p),
-            "num_ctx": kwargs.get(
-                "num_ctx", 4096
-            ),  # Limit KV-cache to 4k tokens to prevent memory bloat
-            "num_predict": kwargs.get("max_tokens", 2048),
+            # PERF 2026-09-06 (lean 8GB hosts): 2k context halves the Ollama
+            # KV-cache on unified memory; 1k token cap stops runaway
+            # generations (up to 9 LLM calls per analysis with recovery).
+            "num_ctx": kwargs.get("num_ctx", 2048),
+            "num_predict": kwargs.get("max_tokens", 1024),
+            "repeat_penalty": kwargs.get("repeat_penalty", self.repeat_penalty),
         }
         if stop:
             options["stop"] = stop
 
         requested_model = kwargs.get("model", self.model)
-        target_model = (
-            "gemma4:e2b-it-qat" if requested_model in ("gemma4:e2b", "gemma4") else requested_model
-        )
+        target_model = requested_model
 
         payload: dict[str, Any] = {
             "model": target_model,
@@ -274,12 +276,15 @@ class ChatLlamaCppClient(BaseChatModel):
     /v1/chat/completions API.
     """
 
-    base_url: str = Field(default="http://localhost:8081/v1")
-    model: str = Field(default="gemma-4-E2B-it-qat-q4_0-gguf:Q4_0")
+    base_url: str = Field(default="http://127.0.0.1:8080/v1")
+    model: str = Field(default="occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M")
     temperature: float = Field(default=0.2)
     top_p: float = Field(default=0.9)
-    max_tokens: int = Field(default=2048)
+    max_tokens: int = Field(default=1024)  # PERF 2026-09-06: lean cap (was 2048)
     timeout: float = Field(default=120.0)
+    # Stronger than Ollama's: sub-2B reasoning models readily fall into
+    # repeat-until-cap loops on scaffolded prompts.
+    repeat_penalty: float = Field(default=1.15)
 
     @property
     def _llm_type(self) -> str:
@@ -314,6 +319,7 @@ class ChatLlamaCppClient(BaseChatModel):
             "max_tokens": kwargs.get("max_tokens", self.max_tokens),
             "stream": False,
             "cache_prompt": True,
+            "repeat_penalty": kwargs.get("repeat_penalty", self.repeat_penalty),
         }
         if stop:
             payload["stop"] = stop
@@ -342,229 +348,124 @@ class ChatLlamaCppClient(BaseChatModel):
                 f"llama.cpp generation failed for model '{self.model}'", detail=str(exc)
             ) from exc
 
+    def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:
+        """
+        Return a Runnable prompting llama.cpp for structured JSON, parsed into Pydantic.
+        """
+        schema_dict = schema.model_json_schema()
+        schema_json = json.dumps(schema_dict, indent=2)
+        props = schema_dict.get("properties", {})
+        template = {k: f"<{v.get('type', 'value')}>" for k, v in props.items()}
+        template_str = json.dumps(template)
 
-def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:
-    """
-    Return a Runnable prompting llama.cpp for structured JSON, parsed into Pydantic.
-    """
-    schema_dict = schema.model_json_schema()
-    schema_json = json.dumps(schema_dict, indent=2)
-    props = schema_dict.get("properties", {})
-    template = {k: f"<{v.get('type', 'value')}>" for k, v in props.items()}
-    template_str = json.dumps(template)
+        async def _invoke_structured(input_messages: Any) -> T:
+            if isinstance(input_messages, (str, BaseMessage, tuple)):
+                msgs = [input_messages]
+            else:
+                msgs = list(input_messages)
 
-    async def _invoke_structured(input_messages: Any) -> T:
-        if isinstance(input_messages, (str, BaseMessage, tuple)):
-            msgs = [input_messages]
-        else:
-            msgs = list(input_messages)
+            instruction = (
+                f"\n\nYou MUST respond ONLY with valid JSON using the keys {list(props.keys())}.\n"
+                f"Required JSON structure:\n{template_str}\n"
+                f"Full schema reference:\n{schema_json}\n"
+                "Return raw JSON only, without markdown fences, explanation, "
+                "or meta-schema wrapper."
+            )
 
-        instruction = (
-            f"\n\nYou MUST respond ONLY with valid JSON using the keys {list(props.keys())}.\n"
-            f"Required JSON structure:\n{template_str}\n"
-            f"Full schema reference:\n{schema_json}\n"
-            "Return raw JSON only, without markdown fences, explanation, "
-            "or meta-schema wrapper."
-        )
-
-        augmented_messages = list(msgs)
-        if augmented_messages:
-            last = augmented_messages[-1]
-            if isinstance(last, tuple) and len(last) == 2:
-                augmented_messages[-1] = (last[0], f"{last[1]}{instruction}")
-            elif isinstance(last, HumanMessage):
-                augmented_messages[-1] = HumanMessage(content=f"{last.content}{instruction}")
+            augmented_messages = list(msgs)
+            if augmented_messages:
+                last = augmented_messages[-1]
+                if isinstance(last, tuple) and len(last) == 2:
+                    augmented_messages[-1] = (last[0], f"{last[1]}{instruction}")
+                elif isinstance(last, HumanMessage):
+                    augmented_messages[-1] = HumanMessage(content=f"{last.content}{instruction}")
+                else:
+                    augmented_messages.append(HumanMessage(content=instruction))
             else:
                 augmented_messages.append(HumanMessage(content=instruction))
-        else:
-            augmented_messages.append(HumanMessage(content=instruction))
 
-        result = await self._agenerate(
-            augmented_messages, response_format={"type": "json_object"}, **kwargs
-        )
-        raw_text = result.generations[0].message.content
-        cleaned_json = _extract_json_substring(raw_text)
-
-        try:
-            return schema.model_validate_json(cleaned_json)
-        except Exception as parse_err:
-            logger.warning(
-                "llama.cpp JSON schema validation failed, attempting parse",
-                raw=raw_text[:200],
-                error=str(parse_err),
+            result = await self._agenerate(
+                augmented_messages, response_format={"type": "json_object"}, **kwargs
             )
+            raw_text = result.generations[0].message.content
+            cleaned_json = _extract_json_substring(raw_text)
+
             try:
-                data = json.loads(cleaned_json)
-                if isinstance(data, dict):
-                    if "properties" in data and isinstance(data["properties"], dict):
-                        with suppress(Exception):
-                            return schema.model_validate(data["properties"])
-                    for v in data.values():
-                        if isinstance(v, dict):
+                return schema.model_validate_json(cleaned_json)
+            except Exception as parse_err:
+                logger.warning(
+                    "llama.cpp JSON schema validation failed, attempting parse",
+                    raw=raw_text[:200],
+                    error=str(parse_err),
+                )
+                try:
+                    data = json.loads(cleaned_json)
+                    if isinstance(data, dict):
+                        if "properties" in data and isinstance(data["properties"], dict):
                             with suppress(Exception):
-                                return schema.model_validate(v)
-                return schema.model_validate(data)
-            except Exception:
-                raise parse_err from None
+                                return schema.model_validate(data["properties"])
+                        for v in data.values():
+                            if isinstance(v, dict):
+                                with suppress(Exception):
+                                    return schema.model_validate(v)
+                    return schema.model_validate(data)
+                except Exception:
+                    raise parse_err from None
 
-    return RunnableLambda(_invoke_structured)  # type: ignore[return-value]
-
-
-# ─── Ollama Embeddings ─────────────────────────────────────────────────────────
-
-
-class OllamaEmbeddings(Embeddings):
-    """
-    Ultra-fast local Ollama embeddings client calling POST /api/embed.
-    Zero cloud dependencies, sub-millisecond local vector generation.
-    """
-
-    def __init__(
-        self,
-        model: str = "embeddinggemma:300m-qat-q8_0",
-        base_url: str = "http://localhost:11434",
-        timeout: float = 60.0,
-    ) -> None:
-        self.model = model
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        if not texts:
-            return []
-        endpoint = f"{self.base_url}/api/embed"
-        try:
-            with httpx.Client(timeout=self.timeout) as client:
-                res = client.post(endpoint, json={"model": self.model, "input": texts})
-                res.raise_for_status()
-                data = res.json()
-                return data.get("embeddings", [])
-        except Exception as exc:
-            logger.error("Ollama embed_documents failed", model=self.model, error=str(exc))
-            raise ConfigurationError(
-                f"Failed to generate Ollama embeddings with model '{self.model}'",
-                detail=str(exc),
-            ) from exc
-
-    def embed_query(self, text: str) -> list[float]:
-        embs = self.embed_documents([text])
-        return embs[0] if embs else []
-
-    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
-        if not texts:
-            return []
-        endpoint = f"{self.base_url}/api/embed"
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                res = await client.post(endpoint, json={"model": self.model, "input": texts})
-                res.raise_for_status()
-                data = res.json()
-                return data.get("embeddings", [])
-        except Exception as exc:
-            logger.error("Ollama aembed_documents failed", model=self.model, error=str(exc))
-            raise ConfigurationError(
-                f"Failed to generate Ollama embeddings with model '{self.model}'",
-                detail=str(exc),
-            ) from exc
-
-    async def aembed_query(self, text: str) -> list[float]:
-        res = await self.aembed_documents([text])
-        return res[0] if res else []
-
-
-class LlamaCppEmbeddings(Embeddings):
-    """
-    Client for local llama.cpp embeddings (e.g. ggml-org/embeddinggemma-300M-GGUF:Q8_0).
-    Targets standard OpenAI-compatible /v1/embeddings endpoint (with fallback to /embedding).
-    """
-
-    def __init__(
-        self,
-        base_url: str = "http://localhost:8081/v1",
-        model: str = "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
-        timeout: float = 60.0,
-    ) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.model = model
-        self.timeout = timeout
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        if not texts:
-            return []
-        try:
-            with httpx.Client(timeout=self.timeout) as client:
-                res = client.post(
-                    f"{self.base_url}/embeddings",
-                    json={"model": self.model, "input": texts},
-                )
-                if res.status_code == 200:
-                    data = res.json()
-                    return [item["embedding"] for item in data.get("data", [])]
-                # Fallback to single text /embedding
-                results: list[list[float]] = []
-                for t in texts:
-                    res_single = client.post(
-                        f"{self.base_url.replace('/v1', '')}/embedding",
-                        json={"content": t},
-                    )
-                    res_single.raise_for_status()
-                    results.append(res_single.json().get("embedding", []))
-                return results
-        except Exception as exc:
-            logger.error("llama.cpp embed_documents failed", model=self.model, error=str(exc))
-            raise ConfigurationError(
-                f"Failed to generate llama.cpp embeddings with model '{self.model}'",
-                detail=str(exc),
-            ) from exc
-
-    def embed_query(self, text: str) -> list[float]:
-        embs = self.embed_documents([text])
-        return embs[0] if embs else []
-
-    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
-        if not texts:
-            return []
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                res = await client.post(
-                    f"{self.base_url}/embeddings",
-                    json={"model": self.model, "input": texts},
-                )
-                if res.status_code == 200:
-                    data = res.json()
-                    return [item["embedding"] for item in data.get("data", [])]
-                # Fallback
-                results: list[list[float]] = []
-                for t in texts:
-                    res_single = await client.post(
-                        f"{self.base_url.replace('/v1', '')}/embedding",
-                        json={"content": t},
-                    )
-                    res_single.raise_for_status()
-                    results.append(res_single.json().get("embedding", []))
-                return results
-        except Exception as exc:
-            logger.error("llama.cpp aembed_documents failed", model=self.model, error=str(exc))
-            raise ConfigurationError(
-                f"Failed to generate llama.cpp embeddings with model '{self.model}'",
-                detail=str(exc),
-            ) from exc
-
-    async def aembed_query(self, text: str) -> list[float]:
-        res = await self.aembed_documents([text])
-        return res[0] if res else []
+        return RunnableLambda(_invoke_structured)  # type: ignore[return-value]
 
 
 # ─── Health & CLI Model Discovery Helpers ─────────────────────────────────────
 
 
-async def discover_ollama_cli_models() -> dict[str, list[str]]:
+# ─── CLI model discovery (LLM-only) ────────────────────────────────────────────
+# NOTE: embedding models are intentionally EXCLUDED everywhere here.
+# `ollama list` feeds the Ollama LLM selector, `llama-server --cache-list` feeds
+# the llama.cpp LLM selector. Embeddings are fixed via EMBEDDING_* env / models.yaml
+# and pinned per-KB at ingest — never user-selected per request.
+
+# ─── Canonical installed-model sets ──────────────────────────────────────────
+# The ONLY hardcoded local model ids in the backend. These seed offline
+# display and merge with live `ollama list` / `llama-server --cache-list` /
+# /v1/models output at runtime — prune here when a model is deleted locally.
+# Cloud (gemini/nvidia) ids are API-side and live in models.py, not here.
+INSTALLED_OLLAMA_LLMS = [
+    "granite4.2:3b-q4_K_M",
+    "gemma3:1b",
+]
+
+INSTALLED_LLAMACPP_LLMS = [
+    "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
+    "occ-ai/OCC-RAG-0.6B-GGUF:Q4_K_M",
+    "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
+    "ibm-granite/granite-4.0-h-1b-GGUF:Q4_K_M",
+]
+
+_EMBEDDING_NAME_KEYWORDS = (
+    "embed",
+    "bge",
+    "nomic",
+    "minilm",
+    "gte",
+    "mxbai",
+    "snowflake",
+    "arctic-embed",
+    "e5-",
+    "e5_",
+    "/e5",
+)
+
+
+def _is_embedding_model_name(name: str) -> bool:
+    return any(kw in name.lower() for kw in _EMBEDDING_NAME_KEYWORDS)
+
+
+async def discover_ollama_cli_models() -> list[str]:
     """
-    Run 'ollama list' CLI command and parse installed models.
-    Distinguishes between generative LLMs and embedding models.
+    Run 'ollama list' CLI and return installed GENERATIVE model names only.
+    Embedding models are filtered out — they are not selectable LLMs.
     """
     llm_models: list[str] = []
-    embedding_models: list[str] = []
     try:
         proc = await asyncio.create_subprocess_exec(
             "ollama",
@@ -577,22 +478,18 @@ async def discover_ollama_cli_models() -> dict[str, list[str]]:
             lines = stdout.decode().strip().split("\n")
             for line in lines[1:]:  # skip header
                 parts = line.split()
-                if parts:
-                    name = parts[0]
-                    lower_name = name.lower()
-                    if any(kw in lower_name for kw in ("embed", "bge", "nomic", "minilm")):
-                        embedding_models.append(name)
-                    else:
-                        llm_models.append(name)
+                if parts and not _is_embedding_model_name(parts[0]):
+                    llm_models.append(parts[0])
     except Exception as exc:
         logger.debug("Failed to run 'ollama list' CLI", error=str(exc))
 
-    return {"llm_models": llm_models, "embedding_models": embedding_models}
+    return llm_models
 
 
 async def discover_llamacpp_cache_models() -> list[str]:
     """
-    Run 'llama-server --cache-list' CLI command and parse models currently in the local cache.
+    Run 'llama-server --cache-list' CLI and return cached GENERATIVE model IDs only.
+    Embedding GGUFs are filtered out — they are not selectable LLMs.
     """
     cache_models: list[str] = []
     try:
@@ -608,7 +505,9 @@ async def discover_llamacpp_cache_models() -> list[str]:
             for line in lines:
                 match = re.search(r"^\s*\d+\.\s*(.+)$", line)
                 if match:
-                    cache_models.append(match.group(1).strip())
+                    name = match.group(1).strip()
+                    if not _is_embedding_model_name(name):
+                        cache_models.append(name)
     except Exception as exc:
         logger.debug("Failed to run 'llama-server --cache-list' CLI", error=str(exc))
 
@@ -629,13 +528,11 @@ def discover_hf_hub_gguf_models() -> list[str]:
 
 async def check_ollama_status(base_url: str = "http://localhost:11434") -> dict[str, Any]:
     """
-    Discover Ollama status and models using both 'ollama list' CLI and HTTP REST API.
-    Returns connected state, text generation models, and detected embedding models.
+    Discover Ollama status and GENERATIVE models via 'ollama list' CLI + HTTP API.
+    Embedding models are excluded — embeddings are not selected per request.
     """
     endpoint = f"{base_url.rstrip('/')}/api/tags"
-    cli_result = await discover_ollama_cli_models()
-    cli_llms = cli_result["llm_models"]
-    cli_embeddings = cli_result["embedding_models"]
+    cli_llms = [m for m in await discover_ollama_cli_models() if not _is_embedding_model_name(m)]
 
     api_models: list[str] = []
     connected = False
@@ -649,46 +546,37 @@ async def check_ollama_status(base_url: str = "http://localhost:11434") -> dict[
     except Exception as exc:
         logger.debug("Ollama HTTP check failed", error=str(exc))
 
-    # User-specified primary models for Ollama
-    primary_ollama_llms = ["granite4.2:3b-q4_K_M", "qwen3.5:4b", "gemma4:e2b-it-qat", "gemma4:e2b"]
-    primary_ollama_embs = ["embeddinggemma:300m-qat-q8_0"]
+    # Canonical installed set seeds the list; live CLI/API results merge below.
+    primary_ollama_llms = list(INSTALLED_OLLAMA_LLMS)
 
     # Merge models preserving order with primary models at the top
     all_llms = list(
         dict.fromkeys(
             primary_ollama_llms
             + cli_llms
-            + [m for m in api_models if not any(k in m.lower() for k in ("embed", "bge", "nomic"))]
-        )
-    )
-    all_embeddings = list(
-        dict.fromkeys(
-            primary_ollama_embs
-            + cli_embeddings
-            + [m for m in api_models if any(k in m.lower() for k in ("embed", "bge", "nomic"))]
+            + [m for m in api_models if not _is_embedding_model_name(m)]
         )
     )
 
     # If CLI succeeded, Ollama daemon is installed and active
-    if cli_llms or cli_embeddings:
+    if cli_llms:
         connected = True
 
-    default_model = "gemma4:e2b-it-qat" if "gemma4:e2b-it-qat" in all_llms else all_llms[0]
+    default_model = "granite4.2:3b-q4_K_M" if "granite4.2:3b-q4_K_M" in all_llms else all_llms[0]
 
     return {
         "connected": connected,
         "provider": "ollama",
         "base_url": base_url,
         "models": all_llms,
-        "embedding_models": all_embeddings,
         "default_model": default_model,
     }
 
 
-async def check_llamacpp_status(base_url: str = "http://localhost:8081/v1") -> dict[str, Any]:
+async def check_llamacpp_status(base_url: str = "http://127.0.0.1:8080/v1") -> dict[str, Any]:
     """
-    Discover llama.cpp status and models using 'llama-server --cache-list',
-    HTTP /v1/models endpoint, and local HuggingFace cache.
+    Discover llama.cpp status and GENERATIVE models via 'llama-server --cache-list',
+    HTTP /v1/models endpoint, and local HuggingFace cache. Embedding GGUFs excluded.
     """
     endpoint = f"{base_url.rstrip('/')}/models"
     cache_models = await discover_llamacpp_cache_models()
@@ -706,20 +594,35 @@ async def check_llamacpp_status(base_url: str = "http://localhost:8081/v1") -> d
     except Exception as exc:
         logger.debug("llama.cpp HTTP check failed", error=str(exc))
 
-    primary_llamacpp_llms = [
-        "google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0",
-        "psychopenguin/Qwen3.5-4B-Q4_K_M-GGUF:Q4_K_M",
-        "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
-    ]
-    primary_llamacpp_embs = [
-        "ggml-org/embeddinggemma-300M-GGUF:Q8_0",
+    primary_llamacpp_llms = list(INSTALLED_LLAMACPP_LLMS)
+
+    # The HF-hub scan returns bare repo ids (`org/model-GGUF`) while the server
+    # and cache-list return quantified ids (`org/model-GGUF:Q4_K_M`) for the
+    # same weights — drop the bare form when a quantified sibling is listed so
+    # the selector never shows one model twice.
+    quantified_bases = {m.split(":")[0] for m in (*primary_llamacpp_llms, *api_models) if ":" in m}
+    hf_llms = [
+        m
+        for m in hf_models
+        if not _is_embedding_model_name(m) and (":" in m or m not in quantified_bases)
     ]
 
-    combined = list(dict.fromkeys(primary_llamacpp_llms + api_models + cache_models + hf_models))
+    combined = list(
+        dict.fromkeys(
+            primary_llamacpp_llms
+            + [m for m in api_models if not _is_embedding_model_name(m)]
+            + cache_models
+            + hf_llms
+        )
+    )
     default_model = (
-        "google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0"
-        if "google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0" in combined
-        else combined[0]
+        "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M"
+        if "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M" in combined
+        else (
+            "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
+            if "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M" in combined
+            else combined[0]
+        )
     )
 
     return {
@@ -727,6 +630,6 @@ async def check_llamacpp_status(base_url: str = "http://localhost:8081/v1") -> d
         "provider": "llama_cpp",
         "base_url": base_url,
         "models": combined,
-        "cache_models": list(dict.fromkeys(primary_llamacpp_embs + cache_models)),
+        "cache_models": cache_models,
         "default_model": default_model,
     }

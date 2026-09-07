@@ -142,4 +142,3 @@ async def rerank_candidate_chunks(
     sliced by maximum context limits.
     """
     return await asyncio.to_thread(_rerank_sync, query, chunks, max_context_override)
-

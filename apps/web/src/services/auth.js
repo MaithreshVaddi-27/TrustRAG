@@ -27,7 +27,16 @@ export const authService = {
     return data
   },
 
-  logout() {
-    authStore.clearSession()
+  async logout() {
+    // P0-SEC FIX (2026-09-06 audit): previously only cleared local state,
+    // leaving the JWT valid server-side until expiry (SEC-H1 bypass).
+    // Now revokes via POST /auth/logout so the denylist blocks reuse.
+    try {
+      await api.post('/api/v1/auth/logout')
+    } catch {
+      // ignore — still clear local session even if revoke fails/offline
+    } finally {
+      authStore.clearSession()
+    }
   },
 }

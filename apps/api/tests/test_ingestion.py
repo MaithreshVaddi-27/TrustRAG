@@ -136,8 +136,8 @@ async def test_indexing_pipeline_execution(mock_create_indexes, mock_connect, mo
             chunks=chunks,
         )
 
-        # Asserts status updates
-        assert mock_collection.update_one.call_count == 2
+        # Asserts status updates: processing + completed + KB embedding pin
+        assert mock_collection.update_one.call_count == 3
         # Verify Qdrant client was called for upsert
         mock_client.upsert.assert_called_once()
 

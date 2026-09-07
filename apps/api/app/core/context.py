@@ -290,11 +290,11 @@ class SummarizationManager:
         # Format messages for summarization
         conversation = "\n".join(f"{m.role.upper()}: {m.content}" for m in messages)
 
-        prompt = f"""Summarize the following conversation concisely, preserving key facts, decisions, and context needed for future turns:
-
-{conversation}
-
-Summary:"""
+        prompt = (
+            "Summarize the following conversation concisely, preserving "
+            "key facts, decisions, and context needed for future turns:"
+            f"\n\n{conversation}\n\nSummary:"
+        )
 
         try:
             llm = get_llm(model=self.summarization_model)
@@ -472,7 +472,9 @@ class ContextManager:
                 if self.summary_manager._should_summarize():
                     import asyncio
 
-                    asyncio.create_task(self.summary_manager._summarize_oldest())
+                    # Keep a ref so the task isn't GC'd; it self-completes.
+                    _summary_task = asyncio.create_task(self.summary_manager._summarize_oldest())
+                    _ = _summary_task
 
     async def get_context(self, reserve_tokens: int = 0) -> list[dict[str, str]]:
         """Get formatted context for LLM."""

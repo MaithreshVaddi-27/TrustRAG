@@ -42,6 +42,9 @@ export function QueryPanel({
   availableEmbeddingModels,
   selectedKb,
   knowledgeBases,
+  kbEmbeddingPin,
+  embeddingMismatch,
+  snapEmbeddingToKb,
 }) {
   const handleProviderChange = (providerKey) => {
     setSelectedProvider(providerKey)
@@ -51,7 +54,7 @@ export function QueryPanel({
     } else if (providerKey === 'ollama') {
       setSelectedModel('granite4.2:3b-q4_K_M')
     } else if (providerKey === 'llama_cpp') {
-      setSelectedModel('ibm-granite/granite-4.2-3b-GGUF:Q4_K_M')
+      setSelectedModel('occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M')
     } else if (providerKey === 'gemini') {
       setSelectedModel('gemini-3.5-flash-lite')
     } else if (providerKey === 'nvidia') {
@@ -213,7 +216,7 @@ export function QueryPanel({
                     : 'text-slate-400 hover:text-slate-200'
                 }`}>
                 <span>llama.cpp</span>
-                <span className="text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">:8081</span>
+                <span className="text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">:8080</span>
               </motion.button>
               <motion.button
                 type="button"
@@ -247,7 +250,7 @@ export function QueryPanel({
               <div className="flex items-center justify-between text-[11px] text-slate-400">
                 <span className="font-medium">Model:</span>
                 <span className="font-mono text-[10px] text-slate-500">
-                  {selectedProvider === 'ollama' ? ':11434' : (selectedProvider === 'llama_cpp' ? ':8081' : '')}
+                  {selectedProvider === 'ollama' ? ':11434' : (selectedProvider === 'llama_cpp' ? ':8080' : '')}
                 </span>
               </div>
               <div className="relative">
@@ -293,37 +296,11 @@ export function QueryPanel({
                   : 'bg-slate-800 text-slate-400 border border-slate-700/40'
               }`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${activeEmbeddingProviderInfo?.connected ? 'bg-cyan-400 animate-pulse' : 'bg-slate-500'}`} />
-                {selectedEmbeddingProvider === 'huggingface' ? 'Local BGE' : (selectedEmbeddingProvider === 'ollama' ? 'Local Ollama' : 'Cloud')}
+                {selectedEmbeddingProvider === 'huggingface' ? 'Local BGE' : 'Cloud'}
               </span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 bg-surface-900 p-1 rounded-lg border border-slate-800">
-              <motion.button
-                type="button"
-                onClick={() => handleEmbeddingProviderChange('ollama')}
-                disabled={loading}
-                whileTap={{ scale: 0.95 }}
-                className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between ${
-                  selectedEmbeddingProvider === 'ollama'
-                    ? 'bg-emerald-600/30 text-emerald-200 border border-emerald-500/50 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}>
-                <span>Local Ollama</span>
-                <span className="text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-emerald-400 font-mono">768d</span>
-              </motion.button>
-              <motion.button
-                type="button"
-                onClick={() => handleEmbeddingProviderChange('llamacpp')}
-                disabled={loading}
-                whileTap={{ scale: 0.95 }}
-                className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between ${
-                  selectedEmbeddingProvider === 'llamacpp'
-                    ? 'bg-amber-600/30 text-amber-200 border border-amber-500/50 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}>
-                <span>Local llama.cpp</span>
-                <span className="text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-amber-400 font-mono">768d</span>
-              </motion.button>
               <motion.button
                 type="button"
                 onClick={() => handleEmbeddingProviderChange('huggingface')}
@@ -350,6 +327,19 @@ export function QueryPanel({
                 <span>Gemini Embed</span>
                 <span className="text-[10px] text-slate-500">Cloud</span>
               </motion.button>
+              <motion.button
+                type="button"
+                onClick={() => handleEmbeddingProviderChange('nvidia')}
+                disabled={loading}
+                whileTap={{ scale: 0.95 }}
+                className={`text-xs py-1 px-2 rounded-md font-medium flex items-center justify-between ${
+                  selectedEmbeddingProvider === 'nvidia'
+                    ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}>
+                <span>NVIDIA Embed</span>
+                <span className="text-[10px] text-slate-500">Cloud</span>
+              </motion.button>
             </div>
 
             <div className="space-y-1 pt-1 border-t border-slate-800">
@@ -359,6 +349,24 @@ export function QueryPanel({
                   {availableEmbeddingModels.find(m => m.id === selectedEmbeddingModel)?.dim ? `${availableEmbeddingModels.find(m => m.id === selectedEmbeddingModel)?.dim}d vectors` : ''}
                 </span>
               </div>
+              {selectedKb && (
+                <div className="text-[10px] font-mono text-slate-500">
+                  KB index: {selectedKb.embedding_model || 'legacy (unknown) — re-ingest recommended'}
+                  {selectedKb.embedding_dim ? ` · ${selectedKb.embedding_dim}d` : ''}
+                </div>
+              )}
+              {embeddingMismatch && (
+                <button
+                  type="button"
+                  onClick={snapEmbeddingToKb}
+                  className="w-full flex items-start gap-1.5 rounded-lg border border-amber-500/50 bg-amber-950/40 px-2 py-1.5 text-left text-[11px] text-amber-200 hover:bg-amber-900/40 transition-colors">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-[1px] shrink-0" />
+                  <span>
+                    Mismatch: this KB was indexed with <span className="font-mono">{kbEmbeddingPin}</span>.
+                    Analyses with another model are rejected — click to match.
+                  </span>
+                </button>
+              )}
               <div className="relative">
                 <select
                   value={selectedEmbeddingModel}

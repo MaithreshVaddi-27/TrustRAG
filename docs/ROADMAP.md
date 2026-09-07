@@ -27,7 +27,7 @@
 | **P-L** | **Observability & Health Telemetry** | Full health monitoring (`mongodb` + `qdrant`), interactive diagnostics panel in `SettingsPage.jsx` | ✅ COMPLETE |
 | **P-L** | **Master Quality Audit (52 Findings)** | 52 findings resolved across FE/BE/DB/SEC/PERF, documented in `docs/audits/final-audit-report.md` | ✅ COMPLETE |
 | **13** | **SOTA UI Overhaul & Low-RAM Architecture** | Ultra-premium landing page, 75% Qdrant RAM compression (INT8 on-disk), 0 MB GPU RAM via Gemini 384d MRL, LRU embedding cache, and universal Model Context Protocol (MCP) server | ✅ COMPLETE |
-| **14** | **Master SOTA Multi-Role Production Audit** | Deep Systems, Security, AI/ML, and QA audit suite (79/79 pytest, 0 lint warnings) documented in `docs/audit/` | ✅ COMPLETE |
+| **14** | **Master SOTA Multi-Role Production Audit** | Deep Systems, Security, AI/ML, and QA audit suite (79/79 pytest, 0 lint warnings) documented in `docs/audits/` | ✅ COMPLETE |
 
 ---
 

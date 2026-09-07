@@ -14,6 +14,7 @@ not the database layer.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import TYPE_CHECKING, Any
 
 import certifi
@@ -57,6 +58,7 @@ class Collections:
     EXPERIMENTS = "experiments"
     FEEDBACK = "feedback"
     REVOKED_TOKENS = "revoked_tokens"
+    STREAM_TICKETS = "stream_tickets"
 
 
 # ─── Client singleton ─────────────────────────────────────────────────────────
@@ -261,6 +263,14 @@ async def create_indexes() -> None:
             [("text_hash", pymongo.ASCENDING)], name="chunk_text_hash"
         )
     )
+    # Self-heal re-index sorts a KB's chunks by chunk_index — compound index
+    # avoids an in-memory sort over up to 10k docs.
+    index_tasks.append(
+        db[Collections.DOCUMENT_CHUNKS].create_index(
+            [("knowledge_base_id", pymongo.ASCENDING), ("chunk_index", pymongo.ASCENDING)],
+            name="chunk_kb_order",
+        )
+    )
 
     # ── analyses ───────────────────────────────────────────────────────────
     index_tasks.append(
@@ -304,6 +314,13 @@ async def create_indexes() -> None:
     index_tasks.append(
         db[Collections.CLAIMS].create_index([("state", pymongo.ASCENDING)], name="claim_state")
     )
+    # Conflict scan filters one user's analyses by CONTRADICTED state.
+    index_tasks.append(
+        db[Collections.CLAIMS].create_index(
+            [("analysis_id", pymongo.ASCENDING), ("state", pymongo.ASCENDING)],
+            name="claim_analysis_state",
+        )
+    )
 
     # ── evidence ───────────────────────────────────────────────────────────
     index_tasks.append(
@@ -340,10 +357,15 @@ async def create_indexes() -> None:
     )
     # TTL index: automatically delete trace events older than 30 days to prevent
     # unbounded collection growth in production environments.
+    # NOTE: trace docs carry `timestamp` (see add_trace_event) — an earlier
+    # revision indexed `created_at`, which no trace doc has, so expiry never
+    # fired. Index the real field and drop the dead one (absent on fresh DBs).
+    with contextlib.suppress(Exception):
+        await db[Collections.TRACE_EVENTS].drop_index("trace_ttl_expiry")
     index_tasks.append(
         db[Collections.TRACE_EVENTS].create_index(
-            [("created_at", pymongo.ASCENDING)],
-            name="trace_ttl_expiry",
+            [("timestamp", pymongo.ASCENDING)],
+            name="trace_timestamp_ttl",
             expireAfterSeconds=2_592_000,  # 30 days
         )
     )
@@ -367,10 +389,32 @@ async def create_indexes() -> None:
         )
     )
 
-    # Execute all index creations in parallel
-    await asyncio.gather(*index_tasks, return_exceptions=True)
+    # ── stream_tickets ───────────────────────────────────────────────────
+    # SSE stream tickets: single-use, 60s validity. Server enforces expiry at
+    # consume time; TTL is the janitor for abandoned (never-consumed) tickets.
+    # Mongo-backed (not in-memory) so tickets survive multi-worker routing.
+    index_tasks.append(
+        db[Collections.STREAM_TICKETS].create_index(
+            [("expires_at", pymongo.ASCENDING)],
+            name="stream_ticket_ttl",
+            expireAfterSeconds=0,
+        )
+    )
 
-    logger.info("MongoDB indexes created/verified")
+    # Execute all index creations in parallel. Failures are logged, never
+    # silent — a failed unique index (e.g. duplicate legacy rows) would
+    # otherwise leave the DB under-indexed with a success message.
+    results = await asyncio.gather(*index_tasks, return_exceptions=True)
+    failures = [r for r in results if isinstance(r, Exception)]
+    if failures:
+        logger.warning(
+            "Some MongoDB indexes failed to create",
+            failed=len(failures),
+            total=len(results),
+            errors=[str(e)[:200] for e in failures],
+        )
+    else:
+        logger.info("MongoDB indexes created/verified")
 
 
 async def health_check() -> bool:

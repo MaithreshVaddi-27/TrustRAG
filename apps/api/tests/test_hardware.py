@@ -2,8 +2,12 @@
 Tests for hardware acceleration detection, memory profiling, and model recommendations.
 """
 
+import platform
+import sys
+
 from app.core.hardware import (
     detect_hardware_profile,
+    get_llamacpp_launch_args,
     get_optimal_torch_device,
     get_system_memory_info,
 )
@@ -26,6 +30,20 @@ def test_get_system_memory_info():
     assert "used_gb" in mem
     assert "usage_pct" in mem
     assert mem["total_gb"] > 0
+
+
+def test_llamacpp_launch_args_fit_host():
+    args = get_llamacpp_launch_args()
+    # Always ends with context + slots budgets, both within this host's memory.
+    assert args[-4] == "-c"
+    assert int(args[-3]) in (4096, 8192, 16384)
+    assert args[-2] == "-np"
+    assert int(args[-1]) in (2, 4)
+    # Full-GPU offload must be expressed as concrete tokens llama.cpp parses.
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        assert "-ngl" in args and "all" in args
+        fa_i = args.index("--flash-attn")
+        assert args[fa_i + 1] == "on"
 
 
 def test_detect_hardware_profile():

@@ -1,0 +1,45 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# TRUSTRAG — Canonical Port & Service Registry (SINGLE SOURCE OF TRUTH)
+# ─────────────────────────────────────────────────────────────────────────────
+# Change a port HERE, then run:
+#
+#   python3 scripts/apply_ports.py
+#
+# to propagate it to docker-compose.yml, Dockerfiles, Vite config, .env
+# templates, Playwright/k6 defaults, CI workflow, and models.yaml.
+# Run with `--check` in CI to fail on drift.
+#
+# What lives where (no duplication):
+#   ports.yaml   → ports + derived service base URLs (THIS FILE)
+#   models.yaml  → model IDs, thresholds, retrieval/recovery tuning
+#   .env         → secrets + local overrides (env vars win over everything)
+#
+# Reserved allocation (do NOT overlap):
+#   8000 = FastAPI backend   (was 8080 — moved so llama-server owns 8080)
+#   8080 = llama-server (llama.cpp OpenAI-compatible API)
+#   5173 = Vite frontend dev server
+#   11434 = Ollama daemon
+#   27017 = MongoDB
+#   6335:6333 = Qdrant HTTP (host:container), 6336:6334 = Qdrant gRPC
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: 1
+
+ports:
+  backend: 8000
+  frontend: 5173
+  ollama: 11434
+  llamacpp: 8080
+  mongodb: 27017
+  qdrant_http_host: 6335
+  qdrant_http_container: 6333
+  qdrant_grpc_host: 6336
+  qdrant_grpc_container: 6334
+
+# Hostnames used when composing URLs (ports above are combined with these).
+# Only the ports are synced by apply_ports.py — hostnames stay as authored
+# per-file (localhost vs 127.0.0.1 vs host.docker.internal).
+hosts:
+  loopback_ip: 127.0.0.1
+  loopback_name: localhost
+  docker_host: host.docker.internal

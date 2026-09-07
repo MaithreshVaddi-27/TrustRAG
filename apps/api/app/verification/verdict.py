@@ -79,6 +79,16 @@ def compute_verdict(
         VerdictResult with all computed fields
     """
     if total == 0:
+        # No claims verified. An explicit model ABSTAIN is correct behavior
+        # (abstained), not a failure — only a non-empty unverifiable answer fails.
+        if answer == "ABSTAIN":
+            return VerdictResult(
+                verdict_status=VerdictStatus.PASS,
+                reliability_status=ReliabilityStatus.ABSTAINED,
+                reliability_score=0.0,
+                diagnosis_type=DiagnosisType.RETRIEVAL_FAILURE,
+                diagnosis_failures=["Model abstained: insufficient grounded evidence"],
+            )
         # No claims verified — treat as retrieval failure
         return VerdictResult(
             verdict_status=VerdictStatus.FAIL,

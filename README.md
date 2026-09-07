@@ -20,9 +20,9 @@
 | Service | Local URL | Description |
 |---|---|---|
 | 🌐 **Frontend Workbench** | **[http://localhost:5173](http://localhost:5173)** | AI Reliability Workbench & Local Model Playground |
-| ⚡ **Backend REST API** | **[http://localhost:8080](http://localhost:8080)** | FastAPI Agentic RAG Engine with Local Model Support |
-| 📖 **Interactive API Docs** | **[http://localhost:8080/docs](http://localhost:8080/docs)** | Swagger OpenAPI interactive documentation & test runner |
-| 🩺 **System Health & Hardware** | **[http://localhost:8080/api/v1/health](http://localhost:8080/api/v1/health)** | Live hardware profiling (Metal/CUDA/CPU), memory guard & telemetry |
+| ⚡ **Backend REST API** | **[http://localhost:8000](http://localhost:8000)** | FastAPI Agentic RAG Engine with Local Model Support |
+| 📖 **Interactive API Docs** | **[http://localhost:8000/docs](http://localhost:8000/docs)** | Swagger OpenAPI interactive documentation & test runner |
+| 🩺 **System Health & Hardware** | **[http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health)** | Live hardware profiling (Metal/CUDA/CPU), memory guard & telemetry |
 
 ---
 
@@ -337,24 +337,25 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 
 ### 13. 100% Private Local LLMs (Ollama & llama.cpp)
 - **Local-First Native Async Engines**: [`ChatOllamaClient`](apps/api/app/core/local_llm.py) and [`ChatLlamaCppClient`](apps/api/app/core/local_llm.py) conform to LangChain's `BaseChatModel` interface with native async non-blocking execution.
-- **Pre-Configured Models**:
-  * **Ollama**: Defaulted to `gemma4:e2b` (5.1B params, dynamically aliased to local `gemma4:e2b-it-qat` or prefix-matched fallback).
-  * **llama.cpp**: Defaulted to `gemma-4-E2B-it-qat-q4_0-gguf:Q4_0` served over port `8081` (`http://localhost:8081/v1`).
+- **Pre-Configured Models** (exactly what is installed — see `ollama list` / `llama-server --cache-list`):
+  * **Ollama**: `granite4.2:3b-q4_K_M` (2.2GB default), `gemma3:1b` (815MB fallback).
+  * **llama.cpp**: `occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M` (~1.1GB default) served over port `8080` (`http://127.0.0.1:8080/v1`), plus `OCC-RAG-0.6B`, `granite-4.2-3b` and `granite-4.0-h-1b` GGUFs.
 - **Structured Pydantic Output**: Native support for `with_structured_output(...)` enables reliable, schema-validated atomic claim decomposition and NLI verdict generation without cloud dependencies.
 - **Complete Zero-Key Operation**: TRUSTRAG boots and executes 100% offline without requiring any third-party cloud API keys.
+- **Hardware-aware model launch**: Run `./scripts/start_local_llm.sh` to boot `llama-server`. It auto-detects your accelerator (Metal on Apple Silicon, CUDA on NVIDIA) and passes `-ngl all --flash-attn on`, plus memory-tiered `-c` / `-np` budgets so the host stays responsive. No flags needed on your end.
 
 ### 14. Native CLI Model Discovery (ollama list & llama-server)
 - **Real-Time Shell Introspection**:
-  * **`ollama list`**: Automatically introspects local models, isolating text LLMs (`qwen3.5:4b`, `gemma4:e2b-it-qat`, `granite4.2:3b`) from embedding models (`embeddinggemma:300m-qat-q8_0`).
-  * **`llama-server --cache-list`**: Introspects cached GGUF model blobs directly from the local HuggingFace / llama.cpp cache (`ggml-org/embeddinggemma-300M-GGUF:Q8_0`).
+  * **`ollama list`**: Automatically introspects installed generative LLMs (`granite4.2:3b-q4_K_M`, `gemma3:1b`). Embedding models are excluded — ollama is LLM-only; embeddings come from BGE/Gemini/NVIDIA.
+  * **`llama-server --cache-list`**: Introspects cached generative GGUF blobs. Embedding GGUFs are excluded — llama.cpp is LLM-only.
 - **Interactive UI Model Switcher**: The Playground workbench and Settings diagnostic page dynamically display detected models, active endpoints, and port telemetry.
 
 ### 15. Multi-Dimensional Vector Embeddings & L2 Normalization
 - **Choice of SOTA Embedding Engines**:
   * **Local HuggingFace**: `BAAI/bge-small-en-v1.5` & `all-MiniLM-L6-v2` (384-dimensional dense vectors, zero API cost, sub-35ms CPU latency).
-  * **Local Ollama**: `embeddinggemma:300m-qat-q8_0` (768-dimensional dense representations).
   * **Cloud Gemini**: `models/gemini-embedding-001` (384-dimensional Matryoshka representations).
   * **Cloud NVIDIA NIM**: `nvidia/nv-embedqa-e5-v5` (384-dimensional vectors).
+  * **LLM servers are LLM-only**: ollama / llama.cpp never provide embeddings.
 - **Dimension-Safe Retrieval with L2 Normalization**: When querying a 384d Qdrant collection with a 768d embedding model, [`dense_search()`](apps/api/app/retrieval/retriever.py) automatically truncates and re-normalizes the vector ($\|v\|_2 = 1.0$), ensuring strict mathematical consistency for cosine similarity calculations.
 
 ---
@@ -366,7 +367,7 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 | **Frontend** | React + Vite | React 18, Vite 6, Tailwind CSS, Motion 13 | Ultra-premium dark theme UI, spring animations, Recharts |
 | **Telemetry** | Server-Sent Events (SSE) | EventSource protocol | Real-time agent execution graph streaming to the workbench UI |
 | **Backend** | FastAPI | Python 3.11, Pydantic v2 | High-throughput asynchronous REST API, custom middleware |
-| **Local LLMs** | Ollama & llama.cpp | Port 11434 & Port 8081 | 100% private, offline LLM synthesis and NLI verification |
+| **Local LLMs** | Ollama & llama.cpp | Port 11434 & Port 8080 | 100% private, offline LLM synthesis and NLI verification |
 | **Cloud LLMs** | Google Gemini & NVIDIA NIM | Gemini 3.5 Flash Lite / Llama 3.3 70B | Cloud-native grounded reasoning and batch NLI claim verification |
 | **Dense Embeddings** | Multi-Provider Engine | 384d (BGE / Gemini) & 768d (Ollama) | Dense semantic vector representations with dimensional alignment |
 | **Agent Protocols** | Model Context Protocol (MCP) | JSON-RPC 2.0 (stdio) | Universal tool interface for external AI coding agents & local LLM chat |
@@ -390,6 +391,13 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 
 ### 1. Environment Configuration
 
+**Ports (single source of truth):** [`config/ports.yaml`](config/ports.yaml) owns every
+port — backend `8000`, frontend `5173`, Ollama `11434`, llama-server `8080`, MongoDB
+`27017`, Qdrant `6335:6333`/`6336:6334`. Change a port there, then run
+`python3 scripts/apply_ports.py` to propagate it to docker-compose, Dockerfiles, Vite,
+env templates, Playwright/k6 defaults, CI, and models.yaml
+(`--check` fails CI on drift). Model IDs stay in `apps/api/config/models.yaml` + `.env`.
+
 Clone the repository and create your local environment file:
 
 ```bash
@@ -398,41 +406,25 @@ cd TrustRAG
 cp .env.example .env
 ```
 
-Open `.env` in your editor and configure your variables:
+Open `.env` in your editor and configure your variables. It holds **secrets and
+deployment endpoints only** — providers, model IDs, and ports live in
+`apps/api/config/models.yaml` and `config/ports.yaml` (checked into git):
 
 ```ini
-# Application Environment
-APP_ENV=development
-LOG_LEVEL=INFO
-
-# Security (generate with: python3 -c "import secrets; print(secrets.token_hex(32))")
+# Security (generate with: python3 -c "import secrets; print(secrets.token_hex(64))")
 JWT_SECRET=replace_with_a_secure_random_64_character_hex_string
-JWT_EXPIRY_MINUTES=60
 
-# ── AI Provider Selection ─────────────────────────────────────────────────────
-# Options: 'ollama' (local, zero-key), 'llama_cpp' (local, zero-key), 'gemini' (Google AI Studio) or 'nvidia' (NVIDIA NIM)
-AI_PROVIDER=ollama
+# Frontend origin (production: https://your-frontend-domain.com)
+CORS_ORIGINS=http://localhost:5173
 
-# Google Gemini API (Required if AI_PROVIDER=gemini or EMBEDDING_PROVIDER=google_genai)
+# Google Gemini API (only if models.yaml uses gemini)
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# NVIDIA NIM API (Required if AI_PROVIDER=nvidia)
+# NVIDIA NIM API (only if models.yaml uses nvidia)
 NVIDIA_API_KEY=nvapi-your_nvidia_api_key_here
 
-# ── Embedding Model Provider ─────────────────────────────────────────────────
-# Options:
-#   'huggingface': Local SOTA BAAI/bge-small-en-v1.5 (384d, 0 API cost, ~32ms query latency) [DEFAULT]
-#   'google_genai': Cloud Google Gemini models/gemini-embedding-001 (384d Matryoshka)
-EMBEDDING_PROVIDER=huggingface
-
-# ── Live Web Grounding Search Providers (MCP) ─────────────────────────────────
-# Options: 'auto', 'tavily', 'duckduckgo', 'both'
-SEARCH_PROVIDER=auto
-
-# Tavily AI Search (Optional, for AI-curated web snippets)
+# Tavily AI Search (optional — DuckDuckGo runs free with zero keys)
 TAVILY_API_KEY=tvly-your_tavily_api_key_here
-
-# DuckDuckGo Search requires ZERO API keys and runs 100% free out of the box!
 
 # ── MongoDB Connection ────────────────────────────────────────────────────────
 # Option 1 (Recommended Local): Native MongoDB
@@ -441,10 +433,11 @@ MONGODB_URI=mongodb://localhost:27017
 # MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/trustrag?retryWrites=true&w=majority
 
 # ── Qdrant Vector Store ───────────────────────────────────────────────────────
-# Option 1 (Recommended Local): Embedded in-process Rust engine (0MB idle RAM, no Docker needed):
+# Option 1 (Recommended Local): Embedded in-process Rust engine (no Docker needed):
 QDRANT_URL=local
 # Option 2 (Docker / Server): http://localhost:6333
 # Option 3 (Qdrant Cloud):    https://<cluster-id>.<region>.aws.cloud.qdrant.io
+# (QDRANT_API_KEY only for Cloud.)
 ```
 
 ---
@@ -452,11 +445,81 @@ QDRANT_URL=local
 ### Zero-API-Key Local Mode (DuckDuckGo + Local BGE)
 
 Want to run TRUSTRAG with **zero external API calls for search and embeddings**?
-1. Set `EMBEDDING_PROVIDER=huggingface` in `.env`.
+1. Keep the `huggingface` embedding default in `apps/api/config/models.yaml`.
    - The system automatically loads `BAAI/bge-small-en-v1.5` locally in CPU memory.
 2. Toggle **DuckDuckGo** in the Playground Web Search drawer.
    - Live internet grounding runs completely free without needing any Tavily API key!
-3. Provide your LLM key (`GEMINI_API_KEY` or `NVIDIA_API_KEY`) for reasoning.
+3. Use a local LLM (`llama_cpp` + `occ-ai/OCC-RAG-1.7B-GGUF`, or Ollama) for
+   reasoning — no `GEMINI_API_KEY` / `NVIDIA_API_KEY` needed. Cloud keys are
+   only required when `models.yaml` selects a cloud provider.
+
+### Platform Setup (run once before Option A/B)
+
+<details>
+<summary><b>macOS (Apple Silicon)</b></summary>
+
+```bash
+# Tooling
+brew update && brew install git node python llama.cpp ollama mongodb-community
+brew services start mongodb-community
+
+# Models
+ollama pull granite4.2:3b-q4_K_M      # 2.2GB — default local LLM
+ollama pull gemma3:1b                  # 815MB — fallback / light mode
+# llama.cpp (GGUF cache): place occ-ai/OCC-RAG under ~/.cache/llama.cpp,
+# then launch: ./scripts/start_local_llm.sh  (auto Metal GPU offload)
+```
+
+</details>
+
+<details>
+<summary><b>Linux (Ubuntu / Debian)</b></summary>
+
+```bash
+# Tooling
+sudo apt update && sudo apt install -y git nodejs npm python3.12 python3.12-venv
+# MongoDB:
+sudo apt install -y mongodb-org && sudo systemctl enable --now mongod
+
+# Ollama (daemon)
+curl -fsSL https://ollama.com/install.sh | sh && ollama serve &
+ollama pull granite4.2:3b-q4_K_M
+ollama pull gemma3:1b
+
+# llama.cpp — build (~2 min) or grab a release zip:
+sudo apt install -y build-essential curl unzip
+git clone https://github.com/ggml-org/llama.cpp && cd llama.cpp
+cmake -B build -DGGML_NATIVE=on && cmake --build build -j$(nproc)
+# binary at build/bin/llama-server. Back in repo root:
+./scripts/start_local_llm.sh   # auto-detects nvidia via nvidia-smi for CUDA
+```
+
+</details>
+
+<details>
+<summary><b>Windows 11 (PowerShell, winget)</b></summary>
+
+```powershell
+# Tooling
+winget install --id Git.Git OpenJS.NodeJS Python.Python.3.12 MongoDB.CommunityServer Ollama.Ollama
+Start-Service MongoDB
+ollama serve &
+ollama pull granite4.2:3b-q4_K_M
+ollama pull gemma3:1b
+
+# llama.cpp GGUF: grab a prebuilt release zip containing llama-server.exe
+# (https://github.com/ggml-org/llama.cpp/releases) and add it to PATH.
+# Then run the project helper from Git Bash (bundled with Git for Windows):
+#   bash scripts/start_local_llm.sh
+```
+
+</details>
+
+After the platform pass, continue with the **Environment Configuration** below — `cp .env.example .env`, fill `JWT_SECRET`, then `python3 scripts/apply_ports.py --check` to confirm nothing drifted.
+
+### Embedding Weights (one-time, any OS)
+
+The default local embedding model `BAAI/bge-small-en-v1.5` (~120MB) downloads once via HuggingFace Hub and is cached at `~/.cache/huggingface`. Nothing to run manually — the API warms it at first boot. Use `HF_TOKEN` only if you hit hub rate limits during that download.
 
 ### Option A: Running Locally with Native Resources (Recommended)
 
@@ -468,7 +531,18 @@ This is the fastest, lightest method for development on macOS/Linux. It bypasses
    brew services start mongodb-community
    ```
 
-2. **Start Backend Service (Embedded Qdrant)**:
+2. **Start the local LLM server (llama.cpp)** — required while `AI_PROVIDER=llama_cpp`:
+
+   ```bash
+   ./scripts/start_local_llm.sh
+   # Detects Metal (Apple Silicon) or CUDA automatically and applies
+   # GPU offload + memory-tiered context limits. Uses the model configured
+   # in apps/api/config/models.yaml (llm.model_llamacpp).
+   ```
+
+   (Or run `ollama serve` instead if `AI_PROVIDER=ollama`.)
+
+3. **Start Backend Service (Embedded Qdrant)**:
    ```bash
    cd apps/api
    python3 -m venv .venv
@@ -476,12 +550,12 @@ This is the fastest, lightest method for development on macOS/Linux. It bypasses
    pip install -e ".[dev]"
 
    # Launch FastAPI with hot-reload (automatically mounts embedded Qdrant in ./data/qdrant)
-   uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
    ```
 
-3. **Verify Health Endpoint**:
+4. **Verify Health Endpoint**:
    ```bash
-   curl -s http://localhost:8080/api/v1/health | jq
+   curl -s http://localhost:8000/api/v1/health | jq
    ```
    *Expected Response:*
    ```json
@@ -496,7 +570,7 @@ This is the fastest, lightest method for development on macOS/Linux. It bypasses
    }
    ```
 
-4. **Start Frontend Workbench**:
+5. **Start Frontend Workbench**:
    ```bash
    cd apps/web
    npm install
@@ -532,7 +606,7 @@ You can interact with TRUSTRAG directly using `curl`:
 ### Step 1: Register & Authenticate
 
 ```bash
-BASE=http://localhost:8080/api/v1
+BASE=http://localhost:8000/api/v1
 
 # 1. Register account
 curl -s -X POST $BASE/auth/register \
@@ -669,7 +743,7 @@ All protected endpoints require `Authorization: Bearer <JWT>`.
 | `GET` | `/api/v1/experiments` | User | List objective RAG benchmark evaluation experiments |
 | `POST` | `/api/v1/experiments` | User | Record an evaluation experiment run |
 
-Interactive Swagger documentation is available at `http://localhost:8080/docs` in development mode.
+Interactive Swagger documentation is available at `http://localhost:8000/docs` in development mode.
 
 ---
 
@@ -690,7 +764,7 @@ Includes **rate-limiter threshold tests** (`tests/test_rate_limit.py`) asserting
 ```bash
 cd apps/web
 npm run test          # Vitest unit & component tests
-npm run test:e2e      # Playwright E2E smoke (requires backend on :8080 — starts Vite preview + Chromium for you)
+npm run test:e2e      # Playwright E2E smoke (requires backend on :8000 — starts Vite preview + Chromium for you)
 npm run lint
 npm run build
 ```
@@ -700,8 +774,8 @@ Frontend coverage includes the **SSE recovery contract** (`src/lib/api.test.js`)
 
 **Load testing** (`load-test/smoke.js`) runs a k6 ramp (5→10 VUs, ~3,300 requests / 35s) against `health` + an authenticated knowledge-base read — matching the exact request pattern of live dashboard usage:
 ```bash
-k6 run load-test/smoke.js                     # default: http://localhost:8080
-API_BASE_URL=http://localhost:8080 k6 run load-test/smoke.js
+k6 run load-test/smoke.js                     # default: http://localhost:8000
+API_BASE_URL=http://localhost:8000 k6 run load-test/smoke.js
 ```
 Gated on exit code + thresholds: **<1% failed requests, p95 < 300ms, p99 < 500ms**. Locally verified: 0.00% failures, p95 ≈ 9ms.
 

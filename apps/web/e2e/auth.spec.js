@@ -14,7 +14,7 @@
 
 import { test, expect } from '@playwright/test'
 
-const API_ORIGIN = process.env.E2E_API_URL || 'http://localhost:8080'
+const API_ORIGIN = process.env.E2E_API_URL || 'http://localhost:8000'
 const API = `${API_ORIGIN}/api/v1`
 
 function uniqueUser() {

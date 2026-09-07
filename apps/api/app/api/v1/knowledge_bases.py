@@ -232,7 +232,10 @@ async def ingest_document_from_url_endpoint(
     if file_size > max_file_size:
         raise FileTooLargeError(
             "Document from URL exceeds size limit",
-            detail=f"Document size {file_size / (1024 * 1024):.2f}MB exceeds limit of {cfg.max_file_size_mb}MB",
+            detail=(
+                f"Document size {file_size / (1024 * 1024):.2f}MB "
+                f"exceeds limit of {cfg.max_file_size_mb}MB"
+            ),
         )
 
     # Determine filename

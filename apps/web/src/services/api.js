@@ -35,6 +35,7 @@ export const analysisService = {
   claims:   (id) => api.get(`/api/v1/analyses/${id}/claims`).then(r => r.data),
   evidence: (id) => api.get(`/api/v1/analyses/${id}/evidence`).then(r => r.data),
   trace:    (id) => api.get(`/api/v1/analyses/${id}/trace`).then(r => r.data),
+  detail:   (id) => api.get(`/api/v1/analyses/${id}/detail`).then(r => r.data),
 }
 
 // ── Experiments ───────────────────────────────────────────────────────────

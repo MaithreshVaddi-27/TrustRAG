@@ -6,7 +6,7 @@ TRUSTRAG is an AI reliability workbench that implements a closed-loop reliabilit
 
 ```
 Query → Retrieve (Vector + BM25 + MCP Live Web) → Rerank (RRF) 
-      → Grounded Generation (Gemini 3.5 Flash Lite) 
+      → Grounded Generation (Local llama.cpp / Ollama / Gemini / NVIDIA — per request) 
       → Propositional Claim Decomposition → NLI Claim Verification 
       → Evidence Integrity & Provenance Audit → Threshold Reliability Diagnosis 
       → Adaptive Recovery Loop (LangGraph StateGraph) 
@@ -24,10 +24,10 @@ React 18 + Vite (Port 5173)
     │
     │ REST /api/v1/... (Reverse Proxy) │ SSE /api/v1/analyses/{id}/stream
     ▼
-FastAPI (Python 3.12, Default Port 8080)
+FastAPI (Python 3.12, Default Port 8000)
     │
     ├─── app/core/         Settings, ModelRegistry, Logging, Security, Exceptions
-    │       └── local_llm.py → ChatOllamaClient, ChatLlamaCppClient, OllamaEmbeddings,
+    │       └── local_llm.py → ChatOllamaClient, ChatLlamaCppClient (LLM-only),
     │                          CLI introspection (ollama list, llama-server --cache-list)
     ├─── app/db/           MongoDB Community / Atlas client, Qdrant client
     ├─── app/ingestion/    Document parsing, chunking, cryptographic hashing
@@ -47,9 +47,10 @@ FastAPI (Python 3.12, Default Port 8080)
     └─── app/evaluation/   Experiment runner & benchmark metrics
          │
          ├─── Local Engines:
-         │       Ollama (Port 11434): gemma4:e2b / embeddinggemma:300m-qat-q8_0
-         │       llama.cpp (Port 8081): gemma-4-E2B-it-qat-q4_0-gguf:Q4_0
-         │       HuggingFace: BAAI/bge-small-en-v1.5 (384d SOTA CPU embeddings)
+          │       Ollama (Port 11434, LLM-only): granite4.2:3b-q4_K_M, gemma3:1b
+          │       llama.cpp (Port 8080, LLM-only): occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M
+          │             (+ OCC-RAG-0.6B, ibm-granite/granite-4.2-3b, ibm-granite/granite-4.0-h-1b GGUFs)
+          │       HuggingFace: BAAI/bge-small-en-v1.5 (384d SOTA embeddings)
          │
          ├─── Cloud Engines (Optional):
          │       Google Gemini: gemini-3.5-flash-lite / models/gemini-embedding-001
@@ -101,9 +102,9 @@ TRUSTRAG adopts the open **Model Context Protocol (MCP)** specification to decou
    (Propositional NLI)             │
           │                        │
           ▼                        │
-  [evaluation_node]                │
-  (Check reliability thresholds)   │
-          │                        │
+   [verdict computation]           │
+   (compute_verdict thresholds    │
+    via verdict.py)                │
      Pass or Fail?                 │
      ├── PASS ─────────────────────┼──────────┐
      │                             │          │

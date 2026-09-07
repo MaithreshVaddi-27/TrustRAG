@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -26,6 +27,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # apps/api/ root (one level above app/)
 _API_ROOT = Path(__file__).resolve().parents[2]
 _MODELS_YAML_PATH = _API_ROOT / "config" / "models.yaml"
+# Repo root config/ports.yaml — canonical port registry (see scripts/apply_ports.py)
+_PORTS_YAML_PATH = _API_ROOT.parent.parent / "config" / "ports.yaml"
+
+# P0-CFG FIX (2026-09-06 audit): ModelConfig reads os.environ directly while
+# Settings loads .env via pydantic-settings (which does NOT export to
+# os.environ). Without this, .env values like EMBEDDING_PROVIDER/AI_PROVIDER
+# were silently ignored and models.yaml defaults won (e.g. Settings said
+# huggingface while ModelConfig reported google_genai). Loading .env into
+# os.environ here keeps both paths consistent.
+load_dotenv(_API_ROOT / ".env", override=False)
+load_dotenv(_API_ROOT.parent.parent / ".env", override=False)
 
 
 def _load_models_yaml() -> dict[str, Any]:
@@ -40,6 +52,27 @@ def _load_models_yaml() -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError(f"models.yaml must be a YAML mapping. Got: {type(data)}")
     return data
+
+
+def _load_ports_yaml() -> dict[str, int]:
+    """Load repo-root config/ports.yaml. Returns {} if absent (dev fallback)."""
+    try:
+        if not _PORTS_YAML_PATH.exists():
+            return {}
+        with _PORTS_YAML_PATH.open("r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+        ports = (data or {}).get("ports", {}) if isinstance(data, dict) else {}
+        return {k: int(v) for k, v in ports.items() if isinstance(v, int)}
+    except Exception:
+        return {}
+
+
+# Local LLM base URLs derived once from the canonical port registry so a fresh
+# checkout works with zero provider config — explicit env vars still win
+# (pydantic env > Field default), and models.yaml stays the ID source.
+_PORTS_FALLBACK = _load_ports_yaml()
+_DEFAULT_OLLAMA_BASE_URL = f"http://localhost:{_PORTS_FALLBACK.get('ollama', 11434)}"
+_DEFAULT_LLAMACPP_BASE_URL = f"http://127.0.0.1:{_PORTS_FALLBACK.get('llamacpp', 8080)}/v1"
 
 
 # ─── Settings ─────────────────────────────────────────────────────────────────
@@ -78,8 +111,11 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
 
     # ── Local LLM Providers (Ollama & llama.cpp) ──────────────────────────────
+    # Defaults derive from config/ports.yaml (see _DEFAULT_*_BASE_URL above);
+    # set OLLAMA_BASE_URL / LLAMACPP_BASE_URL env vars to override per deploy
+    # (e.g. host.docker.internal inside containers).
     ollama_base_url: str = Field(
-        default="",
+        default=_DEFAULT_OLLAMA_BASE_URL,
         validation_alias=AliasChoices("OLLAMA_BASE_URL", "OLLAMA_HOST"),
         description="Ollama local API server endpoint",
     )
@@ -89,7 +125,7 @@ class Settings(BaseSettings):
         description="Override Ollama model name from models.yaml via env",
     )
     llamacpp_base_url: str = Field(
-        default="",
+        default=_DEFAULT_LLAMACPP_BASE_URL,
         validation_alias=AliasChoices("LLAMACPP_BASE_URL", "LLAMA_CPP_BASE_URL"),
         description="llama.cpp server OpenAI-compatible base URL",
     )
@@ -256,13 +292,25 @@ class ModelConfig:
     @property
     def llm_model(self) -> str:
         self._get("llm")
-        if self.llm_provider == "ollama":
+        return self.llm_model_for(self.llm_provider)
+
+    def llm_model_for(self, provider: str) -> str:
+        """Resolve the model id for an explicit provider (not the configured one)."""
+        self._get("llm")
+        p = provider.lower()
+        if p == "ollama":
             env_model = os.environ.get("OLLAMA_MODEL")
-            return env_model or str(self._get("llm", "model") or "gemma4:e2b")
-        if self.llm_provider in ("llama_cpp", "llamacpp"):
+            return (
+                env_model
+                or str(self._get("llm", "model_ollama", required=False) or "")
+                or str(self._get("llm", "model") or "granite4.2:3b-q4_K_M")
+            )
+        if p in ("llama_cpp", "llamacpp"):
             env_model = os.environ.get("LLAMACPP_MODEL") or os.environ.get("LLAMA_CPP_MODEL")
-            return env_model or str(
-                self._get("llm", "model") or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0"
+            return (
+                env_model
+                or str(self._get("llm", "model_llamacpp", required=False) or "")
+                or str(self._get("llm", "model") or "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M")
             )
         env_model = os.environ.get("LLM_MODEL") or os.environ.get("GEMINI_MODEL")
         if env_model:
@@ -276,6 +324,9 @@ class ModelConfig:
         env_url = os.environ.get("OLLAMA_BASE_URL") or os.environ.get("OLLAMA_HOST")
         if env_url:
             return env_url
+        port = get_ports().get("ollama")
+        if port:
+            return f"http://localhost:{port}"
         return str(self._get("llm", "ollama_base_url", required=False) or "http://localhost:11434")
 
     @property
@@ -283,8 +334,11 @@ class ModelConfig:
         env_url = os.environ.get("LLAMACPP_BASE_URL") or os.environ.get("LLAMA_CPP_BASE_URL")
         if env_url:
             return env_url
+        port = get_ports().get("llamacpp")
+        if port:
+            return f"http://127.0.0.1:{port}/v1"
         return str(
-            self._get("llm", "llamacpp_base_url", required=False) or "http://localhost:8081/v1"
+            self._get("llm", "llamacpp_base_url", required=False) or "http://127.0.0.1:8080/v1"
         )
 
     @property
@@ -357,13 +411,24 @@ class ModelConfig:
 
     @property
     def verification_model(self) -> str:
-        if self.verification_provider == "ollama":
+        return self.verification_model_for(self.verification_provider)
+
+    def verification_model_for(self, provider: str) -> str:
+        """Resolve the verifier model id for an explicit provider."""
+        p = provider.lower()
+        if p == "ollama":
             env_model = os.environ.get("OLLAMA_MODEL")
-            return env_model or str(self._get("verification", "model") or "gemma4:e2b")
-        if self.verification_provider in ("llama_cpp", "llamacpp"):
+            return (
+                env_model
+                or str(self._get("verification", "model_ollama", required=False) or "")
+                or str(self._get("verification", "model") or "granite4.2:3b-q4_K_M")
+            )
+        if p in ("llama_cpp", "llamacpp"):
             env_model = os.environ.get("LLAMACPP_MODEL") or os.environ.get("LLAMA_CPP_MODEL")
-            return env_model or str(
-                self._get("verification", "model") or "gemma-4-E2B-it-qat-q4_0-gguf:Q4_0"
+            return (
+                env_model
+                or str(self._get("verification", "model_llamacpp", required=False) or "")
+                or str(self._get("verification", "model") or "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M")
             )
         val = self._get("verification", "model")
         env_model = os.environ.get("GEMINI_VERIFICATION_MODEL") or os.environ.get(
@@ -520,6 +585,18 @@ def get_model_config() -> ModelConfig:
     """Return the cached ModelConfig singleton loaded from models.yaml."""
     raw = _load_models_yaml()
     return ModelConfig(raw)
+
+
+@lru_cache(maxsize=1)
+def get_ports() -> dict[str, int]:
+    """Return the canonical port registry from repo-root config/ports.yaml."""
+    return _load_ports_yaml()
+
+
+def reload_ports() -> dict[str, int]:
+    """Clear cached ports and re-read config/ports.yaml."""
+    get_ports.cache_clear()
+    return get_ports()
 
 
 def reload_settings() -> Settings:

@@ -5,9 +5,9 @@
  *   landing → auth (redirect guard) → register/login → dashboard.
  *
  * It expects the FastAPI backend to be reachable at the configured API URL
- * (default http://localhost:8080/api/v1) — run it with:
+ * (default http://localhost:8000/api/v1) — run it with:
  *
- *   cd apps/api && uvicorn app.main:app --host 0.0.0.0 --port 8080
+ *   cd apps/api && uvicorn app.main:app --host 0.0.0.0 --port 8000
  *   cd apps/web && npm run test:e2e
  *
  * The web server (Vite preview on :5173) is started automatically by Playwright
@@ -19,7 +19,7 @@ import { defineConfig } from '@playwright/test'
 const PORT = 5173
 // Backend origin (scheme://host[:port]) — the frontend appends /api/v1/… paths
 // itself. NOT the full /api/v1 base (that would double the prefix).
-const API_ORIGIN = process.env.E2E_API_URL || 'http://localhost:8080'
+const API_ORIGIN = process.env.E2E_API_URL || 'http://localhost:8000'
 
 export default defineConfig({
   testDir: './e2e',

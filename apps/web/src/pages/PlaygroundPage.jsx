@@ -55,11 +55,11 @@ export default function PlaygroundPage() {
     queryFn: modelService.getProviders,
   })
 
-  const [selectedProvider, setSelectedProvider] = useState('ollama')
-  const [selectedModel, setSelectedModel] = useState('granite4.2:3b-q4_K_M')
+  const [selectedProvider, setSelectedProvider] = useState('llama_cpp')
+  const [selectedModel, setSelectedModel] = useState('occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M')
 
-  const [selectedEmbeddingProvider, setSelectedEmbeddingProvider] = useState('ollama')
-  const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState('embeddinggemma:300m-qat-q8_0')
+  const [selectedEmbeddingProvider, setSelectedEmbeddingProvider] = useState('huggingface')
+  const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState('BAAI/bge-small-en-v1.5')
 
   useEffect(() => {
     if (!userTouchedEmbeddingRef.current) {
@@ -76,18 +76,17 @@ export default function PlaygroundPage() {
   const availableModels = activeProviderInfo?.models?.length 
     ? activeProviderInfo.models 
     : (selectedProvider === 'ollama' 
-        ? ['granite4.2:3b-q4_K_M', 'qwen3.5:4b', 'gemma4:e2b-it-qat'] 
+        ? ['granite4.2:3b-q4_K_M', 'gemma3:1b'] 
         : (selectedProvider === 'llama_cpp' 
-            ? ['ibm-granite/granite-4.2-3b-GGUF:Q4_K_M', 'psychopenguin/Qwen3.5-4B-Q4_K_M-GGUF:Q4_K_M', 'google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0'] 
+            ? ['occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M', 'occ-ai/OCC-RAG-0.6B-GGUF:Q4_K_M', 'ibm-granite/granite-4.2-3b-GGUF:Q4_K_M', 'ibm-granite/granite-4.0-h-1b-GGUF:Q4_K_M'] 
             : ['default']))
 
   const activeEmbeddingProviderInfo = providersData?.embedding_providers?.[selectedEmbeddingProvider]
   const availableEmbeddingModels = activeEmbeddingProviderInfo?.models?.length
     ? activeEmbeddingProviderInfo.models
     : [
-        { id: 'embeddinggemma:300m-qat-q8_0', name: 'embeddinggemma:300m-qat-q8_0 (768d)', dim: 768, tag: 'Ollama SOTA' },
-        { id: 'ggml-org/embeddinggemma-300M-GGUF:Q8_0', name: 'embeddinggemma-300M (768d GGUF)', dim: 768, tag: 'llama.cpp Cache' },
         { id: 'BAAI/bge-small-en-v1.5', name: 'BAAI/bge-small-en-v1.5 (384d SOTA)', dim: 384, tag: 'Recommended' },
+        { id: 'sentence-transformers/all-MiniLM-L6-v2', name: 'all-MiniLM-L6-v2 (384d Fast)', dim: 384, tag: 'Fast' },
       ]
 
   const handleReset = () => {
@@ -206,15 +205,26 @@ export default function PlaygroundPage() {
             continue
           }
 
-          const [claimsRes, evidenceRes, traceRes] = await Promise.allSettled([
-            analysisService.claims(analysisId),
-            analysisService.evidence(analysisId),
-            analysisService.trace(analysisId),
-          ])
-
-          const claims = claimsRes.status === 'fulfilled' ? claimsRes.value : []
-          const evidence = evidenceRes.status === 'fulfilled' ? evidenceRes.value : []
-          const trace = traceRes.status === 'fulfilled' ? traceRes.value : []
+          // Single-round-trip finalize (1 ownership check server-side);
+          // fall back to the legacy 4-call flow on older backends.
+          let claims = []
+          let evidence = []
+          let trace = []
+          try {
+            const detail = await analysisService.detail(analysisId)
+            claims = detail.claims || []
+            evidence = detail.evidence || []
+            trace = detail.trace || []
+          } catch {
+            const [claimsRes, evidenceRes, traceRes] = await Promise.allSettled([
+              analysisService.claims(analysisId),
+              analysisService.evidence(analysisId),
+              analysisService.trace(analysisId),
+            ])
+            claims = claimsRes.status === 'fulfilled' ? claimsRes.value : []
+            evidence = evidenceRes.status === 'fulfilled' ? evidenceRes.value : []
+            trace = traceRes.status === 'fulfilled' ? traceRes.value : []
+          }
 
           const fullAnalysis = {
             ...finalAnalysis,
@@ -260,16 +270,45 @@ export default function PlaygroundPage() {
   }
 
   const currentTraceEvents = loading ? traceEvents : (analysis?.trace || traceEvents)
+  // Recovery timeline shows strategy decisions only — wrapper lifecycle events
+  // (recovery.started/completed/...) are excluded so one attempt renders as one
+  // card instead of three identically-labeled ones.
+  const RECOVERY_STRATEGY_LABELS = {
+    [TraceEventType.RECOVERY_REWRITE]: 'Targeted Query Rewrite',
+    [TraceEventType.RECOVERY_RE_RETRIEVE]: 'Expanded Context Retrieval',
+    [TraceEventType.RECOVERY_REGENERATE]: 'Regeneration Retry (no new retrieval)',
+    [TraceEventType.RECOVERY_RE_RETRIEVE_SKIPPED]: 'Kept Narrow Retrieval',
+    [TraceEventType.RETRIEVAL_REUSED]: 'Reused Saved Evidence',
+  }
   const recoveryRuns = currentTraceEvents
-    .filter(e => e.event && (e.event === TraceEventType.RECOVERY_REWRITE || e.event === TraceEventType.RECOVERY_RE_RETRIEVE || e.event.startsWith('recovery.')))
+    .filter(e => e.event && Object.hasOwn(RECOVERY_STRATEGY_LABELS, e.event))
     .map(e => ({
-      strategy: e.event === TraceEventType.RECOVERY_REWRITE ? 'Targeted Query Rewrite' : 'Expanded Context Retrieval',
+      strategy: RECOVERY_STRATEGY_LABELS[e.event],
       reason: e.data?.message || 'Threshold checks failed, attempting adaptive healing',
       result: 'Context augmented, re-evaluating reliability',
       success: true,
     }))
 
   const selectedKb = knowledgeBases?.find(k => k.id === kbId)
+
+  // KB embedding-space pin: a KB's vectors live in exactly one embedding space
+  // (recorded at first ingest). The backend rejects analyses that request any
+  // other model, so auto-snap the selector whenever the KB (or its pin) changes.
+  const kbEmbeddingPin = selectedKb?.embedding_model || null
+  const kbEmbeddingProviderPin = selectedKb?.embedding_provider || null
+  useEffect(() => {
+    if (kbEmbeddingPin) {
+      if (kbEmbeddingProviderPin) setSelectedEmbeddingProvider(kbEmbeddingProviderPin)
+      setSelectedEmbeddingModel(kbEmbeddingPin)
+      userTouchedEmbeddingRef.current = false
+    }
+  }, [kbId, kbEmbeddingPin, kbEmbeddingProviderPin])
+  const embeddingMismatch = !!kbEmbeddingPin && selectedEmbeddingModel !== kbEmbeddingPin
+  const snapEmbeddingToKb = () => {
+    if (kbEmbeddingProviderPin) setSelectedEmbeddingProvider(kbEmbeddingProviderPin)
+    if (kbEmbeddingPin) setSelectedEmbeddingModel(kbEmbeddingPin)
+    userTouchedEmbeddingRef.current = false
+  }
 
   return (
     <AppLayout>
@@ -306,6 +345,9 @@ export default function PlaygroundPage() {
           availableEmbeddingModels={availableEmbeddingModels}
           selectedKb={selectedKb}
           knowledgeBases={knowledgeBases}
+          kbEmbeddingPin={kbEmbeddingPin}
+          embeddingMismatch={embeddingMismatch}
+          snapEmbeddingToKb={snapEmbeddingToKb}
         />
 
         <ResultsPanel

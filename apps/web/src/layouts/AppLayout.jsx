@@ -2,14 +2,15 @@ import { useState, useEffect } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useQuery } from '@tanstack/react-query'
-import { motion, useReducedMotion, useMotionValue, useSpring, useDragControls, useTransform } from 'motion/react'
+import { motion, useReducedMotion, useMotionValue, useSpring, useTransform } from 'motion/react'
 import {
   Brain, Database, FileSearch,
   FlaskConical, GitMerge, LayoutDashboard, LogOut,
   Settings, Swords, Zap, Menu, X, ChevronLeft, ChevronRight,
   ShieldCheck, Cpu, Layers
 } from 'lucide-react'
-import { authStore, useAuthStore } from '@/store/authStore'
+import { useAuthStore } from '@/store/authStore'
+import { authService } from '@/services/auth'
 import { modelService } from '@/services/api'
 
 const NAV = [
@@ -105,10 +106,8 @@ export default function AppLayout({ children }) {
     [-drawerWidth * 1.5, 0, drawerWidth * 1.5] // output range with rubber-band
   )
 
-  const dragControls = useDragControls()
-
-  function handleLogout() {
-    authStore.clearSession()
+  async function handleLogout() {
+    await authService.logout()
     navigate('/login')
   }
 
@@ -190,7 +189,7 @@ export default function AppLayout({ children }) {
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300">
             <Layers size={12} className="text-cyan-400" />
             <span className="max-w-[210px] truncate" title={providersData?.active_embedding_model}>
-              {providersData?.active_embedding_model || 'embeddinggemma:300m-qat-q8_0'}
+              {providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'}
             </span>
           </div>
 
@@ -302,7 +301,6 @@ export default function AppLayout({ children }) {
 
         {/* ── MOBILE DRAWER with Rubber-Banding ────────────────────────── */}
         <motion.div
-          {...dragControls}
           style={{
             x: isMobileOpen ? dragX : rubberBandTransform,
             display: isMobileOpen ? 'flex' : 'none',

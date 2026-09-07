@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
-import { useAuthStore, authStore } from '@/store/authStore'
+import { useAuthStore } from '@/store/authStore'
+import { authService } from '@/services/auth'
 import { healthService, modelService } from '@/services/api'
 import { copyToClipboard } from '@/lib/clipboard'
 import {
@@ -65,9 +66,9 @@ export default function SettingsPage() {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (confirm('Are you sure you want to sign out?')) {
-      authStore.clearSession()
+      await authService.logout()
       navigate('/login')
     }
   }
@@ -305,7 +306,7 @@ export default function SettingsPage() {
               <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Auto-Tuned Recommendation</span>
               <div className="space-y-1 text-xs text-slate-300">
                 <div>Optimal LLM: <code className="text-emerald-300 font-mono">{providersData?.hardware?.recommendations?.primary_llm || 'granite4.2:3b-q4_K_M'}</code></div>
-                <div>Optimal Embed: <code className="text-cyan-300 font-mono">{providersData?.hardware?.recommendations?.primary_embedding || 'embeddinggemma:300m-qat-q8_0'}</code></div>
+                <div>Optimal Embed: <code className="text-cyan-300 font-mono">{providersData?.hardware?.recommendations?.primary_embedding || 'BAAI/bge-small-en-v1.5'}</code></div>
                 <div>Safe Concurrency: <span className="text-slate-400">{providersData?.hardware?.recommendations?.max_concurrency || 2} concurrent runs</span></div>
               </div>
             </div>
@@ -321,7 +322,7 @@ export default function SettingsPage() {
                 Local LLM Infrastructure (Private & Offline)
               </h2>
             </div>
-            <span className="text-xs text-slate-500 font-mono">localhost:11434 / localhost:8081</span>
+            <span className="text-xs text-slate-500 font-mono">localhost:11434 / 127.0.0.1:8080</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -342,13 +343,12 @@ export default function SettingsPage() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-400">
-                  Native local inference server. Active model: <code className="text-emerald-300 font-mono">granite4.2:3b-q4_K_M</code>
+                  Native local inference server. Active model: <code className="text-emerald-300 font-mono">{providersData?.providers?.ollama?.default_model || 'granite4.2:3b-q4_K_M'}</code>
                 </p>
                 <div className="mt-2 text-[11px] text-slate-400 space-y-1">
                   <div>Endpoint: <code className="text-slate-300 font-mono">http://localhost:11434</code></div>
                   <div>Discovery Command: <code className="text-emerald-400 font-mono">ollama list</code></div>
-                  <div>Configured LLMs: <span className="text-slate-300 font-mono">{providersData?.providers?.ollama?.models?.join(', ') || 'granite4.2:3b-q4_K_M, qwen3.5:4b, gemma4:e2b-it-qat'}</span></div>
-                  <div>Dense Embeddings: <span className="text-emerald-300 font-mono">{providersData?.embedding_providers?.ollama?.models?.map(m => m.id).join(', ') || 'embeddinggemma:300m-qat-q8_0'}</span></div>
+                  <div>Configured LLMs (<code className="text-slate-500 font-mono">ollama list</code>): <span className="text-slate-300 font-mono">{providersData?.providers?.ollama?.models?.join(', ') || 'granite4.2:3b-q4_K_M, gemma3:1b'}</span></div>
                 </div>
               </div>
 
@@ -376,19 +376,19 @@ export default function SettingsPage() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-400">
-                  OpenAI-compatible server. Active model: <code className="text-cyan-300 font-mono">ibm-granite/granite-4.2-3b-GGUF:Q4_K_M</code>
+                  OpenAI-compatible server. Active model: <code className="text-cyan-300 font-mono">{providersData?.providers?.llama_cpp?.default_model || 'occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M'}</code>
                 </p>
                 <div className="mt-2 text-[11px] text-slate-400 space-y-1">
-                  <div>Endpoint: <code className="text-slate-300 font-mono">http://localhost:8081/v1</code></div>
+                  <div>Endpoint: <code className="text-slate-300 font-mono">http://127.0.0.1:8080/v1</code></div>
                   <div>Discovery Command: <code className="text-cyan-400 font-mono">llama-server --cache-list</code></div>
-                  <div>Cache GGUF Models: <span className="text-slate-300 font-mono">{providersData?.providers?.llama_cpp?.cache_models?.join(', ') || 'ggml-org/embeddinggemma-300M-GGUF:Q8_0'}</span></div>
-                  <div>Configured LLMs: <span className="text-cyan-300 font-mono">{providersData?.providers?.llama_cpp?.models?.join(', ') || 'ibm-granite/granite-4.2-3b-GGUF:Q4_K_M, psychopenguin/Qwen3.5-4B-Q4_K_M-GGUF:Q4_K_M, google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0'}</span></div>
+                  <div>Cache GGUF Models: <span className="text-slate-300 font-mono">{providersData?.providers?.llama_cpp?.cache_models?.join(', ') || 'occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M, occ-ai/OCC-RAG-0.6B-GGUF:Q4_K_M, ibm-granite/granite-4.2-3b-GGUF:Q4_K_M, ibm-granite/granite-4.0-h-1b-GGUF:Q4_K_M'}</span></div>
+                  <div>Configured LLMs: <span className="text-cyan-300 font-mono">{providersData?.providers?.llama_cpp?.models?.join(', ') || 'occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M, occ-ai/OCC-RAG-0.6B-GGUF:Q4_K_M, ibm-granite/granite-4.2-3b-GGUF:Q4_K_M, ibm-granite/granite-4.0-h-1b-GGUF:Q4_K_M'}</span></div>
                 </div>
               </div>
 
               {!providersData?.providers?.llama_cpp?.connected && (
                 <div className="p-2.5 bg-surface-900/60 border border-slate-700/50 rounded-lg text-[11px] text-slate-400">
-                  💡 Start server: <code className="bg-surface-950 px-1 py-0.5 rounded text-cyan-300 font-mono">llama-server -m granite-4.2-3b.gguf --port 8081</code>
+                  💡 Start server: <code className="bg-surface-950 px-1 py-0.5 rounded text-cyan-300 font-mono">llama-server -hf occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M --port 8080</code>
                 </div>
               )}
             </div>
@@ -404,38 +404,10 @@ export default function SettingsPage() {
                 Dense Vector Embedding Infrastructure
               </h2>
             </div>
-            <span className="text-xs text-slate-500 font-mono">Active: {providersData?.active_embedding_model || 'embeddinggemma:300m-qat-q8_0'}</span>
+            <span className="text-xs text-slate-500 font-mono">Active: {providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'}</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-            {/* Local Ollama Embeddings */}
-            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-3.5 flex flex-col justify-between space-y-2">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-slate-200 font-semibold text-xs">Local Ollama</span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-950/80 text-emerald-400 border border-emerald-800/40">768d</span>
-                </div>
-                <p className="text-[11px] text-slate-400">Dense vectors via Ollama /api/embed.</p>
-              </div>
-              <div className="pt-2 border-t border-slate-700/40 text-[10px] text-emerald-300 font-mono truncate" title="embeddinggemma:300m-qat-q8_0">
-                embeddinggemma:300m-qat-q8_0
-              </div>
-            </div>
-
-            {/* Local llama.cpp GGUF Embeddings */}
-            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-3.5 flex flex-col justify-between space-y-2">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-slate-200 font-semibold text-xs">llama.cpp GGUF</span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-950/80 text-amber-400 border border-amber-800/40">768d</span>
-                </div>
-                <p className="text-[11px] text-slate-400">Offline GGUF embeddings over port 8081.</p>
-              </div>
-              <div className="pt-2 border-t border-slate-700/40 text-[10px] text-amber-300 font-mono truncate" title="ggml-org/embeddinggemma-300M-GGUF:Q8_0">
-                embeddinggemma-300M (Q8_0)
-              </div>
-            </div>
-
             {/* Local HuggingFace BGE */}
             <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-3.5 flex flex-col justify-between space-y-2">
               <div>
@@ -528,13 +500,13 @@ export default function SettingsPage() {
             <div className="py-2.5 flex items-center justify-between">
               <span className="text-slate-400 font-medium">Active LLM Engine</span>
               <span className="font-mono text-emerald-300 bg-surface-800 px-2 py-0.5 rounded border border-slate-700/60 uppercase">
-                {models.llm_provider || 'ollama'} ({models.llm_model || 'gemma4:e2b'})
+                {models.llm_provider || 'ollama'} ({models.llm_model || 'granite4.2:3b-q4_K_M'})
               </span>
             </div>
             <div className="py-2.5 flex items-center justify-between">
               <span className="text-slate-400 font-medium">Dense Vector Embeddings</span>
               <span className="font-mono text-slate-200 bg-surface-800 px-2 py-0.5 rounded border border-slate-700/60">
-                {models.embedding_model || 'sentence-transformers/all-MiniLM-L6-v2'} (384-dim)
+                {models.embedding_model || 'BAAI/bge-small-en-v1.5'} (384-dim)
               </span>
             </div>
             <div className="py-2.5 flex items-center justify-between">

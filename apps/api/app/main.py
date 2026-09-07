@@ -76,12 +76,42 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     configure_logging()
     settings = get_settings()
 
-    # Enforce strict offline operation for all auxiliary tools & telemetry
+    # Enforce strict offline operation for all auxiliary tools & telemetry.
+    # Offline model loading is only forced when the embedding weights are
+    # already cached — a fresh machine must be allowed to download them once.
     import os
 
     os.environ["LANGCHAIN_TRACING_V2"] = "false"
-    os.environ["HF_HUB_OFFLINE"] = "1"
-    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    _model_cached = False
+    try:
+        cfg_probe = get_model_config()
+        if cfg_probe.embedding_provider in ("huggingface", "local", "splade"):
+            from pathlib import Path as _Path
+
+            hub_snapshot = (
+                _Path.home()
+                / ".cache"
+                / "huggingface"
+                / "hub"
+                / ("models--" + cfg_probe.embedding_model.replace("/", "--"))
+            )
+            cache_dir = _Path(cfg_probe.embedding_cache_dir)
+            # Real weight files only — a stray config.json must not count as cached.
+            has_weights = hub_snapshot.exists() or (
+                cache_dir.exists()
+                and any(cache_dir.rglob(p) for p in ("*.safetensors", "*.bin", "*.pt"))
+            )
+            if has_weights:
+                _model_cached = True
+        else:
+            _model_cached = True  # cloud embeddings need no local weights
+    except Exception:
+        _model_cached = False
+    if _model_cached:
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    else:
+        logger.info("Embedding weights not cached — allowing one-time model download")
 
     if settings.hf_token:
         os.environ["HF_TOKEN"] = settings.hf_token
@@ -136,8 +166,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize tracing (LangSmith, OpenTelemetry, etc.)
     init_tracing()
 
-    # Schedule non-blocking model warmup in background task so Uvicorn binds port INSTANTLY
-    async def _async_warmup() -> None:
+    # Schedule non-blocking model warmup in background task so Uvicorn binds port INSTANTLY.
+    # Embedding warmup (model load + first encode) and the hardware probe run
+    # concurrently — they are independent and the probe shells out to subprocesses.
+    async def _warmup_embeddings() -> None:
         try:
             embed_model = get_embedding_model()
             await asyncio.to_thread(embed_model.embed_query, "warmup")
@@ -147,12 +179,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 "Embedding model warmup deferred to first query",
                 error=str(warm_err),
             )
+
+    async def _warmup_hardware() -> None:
         # OPT-H9: Run the expensive hardware probe once at startup so the first
         # /models/* request never pays the subprocess cost.
         try:
             await asyncio.to_thread(get_cached_hardware_profile)
         except Exception as hw_err:
             logger.warning("Hardware profile warmup deferred", error=str(hw_err))
+
+    async def _async_warmup() -> None:
+        await asyncio.gather(_warmup_embeddings(), _warmup_hardware())
 
     warmup_task = asyncio.create_task(_async_warmup())
 
