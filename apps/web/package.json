@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "TRUSTRAG — AI Reliability Workbench frontend",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
