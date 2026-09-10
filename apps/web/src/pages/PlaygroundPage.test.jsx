@@ -59,17 +59,17 @@ describe('PlaygroundPage engine selection', () => {
     await waitFor(() => {
       const raw = localStorage.getItem('trustrag.playground.engine')
       expect(raw).toBeTruthy()
-      expect(JSON.parse(raw).model).toBe('org/Picked-Model-GGUF:Q4_K_M')
+      expect(JSON.parse(raw).model).toBe('LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M')
     })
 
     // Top telemetry bar reflects the selection with the full id available.
     await waitFor(() => {
-      const pill = document.querySelector('[title*="org/Picked-Model-GGUF:Q4_K_M"]')
+      const pill = document.querySelector('[title*="LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"]')
       expect(pill).toBeTruthy()
     })
-    // Pill text is split across JSX text nodes — any matching render proves it.
+    // Pill text shows the short label (LFM2.5-1.2B-Instruct) — confirm the pill rendered.
     expect(
-      screen.getAllByText((_, el) => el?.textContent?.includes('Picked-Model')).length
+      screen.getAllByText((_, el) => el?.textContent?.includes('LFM2.5-1.2B-Instruct')).length
     ).toBeGreaterThan(0)
   })
 })

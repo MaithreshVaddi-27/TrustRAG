@@ -10,14 +10,21 @@ Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench
 docs/
 ├── README.md                  # Master index (this file)
 ├── ROADMAP.md                 # Product vision, milestones, phase tracking
+├── AUDIT_REPORT.md            # Aggregated audit report
 ├── architecture/
 │   ├── architecture.md        # End-to-end system design, MCP tools, LangGraph loop, data flow
-│   └── decision-log.md        # ADRs D-01 through D-17
+│   └── decision-log.md        # ADRs D-01 through D-19
 ├── audits/
-│   ├── 2026-09-07_embedding_removal_fix_audit.md  # Latest: llama.cpp-only embeddings cutover, OCC model, smart recovery
-│   ├── 2026-09-06_full_stack_working_now_audit.md # Day-1 boot fixes + local model path
-│   ├── comprehensive_system_audit.md              # Baseline systems audit
-│   └── SENIOR_AUDIT.md                            # Senior audit sign-off
+│   ├── 2026-09-10_senior_backend_ai_security_optimization_audit.md
+│   ├── 2026-09-08_model_discovery_and_hardening_audit.md
+│   ├── 2026-09-07_embedding_removal_fix_audit.md
+│   ├── 2026-09-07_backend_rag_correctness_audit.md
+│   ├── 2026-09-07_performance_local_llm_audit.md
+│   ├── 2026-09-07_security_audit.md
+│   ├── 2026-09-07_work_status_and_next_steps.md
+│   ├── 2026-09-06_full_stack_working_now_audit.md
+│   ├── comprehensive_system_audit.md
+│   └── SENIOR_AUDIT.md
 ├── security/
 │   ├── security-controls.md   # Auth, anti-IDOR, SSRF, rate limits, headers
 │   └── threat-model.md        # STRIDE threat model and mitigations
@@ -38,7 +45,13 @@ docs/
 - [**Decision Log (`architecture/decision-log.md`)**](architecture/decision-log.md): Architectural Decision Records covering technology choices and storage layers.
 
 ### 2. Audits (most current on top)
+- [**2026-09-10 — Senior Backend AI Security & Optimization Audit**](audits/2026-09-10_senior_backend_ai_security_optimization_audit.md): Production-readiness pass — chunk quality, RAM/LLM tuning, security hardening, dead code removal.
+- [**2026-09-08 — Model Discovery & Hardening Audit**](audits/2026-09-08_model_discovery_and_hardening_audit.md): Auto model discovery, registry hardening, provider-default fallback.
 - [**2026-09-07 — Embedding Removal & Fix Pass**](audits/2026-09-07_embedding_removal_fix_audit.md): Ollama/llama.cpp embeddings removed (LLM-only), OCC-RAG model cutover, degenerate-output guards, timeout + recovery-loop fixes, hardware-aware launcher.
+- [**2026-09-07 — Backend RAG Correctness Audit**](audits/2026-09-07_backend_rag_correctness_audit.md): RAG pipeline correctness, chunk quality, sentence-split backstop.
+- [**2026-09-07 — Performance & Local LLM Audit**](audits/2026-09-07_performance_local_llm_audit.md): RAM tuning, KV-cache flags, single-flight LLM semaphore.
+- [**2026-09-07 — Security Audit**](audits/2026-09-07_security_audit.md): JWT ownership checks, SSRF guards, input sanitization.
+- [**2026-09-07 — Work Status & Next Steps**](audits/2026-09-07_work_status_and_next_steps.md): Status summary and prioritized task list.
 - [**2026-09-06 — Full-Stack "Working Now" Audit**](audits/2026-09-06_full_stack_working_now_audit.md): Baseline boot fixes and local-model path validation.
 - [**Comprehensive System Audit (`audits/comprehensive_system_audit.md`)**](audits/comprehensive_system_audit.md): Wide multi-domain review.
 - [**Senior Audit (`audits/SENIOR_AUDIT.md`)**](audits/SENIOR_AUDIT.md): Senior-level review sign-off.
@@ -56,9 +69,9 @@ docs/
 
 ---
 
-## Current Stack (2026-09-08)
+## Current Stack (2026-09-10)
 
-- **LLM**: llama.cpp (local, `ibm-granite/granite-4.2-3b-GGUF:Q4_K_M`), Ollama (installed: `granite4.2:3b-q4_K_M`, `gemma3:1b`), Gemini, NVIDIA NIM — selectable per request.
+- **LLM**: llama.cpp (local, default: `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`), Ollama (default: `gemma3:1b`), Gemini, NVIDIA NIM — selectable per request.
 - **Embeddings**: HuggingFace BGE (local, 384d) by default; Gemini/NVIDIA available via env.
 - **Retrieval**: Qdrant (embedded local or cloud) + sparse BM25 + RRF; reranker runs on detected device (Metal/CUDA/CPU).
 - **Local LLM server**: start via `./scripts/start_local_llm.sh` (auto GPU offload + KV budget).

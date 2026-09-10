@@ -3,7 +3,7 @@
 **Date**: 2026-09-10 (Round 2 appended same day — live Playground trace diagnosis)
 **Roles**: Senior Backend · Senior AI/ML · Senior Security · Senior Optimization · Senior Testing (blackbox + whitebox)
 **Scope**: `apps/api` backend with emphasis on the RAG pipeline and local-LLM load (Ollama + llama.cpp); Round 2 adds Playground trace forensics + scoped Apple-design UI polish
-**Status**: AUDITED · CRITICAL BUGS FIXED · RAG/LLM OPTIMIZATIONS APPLIED · 185/185 TESTS PASSING · RUFF CLEAN · FRONTEND LINT+21 TESTS+BUILD GREEN
+**Status**: AUDITED · CRITICAL BUGS FIXED · RAG/LLM OPTIMIZATIONS APPLIED · 191/191 TESTS PASSING · RUFF CLEAN · FRONTEND LINT+21 TESTS+BUILD GREEN
 
 > Note: the working tree contained uncommitted changes before this audit (config retunes,
 > model-discovery hardening, ticket-based SSE auth). Findings below are against that working
@@ -416,7 +416,92 @@ Forensics + fixes (claims for local LLMs):
   batch-failure→individual-recovery, stray-ABSTAIN matrix, sanitize + prompt
   unit tests. Suite: backend **185 passed**, frontend **21 passed**.
 
-## 17. Residual risks / next round
+## 17. Round 9 — cloud embeddings removed + new-user path (D-19)
+
+Trigger: zero-key operation for new users; Gemini/NVIDIA embeddings deleted
+project-wide. Recorded as ADR D-19 in `docs/architecture/decision-log.md`.
+
+Removed (LLM-side Gemini/NVIDIA untouched — generation/verification only):
+- `model_registry.py`: NVIDIA + Gemini embedding branches deleted; retired
+  guard now accepts only huggingface/local/splade with re-upload guidance.
+- `config.py`: cloud default branches + `GEMINI_EMBEDDING_MODEL` alias deleted.
+- `schemas/analysis.py`: allowlists huggingface-only (`local` alias kept);
+  empty-discovery now fails closed with install instructions (new-user 422).
+- `analysis_service.py`, `ingestion/pipeline.py` (Gemini pacing sleep),
+  `config/models.yaml` comment, `/models` endpoint (huggingface entry only).
+- UI: provider buttons → static Local BGE card; Settings cloud cards deleted;
+  legacy cloud-KB pins show re-upload guidance instead of a snap button;
+  KB-pin auto-snap guarded to local models only.
+- Docs: README (loop diagram, RRF, discovery, embedding engines, setup.sh
+  step), deployment guide (diagnostics + cold starts), architecture diagram,
+  deployment env table.
+
+New users (`scripts/setup.sh`, new, verified exit 0 on this host): checks
+toolchain, .env + JWT strength, venv, node_modules, MongoDB reachability,
+inference-server presence, port availability — then prints exact boot commands.
+Defaults are fully local (llama_cpp + BGE + embedded Qdrant); BGE weights
+auto-download once. Migration note: KBs indexed with retired providers must be
+re-uploaded (backend 422 + UI banner say so explicitly).
+- Tests: retired-cloud rejection, new-user guided 422, mismatch-via-MiniLM,
+  updated provider-matrix expectations. Suite: backend **187 passed**,
+  frontend **21 passed**; ruff/eslint/build green.
+
+## 18. Round 10 — chunk/dedup quality (context forensics on DM-U1.pdf)
+
+Trigger: pasted generation context — format correct (`Segment N [Source, Page]`
+headers intact, numbering aligned) but content defective: mid-word cuts
+("sures 7.", "ead, user", "an be used") and near-duplicate segments 7/8/9
+surviving side by side.
+
+Root causes (both confirmed in code):
+- W1. `chunker.py` used fixed character windows — cuts land inside words,
+  polluting BM25 sparse tokens and displaying broken fragments.
+- W2. Generation-time dedup keyed on raw 20-word prefixes, so
+  punctuation-only variants ("mined. in" vs "mined in") compared unequal and
+  each consumed context budget.
+
+Fixes (coverage-safe by construction, no re-index needed — only new uploads
+chunk differently):
+- W1. Word-boundary windows: end snaps back to whitespace (bounded by the
+  overlap so the next window still overlaps — no gaps); start advances over a
+  leading fragment only when the previous window covered those characters;
+  overlong tokens keep the hard cut. Loop-termination and `character_offset`
+  bookkeeping preserved.
+- W2. Dedup key is now punctuation-insensitive; the 7/8/9 triple collapses to
+  one segment, freeing budget for genuinely different evidence.
+- Tests: no-fragment windows, full-coverage (300 words, zero missing),
+  long-token fallback, punctuation-variant collapse. Suite: **191 passed**.
+
+## 20. Round 11 — UI refinement: Apple-design fluid motion + prompt replacement
+
+### Changes
+
+**A. Quick Prompts replaced (QueryPanel.jsx:8-12)**
+- Original: domain-specific policy/compliance questions (cancellation policy, conflicting terms, compliance obligations)
+- New: generic KB-oriented prompts with emoji icons
+  - "Explain the key concepts in this document" (📖)
+  - "Summarize the main findings and takeaways" (📝)
+  - "Describe the knowledge base and its contents" (🔍)
+  - "What are the important details I should know?" (💡)
+- Presets now use `{ text, icon }` objects instead of raw strings
+- Preset rendering updated with group hover pattern + icon + text
+
+**B. Apple Design fluid motion applied to interactive elements**
+- Provider buttons (Ollama, llama.cpp, Gemini, NVIDIA): added `whileHover={{ scale: 1.02 }}` + `whileTap={{ scale: 0.96, transition: { duration: 0.08 } }}` — instant press feedback per Apple Design principle #1
+- Quick prompt buttons: added `whileHover={{ scale: 1.01 }}` + `whileTap={{ scale: 0.98, transition: { duration: 0.08 } }}`
+- Transition durations reduced from default to 150ms for snappier feel
+- Added `ease-out` to tailwind transitions for natural deceleration
+- Border/shadow feedback on hover for provider buttons (subtle depth increase)
+- Icon opacity animates on group hover for visual hierarchy
+
+### Verification
+- ESLint: 0 errors, 0 warnings
+- Vite build: success (4.24s)
+- Vitest: 21/21 tests passing
+
+---
+
+## 21. Residual risks / next round (updated)
 
 1. `lru_cache` on user-controlled model strings can pin HF models/HTTP clients (RAM/GPU leak) — needs bounded registry with eviction + close.
 2. `InMemoryCache` LLM cache is unbounded and keyed on never-repeated NLI prompts — scope to generation or key on `(query, chunk-hash)`.

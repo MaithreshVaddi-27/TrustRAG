@@ -767,8 +767,12 @@ async def check_ollama_status(base_url: str = "http://localhost:11434") -> dict[
     if cli_llms:
         connected = True
 
-    # Default to first discovered model, or empty if none
-    default_model = all_llms[0] if all_llms else ""
+    # Default to gemma3:1b if discovered, else first discovered
+    default_model = (
+        "gemma3:1b"
+        if "gemma3:1b" in all_llms
+        else (all_llms[0] if all_llms else "")
+    )
     merge_discovered_llms("ollama", all_llms, replace=True)
 
     return {
@@ -814,8 +818,9 @@ async def check_llamacpp_status(base_url: str = "http://127.0.0.1:8080/v1") -> d
         # The HF-hub scan returns bare repo ids (`org/model-GGUF`) while the
         # server and cache-list return quantified ids (`org/model-GGUF:Q4_K_M`)
         # for the same weights — drop the bare form when a quantified sibling
-        # is listed so the selector never shows one model twice.
-        quantified_bases = {m.split(":")[0] for m in api_models if ":" in m}
+        # is listed so the selector never shows one model twice. Also dedup
+        # across cache vs HF when the same GGUF id appears in both sources.
+        quantified_bases = {m.split(":")[0] for m in api_models + cache_models if ":" in m}
         hf_llms = [
             m
             for m in hf_models
@@ -823,10 +828,10 @@ async def check_llamacpp_status(base_url: str = "http://127.0.0.1:8080/v1") -> d
         ]
         combined = list(dict.fromkeys(api_llms + cache_models + hf_llms))
 
-    # Default to ibm-granite/granite-4.2-3b-GGUF:Q4_K_M if discovered, else first discovered
+    # Default to LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M if discovered, else first discovered
     default_model = (
-        "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
-        if "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M" in combined
+        "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
+        if "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M" in combined
         else (combined[0] if combined else "")
     )
 

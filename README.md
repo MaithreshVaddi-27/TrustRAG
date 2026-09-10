@@ -8,7 +8,7 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![Ollama](https://img.shields.io/badge/Ollama-Local_Offline-000000?logo=ollama&logoColor=white)](https://ollama.com)
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF_Server-orange)](https://github.com/ggerganov/llama.cpp)
-[![Tests](https://img.shields.io/badge/Backend%20Tests-185%20Passing-brightgreen)](apps/api/tests)
+[![Tests](https://img.shields.io/badge/Backend%20Tests-191%20Passing-brightgreen)](apps/api/tests)
 [![Tests](https://img.shields.io/badge/Frontend%20Tests-21%20Passing-brightgreen)](apps/web)
 [![E2E](https://img.shields.io/badge/Playwright%20E2E-2%20Passing-brightgreen)](apps/web/e2e)
 [![Load](https://img.shields.io/badge/k6%20Load%20Smoke-Passing-brightgreen)](load-test/smoke.js)
@@ -90,7 +90,7 @@ Standard RAG (Retrieval-Augmented Generation) systems fail silently. When dense 
                             │
                             ▼
               ┌───────────────────────────┐
-              │ 2. Hybrid Retrieval       │ ── Dense (Gemini Embeddings, 384d)
+              │ 2. Hybrid Retrieval       │ ── Dense (Local BGE, 384d)
               │    & Reciprocal Fusion    │ ── Sparse Token-Frequency BM25
               └─────────────┬─────────────┘ ── RRF Scoring & Temporal Window Filter
                             │
@@ -163,7 +163,7 @@ TrustRAG/
 │       │   └── verification/         # Batch NLI verifier & SHA-256 evidence integrity auditor
 │       ├── config/
 │       │   └── models.yaml           # Centralized configuration registry for models and thresholds
-│       └── tests/                    # 185 automated unit & integration tests (100% pass)
+│       └── tests/                    # 191 automated unit & integration tests (100% pass)
 │
 ├── scripts/                          # Operator tooling
 │   ├── discover_local_models.py      # Pre-backend model discovery (ollama list, llama-server --cache-list)
@@ -288,7 +288,7 @@ python scripts/clear_qdrant.py --purge
 - **Stopword & Contraction Normalization**: Cleans conversational noise words (`"tell"`, `"explain"`, `"what is"`) and expands standard English contractions (`"can't"` → `"cannot"`).
 
 ### 3. Hybrid Retrieval with RRF
-- **Dense Vectors**: 384-dimensional semantic embeddings generated via Google Gemini Matryoshka Representation Learning (`models/gemini-embedding-001`), operating with **0 MB local GPU RAM** and saving **88% storage** compared to 3072d vectors.
+- **Dense Vectors**: 384-dimensional semantic embeddings generated locally via `BAAI/bge-small-en-v1.5` (sentence-transformers, CPU), operating with **zero API cost** and **zero keys** — ingestion and retrieval work fully offline.
 - **Sparse BM25 Keyword Vectors**: Term-frequency sparse vectors with sublinear scaling ($1 + \ln(\text{tf})$) and zone multipliers.
 - **Reciprocal Rank Fusion (RRF)**: Combines dense and sparse candidates using reciprocal rank scoring:
   $$\text{RRF Score}(d) = \sum_{m \in \{\text{dense}, \text{sparse}\}} \frac{1}{60 + \text{rank}_m(d)}$$
@@ -333,7 +333,7 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 - **Top-Tier Open Benchmark Performance**: BGE-small achieves an MTEB retrieval score of **62.17**, outperforming many closed-source 1536d models while using only 384 dimensions.
 - **BGE Query Instruction Prefixing**: [`BGEAwareHuggingFaceEmbeddings`](apps/api/app/core/model_registry.py) prepends `"Represent this sentence for searching relevant passages: "` to queries while vectorizing documents raw.
 - **Zero API Cost & Offline Execution**: Runs entirely on local CPU with sub-35ms query latency and zero external network calls.
-- **Full Backward Compatibility**: Automatically shares the 384-dimensional vector collection schema with Gemini Matryoshka embeddings without database migrations.
+- **Full Backward Compatibility**: Existing 384-dimensional collections keep working without database migrations (re-upload only when switching embedding models).
 
 ### 11. Live Web Search Grounding via MCP (Tavily + DuckDuckGo)
 - **Native MCP Tools**:
@@ -362,7 +362,7 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 
 ### 14. Native CLI Model Discovery (ollama list & llama-server)
 - **Real-Time Shell Introspection**:
-  * **`ollama list`**: Automatically introspects installed generative LLMs (`granite4.2:3b-q4_K_M`, `gemma3:1b`). Embedding models are excluded — ollama is LLM-only; embeddings come from BGE/Gemini/NVIDIA.
+  * **`ollama list`**: Automatically introspects installed generative LLMs (`granite4.2:3b-q4_K_M`, `gemma3:1b`). Embedding models are excluded — ollama is LLM-only; embeddings always come from local BGE.
   * **`llama-server --cache-list`**: Introspects cached generative GGUF blobs. Embedding GGUFs are excluded — llama.cpp is LLM-only.
 - **Pre-Backend Discovery Snapshot**: Run [`scripts/discover_local_models.py`](scripts/discover_local_models.py) *before* starting the API to persist a JSON snapshot (`apps/api/data/discovered_models.json`) so every locally installed model is selectable from the **very first** request — no need to trigger discovery first:
   ```bash
@@ -373,10 +373,9 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 - **Interactive UI Model Switcher**: The Playground workbench and Settings diagnostic page dynamically display detected models, active endpoints, and port telemetry. The Playground auto-refreshes the model list every 8s and exposes a manual **refresh** button beside the model selector; Settings re-checks every 15s.
 
 ### 15. Multi-Dimensional Vector Embeddings & L2 Normalization
-- **Choice of SOTA Embedding Engines**:
-  * **Local HuggingFace**: `BAAI/bge-small-en-v1.5` & `all-MiniLM-L6-v2` (384-dimensional dense vectors, zero API cost, sub-35ms CPU latency).
-  * **Cloud Gemini**: `models/gemini-embedding-001` (384-dimensional Matryoshka representations).
-  * **Cloud NVIDIA NIM**: `nvidia/nv-embedqa-e5-v5` (384-dimensional vectors).
+- **Local-only Embedding Engines** (cloud embeddings removed — zero keys, offline ingestion):
+  * **HuggingFace BGE**: `BAAI/bge-small-en-v1.5` (384-dimensional dense vectors, zero API cost, sub-35ms CPU latency).
+  * **HuggingFace MiniLM**: `all-MiniLM-L6-v2` (384-dimensional dense vectors, fast alternative).
   * **LLM servers are LLM-only**: ollama / llama.cpp never provide embeddings.
 - **Dimension-Safe Retrieval with L2 Normalization**: When querying a 384d Qdrant collection with a 768d embedding model, [`dense_search()`](apps/api/app/retrieval/retriever.py) automatically truncates and re-normalizes the vector ($\|v\|_2 = 1.0$), ensuring strict mathematical consistency for cosine similarity calculations.
 
@@ -426,6 +425,7 @@ Clone the repository and create your local environment file:
 git clone https://github.com/MaithreshVaddi-27/TrustRAG.git
 cd TrustRAG
 cp .env.example .env
+./scripts/setup.sh   # verifies every local prerequisite (zero API keys needed)
 ```
 
 Open `.env` in your editor and configure your variables. It holds **secrets and
@@ -796,10 +796,10 @@ Interactive Swagger documentation is available at `http://localhost:8000/docs` i
 
 TRUSTRAG enforces automated quality checks across both backend and frontend layers, all wired into GitHub Actions:
 
-**Backend — 185 tests, ruff-clean (check + format):**
+**Backend — 191 tests, ruff-clean (check + format):**
 ```bash
 cd apps/api
-.venv/bin/python -m pytest tests/ -q --no-header --no-cov   # 185 passed
+.venv/bin/python -m pytest tests/ -q --no-header --no-cov   # 191 passed
 .venv/bin/python -m ruff check app/ tests/                  # All checks passed!
 .venv/bin/python -m ruff format --check app/ tests/         # formatted
 ```
@@ -828,7 +828,7 @@ Gated on exit code + thresholds: **<1% failed requests, p95 < 300ms, p99 < 500ms
 | Job | Checks |
 |---|---|
 | `backend-lint` | `ruff check` + `ruff format --check` |
-| `backend-test` | Full 185-test pytest suite + `models.yaml` config validation |
+| `backend-test` | Full 191-test pytest suite + `models.yaml` config validation |
 | `frontend-lint` | ESLint + 21 Vitest tests |
 | `frontend-build` | Production bundle compilation (artifact uploaded) |
 | `e2e` | MongoDB service + live API + Chromium Playwright smoke **+ k6 load smoke** (artifacts on failure) |

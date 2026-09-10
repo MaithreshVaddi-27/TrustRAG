@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { motion } from 'motion/react'
 import {
   Database, FolderPlus, Plus, Upload, Trash2, FileText, Loader2,
   File, CheckCircle2, AlertCircle, Search, ChevronDown, ChevronUp,
@@ -53,7 +54,11 @@ export default function KnowledgeBasesPage() {
 
   return (
     <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-8 animate-fade-in stagger-children">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 200, delay: 0.1 }}
+        className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -151,7 +156,7 @@ export default function KnowledgeBasesPage() {
             Documents undergo automated Porter stemming, zone-weighting (Title: 3.0x, Abstract: 2.0x), and are indexed with 384d dense embeddings (local BGE by default).
           </p>
         </div>
-      </div>
+      </motion.div>
 
       {/* Create KB Modal */}
       {isCreateModalOpen && (

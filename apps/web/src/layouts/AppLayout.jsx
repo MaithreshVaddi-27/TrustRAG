@@ -1,18 +1,20 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useQuery } from '@tanstack/react-query'
-import { motion, useReducedMotion, useMotionValue, useSpring, useTransform } from 'motion/react'
+import { motion, useReducedMotion, useMotionValue, useSpring, useTransform, AnimatePresence } from 'motion/react'
 import {
   Brain, Database, FileSearch,
   FlaskConical, GitMerge, LayoutDashboard, LogOut,
   Settings, Swords, Zap, Menu, X, ChevronLeft, ChevronRight,
-  ShieldCheck, Cpu, Layers
+  ShieldCheck, Cpu, Layers, RefreshCw
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { authService } from '@/services/auth'
 import { modelService } from '@/services/api'
 import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
+import { SPRING_SNAPPY, SPRING_GENTLE } from '@/lib/motionConfig'
+import useBackendHealth from '@/hooks/useBackendHealth'
 
 function readPlaygroundEngine() {
   try {
@@ -42,6 +44,22 @@ export default function AppLayout({ children }) {
   const location = useLocation()
   const { user } = useAuthStore()
   const reducedMotion = useReducedMotion()
+  const { isOnline, isChecking, recheck } = useBackendHealth()
+
+  // Cursor-follow glow position
+  const cursorX = useMotionValue(0)
+  const cursorY = useMotionValue(0)
+  const glowX = useSpring(cursorX, { damping: 30, stiffness: 200 })
+  const glowY = useSpring(cursorY, { damping: 30, stiffness: 200 })
+
+  useEffect(() => {
+    const handler = (e) => {
+      cursorX.set(e.clientX)
+      cursorY.set(e.clientY)
+    }
+    window.addEventListener('mousemove', handler)
+    return () => window.removeEventListener('mousemove', handler)
+  }, [cursorX, cursorY])
 
   // Dynamic model telemetry query
   const { data: providersData } = useQuery({
@@ -85,11 +103,8 @@ export default function AppLayout({ children }) {
   const isEmbeddingOverride = !!playgroundEngine?.embeddingModel && playgroundEngine.embeddingModel !== serverEmbeddingModel
 
   // Motion values for spring animations
-  const sidebarWidth = useSpring(isCollapsed ? 72 : 240, { damping: 15, stiffness: 150 })
-  const sidebarOpacity = useMotionValue(1)
-  const mobileDrawerX = useSpring(isMobileOpen ? 0 : -256, { damping: 15, stiffness: 150 })
-  
-  // Track if we're currently animating
+  const sidebarWidth = useSpring(isCollapsed ? 72 : 240, { damping: 20, stiffness: 220 })
+  const mobileDrawerX = useSpring(isMobileOpen ? 0 : -256, { damping: 20, stiffness: 220 })
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -99,24 +114,16 @@ export default function AppLayout({ children }) {
   // Animate sidebar width on collapse/expand with spring
   useEffect(() => {
     const targetWidth = isCollapsed ? 72 : 240
-    if (!reducedMotion) {
-      sidebarWidth.set(targetWidth)
-    } else {
-      sidebarWidth.set(targetWidth)
-    }
-  }, [isCollapsed, sidebarWidth, reducedMotion])
+    sidebarWidth.set(targetWidth)
+  }, [isCollapsed, sidebarWidth])
 
   // Animate mobile drawer
   useEffect(() => {
     const targetX = isMobileOpen ? 0 : -256
-    if (!reducedMotion) {
-      mobileDrawerX.set(targetX)
-    } else {
-      mobileDrawerX.set(targetX)
-    }
-  }, [isMobileOpen, mobileDrawerX, reducedMotion])
+    mobileDrawerX.set(targetX)
+  }, [isMobileOpen, mobileDrawerX])
 
-  const toggleSidebar = () => {
+  const toggleSidebar = useCallback(() => {
     setIsCollapsed(prev => {
       const next = !prev
       try {
@@ -126,16 +133,16 @@ export default function AppLayout({ children }) {
       }
       return next
     })
-  }
+  }, [])
 
   // Rubber-band drag for mobile drawer
   const dragX = useMotionValue(0)
-  const drawerWidth = 256 // w-64 = 256px
-  
+  const drawerWidth = 256
+
   // Transform dragX with rubber-banding: resist progressively past boundaries
-  const rubberBandTransform = useTransform(dragX, 
-    [-drawerWidth, 0, drawerWidth], // input range
-    [-drawerWidth * 1.5, 0, drawerWidth * 1.5] // output range with rubber-band
+  const rubberBandTransform = useTransform(dragX,
+    [-drawerWidth, 0, drawerWidth],
+    [-drawerWidth * 1.5, 0, drawerWidth * 1.5]
   )
 
   async function handleLogout() {
@@ -145,6 +152,14 @@ export default function AppLayout({ children }) {
 
   return (
     <div className="flex flex-col h-screen bg-surface-950 text-slate-100 overflow-hidden select-none">
+      {/* ── CURSOR GLOW ──────────────────────────────────────────────────── */}
+      {!reducedMotion && (
+        <motion.div
+          className="cursor-glow hidden md:block"
+          style={{ left: glowX, top: glowY }}
+        />
+      )}
+
       {/* ── TOP NAVBAR ─────────────────────────────────────────────────── */}
       <header className="h-16 shrink-0 z-40 bg-surface-900/90 backdrop-blur-xl border-b border-slate-800/80 px-4 flex items-center justify-between shadow-md shadow-black/30">
         {/* Left: Brand + Sidebar Toggle Button */}
@@ -196,15 +211,37 @@ export default function AppLayout({ children }) {
           <motion.div
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ type: 'spring', damping: 15, stiffness: 150 }}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/40 border border-emerald-800/50 text-[11px] font-mono text-emerald-300 shadow-sm shadow-emerald-950/30"
+            transition={SPRING_GENTLE}
+            className={clsx(
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono shadow-sm',
+              isOnline === false
+                ? 'bg-red-950/40 border border-red-800/50 text-red-300 shadow-red-950/30'
+                : isOnline === null
+                  ? 'bg-slate-800/60 border border-slate-700/60 text-slate-400'
+                  : 'bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 shadow-emerald-950/30'
+            )}
+            title={isOnline === false ? 'Backend unreachable — start the API server' : isOnline === null ? 'Checking backend…' : 'Backend is healthy'}
           >
             <motion.span
-              animate={{ scale: [1, 1.2, 1] }}
-              transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-              className="w-2 h-2 rounded-full bg-emerald-400"
+              animate={isOnline === false ? { opacity: [1, 0.4, 1] } : isChecking ? { opacity: [1, 0.3, 1] } : { scale: [1, 1.2, 1] }}
+              transition={isOnline === false ? { duration: 2, repeat: Infinity } : isChecking ? { duration: 1, repeat: Infinity } : { duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+              className={clsx(
+                'w-2 h-2 rounded-full',
+                isOnline === false ? 'bg-red-400' : isOnline === null ? 'bg-slate-500' : 'bg-emerald-400'
+              )}
             />
-            <span>API Online</span>
+            <span>{isOnline === false ? 'API Offline' : isOnline === null ? 'Checking…' : 'API Online'}</span>
+            {isOnline === false && (
+              <motion.button
+                onClick={recheck}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                className="ml-0.5 text-red-400/80 hover:text-red-300 transition-colors"
+                title="Reconnect to backend"
+              >
+                <RefreshCw size={10} />
+              </motion.button>
+            )}
           </motion.div>
 
           <div
@@ -239,7 +276,7 @@ export default function AppLayout({ children }) {
             </span>
           </div>
 
-          <div 
+          <div
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300"
             title={`${providersData?.hardware?.accelerator_name || 'Hardware'} • Memory: ${providersData?.hardware?.memory?.total_gb || 8}GB`}
           >
@@ -280,68 +317,121 @@ export default function AppLayout({ children }) {
         </div>
       </header>
 
+      {/* ── BACKEND-DOWN BANNER ─────────────────────────────────────────── */}
+      <AnimatePresence>
+        {isOnline === false && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={SPRING_SNAPPY}
+            className="overflow-hidden z-30 border-b border-red-900/40 bg-red-950/30 backdrop-blur-sm"
+          >
+            <div className="flex items-center justify-center gap-2 py-2 px-4 text-xs text-red-300">
+              <span className="shrink-0">
+                Backend unreachable — start the API server to enable analysis.
+              </span>
+              <motion.button
+                onClick={recheck}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="shrink-0 ml-1 px-2 py-0.5 rounded-lg bg-red-900/30 border border-red-800/40 text-red-200 hover:text-red-100 hover:bg-red-900/50 transition-colors text-[11px] font-mono"
+              >
+                <RefreshCw size={11} className="inline mr-1" />
+                Retry
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── BODY (SIDEBAR + CONTENT) ───────────────────────────────────── */}
       <div className="flex flex-1 min-h-0 overflow-hidden relative">
         {/* Mobile Backdrop Overlay */}
-        {isMobileOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsMobileOpen(false)}
-            className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm md:hidden"
-          />
-        )}
+        <AnimatePresence>
+          {isMobileOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setIsMobileOpen(false)}
+              className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm md:hidden"
+            />
+          )}
+        </AnimatePresence>
 
-        {/* ── DESKTOP SIDEBAR ──────────────────────────────────────────────────── */}
+        {/* ── DESKTOP SIDEBAR (glassmorphism) ──────────────────────────── */}
         <motion.aside
           style={{
             width: sidebarWidth,
-            opacity: sidebarOpacity,
             flexShrink: 0,
           }}
           className={clsx(
-            'flex flex-col border-r border-slate-800/80 bg-surface-900/95 backdrop-blur-xl z-50 shrink-0',
+            'flex flex-col glass-sidebar z-50 shrink-0',
             'hidden md:flex',
           )}
-          transition={{ type: 'spring', damping: 15, stiffness: 150 }}
+          transition={SPRING_SNAPPY}
         >
-          {/* Navigation Links */}
+          {/* Navigation Links — staggered entrance */}
           <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
             {NAV.map((item, i) =>
               item === null ? (
-                <div key={i} className="my-2 border-t border-slate-800/60" />
-              ) : (
-                <SidebarLink
-                  key={item.to}
-                  {...item}
-                  isCollapsed={isCollapsed}
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: i * 0.03, ...SPRING_GENTLE }}
+                  className="my-2 border-t border-slate-800/60"
                 />
+              ) : (
+                <motion.div
+                  key={item.to}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.03, ...SPRING_GENTLE }}
+                >
+                  <SidebarLink
+                    {...item}
+                    isCollapsed={isCollapsed}
+                  />
+                </motion.div>
               )
             )}
           </nav>
 
           {/* Sidebar Footer / Quick Status */}
           <div className="p-3 border-t border-slate-800/80">
-            {!isCollapsed ? (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ type: 'spring', damping: 15, stiffness: 150 }}
-                className="p-2.5 rounded-xl bg-surface-800/40 border border-slate-800 flex items-center gap-2.5"
-              >
-                <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold text-slate-300 truncate">Self-Healing Loop</p>
-                  <p className="text-[10px] text-slate-500 truncate">StateGraph v1.0 Active</p>
-                </div>
-              </motion.div>
-            ) : (
-              <div className="flex justify-center" title="Self-Healing Loop Active">
-                <ShieldCheck size={18} className="text-emerald-400" />
-              </div>
-            )}
+            <AnimatePresence mode="wait">
+              {!isCollapsed ? (
+                <motion.div
+                  key="expanded-status"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={SPRING_SNAPPY}
+                  className="p-2.5 rounded-xl bg-surface-800/40 border border-slate-800 flex items-center gap-2.5 overflow-hidden"
+                >
+                  <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-slate-300 truncate">Self-Healing Loop</p>
+                    <p className="text-[10px] text-slate-500 truncate">StateGraph v1.0 Active</p>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="collapsed-status"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={SPRING_SNAPPY}
+                  className="flex justify-center"
+                  title="Self-Healing Loop Active"
+                >
+                  <ShieldCheck size={18} className="text-emerald-400" />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </motion.aside>
 
@@ -358,7 +448,7 @@ export default function AppLayout({ children }) {
           drag="x"
           dragConstraints={{ left: -drawerWidth, right: 0 }}
           dragElastic={0.2}
-          transition={{ type: 'spring', damping: 15, stiffness: 150 }}
+          transition={SPRING_SNAPPY}
         >
           {/* Mobile close button header */}
           <div className="flex items-center justify-between p-3 border-b border-slate-800">
@@ -394,7 +484,7 @@ export default function AppLayout({ children }) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              transition={{ type: 'spring', damping: 15, stiffness: 150 }}
+              transition={SPRING_SNAPPY}
               className="p-2.5 rounded-xl bg-surface-800/40 border border-slate-800 flex items-center gap-2.5"
             >
               <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
@@ -421,7 +511,7 @@ function SidebarLink({ to, label, icon: Icon, badge, isCollapsed }) {
       to={to}
       title={isCollapsed ? label : undefined}
       className={({ isActive }) => clsx(
-        'relative flex items-center rounded-xl text-sm font-medium transition-all duration-200 group',
+        'relative flex items-center rounded-xl text-sm font-medium group',
         isCollapsed
           ? 'justify-center p-3'
           : 'gap-3 px-3.5 py-2.5',
@@ -433,60 +523,82 @@ function SidebarLink({ to, label, icon: Icon, badge, isCollapsed }) {
       {({ isActive }) => (
         <motion.div
           whileTap={{ scale: isCollapsed ? 0.9 : 0.98 }}
+          transition={SPRING_SNAPPY}
           className="w-full flex items-center"
         >
           {/* Active cyan indicator bar */}
-          {isActive && !isCollapsed && (
-            <motion.span
-              initial={{ height: 0 }}
-              animate={{ height: 'calc(100% - 8px)' }}
-              exit={{ height: 0 }}
-              transition={{ type: 'spring', damping: 15, stiffness: 150 }}
-              className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-cyan-400 shadow-sm shadow-cyan-400"
-            />
-          )}
+          <AnimatePresence>
+            {isActive && !isCollapsed && (
+              <motion.span
+                initial={{ height: 0 }}
+                animate={{ height: 'calc(100% - 8px)' }}
+                exit={{ height: 0 }}
+                transition={SPRING_SNAPPY}
+                className="absolute left-0 inset-y-2 w-1 rounded-r-full bg-cyan-400 shadow-sm shadow-cyan-400"
+              />
+            )}
+          </AnimatePresence>
 
           <motion.div
+            whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.9 }}
-            className="shrink-0 transition-transform group-hover:scale-110"
+            transition={SPRING_SNAPPY}
+            className="shrink-0"
           >
             <Icon
               size={18}
               className={clsx(
-                'shrink-0 transition-transform group-hover:scale-110',
+                'shrink-0 transition-colors',
                 isActive ? 'text-primary-400' : 'text-slate-400 group-hover:text-slate-200'
               )}
             />
           </motion.div>
 
-          {!isCollapsed && (
-            <span className="truncate flex-1">{label}</span>
-          )}
+          {/* Label — AnimatePresence for smooth collapse/expand */}
+          <AnimatePresence mode="wait">
+            {!isCollapsed && (
+              <motion.span
+                key="label"
+                initial={{ opacity: 0, width: 0 }}
+                animate={{ opacity: 1, width: 'auto' }}
+                exit={{ opacity: 0, width: 0 }}
+                transition={SPRING_SNAPPY}
+                className="truncate flex-1 overflow-hidden"
+              >
+                {label}
+              </motion.span>
+            )}
+          </AnimatePresence>
 
-          {!isCollapsed && badge && (
-            <motion.span
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              transition={{ type: 'spring', damping: 15, stiffness: 150 }}
-              className="px-1.5 py-[2px] rounded text-[10px] font-mono font-semibold bg-primary-500/20 text-primary-300 border border-primary-500/30"
-            >
-              {badge}
-            </motion.span>
-          )}
+          {/* Badge — AnimatePresence for smooth appearance */}
+          <AnimatePresence>
+            {!isCollapsed && badge && (
+              <motion.span
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={SPRING_SNAPPY}
+                className="px-1.5 py-[2px] rounded text-[10px] font-mono font-semibold bg-primary-500/20 text-primary-300 border border-primary-500/30"
+              >
+                {badge}
+              </motion.span>
+            )}
+          </AnimatePresence>
 
-          {/* Floating Tooltip in Collapsed Mode */}
-          {isCollapsed && (
-            <motion.div
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -8 }}
-              transition={{ type: 'spring', damping: 15, stiffness: 150 }}
-              className="absolute left-full ml-2 px-2.5 py-1 rounded-lg bg-surface-800 border border-slate-700 text-xs text-slate-200 font-medium whitespace-nowrap pointer-events-none shadow-xl z-50"
-            >
-              {label}
-            </motion.div>
-          )}
+          {/* Floating Tooltip in Collapsed Mode — AnimatePresence for spring entrance */}
+          <AnimatePresence>
+            {isCollapsed && (
+              <motion.div
+                initial={{ opacity: 0, x: -8, scale: 0.95 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: -8, scale: 0.95 }}
+                transition={SPRING_GENTLE}
+                className="sidebar-tooltip"
+              >
+                {label}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       )}
     </NavLink>

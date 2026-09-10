@@ -256,3 +256,27 @@ Any deviation from the specification must be logged here with rationale.
 - `apps/api/app/core/local_llm.py` (`INSTALLED_*` provider lists)
 
 
+
+## D-19: Removal of Cloud Embeddings — Local-Only BGE
+
+**Date:** 2026-09-10
+**Status:** Accepted & Implemented (partially reverses D-14-era cloud default)
+**Phase:** 16
+
+**Decision:** Remove Google Gemini and NVIDIA NIM embedding providers from the entire
+project. Embeddings are local-only (`huggingface`: `BAAI/bge-small-en-v1.5`,
+`all-MiniLM-L6-v2`, 384d). Cloud LLMs (Gemini, NVIDIA NIM) remain available for
+*generation/verification only*.
+
+**Rationale:**
+- New users run zero-key: no Gemini/NVIDIA/Tavily keys needed to boot, ingest, and analyze.
+- No per-token embedding cost, no quota exhaustion inside the ingestion/retrieval hot path.
+- One embedding space per deployment kills an entire class of cross-provider vector contamination bugs.
+- Existing KBs indexed with retired providers must be re-uploaded (backend fails closed with instructions; UI directs to re-upload).
+
+**Files:**
+- `apps/api/app/core/model_registry.py` (branches removed, retired-provider guard)
+- `apps/api/app/core/config.py`, `apps/api/app/api/v1/schemas/analysis.py` (allowlists)
+- `apps/api/app/api/v1/models.py`, `apps/web/.../QueryPanel.jsx`, `apps/web/.../SettingsPage.jsx` (UI)
+- `apps/api/app/ingestion/pipeline.py` (Gemini rate-limit pacing removed)
+- `apps/api/config/models.yaml`, `.env.example`, `scripts/setup.sh` (new), docs

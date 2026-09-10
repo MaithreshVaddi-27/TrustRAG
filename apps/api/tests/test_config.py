@@ -238,7 +238,7 @@ class TestAnalysisModelPolicy:
 
         from app.api.v1.schemas.analysis import AnalysisCreate
 
-        with pytest.raises(ValidationError, match="not enabled"):
+        with pytest.raises(ValidationError, match=r"No ollama models discovered|not enabled"):
             AnalysisCreate(
                 knowledge_base_id="64ee39d09c6292376e191983",
                 query="Load this model",
@@ -275,7 +275,7 @@ class TestAnalysisModelPolicy:
 
         from app.api.v1.schemas.analysis import AnalysisCreate
 
-        with pytest.raises(ValidationError, match="not enabled"):
+        with pytest.raises(ValidationError, match=r"No llama_cpp models discovered|not enabled"):
             AnalysisCreate(
                 knowledge_base_id="64ee39d09c6292376e191983",
                 query="This must stay blocked",
@@ -302,7 +302,11 @@ class TestAnalysisModelPolicy:
         _llm_mod.get_discovered_llms = lambda provider: frozenset(
             ["granite4.2:3b-q4_K_M", "gemma3:1b"]
             if provider == "ollama"
-            else ["occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M", "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"]
+            else [
+                "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+                "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
+                "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
+            ]
         )
 
         try:

@@ -31,15 +31,15 @@ llm:
   #     - granite4.2:3b-q4_K_M
   #     - gemma3:1b
   #   llama_cpp (`llama-server --cache-list`):
-  #     - ibm-granite/granite-4.2-3b-GGUF:Q4_K_M     # ACTIVE: 3B Granite, ~2.2GB
+  #     - LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M        # DEFAULT: 1.2B, ~1GB
+  #     - ibm-granite/granite-4.2-3b-GGUF:Q4_K_M            # 3B Granite, ~2.2GB
   #     - ggml-org/SmolLM3-3B-GGUF:Q4_K_M
   #     - bartowski/EXAONE-3.5-2.4B-Instruct-GGUF:Q4_K_S
-  #     - LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
   #     - ibm-granite/granite-4.0-h-1b-GGUF:Q4_K_M
-  model: ibm-granite/granite-4.2-3b-GGUF:Q4_K_M
+  model: LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
   # Per-provider yaml defaults (used when the env override is empty).
-  model_ollama: granite4.2:3b-q4_K_M
-  model_llamacpp: ibm-granite/granite-4.2-3b-GGUF:Q4_K_M
+  model_ollama: gemma3:1b
+  model_llamacpp: LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
   temperature: 0.2
   top_p: 0.9
   max_output_tokens: 1024
@@ -49,9 +49,9 @@ llm:
 # ─── Embedding ────────────────────────────────────────────────────────────────
 embedding:
   framework: langchain
-  # Local HuggingFace BGE — offline default, zero API cost. Cloud options
-  # (google_genai, nvidia) remain selectable via EMBEDDING_* env overrides.
-  # NOTE: ollama / llama.cpp are LLM-only — never embedding providers.
+  # Local HuggingFace BGE — offline default, zero API cost. Embeddings are
+  # local-only: cloud options were removed, and ollama / llama.cpp are
+  # LLM-only — never embedding providers.
   provider: huggingface
   model: BAAI/bge-small-en-v1.5
   # 384 dimensions matches Qdrant collection configuration via Matryoshka embeddings.
@@ -64,10 +64,10 @@ embedding:
 verification:
   framework: langchain
   provider: llama_cpp
-  model: ibm-granite/granite-4.2-3b-GGUF:Q4_K_M
+  model: LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
   # Per-provider yaml defaults (used when the env override is empty).
-  model_ollama: granite4.2:3b-q4_K_M
-  model_llamacpp: ibm-granite/granite-4.2-3b-GGUF:Q4_K_M
+  model_ollama: gemma3:1b
+  model_llamacpp: LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
   temperature: 0.0          # Zero temperature for deterministic verification
   max_output_tokens: 512
   timeout_seconds: 120
@@ -94,7 +94,7 @@ retrieval:
 # ─── Document Processing ──────────────────────────────────────────────────────
 ingestion:
   chunk_size: 512           # Characters per chunk (approx. 128 tokens)
-  chunk_overlap: 64
+  chunk_overlap: 64         # Windows snap to word boundaries (see chunker.py)
   # Supported document formats
   supported_formats:
     - pdf

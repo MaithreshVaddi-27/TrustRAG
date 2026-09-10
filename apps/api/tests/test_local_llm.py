@@ -80,11 +80,11 @@ def test_model_registry_local_providers(monkeypatch):
         monkeypatch.setattr(s, "llamacpp_model", "")
         ollama_llm = get_llm("ollama")
         assert isinstance(ollama_llm, ChatOllamaClient)
-        assert ollama_llm.model == "granite4.2:3b-q4_K_M"
+        assert ollama_llm.model == "gemma3:1b"
 
         llamacpp_llm = get_llm("llama_cpp")
         assert isinstance(llamacpp_llm, ChatLlamaCppClient)
-        assert llamacpp_llm.model == "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
+        assert llamacpp_llm.model == "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
 
         v_ollama = get_verification_model("ollama")
         assert isinstance(v_ollama, ChatOllamaClient)
@@ -122,17 +122,23 @@ async def test_llamacpp_health_check():
 
 
 def test_embedding_model_local_providers():
-    """Ollama/llama.cpp are LLM-only: embedding usage must fail loudly."""
+    """Only local HuggingFace embeddings exist: anything else fails loudly."""
     import pytest
 
     from app.core.exceptions import ConfigurationError
     from app.core.model_registry import get_embedding_model
 
-    with pytest.raises(ConfigurationError, match="LLM-only"):
+    with pytest.raises(ConfigurationError, match="local HuggingFace"):
         get_embedding_model("ollama", "embeddinggemma:300m-qat-q8_0")
 
-    with pytest.raises(ConfigurationError, match="LLM-only"):
+    with pytest.raises(ConfigurationError, match="local HuggingFace"):
         get_embedding_model("llamacpp", "ggml-org/embeddinggemma-300M-GGUF:Q8_0")
+
+    with pytest.raises(ConfigurationError, match="local HuggingFace"):
+        get_embedding_model("google_genai", "models/gemini-embedding-001")
+
+    with pytest.raises(ConfigurationError, match="local HuggingFace"):
+        get_embedding_model("nvidia", "nvidia/nv-embedqa-e5-v5")
 
 
 # ─── Discovery snapshot + seeding tests ───────────────────────────────────────

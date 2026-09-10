@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { motion } from 'motion/react'
 import AppLayout from '@/layouts/AppLayout'
 import { TraceEventType } from '@/components/workbench/traceEvents'
 import { kbService, analysisService, modelService } from '@/services/api'
@@ -60,7 +61,7 @@ export default function PlaygroundPage() {
   })
 
   const [selectedProvider, setSelectedProvider] = useState('llama_cpp')
-  const [selectedModel, setSelectedModel] = useState('')
+  const [selectedModel, setSelectedModel] = useState('LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M')
   // Auto-select the discovered default on first load so runs never go out
   // with an empty model (previously rendered as "DEFAULT" everywhere).
   // One-shot: once set — by the user or here — nothing overrides it.
@@ -105,7 +106,7 @@ export default function PlaygroundPage() {
 
 const activeProviderInfo = providersData?.providers?.[selectedProvider]
   const availableModels = activeProviderInfo?.models?.length
-    ? activeProviderInfo.models
+    ? [...new Set(activeProviderInfo.models)]
     : []
 
   const activeEmbeddingProviderInfo = providersData?.embedding_providers?.[selectedEmbeddingProvider]
@@ -321,25 +322,34 @@ const activeProviderInfo = providersData?.providers?.[selectedProvider]
   // KB embedding-space pin: a KB's vectors live in exactly one embedding space
   // (recorded at first ingest). The backend rejects analyses that request any
   // other model, so auto-snap the selector whenever the KB (or its pin) changes.
+  // Retired cloud pins never snap (no valid selection exists) — the banner
+  // directs to re-upload instead.
+  const LOCAL_EMBEDDING_MODELS = ['BAAI/bge-small-en-v1.5', 'sentence-transformers/all-MiniLM-L6-v2']
   const kbEmbeddingPin = selectedKb?.embedding_model || null
   const kbEmbeddingProviderPin = selectedKb?.embedding_provider || null
+  const isLocalPin = kbEmbeddingPin && LOCAL_EMBEDDING_MODELS.includes(kbEmbeddingPin)
   useEffect(() => {
-    if (kbEmbeddingPin) {
-      if (kbEmbeddingProviderPin) setSelectedEmbeddingProvider(kbEmbeddingProviderPin)
+    if (isLocalPin) {
+      if (kbEmbeddingProviderPin === 'huggingface') setSelectedEmbeddingProvider(kbEmbeddingProviderPin)
       setSelectedEmbeddingModel(kbEmbeddingPin)
       userTouchedEmbeddingRef.current = false
     }
-  }, [kbId, kbEmbeddingPin, kbEmbeddingProviderPin])
+  }, [kbId, kbEmbeddingPin, kbEmbeddingProviderPin, isLocalPin])
   const embeddingMismatch = !!kbEmbeddingPin && selectedEmbeddingModel !== kbEmbeddingPin
   const snapEmbeddingToKb = () => {
-    if (kbEmbeddingProviderPin) setSelectedEmbeddingProvider(kbEmbeddingProviderPin)
+    if (!isLocalPin) return
+    if (kbEmbeddingProviderPin === 'huggingface') setSelectedEmbeddingProvider(kbEmbeddingProviderPin)
     if (kbEmbeddingPin) setSelectedEmbeddingModel(kbEmbeddingPin)
     userTouchedEmbeddingRef.current = false
   }
 
   return (
     <AppLayout>
-      <div className="flex flex-col md:flex-row h-full min-h-0 w-full overflow-hidden">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 200, delay: 0.1 }}
+        className="flex flex-col md:flex-row h-full min-h-0 w-full overflow-hidden">
         <QueryPanel
           query={query}
           setQuery={setQuery}
@@ -355,8 +365,6 @@ const activeProviderInfo = providersData?.providers?.[selectedProvider]
           setSelectedProvider={setSelectedProvider}
           selectedModel={selectedModel}
           setSelectedModel={setSelectedModel}
-          selectedEmbeddingProvider={selectedEmbeddingProvider}
-          setSelectedEmbeddingProvider={setSelectedEmbeddingProvider}
           selectedEmbeddingModel={selectedEmbeddingModel}
           setSelectedEmbeddingModel={setSelectedEmbeddingModel}
           enableWebSearch={enableWebSearch}
@@ -392,7 +400,7 @@ const activeProviderInfo = providersData?.providers?.[selectedProvider]
           selectedModel={selectedModel}
           selectedEmbeddingModel={selectedEmbeddingModel}
         />
-      </div>
+      </motion.div>
     </AppLayout>
   )
 }

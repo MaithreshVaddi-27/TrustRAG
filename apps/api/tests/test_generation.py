@@ -139,3 +139,31 @@ def test_strip_stray_abstain_matrix():
     )
     # Nothing substantive left behind the token means genuine refusal.
     assert strip_stray_abstain("ABSTAIN\nsee above") == "ABSTAIN"
+
+
+def test_format_dedupes_punctuation_variants():
+    """Boundary variants ('mined. in' vs 'mined in') must not consume budget twice."""
+    base = (
+        "the knowledge that can be extracted from these relationals depends on how "
+        "well they match with the domain knowledge and the kinds of patterns to be mined"
+    )
+    chunks = [
+        {
+            "text": base + " in this phase we need to handle missing values.",
+            "filename": "d.pdf",
+            "page": 24,
+        },
+        {
+            "text": base + ". in this phase we need to handle missing values.",
+            "filename": "d.pdf",
+            "page": 25,
+        },
+        {
+            "text": "entirely different content about indexing and retrieval here.",
+            "filename": "d.pdf",
+            "page": 26,
+        },
+    ]
+    context, indices = format_context_with_chunk_indices(chunks, max_chars=10000)
+    assert len(indices) == 2
+    assert "Segment 3" not in context

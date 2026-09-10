@@ -155,9 +155,6 @@ async def _index_parsed_chunks(
                 # a misleading IndexError below).
                 raise last_batch_err or RuntimeError("Embedding batch failed without error")
             dense_vectors.extend(batch_vecs)
-            has_more = offset + embed_batch_size < len(contextual_texts)
-            if has_more and cfg.embedding_provider == "google_genai":
-                await asyncio.sleep(1.0)
 
         qdrant_client = await get_qdrant_client()
         collection_name = get_collection_name(kb_id_str)

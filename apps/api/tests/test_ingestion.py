@@ -196,3 +196,46 @@ def test_parse_document_routing():
     pages, _, _ = parse_document("config.json", stream)
     assert len(pages) == 1
     assert '"key": "value"' in pages[0]["text"]
+
+
+def test_chunker_respects_word_boundaries():
+    """Windows must never start or end mid-word (broken tokens pollute BM25)."""
+    words = [f"tok{i:03d}" for i in range(120)]
+    word_set = set(words)
+    pages = [{"page": 3, "text": " ".join(words)}]
+    # Sizes chosen so naive character windows would cut inside tokens.
+    chunks = chunk_text(pages, chunk_size=47, chunk_overlap=11)
+
+    assert len(chunks) > 2
+    for ch in chunks:
+        for token in ch["text"].split():
+            assert token in word_set, f"mid-word fragment: {token!r}"
+    # First chunk starts at the document start; every chunk is non-empty.
+    assert chunks[0]["character_offset"] == 0
+    assert all(len(ch["text"]) > 0 for ch in chunks)
+
+
+def test_chunker_preserves_full_coverage():
+    """Snapping must not silently drop text between windows."""
+    words = [f"word{i:03d}" for i in range(300)]
+    text = " ".join(words)
+    pages = [{"page": 1, "text": text}]
+    chunks = chunk_text(pages, chunk_size=200, chunk_overlap=40)
+
+    covered = set()
+    for ch in chunks:
+        for token in ch["text"].split():
+            covered.add(token)
+    # Every whole word appears in at least one chunk (fragments excluded).
+    missing = [w for w in words if w not in covered]
+    assert missing == []
+
+
+def test_chunker_long_token_falls_back_to_hard_cut():
+    """A token longer than the window still yields a (truncated) chunk."""
+    pages = [{"page": 1, "text": "A" * 300}]
+    chunks = chunk_text(pages, chunk_size=100, chunk_overlap=10)
+    assert len(chunks) >= 1
+    # normalize_text lowercases; the hard cut keeps the full window width.
+    assert chunks[0]["text"].startswith("a")
+    assert len(chunks[0]["text"]) == 100

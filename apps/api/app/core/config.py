@@ -159,7 +159,7 @@ class Settings(BaseSettings):
     embedding_provider: str = Field(
         default="huggingface",
         validation_alias=AliasChoices("EMBEDDING_PROVIDER", "EMBEDDING_BACKEND"),
-        description="Active embedding engine: 'huggingface' (local), 'google_genai', or 'nvidia'",
+        description="Active embedding engine: 'huggingface' (local-only)",
     )
     search_provider: str = Field(
         default="auto",
@@ -194,9 +194,7 @@ class Settings(BaseSettings):
     )
     gemini_embedding_model: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            "GEMINI_EMBEDDING_MODEL", "EMBEDDING_MODEL", "LOCAL_EMBEDDING_MODEL"
-        ),
+        validation_alias=AliasChoices("EMBEDDING_MODEL", "LOCAL_EMBEDDING_MODEL"),
         description="Override embedding model ID in .env",
     )
     embedding_dim: int | None = Field(
@@ -379,18 +377,10 @@ class ModelConfig:
     @property
     def embedding_model(self) -> str:
         val = self._get("embedding", "model")
-        env_model = (
-            os.environ.get("EMBEDDING_MODEL")
-            or os.environ.get("LOCAL_EMBEDDING_MODEL")
-            or os.environ.get("GEMINI_EMBEDDING_MODEL")
-        )
+        env_model = os.environ.get("EMBEDDING_MODEL") or os.environ.get("LOCAL_EMBEDDING_MODEL")
         if env_model:
             return env_model
-        if self.embedding_provider in ("huggingface", "local"):
-            return str(val or "BAAI/bge-small-en-v1.5")
-        if self.embedding_provider in ("nvidia", "nim"):
-            return str(val or "nvidia/nv-embedqa-e5-v5")
-        return str(val or "models/gemini-embedding-001")
+        return str(val or "BAAI/bge-small-en-v1.5")
 
     @property
     def embedding_dimensionality(self) -> int:

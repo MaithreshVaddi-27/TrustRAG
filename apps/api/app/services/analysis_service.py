@@ -211,7 +211,7 @@ async def create_analysis(
     if effective_provider in ("ollama", "llamacpp", "llama_cpp"):
         raise InputValidationError(
             f"Embedding provider '{effective_provider}' is LLM-only and was removed. "
-            "Use 'huggingface' (local BGE), 'google_genai', or 'nvidia'.",
+            "Use 'huggingface' (local BGE).",
             detail=f"requested_embedding_provider={schema.embedding_provider} "
             f"server_default={cfg.embedding_provider}",
         )

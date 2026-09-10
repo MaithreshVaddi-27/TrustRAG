@@ -100,7 +100,7 @@ npm install
 npm run dev
 ```
 
-> **Embeddings:** By default TRUSTRAG runs local HuggingFace BGE (384d) embeddings via PyTorch — zero cloud cost. Switch to Gemini/NVIDIA embeddings only when you explicitly want cloud (`EMBEDDING_PROVIDER` env).
+> **Embeddings:** TRUSTRAG runs local HuggingFace BGE (384d) embeddings via PyTorch — zero cloud cost, zero keys. Cloud embeddings were removed; only `huggingface` is accepted (`EMBEDDING_PROVIDER`/`EMBEDDING_MODEL` select between BGE and MiniLM).
 
 ---
 

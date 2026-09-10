@@ -52,9 +52,9 @@ FastAPI (Python 3.12, Default Port 8000)
            │             (+ ibm-granite/granite-4.0-h-1b GGUF)
            │       HuggingFace: BAAI/bge-small-en-v1.5 (384d SOTA embeddings)
          │
-         ├─── Cloud Engines (Optional):
-         │       Google Gemini: gemini-3.5-flash-lite / models/gemini-embedding-001
-         │       NVIDIA NIM: meta/llama-3.3-70b-instruct / nv-embedqa-e5-v5
+         ├─── Cloud Engines, LLM-only (Optional):
+         │       Google Gemini: gemini-3.5-flash-lite (embeddings: local BGE)
+         │       NVIDIA NIM: meta/llama-3.3-70b-instruct (embeddings: local BGE)
          │
          ├─── Qdrant (Vector & Payload Store)
          │       Dense vector indexing (384d & 768d) + Payload filtering

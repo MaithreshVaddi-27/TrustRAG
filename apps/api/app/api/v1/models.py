@@ -38,8 +38,8 @@ async def get_providers_endpoint(
 
     # Use only discovered models from the status checks — no hardcoded fallbacks.
     # If a provider is disconnected, its model list will be empty.
-    # Embedding providers: Ollama / llama.cpp are LLM-only —
-    # embeddings come from HuggingFace (local BGE) or cloud providers.
+    # Embeddings are local-only (HuggingFace BGE) — cloud embedding providers
+    # were removed, so ingestion and retrieval work fully offline.
     embedding_providers = {
         "huggingface": {
             "name": "Local Hugging Face (PyTorch / BGE)",
@@ -58,34 +58,6 @@ async def get_providers_endpoint(
                     "name": "all-MiniLM-L6-v2 (384d Fast)",
                     "dim": 384,
                     "tag": "Fast",
-                },
-            ],
-        },
-        "google_genai": {
-            "name": "Google Gemini (Cloud)",
-            "type": "cloud",
-            "connected": bool(settings.gemini_api_key),
-            "default_model": "models/gemini-embedding-001",
-            "models": [
-                {
-                    "id": "models/gemini-embedding-001",
-                    "name": "gemini-embedding-001 (384d Matryoshka)",
-                    "dim": 384,
-                    "tag": "Google API",
-                },
-            ],
-        },
-        "nvidia": {
-            "name": "NVIDIA NIM (Cloud)",
-            "type": "cloud",
-            "connected": bool(settings.nvidia_api_key),
-            "default_model": "nvidia/nv-embedqa-e5-v5",
-            "models": [
-                {
-                    "id": "nvidia/nv-embedqa-e5-v5",
-                    "name": "nv-embedqa-e5-v5 (384d)",
-                    "dim": 384,
-                    "tag": "NVIDIA Cloud",
                 },
             ],
         },

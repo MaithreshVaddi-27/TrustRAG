@@ -75,7 +75,11 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
     _llm_mod.get_discovered_llms = lambda provider: frozenset(
         ["granite4.2:3b-q4_K_M", "gemma3:1b"]
         if provider == "ollama"
-        else ["occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M", "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"]
+        else [
+            "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+            "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
+            "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
+        ]
     )
 
     mock_kb = KBResponse(
@@ -113,7 +117,7 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
             assert data["reliability"]["status"] == "PENDING"
             # Provenance: doc records the effective engine, never blanks.
             assert data["llm_provider"] == "llama_cpp"
-            assert data["llm_model"] == "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
+            assert data["llm_model"] == "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
             call_kwargs = mock_add_trace.call_args.kwargs
             assert call_kwargs["analysis_id_str"] == "64ee39d09c6292376e191983"
             assert call_kwargs["event"] == "analysis.started"
@@ -121,6 +125,49 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
 
     # Restore original
     _llm_mod.get_discovered_llms = _orig_get_discovered
+
+
+@patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_create_analysis_rejects_retired_cloud_embedding(
+    mock_create_indexes, mock_connect, mock_kb_doc, mock_user_doc
+):
+    """Cloud embeddings are gone: requesting one fails closed with guidance."""
+    import app.core.local_llm as _llm_mod
+    from app.api.v1.schemas.kb import KBResponse
+
+    _orig_get_discovered = _llm_mod.get_discovered_llms
+    _llm_mod.get_discovered_llms = lambda provider: frozenset(
+        ["granite4.2:3b-q4_K_M", "gemma3:1b"]
+        if provider == "ollama"
+        else [
+            "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+            "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
+            "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
+        ]
+    )
+
+    mock_kb = KBResponse(
+        id=str(mock_kb_doc["_id"]),
+        name=mock_kb_doc["name"],
+        description=mock_kb_doc["description"],
+        user_id=str(mock_kb_doc["user_id"]),
+        created_at="2026-08-27T10:00:00Z",
+        embedding_model="BAAI/bge-small-en-v1.5",
+        embedding_provider="huggingface",
+        embedding_dim=384,
+    )
+    with patch("app.services.analysis_service.get_kb", return_value=mock_kb):
+        payload = {
+            "knowledge_base_id": "64ee39d09c6292376e191982",
+            "query": "Is there a 45 days policy?",
+            "embedding_provider": "google_genai",
+            "embedding_model": "models/gemini-embedding-001",
+        }
+        response = client.post("/api/v1/analyses", json=payload)
+        _llm_mod.get_discovered_llms = _orig_get_discovered
+        assert response.status_code == 422
 
 
 @patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
@@ -136,7 +183,9 @@ def test_create_analysis_fails_fast_when_local_llm_down(
 
     _orig_get_discovered = _llm_mod.get_discovered_llms
     _llm_mod.get_discovered_llms = lambda provider: frozenset(
-        ["ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"] if provider == "llama_cpp" else frozenset()
+        ["LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M", "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"]
+        if provider == "llama_cpp"
+        else frozenset()
     )
 
     mock_kb = KBResponse(
@@ -186,7 +235,11 @@ def test_create_analysis_rejects_embedding_mismatch(
     _llm_mod.get_discovered_llms = lambda provider: frozenset(
         ["granite4.2:3b-q4_K_M", "gemma3:1b"]
         if provider == "ollama"
-        else ["occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M", "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"]
+        else [
+            "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+            "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
+            "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
+        ]
     )
 
     app.dependency_overrides[get_current_user] = lambda: mock_user_doc
@@ -205,7 +258,7 @@ def test_create_analysis_rejects_embedding_mismatch(
         payload = {
             "knowledge_base_id": "64ee39d09c6292376e191982",
             "query": "Is there a 45 days policy?",
-            "embedding_model": "models/gemini-embedding-001",
+            "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
         }
         response = client.post("/api/v1/analyses", json=payload)
 
@@ -381,3 +434,24 @@ def test_list_analyses_with_pagination(mock_create_indexes, mock_connect, mock_a
         assert data[0]["id"] == "64ee39d09c6292376e191983"
         mock_cursor.skip.assert_called_once_with(5)
         mock_cursor.limit.assert_called_once_with(10)
+
+
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_create_analysis_guides_new_user_without_models(mock_create_indexes, mock_connect):
+    """Empty discovery → 422 with install instructions, not a bare rejection."""
+    import app.core.local_llm as _llm_mod
+
+    _orig_get_discovered = _llm_mod.get_discovered_llms
+    _llm_mod.get_discovered_llms = lambda provider: frozenset()
+    try:
+        payload = {
+            "knowledge_base_id": "64ee39d09c6292376e191982",
+            "query": "Is there a 45 days policy?",
+            "llm_provider": "llama_cpp",
+        }
+        response = client.post("/api/v1/analyses", json=payload)
+        assert response.status_code == 422
+        assert "No llama_cpp models discovered" in response.text
+    finally:
+        _llm_mod.get_discovered_llms = _orig_get_discovered

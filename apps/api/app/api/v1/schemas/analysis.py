@@ -37,15 +37,14 @@ class AnalysisCreate(BaseModel):
     embedding_provider: str | None = Field(
         default=None,
         description=(
-            "Active embedding provider override ('huggingface', 'google_genai', 'nvidia'). "
-            "Ollama/llama.cpp are LLM-only and are rejected."
+            "Active embedding provider override ('huggingface' only — "
+            "embeddings are local-only; cloud and LLM-server providers are rejected)."
         ),
     )
     embedding_model: str | None = Field(
         default=None,
         description=(
-            "Specific embedding model identifier override "
-            "(e.g. 'BAAI/bge-small-en-v1.5', 'models/gemini-embedding-001')"
+            "Specific embedding model identifier override (e.g. 'BAAI/bge-small-en-v1.5')"
         ),
     )
 
@@ -98,6 +97,14 @@ class AnalysisCreate(BaseModel):
         }
         if operator_llm_overrides.get(provider):
             allowed_llms[provider].add(operator_llm_overrides[provider])
+        if provider in ("ollama", "llama_cpp") and not allowed_llms[provider]:
+            # New-user path: nothing installed yet. Fail closed with the fix
+            # instead of a bare "not enabled" rejection.
+            raise ValueError(
+                f"No {provider} models discovered on this host. Install one "
+                "(e.g. 'ollama pull granite4.2:3b-q4_K_M' + 'ollama serve', or "
+                "place a GGUF and run ./scripts/start_local_llm.sh), then refresh."
+            )
 
         requested_llm_model = (
             self.llm_model
@@ -108,19 +115,21 @@ class AnalysisCreate(BaseModel):
             raise ValueError(f"Model is not enabled for provider '{provider}'")
 
         embedding_provider = (self.embedding_provider or cfg.embedding_provider).lower()
-        provider_aliases = {"local": "huggingface", "gemini": "google_genai", "nim": "nvidia"}
-        embedding_provider = provider_aliases.get(embedding_provider, embedding_provider)
-        allowed_embedding_providers = {"huggingface", "google_genai", "nvidia"}
+        if embedding_provider == "local":
+            embedding_provider = "huggingface"
+        allowed_embedding_providers = {"huggingface"}
         if embedding_provider not in allowed_embedding_providers:
-            raise ValueError(f"Unsupported embedding provider: {embedding_provider}")
+            raise ValueError(
+                "Unsupported embedding provider: "
+                f"{embedding_provider} (embeddings are local-only; "
+                "re-upload documents to re-index with 'huggingface')"
+            )
 
         allowed_embeddings = {
             "huggingface": {
                 "BAAI/bge-small-en-v1.5",
                 "sentence-transformers/all-MiniLM-L6-v2",
             },
-            "google_genai": {"models/gemini-embedding-001"},
-            "nvidia": {"nvidia/nv-embedqa-e5-v5"},
         }
         if cfg.embedding_provider == embedding_provider and cfg.embedding_model:
             allowed_embeddings[embedding_provider].add(cfg.embedding_model)

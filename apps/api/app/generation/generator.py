@@ -7,6 +7,7 @@ abstention rules when context is insufficient.
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -204,8 +205,12 @@ def format_context_with_chunk_indices(
         text = c.get("text", "").strip()
         if not text:
             continue
-        # Deduplicate identical or near-identical text snippets across search/chunks
-        prefix = " ".join(text.lower().split()[:20])
+        # Deduplicate identical or near-identical text snippets across search/chunks.
+        # The key is punctuation-insensitive: chunk-boundary variants like
+        # "mined. in this phase" vs "mined in this phase" are the same content
+        # and must not each consume context budget.
+        prefix = re.sub(r"[^a-z0-9\s]", "", text.lower())
+        prefix = " ".join(prefix.split()[:20])
         if prefix in seen_prefixes:
             continue
         seen_prefixes.add(prefix)

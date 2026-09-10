@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'motion/react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
@@ -89,7 +90,11 @@ export default function SettingsPage() {
 
   return (
     <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto space-y-6 animate-fade-in stagger-children">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 200, delay: 0.1 }}
+        className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -407,46 +412,18 @@ export default function SettingsPage() {
             <span className="text-xs text-slate-500 font-mono">Active: {providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'}</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-            {/* Local HuggingFace BGE */}
-            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-3.5 flex flex-col justify-between space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {/* Local HuggingFace BGE — the only embedding engine (offline) */}
+            <div className="bg-surface-800/60 border border-cyan-500/30 rounded-xl p-3.5 flex flex-col justify-between space-y-2">
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-slate-200 font-semibold text-xs">HuggingFace BGE</span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-950/80 text-cyan-400 border border-cyan-800/40">384d</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-950/80 text-cyan-400 border border-cyan-800/40">384d · offline</span>
                 </div>
-                <p className="text-[11px] text-slate-400">Local PyTorch / CPU. Zero API cost.</p>
+                <p className="text-[11px] text-slate-400">Local PyTorch / CPU. Zero API cost, zero keys.</p>
               </div>
               <div className="pt-2 border-t border-slate-700/40 text-[10px] text-cyan-300 font-mono truncate" title="BAAI/bge-small-en-v1.5">
                 bge-small-en-v1.5
-              </div>
-            </div>
-
-            {/* Google Gemini Embeddings */}
-            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-3.5 flex flex-col justify-between space-y-2">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-slate-200 font-semibold text-xs">Google Gemini</span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-indigo-950/80 text-indigo-400 border border-indigo-800/40">384d</span>
-                </div>
-                <p className="text-[11px] text-slate-400">Matryoshka API embeddings.</p>
-              </div>
-              <div className="pt-2 border-t border-slate-700/40 text-[10px] text-indigo-300 font-mono truncate" title="models/gemini-embedding-001">
-                gemini-embedding-001
-              </div>
-            </div>
-
-            {/* NVIDIA NIM Embeddings */}
-            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-3.5 flex flex-col justify-between space-y-2">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-slate-200 font-semibold text-xs">NVIDIA NIM</span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-purple-950/80 text-purple-400 border border-purple-800/40">384d</span>
-                </div>
-                <p className="text-[11px] text-slate-400">Enterprise cloud endpoints.</p>
-              </div>
-              <div className="pt-2 border-t border-slate-700/40 text-[10px] text-purple-300 font-mono truncate" title="nvidia/nv-embedqa-e5-v5">
-                nv-embedqa-e5-v5
               </div>
             </div>
           </div>
@@ -612,7 +589,7 @@ export default function SettingsPage() {
             </p>
           </div>
         </div>
-      </div>
+      </motion.div>
     </AppLayout>
   )
 }

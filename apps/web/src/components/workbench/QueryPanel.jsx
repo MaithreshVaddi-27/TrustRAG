@@ -2,13 +2,15 @@ import {
   Database, Loader2, Zap, Globe, Sparkles, Cpu,
   RotateCcw, AlertTriangle, CornerDownLeft, Layers, ServerOff
 } from 'lucide-react'
-import { motion } from 'motion/react'
+import { motion, AnimatePresence } from 'motion/react'
 import { shortModelId } from '@/lib/modelLabels'
+import { SPRING_SNAPPY } from '@/lib/motionConfig'
 
 const SAMPLE_PRESETS = [
-  "What is the cancellation and refund policy?",
-  "Are there any conflicting coverage terms or exclusions?",
-  "Summarize key compliance obligations with exact citations",
+  { text: "Explain the key concepts in this document", icon: "📖" },
+  { text: "Summarize the main findings and takeaways", icon: "📝" },
+  { text: "Describe the knowledge base and its contents", icon: "🔍" },
+  { text: "What are the important details I should know?", icon: "💡" },
 ]
 
 export function QueryPanel({
@@ -26,8 +28,7 @@ export function QueryPanel({
   setSelectedProvider,
   selectedModel,
   setSelectedModel,
-  selectedEmbeddingProvider,
-  setSelectedEmbeddingProvider,
+
   selectedEmbeddingModel,
   setSelectedEmbeddingModel,
   enableWebSearch,
@@ -61,17 +62,6 @@ export function QueryPanel({
       setSelectedModel('gemini-3.5-flash-lite')
     } else if (providerKey === 'nvidia') {
       setSelectedModel('meta/llama-3.3-70b-instruct')
-    }
-  }
-
-  const handleEmbeddingProviderChange = (providerKey) => {
-    setSelectedEmbeddingProvider(providerKey)
-    userTouchedEmbeddingRef.current = true
-    const prov = providersData?.embedding_providers?.[providerKey]
-    if (prov?.default_model) {
-      setSelectedEmbeddingModel(prov.default_model)
-    } else if (prov?.models?.[0]?.id) {
-      setSelectedEmbeddingModel(prov.models[0].id)
     }
   }
 
@@ -176,12 +166,14 @@ export function QueryPanel({
               </span>
             </div>
 
+            <AnimatePresence>
             {(selectedProvider === 'ollama' || selectedProvider === 'llama_cpp') && activeProviderInfo && !activeProviderInfo.connected && (
               <motion.div
                 role="alert"
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ type: 'spring', bounce: 0, duration: 0.35 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={SPRING_SNAPPY}
                 className="p-2.5 rounded-xl bg-amber-950/60 border border-amber-700/50 shadow-sm"
               >
                 <div className="flex items-center gap-1.5 text-amber-300 text-[11px] font-semibold tracking-tight">
@@ -206,6 +198,7 @@ export function QueryPanel({
                 </button>
               </motion.div>
             )}
+            </AnimatePresence>
 
             {providersData?.hardware && (
               <div className="p-2 rounded-lg bg-surface-900 border border-slate-800 flex items-center justify-between text-[11px]">
@@ -229,11 +222,12 @@ export function QueryPanel({
                 type="button"
                 onClick={() => handleProviderChange('ollama')}
                 disabled={loading}
-                whileTap={{ scale: 0.95 }}
-                className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between ${
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.96, transition: SPRING_SNAPPY }}
+                className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between transition-all duration-150 ease-out ${
                   selectedProvider === 'ollama'
                     ? 'bg-primary-600/30 text-primary-200 border border-primary-500/50 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
                 }`}>
                 <span>Ollama</span>
                 <span className="text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-emerald-400 font-mono">:11434</span>
@@ -242,11 +236,12 @@ export function QueryPanel({
                 type="button"
                 onClick={() => handleProviderChange('llama_cpp')}
                 disabled={loading}
-                whileTap={{ scale: 0.95 }}
-                className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between ${
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.96, transition: SPRING_SNAPPY }}
+                className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between transition-all duration-150 ease-out ${
                   selectedProvider === 'llama_cpp'
                     ? 'bg-cyan-600/30 text-cyan-200 border border-cyan-500/50 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
                 }`}>
                 <span>llama.cpp</span>
                 <span className="text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">:8080</span>
@@ -255,11 +250,12 @@ export function QueryPanel({
                 type="button"
                 onClick={() => handleProviderChange('gemini')}
                 disabled={loading}
-                whileTap={{ scale: 0.95 }}
-                className={`text-xs py-1 px-2 rounded-md font-medium flex items-center justify-between ${
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.96, transition: SPRING_SNAPPY }}
+                className={`text-xs py-1 px-2 rounded-md font-medium flex items-center justify-between transition-all duration-150 ease-out ${
                   selectedProvider === 'gemini'
                     ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/50 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
                 }`}>
                 <span>Gemini</span>
                 <span className="text-[10px] text-slate-500">Cloud</span>
@@ -268,11 +264,12 @@ export function QueryPanel({
                 type="button"
                 onClick={() => handleProviderChange('nvidia')}
                 disabled={loading}
-                whileTap={{ scale: 0.95 }}
-                className={`text-xs py-1 px-2 rounded-md font-medium flex items-center justify-between ${
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.96, transition: SPRING_SNAPPY }}
+                className={`text-xs py-1 px-2 rounded-md font-medium flex items-center justify-between transition-all duration-150 ease-out ${
                   selectedProvider === 'nvidia'
                     ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
                 }`}>
                 <span>NVIDIA</span>
                 <span className="text-[10px] text-slate-500">Cloud</span>
@@ -309,21 +306,112 @@ export function QueryPanel({
                 </select>
               </div>
             </div>
+          </div>
 
-            {(selectedProvider === 'ollama' || selectedProvider === 'llama_cpp') && (
-              <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
-                <div className="flex items-center justify-between text-[11px]">
-                  <div className="flex items-center gap-1.5 text-cyan-300 font-medium">
-                    <Sparkles size={12} className="text-cyan-400" />
-                    <span>MCP Tool Grounding</span>
+          {/* Web Search Section - after model selection, before query */}
+          <div className={`rounded-xl border p-3.5 space-y-3 transition-all shadow-sm ${
+            enableWebSearch 
+              ? 'border-cyan-500/60 bg-cyan-950/20 ring-1 ring-cyan-500/20' 
+              : 'border-slate-800 bg-surface-850/60 hover:border-slate-700/80'
+          }`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  id="web-search-toggle"
+                  checked={enableWebSearch}
+                  onChange={e => setEnableWebSearch(e.target.checked)}
+                  disabled={loading}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-surface-900 text-cyan-500 focus:ring-cyan-500 cursor-pointer accent-cyan-500"
+                />
+                <label
+                  htmlFor="web-search-toggle"
+                  className="cursor-pointer select-none space-y-0.5"
+                >
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-200">
+                    <Globe className={`w-3.5 h-3.5 ${enableWebSearch ? 'text-cyan-400' : 'text-slate-500'}`} />
+                    <span>Enable Web Search Grounding</span>
+                    <span className="rounded bg-cyan-950/80 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300 border border-cyan-700/40">
+                      MCP Tool
+                    </span>
                   </div>
-                  <span className="px-1.5 py-0.5 rounded bg-cyan-950/90 text-cyan-300 border border-cyan-700/50 text-[10px] font-mono">
-                    Active
-                  </span>
+                  <p className="text-[11px] text-slate-400">
+                    {enableWebSearch 
+                      ? 'Active: Live internet grounding will be queried via MCP.'
+                      : 'Unchecked: 100% Private Local RAG — searches only your Knowledge Base.'}
+                  </p>
+                </label>
+              </div>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-mono shrink-0 border ${
+                enableWebSearch
+                  ? 'bg-cyan-950 text-cyan-300 border-cyan-700/60 font-semibold shadow-sm'
+                  : 'bg-slate-900 text-slate-400 border-slate-800'
+              }`}>
+                {enableWebSearch ? 'WEB SEARCH ENABLED' : 'LOCAL ONLY'}
+              </span>
+            </div>
+
+            {enableWebSearch && (
+              <div className="pt-2 border-t border-slate-800/80 space-y-2 animate-fade-in">
+                <span className="text-[11px] text-slate-300 block font-medium">Select MCP Search Engine:</span>
+                <div className="grid grid-cols-3 gap-1 bg-surface-900 p-1 rounded-lg border border-slate-800">
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => setWebSearchProvider('duckduckgo')}
+                    className={`text-[11px] py-1 px-1.5 rounded font-medium transition-all ${
+                      webSearchProvider === 'duckduckgo'
+                        ? 'bg-amber-600/30 text-amber-300 border border-amber-500/40 shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}>
+                    DuckDuckGo (Free)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => setWebSearchProvider('tavily')}
+                    className={`text-[11px] py-1 px-1.5 rounded font-medium transition-all ${
+                      webSearchProvider === 'tavily'
+                        ? 'bg-primary-600/30 text-primary-300 border border-primary-500/40 shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}>
+                    Tavily (AI)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => setWebSearchProvider('both')}
+                    className={`text-[11px] py-1 px-1.5 rounded font-medium transition-all ${
+                      webSearchProvider === 'both'
+                        ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}>
+                    Both (Parallel)
+                  </button>
                 </div>
-                <p className="text-[10px] text-slate-400 leading-relaxed">
-                  Connected to local MCP tool suite: <code className="text-cyan-400 font-mono">trustrag_search</code>, <code className="text-cyan-400 font-mono">duckduckgo_search</code>, & <code className="text-cyan-400 font-mono">verify_claim</code>.
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  {webSearchProvider === 'duckduckgo' && '🆓 100% Free search, zero API key or configuration required.'}
+                  {webSearchProvider === 'tavily' && '⚡ High-accuracy AI RAG search with clean parsed content.'}
+                  {webSearchProvider === 'both' && '🌐 Parallel search across Tavily + DuckDuckGo with URL deduplication.'}
                 </p>
+
+                {/* MCP Tool Grounding - only when web search is enabled */}
+                {(selectedProvider === 'ollama' || selectedProvider === 'llama_cpp') && (
+                  <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <div className="flex items-center gap-1.5 text-cyan-300 font-medium">
+                        <Sparkles size={12} className="text-cyan-400" />
+                        <span>MCP Tool Grounding</span>
+                      </div>
+                      <span className="px-1.5 py-0.5 rounded bg-cyan-950/90 text-cyan-300 border border-cyan-700/50 text-[10px] font-mono">
+                        Active
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      Connected to local MCP tool suite: <code className="text-cyan-400 font-mono">trustrag_search</code>, <code className="text-cyan-400 font-mono">duckduckgo_search</code>, & <code className="text-cyan-400 font-mono">verify_claim</code>.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -340,50 +428,13 @@ export function QueryPanel({
                   : 'bg-slate-800 text-slate-400 border border-slate-700/40'
               }`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${activeEmbeddingProviderInfo?.connected ? 'bg-cyan-400 animate-pulse' : 'bg-slate-500'}`} />
-                {selectedEmbeddingProvider === 'huggingface' ? 'Local BGE' : 'Cloud'}
+                Local BGE
               </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 bg-surface-900 p-1 rounded-lg border border-slate-800">
-              <motion.button
-                type="button"
-                onClick={() => handleEmbeddingProviderChange('huggingface')}
-                disabled={loading}
-                whileTap={{ scale: 0.95 }}
-                className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between ${
-                  selectedEmbeddingProvider === 'huggingface'
-                    ? 'bg-cyan-600/30 text-cyan-200 border border-cyan-500/50 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}>
-                <span>Local BGE</span>
-                <span className="text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">384d</span>
-              </motion.button>
-              <motion.button
-                type="button"
-                onClick={() => handleEmbeddingProviderChange('google_genai')}
-                disabled={loading}
-                whileTap={{ scale: 0.95 }}
-                className={`text-xs py-1 px-2 rounded-md font-medium flex items-center justify-between ${
-                  selectedEmbeddingProvider === 'google_genai'
-                    ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/50 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}>
-                <span>Gemini Embed</span>
-                <span className="text-[10px] text-slate-500">Cloud</span>
-              </motion.button>
-              <motion.button
-                type="button"
-                onClick={() => handleEmbeddingProviderChange('nvidia')}
-                disabled={loading}
-                whileTap={{ scale: 0.95 }}
-                className={`text-xs py-1 px-2 rounded-md font-medium flex items-center justify-between ${
-                  selectedEmbeddingProvider === 'nvidia'
-                    ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}>
-                <span>NVIDIA Embed</span>
-                <span className="text-[10px] text-slate-500">Cloud</span>
-              </motion.button>
+            <div className="flex items-center justify-between gap-2 bg-surface-900 px-2.5 py-2 rounded-lg border border-cyan-500/30">
+              <span className="text-xs font-medium text-cyan-200">Local BGE</span>
+              <span className="text-[10px] px-1.5 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-cyan-400 font-mono">384d · offline</span>
             </div>
 
             <div className="space-y-1 pt-1 border-t border-slate-800">
@@ -399,7 +450,16 @@ export function QueryPanel({
                   {selectedKb.embedding_dim ? ` · ${selectedKb.embedding_dim}d` : ''}
                 </div>
               )}
-              {embeddingMismatch && (
+              {embeddingMismatch && kbEmbeddingPin && !['BAAI/bge-small-en-v1.5', 'sentence-transformers/all-MiniLM-L6-v2'].includes(kbEmbeddingPin) && (
+                <div className="w-full flex items-start gap-1.5 rounded-lg border border-amber-500/50 bg-amber-950/40 px-2 py-1.5 text-left text-[11px] text-amber-200">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-[1px] shrink-0" />
+                  <span>
+                    This KB was indexed with retired cloud embeddings (<span className="font-mono">{kbEmbeddingPin}</span>).
+                    Re-upload its documents to re-index with local BGE.
+                  </span>
+                </div>
+              )}
+              {embeddingMismatch && ['BAAI/bge-small-en-v1.5', 'sentence-transformers/all-MiniLM-L6-v2'].includes(kbEmbeddingPin) && (
                 <button
                   type="button"
                   onClick={snapEmbeddingToKb}
@@ -447,11 +507,11 @@ export function QueryPanel({
               onKeyDown={handleKeyDown}
               placeholder="Ask a question about your documents… (Press ⌘+Enter to run)"
               rows={4}
-              className="w-full min-h-[105px] bg-surface-800 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-600 transition-colors"
+              className="w-full min-h-[105px] bg-surface-800 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-600 focus:shadow-[0_0_20px_rgba(6,182,212,0.12)] transition-all duration-200"
               disabled={loading}
             />
 
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wider block">
                 Quick Prompts:
               </span>
@@ -460,105 +520,18 @@ export function QueryPanel({
                   <motion.button
                     key={idx}
                     type="button"
-                    onClick={() => handlePresetSelect(preset)}
+                    onClick={() => handlePresetSelect(preset.text)}
                     disabled={loading}
-                    whileTap={{ scale: 0.98 }}
-                    className="text-left text-[11px] text-slate-400 hover:text-cyan-300 hover:bg-surface-800/80 px-2 py-1 rounded-md border border-slate-800/80 hover:border-cyan-500/30 truncate"
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.98, transition: SPRING_SNAPPY }}
+                    className="group text-left text-[11px] text-slate-400 hover:text-cyan-300 hover:bg-surface-800/80 px-2.5 py-1.5 rounded-lg border border-slate-800/80 hover:border-cyan-500/30 transition-all duration-150 ease-out flex items-center gap-1.5"
                   >
-                    {preset}
+                    <span className="text-[10px] opacity-60 group-hover:opacity-100 transition-opacity">{preset.icon}</span>
+                    <span>{preset.text}</span>
                   </motion.button>
                 ))}
               </div>
             </div>
-          </div>
-
-          <div className={`rounded-xl border p-3.5 space-y-3 transition-all shadow-sm ${
-            enableWebSearch 
-              ? 'border-cyan-500/60 bg-cyan-950/20 ring-1 ring-cyan-500/20' 
-              : 'border-slate-800 bg-surface-850/60 hover:border-slate-700/80'
-          }`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-2.5">
-                <input
-                  type="checkbox"
-                  id="web-search-toggle"
-                  checked={enableWebSearch}
-                  onChange={e => setEnableWebSearch(e.target.checked)}
-                  disabled={loading}
-                  className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-surface-900 text-cyan-500 focus:ring-cyan-500 cursor-pointer accent-cyan-500"
-                />
-                <label
-                  htmlFor="web-search-toggle"
-                  className="cursor-pointer select-none space-y-0.5"
-                >
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-200">
-                    <Globe className={`w-3.5 h-3.5 ${enableWebSearch ? 'text-cyan-400' : 'text-slate-500'}`} />
-                    <span>Enable MCP Web Search Grounding</span>
-                    <span className="rounded bg-cyan-950/80 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300 border border-cyan-700/40">
-                      MCP Tool
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400">
-                    {enableWebSearch 
-                      ? 'Active: Live internet grounding will be queried via MCP.'
-                      : 'Unchecked: 100% Private Local RAG — searches only your Knowledge Base.'}
-                  </p>
-                </label>
-              </div>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-mono shrink-0 border ${
-                enableWebSearch
-                  ? 'bg-cyan-950 text-cyan-300 border-cyan-700/60 font-semibold shadow-sm'
-                  : 'bg-slate-900 text-slate-400 border-slate-800'
-              }`}>
-                {enableWebSearch ? 'MCP ENABLED' : 'OFFLINE ONLY'}
-              </span>
-            </div>
-
-            {enableWebSearch && (
-              <div className="pt-2 border-t border-slate-800/80 space-y-2 animate-fade-in">
-                <span className="text-[11px] text-slate-300 block font-medium">Select MCP Search Engine:</span>
-                <div className="grid grid-cols-3 gap-1 bg-surface-900 p-1 rounded-lg border border-slate-800">
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => setWebSearchProvider('duckduckgo')}
-                    className={`text-[11px] py-1 px-1.5 rounded font-medium transition-all ${
-                      webSearchProvider === 'duckduckgo'
-                        ? 'bg-amber-600/30 text-amber-300 border border-amber-500/40 shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}>
-                    DuckDuckGo (Free)
-                  </button>
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => setWebSearchProvider('tavily')}
-                    className={`text-[11px] py-1 px-1.5 rounded font-medium transition-all ${
-                      webSearchProvider === 'tavily'
-                        ? 'bg-primary-600/30 text-primary-300 border border-primary-500/40 shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}>
-                    Tavily (AI)
-                  </button>
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => setWebSearchProvider('both')}
-                    className={`text-[11px] py-1 px-1.5 rounded font-medium transition-all ${
-                      webSearchProvider === 'both'
-                        ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}>
-                    Both (Parallel)
-                  </button>
-                </div>
-                <p className="text-[10px] text-slate-400 leading-tight">
-                  {webSearchProvider === 'duckduckgo' && '🆓 100% Free search, zero API key or configuration required.'}
-                  {webSearchProvider === 'tavily' && '⚡ High-accuracy AI RAG search with clean parsed content.'}
-                  {webSearchProvider === 'both' && '🌐 Parallel search across Tavily + DuckDuckGo with URL deduplication.'}
-                </p>
-              </div>
-            )}
           </div>
         </div>
 

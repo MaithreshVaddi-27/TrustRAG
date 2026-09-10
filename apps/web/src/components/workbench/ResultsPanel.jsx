@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { 
   Download, Copy, Sparkles, Check, Cpu, Globe, Clock
 } from 'lucide-react'
-import { motion, useReducedMotion } from 'motion/react'
+import { motion, AnimatePresence } from 'motion/react'
+import { SPRING_SNAPPY } from '@/lib/motionConfig'
 import { ReliabilityBadge } from './ReliabilityBadge'
 import { ClaimInspector } from './ClaimInspector'
 import { EvidenceViewer } from './EvidenceViewer'
@@ -14,6 +15,19 @@ import { copyToClipboard } from '@/lib/clipboard'
 import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
 import { compactTraceEvents } from './traceEvents'
 import api from '@/lib/api'
+
+function TabIndicator({ activeTab, tabRefs }) {
+  const el = tabRefs.current[activeTab]
+  if (!el) return null
+  return (
+    <motion.div
+      layoutId="active-tab"
+      transition={SPRING_SNAPPY}
+      className="absolute bottom-0 h-0.5 bg-gradient-to-r from-primary-500 to-cyan-400 shadow-glow-cyan"
+      style={{ left: el.offsetLeft, width: el.offsetWidth }}
+    />
+  )
+}
 
 const TABS = [
   { id: 'answer',    label: 'Answer' },
@@ -36,8 +50,8 @@ export function ResultsPanel({
   selectedModel,
   selectedEmbeddingModel,
 }) {
-  const reducedMotion = useReducedMotion()
   const [copied, setCopied] = useState(false)
+  const tabRefs = useRef({})
 
   const answerWordCount = analysis?.answer ? analysis.answer.trim().split(/\s+/).filter(Boolean).length : 0
   const estimatedReadTime = Math.max(1, Math.ceil(answerWordCount / 180))
@@ -158,30 +172,34 @@ export function ResultsPanel({
       </div>
 
       <div className="shrink-0 relative border-b border-slate-800/80 px-4 bg-surface-900/30">
-        <motion.div
-          layoutId="active-tab"
-          transition={reducedMotion ? { duration: 0 } : { type: 'spring', damping: 15, stiffness: 150 }}
-          className="absolute bottom-0 h-0.5 bg-gradient-to-r from-primary-500 to-cyan-400 shadow-glow-cyan"
-          style={{ width: 0 }} />
+        <TabIndicator activeTab={activeTab} tabRefs={tabRefs} />
         {TABS.map(tab => (
           <motion.button
             key={tab.id}
+            ref={(el) => { tabRefs.current[tab.id] = el }}
             onClick={() => setActiveTab(tab.id)}
-            whileTap={{ scale: 0.98 }}
+            whileTap={{ scale: 0.98, transition: SPRING_SNAPPY }}
             className={`relative px-4 py-2.5 text-xs font-semibold uppercase tracking-wider ${
               activeTab === tab.id
                 ? 'text-cyan-300'
                 : 'text-slate-500 hover:text-slate-300'
-            }`}
-            layout>
+            }`}>
             <span>{tab.label}</span>
           </motion.button>
         ))}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-5">
-        {activeTab === 'answer' && (
-          <div className="space-y-5">
+        <AnimatePresence mode="wait">
+          {activeTab === 'answer' && (
+            <motion.div
+              key="answer"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={SPRING_SNAPPY}
+              className="space-y-5"
+            >
             {(analysis.status === 'failed' || analysis.reliability?.status === 'FAILED') && (
               <div className="rounded-xl border border-red-800/50 bg-red-950/30 p-4 shadow-glow-crimson animate-fade-in">
                 <p className="text-sm font-medium text-red-300">
@@ -242,20 +260,45 @@ export function ResultsPanel({
             )}
 
             <RecoveryTimeline recoveryRuns={recoveryRuns} />
-          </div>
-        )}
+            </motion.div>
+          )}
 
-        {activeTab === 'evidence' && (
-          <EvidenceViewer chunks={analysis.evidence || []} />
-        )}
+          {activeTab === 'evidence' && (
+            <motion.div
+              key="evidence"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={SPRING_SNAPPY}
+            >
+              <EvidenceViewer chunks={analysis.evidence || []} />
+            </motion.div>
+          )}
 
-        {activeTab === 'claims' && (
-          <ClaimInspector claims={analysis.claims || []} />
-        )}
+          {activeTab === 'claims' && (
+            <motion.div
+              key="claims"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={SPRING_SNAPPY}
+            >
+              <ClaimInspector claims={analysis.claims || []} />
+            </motion.div>
+          )}
 
-        {activeTab === 'trace' && (
-          <ExecutionTrace events={currentTraceEvents} isLive={false} />
-        )}
+          {activeTab === 'trace' && (
+            <motion.div
+              key="trace"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={SPRING_SNAPPY}
+            >
+              <ExecutionTrace events={currentTraceEvents} isLive={false} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   )

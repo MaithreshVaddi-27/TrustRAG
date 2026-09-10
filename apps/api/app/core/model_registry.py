@@ -424,9 +424,9 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
 
     Supported:
       - huggingface / local: Local BGE (BAAI/bge-small-en-v1.5, 0 API cost)
-      - google_genai / gemini: Cloud-hosted Google Gemini embeddings (ultra-low RAM <60MB)
-      - nvidia / nim: Cloud-hosted NVIDIA NIM embeddings
 
+    Cloud embeddings (google_genai, nvidia) were removed: embeddings are a
+    local-only concern now, so ingestion and retrieval work fully offline.
     NOTE (2026-09-06): Ollama / llama.cpp are LLM-only providers — their embedding
     usage was removed. Requesting them raises ConfigurationError with a fix.
     """
@@ -452,71 +452,25 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
         cache_label = f"{active_provider}::{active_model}"
         return CachedEmbeddingsWrapper(base_emb, model_name=cache_label)
 
-    # ── Retired: local LLM-server embeddings (LLM-only now) ────────────────────
+    # ── Retired providers ─────────────────────────────────────────────────────
+    # Ollama / llama.cpp are LLM-only, and cloud embeddings (google_genai,
+    # nvidia) were removed — embeddings are local-only (huggingface BGE).
+    # Anything else is rejected with a fix instead of failing deep in the
+    # pipeline. Knowledge bases indexed with a retired provider must be
+    # re-uploaded to re-index with local BGE.
     _emb_model_lower = active_model.lower() if isinstance(active_model, str) else ""
-    if active_provider in ("ollama", "llamacpp", "llama_cpp") or (
-        any(k in _emb_model_lower for k in ("embeddinggemma", "nomic-embed"))
-        and active_provider
-        not in ("huggingface", "local", "google_genai", "gemini", "nvidia", "nim")
+    if active_provider not in ("huggingface", "local", "splade") or any(
+        k in _emb_model_lower for k in ("embeddinggemma", "nomic-embed")
     ):
         raise ConfigurationError(
-            "Ollama/llama.cpp embeddings were removed — those servers are LLM-only now. "
-            "Set EMBEDDING_PROVIDER=huggingface (local BGE, 384d) and re-upload "
-            "documents to re-index existing knowledge bases.",
+            "Only local HuggingFace embeddings are supported "
+            "(EMBEDDING_PROVIDER=huggingface, e.g. BAAI/bge-small-en-v1.5, 384d). "
+            "Re-upload documents to re-index knowledge bases built with a "
+            "retired provider.",
             detail=f"requested provider={active_provider} model={active_model}",
         )
 
-    # ── Option 2: NVIDIA NIM Embeddings ─────────────────────────────────────────
-    if active_provider in ("nvidia", "nim"):
-        from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings
-
-        if not settings.nvidia_api_key:
-            raise ConfigurationError(
-                "NVIDIA_API_KEY must be set when EMBEDDING_PROVIDER is 'nvidia'"
-            )
-
-        logger.info(
-            "Initializing NVIDIA NIM embedding model",
-            model=active_model,
-        )
-        try:
-            return _wrap_with_cache(
-                NVIDIAEmbeddings(
-                    model=active_model,
-                    api_key=settings.nvidia_api_key,
-                    truncate="END",
-                )
-            )
-        except Exception as exc:
-            raise ConfigurationError(
-                f"Failed to initialize NVIDIA embedding model '{active_model}'",
-                detail=str(exc),
-            ) from exc
-
-    # ── Option 3: Google Gemini Embeddings (Cloud) ──────────────────────────────
-    if active_provider in ("google_genai", "gemini"):
-        from langchain_google_genai import GoogleGenerativeAIEmbeddings
-
-        logger.info(
-            "Initializing Google Generative AI embedding model",
-            model=active_model,
-            dimensionality=cfg.embedding_dimensionality,
-        )
-        try:
-            return _wrap_with_cache(
-                GoogleGenerativeAIEmbeddings(
-                    model=active_model,
-                    google_api_key=settings.gemini_api_key,
-                    output_dimensionality=cfg.embedding_dimensionality,
-                )
-            )
-        except Exception as exc:
-            raise ConfigurationError(
-                f"Failed to initialize Google embedding model '{active_model}'",
-                detail=str(exc),
-            ) from exc
-
-    # ── Option 4: Local Hugging Face Embeddings (Sentence-Transformers / BGE) ────
+    # ── Local Hugging Face Embeddings (Sentence-Transformers / BGE) ────
     from langchain_huggingface import HuggingFaceEmbeddings
 
     cache_dir = Path(cfg.embedding_cache_dir).resolve()

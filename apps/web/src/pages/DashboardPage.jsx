@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { motion } from 'motion/react'
 import {
   Brain, Database, Zap, ArrowRight, Clock,
   ShieldCheck, Cpu,
@@ -195,7 +196,11 @@ export default function DashboardPage() {
 
   return (
     <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-8 animate-fade-in stagger-children">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 200, delay: 0.1 }}
+        className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-8">
         {/* ── HERO BANNER ─────────────────────────────────────────────── */}
         <div className="glass-card relative overflow-hidden p-6 sm:p-8 border-primary-500/20 bg-gradient-to-br from-surface-900/90 via-surface-900/60 to-primary-950/20">
           {/* Subtle glowing ambient orb */}
@@ -661,7 +666,7 @@ export default function DashboardPage() {
             })}
           </div>
         </div>
-      </div>
+      </motion.div>
     </AppLayout>
   )
 }
