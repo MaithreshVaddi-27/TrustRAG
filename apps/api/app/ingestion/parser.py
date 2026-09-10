@@ -62,10 +62,10 @@ def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
     """
     pages = []
     try:
-        doc = fitz.open(stream=stream.read(), filetype="pdf")
-        for i, page in enumerate(doc):
-            text = page.get_text()
-            pages.append({"page": i + 1, "text": text.strip()})
+        with fitz.open(stream=stream.read(), filetype="pdf") as doc:
+            for i, page in enumerate(doc):
+                text = page.get_text()
+                pages.append({"page": i + 1, "text": text.strip()})
         return pages
     except Exception as exc:
         raise IngestionError("Failed to parse PDF document", detail=str(exc)) from exc

@@ -179,6 +179,9 @@ async def create_stream_ticket_endpoint(
     The ticket is cryptographically random, single-use, and Mongo-backed so
     any uvicorn worker can consume it.
     """
+    # SEC: verify ownership before issuing a ticket so ticket/Mongo cannot be
+    # spammed for foreign analysis IDs (previously unchecked).
+    await analysis_service.get_analysis(analysis_id, str(current_user["_id"]))
     ticket = await _issue_stream_ticket(str(current_user["_id"]), analysis_id)
     return {"ticket": ticket}
 

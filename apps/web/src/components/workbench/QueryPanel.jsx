@@ -1,6 +1,6 @@
-import { 
-  Database, Loader2, Zap, Globe, Sparkles, Cpu, 
-  RotateCcw, AlertTriangle, CornerDownLeft, Layers
+import {
+  Database, Loader2, Zap, Globe, Sparkles, Cpu,
+  RotateCcw, AlertTriangle, CornerDownLeft, Layers, ServerOff
 } from 'lucide-react'
 import { motion } from 'motion/react'
 
@@ -40,6 +40,7 @@ export function QueryPanel({
   activeEmbeddingProviderInfo,
   availableModels,
   availableEmbeddingModels,
+  refetchProviders,
   selectedKb,
   knowledgeBases,
   kbEmbeddingPin,
@@ -174,6 +175,37 @@ export function QueryPanel({
               </span>
             </div>
 
+            {(selectedProvider === 'ollama' || selectedProvider === 'llama_cpp') && activeProviderInfo && !activeProviderInfo.connected && (
+              <motion.div
+                role="alert"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: 'spring', bounce: 0, duration: 0.35 }}
+                className="p-2.5 rounded-xl bg-amber-950/60 border border-amber-700/50 shadow-sm"
+              >
+                <div className="flex items-center gap-1.5 text-amber-300 text-[11px] font-semibold tracking-tight">
+                  <ServerOff size={13} className="shrink-0" />
+                  <span>Inference server offline</span>
+                </div>
+                <p className="mt-1 text-[10px] leading-relaxed text-amber-200/80">
+                  {selectedProvider === 'ollama' ? (
+                    <>Run <code className="font-mono text-amber-100">ollama serve</code> in a terminal, then refresh.</>
+                  ) : (
+                    <>Run <code className="font-mono text-amber-100">./scripts/start_local_llm.sh</code> in a terminal, then refresh.</>
+                  )}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => refetchProviders?.()}
+                  disabled={loading}
+                  className="mt-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium text-amber-200 bg-amber-900/50 border border-amber-700/50 hover:bg-amber-900/80 transition-colors"
+                >
+                  <RotateCcw size={10} />
+                  Recheck server
+                </button>
+              </motion.div>
+            )}
+
             {providersData?.hardware && (
               <div className="p-2 rounded-lg bg-surface-900 border border-slate-800 flex items-center justify-between text-[11px]">
                 <div className="flex items-center gap-1.5 text-slate-300">
@@ -249,8 +281,19 @@ export function QueryPanel({
             <div className="space-y-1 pt-1 border-t border-slate-800">
               <div className="flex items-center justify-between text-[11px] text-slate-400">
                 <span className="font-medium">Model:</span>
-                <span className="font-mono text-[10px] text-slate-500">
-                  {selectedProvider === 'ollama' ? ':11434' : (selectedProvider === 'llama_cpp' ? ':8080' : '')}
+                <span className="flex items-center gap-2">
+                  <span className="font-mono text-[10px] text-slate-500">
+                    {selectedProvider === 'ollama' ? ':11434' : (selectedProvider === 'llama_cpp' ? ':8080' : '')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => refetchProviders?.()}
+                    disabled={loading}
+                    title="Refresh model list (after installing a new model)"
+                    className="p-1 rounded-md text-slate-500 hover:text-cyan-300 hover:bg-surface-800 border border-slate-800 transition-colors"
+                  >
+                    <RotateCcw size={11} />
+                  </button>
                 </span>
               </div>
               <div className="relative">

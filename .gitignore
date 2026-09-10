@@ -196,8 +196,10 @@ semgrep-report.json
 
 # ─── Package manager lockfiles ────────────────────────────────────────────────
 # apps/web uses npm (package-lock.json is committed)
+# apps/api uses uv — uv.lock IS committed (the API Dockerfile does `uv sync --locked`)
 bun.lockb
 uv.lock
+!apps/api/uv.lock
 
 # ─── AI / Agentic tool directories ────────────────────────────────────────────
 .agents/

@@ -38,7 +38,7 @@ npm install
 ## Running Tests
 
 ```bash
-# Backend unit tests (86 unit tests across 14 test suites, no live services required)
+# Backend unit tests (141 tests across 20 test files, no live services required)
 cd apps/api
 pytest -v
 

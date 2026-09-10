@@ -4,18 +4,29 @@ TRUSTRAG API — Knowledge Base routes.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 from collections.abc import Mapping
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, Field, HttpUrl
 
 from app.api.deps import get_current_user
 from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
-from app.core.config import get_model_config
+from app.core.config import get_model_config, get_settings
 from app.core.exceptions import FileTooLargeError, UnsupportedFormatError
+from app.core.rate_limiter import limiter
 from app.ingestion.chunker import chunk_text
 from app.ingestion.parser import parse_document
 from app.ingestion.pipeline import index_parsed_chunks
@@ -93,7 +104,9 @@ async def list_documents_endpoint(
     status_code=status.HTTP_201_CREATED,
     summary="Upload and register document",
 )
+@limiter.limit(lambda: f"{get_settings().rate_limit_upload_per_minute}/minute")
 async def upload_document_endpoint(
+    request: Request,
     kb_id: str,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
@@ -146,13 +159,14 @@ async def upload_document_endpoint(
     # Compute content hash
     content_hash = hashlib.sha256(content).hexdigest()
 
-    # Parse document immediately to extract pages and dates
-    # Wrap bytes in a StringIO/BytesIO stream
+    # Parse document immediately to extract pages and dates without blocking
+    # the event loop on CPU-heavy PDF/DOCX work.
     stream = io.BytesIO(content)
-    pages, eff_from, eff_until = parse_document(filename, stream)
+    pages, eff_from, eff_until = await asyncio.to_thread(parse_document, filename, stream)
 
-    # Chunk text
-    chunks = chunk_text(pages, chunk_size=cfg.chunk_size, chunk_overlap=cfg.chunk_overlap)
+    chunks = await asyncio.to_thread(
+        chunk_text, pages, chunk_size=cfg.chunk_size, chunk_overlap=cfg.chunk_overlap
+    )
 
     # Save metadata record in MongoDB
     doc = await kb_service.add_document(
@@ -179,10 +193,12 @@ async def upload_document_endpoint(
     status_code=status.HTTP_201_CREATED,
     summary="Ingest document from URL",
 )
+@limiter.limit(lambda: f"{get_settings().rate_limit_url_ingest_per_minute}/minute")
 async def ingest_document_from_url_endpoint(
+    request: Request,
     kb_id: str,
     background_tasks: BackgroundTasks,
-    request: URLDocumentRequest,
+    url_request: URLDocumentRequest,
     current_user: Mapping[str, Any] = Depends(get_current_user),
 ) -> DocResponse:
     """
@@ -206,8 +222,8 @@ async def ingest_document_from_url_endpoint(
     cfg = get_model_config()
 
     # Validate URL with SSRF protection
-    url_str = str(request.url)
-    allowlist = set(request.allowlist) if request.allowlist else None
+    url_str = str(url_request.url)
+    allowlist = set(url_request.allowlist) if url_request.allowlist else None
 
     is_valid, error = validate_ingestion_url(url_str, allowlist)
     if not is_valid:
@@ -217,11 +233,11 @@ async def ingest_document_from_url_endpoint(
         )
 
     # Fetch document content with SSRF protection
-    content, error = await fetch_document_from_url(url_str, allowlist)
-    if error:
+    content, fetch_error = await fetch_document_from_url(url_str, allowlist)
+    if fetch_error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to fetch document: {error}",
+            detail=f"Failed to fetch document: {fetch_error}",
         )
 
     assert content is not None
@@ -239,8 +255,8 @@ async def ingest_document_from_url_endpoint(
         )
 
     # Determine filename
-    if request.filename:
-        filename = request.filename
+    if url_request.filename:
+        filename = url_request.filename
     else:
         # Extract filename from URL path
         from urllib.parse import urlparse
@@ -269,12 +285,14 @@ async def ingest_document_from_url_endpoint(
     # Compute content hash
     content_hash = hashlib.sha256(content).hexdigest()
 
-    # Parse document immediately to extract pages and dates
+    # Parse document immediately to extract pages and dates without blocking
+    # the event loop on CPU-heavy remote-file parsing.
     stream = io.BytesIO(content)
-    pages, eff_from, eff_until = parse_document(filename, stream)
+    pages, eff_from, eff_until = await asyncio.to_thread(parse_document, filename, stream)
 
-    # Chunk text
-    chunks = chunk_text(pages, chunk_size=cfg.chunk_size, chunk_overlap=cfg.chunk_overlap)
+    chunks = await asyncio.to_thread(
+        chunk_text, pages, chunk_size=cfg.chunk_size, chunk_overlap=cfg.chunk_overlap
+    )
 
     # Save metadata record in MongoDB
     doc = await kb_service.add_document(

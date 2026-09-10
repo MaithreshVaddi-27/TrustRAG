@@ -43,7 +43,9 @@ def _get_connection() -> sqlite3.Connection:
 
 
 def _make_key(text: str, model: str) -> str:
-    h = hashlib.sha256(f"{model}:{text.strip()}".encode()).hexdigest()
+    # Normalized key avoids repeat embeddings for case/whitespace variants
+    # (OPT: local-LLM/embedding load).
+    h = hashlib.sha256(f"{model.strip().lower()}:{text.strip().lower()}".encode()).hexdigest()
     return h
 
 
@@ -109,16 +111,22 @@ def get_cached_embeddings_batch(
     conn = None
     try:
         conn = _get_connection()
+        keys = [_make_key(text, model) for text in texts]
+        indices_by_key: dict[str, list[int]] = {}
+        for idx, key in enumerate(keys):
+            indices_by_key.setdefault(key, []).append(idx)
+
+        placeholders = ",".join("?" for _ in indices_by_key)
         cur = conn.cursor()
-        for idx, text in enumerate(texts):
-            key = _make_key(text, model)
-            cur.execute("SELECT vector, dim FROM embedding_cache WHERE key = ?", (key,))
-            row = cur.fetchone()
-            if row:
-                blob, dim = row[0], row[1]
-                cached[idx] = list(struct.unpack(f"{dim}f", blob))
-            else:
-                missing_indices.append(idx)
+        # Placeholders are generated solely from the number of internal hashes;
+        # every key remains bound as a parameter, so no SQL text is user data.
+        sql = f"SELECT key,vector,dim FROM embedding_cache WHERE key IN ({placeholders})"  # noqa: S608
+        cur.execute(sql, tuple(indices_by_key))
+        for key, blob, dim in cur.fetchall():
+            vector = list(struct.unpack(f"{dim}f", blob))
+            for idx in indices_by_key[key]:
+                cached[idx] = vector
+        missing_indices = [idx for idx in range(len(texts)) if idx not in cached]
     except Exception as exc:
         logger.debug("Batch disk cache error", error=str(exc))
         missing_indices = list(range(len(texts)))

@@ -12,8 +12,6 @@ from app.api.deps import get_current_user
 from app.core.config import get_model_config, get_ports, get_settings
 from app.core.hardware import get_cached_hardware_profile
 from app.core.local_llm import (
-    INSTALLED_LLAMACPP_LLMS,
-    INSTALLED_OLLAMA_LLMS,
     check_llamacpp_status,
     check_ollama_status,
 )
@@ -38,20 +36,10 @@ async def get_providers_endpoint(
     ollama_info = await check_ollama_status(settings.ollama_base_url)
     llamacpp_info = await check_llamacpp_status(settings.llamacpp_base_url)
 
-    # Canonical installed models seed the selectors; live discovery merges in.
-    target_ollama_models = list(INSTALLED_OLLAMA_LLMS)
-    for m in reversed(target_ollama_models):
-        if m not in ollama_info.get("models", []):
-            ollama_info["models"] = [m, *ollama_info.get("models", [])]
-
-    target_llamacpp_models = list(INSTALLED_LLAMACPP_LLMS)
-    for m in reversed(target_llamacpp_models):
-        if m not in llamacpp_info.get("models", []):
-            llamacpp_info["models"] = [m, *llamacpp_info.get("models", [])]
-
-    # Embedding providers: NOTE (2026-09-06) Ollama / llama.cpp are LLM-only —
-    # their embedding selection/usage was removed. Embeddings come from
-    # HuggingFace (local BGE) or cloud providers, fixed via EMBEDDING_* env.
+    # Use only discovered models from the status checks — no hardcoded fallbacks.
+    # If a provider is disconnected, its model list will be empty.
+    # Embedding providers: Ollama / llama.cpp are LLM-only —
+    # embeddings come from HuggingFace (local BGE) or cloud providers.
     embedding_providers = {
         "huggingface": {
             "name": "Local Hugging Face (PyTorch / BGE)",
@@ -116,9 +104,8 @@ async def get_providers_endpoint(
                 "type": "local",
                 "connected": ollama_info.get("connected", False),
                 "base_url": settings.ollama_base_url,
-                "default_model": settings.ollama_model
-                or ollama_info.get("default_model", INSTALLED_OLLAMA_LLMS[0]),
-                "models": ollama_info.get("models", list(INSTALLED_OLLAMA_LLMS)),
+                "default_model": ollama_info.get("default_model", ""),
+                "models": ollama_info.get("models", []),
                 "error": ollama_info.get("error"),
             },
             "llama_cpp": {
@@ -126,8 +113,8 @@ async def get_providers_endpoint(
                 "type": "local",
                 "connected": llamacpp_info.get("connected", False),
                 "base_url": settings.llamacpp_base_url,
-                "default_model": settings.llamacpp_model or INSTALLED_LLAMACPP_LLMS[0],
-                "models": llamacpp_info.get("models", list(INSTALLED_LLAMACPP_LLMS)),
+                "default_model": llamacpp_info.get("default_model", ""),
+                "models": llamacpp_info.get("models", []),
                 "cache_models": llamacpp_info.get("cache_models", []),
                 "error": llamacpp_info.get("error"),
             },

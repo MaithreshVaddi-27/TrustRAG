@@ -3,11 +3,19 @@
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from app.mcp.client import execute_mcp_tool
 from app.mcp.server import handle_tool_call
-from app.services.search_service import duckduckgo_search, execute_web_search, tavily_search
+from app.services.search_service import (
+    _validate_resolved_addresses,
+    duckduckgo_search,
+    execute_web_search,
+    fetch_document_from_url,
+    tavily_search,
+    validate_ingestion_url,
+)
 
 
 @pytest.mark.asyncio
@@ -117,6 +125,126 @@ async def test_mcp_tool_execution():
         parsed = await execute_mcp_tool("duckduckgo_search", {"query": "client query"})
         assert len(parsed) == 1
         assert parsed[0]["title"] == "Client Ok"
+
+
+def test_ingestion_url_allowlist_uses_exact_origins():
+    assert validate_ingestion_url("https://api.github.com/repos/python/cpython")[0] is True
+    assert validate_ingestion_url("https://api.github.com.evil.example/file.txt")[0] is False
+
+    # A request allowlist can narrow defaults, but cannot widen to arbitrary origins.
+    assert validate_ingestion_url("http://127.0.0.1/private", {"http://127.0.0.1"})[0] is False
+
+
+@pytest.mark.asyncio
+async def test_fetch_rejects_redirect_to_internal_host(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/start":
+            return httpx.Response(302, headers={"Location": "http://127.0.0.1/private"})
+        return httpx.Response(200, content=b"internal", headers={"Content-Type": "text/plain"})
+
+    transport = httpx.MockTransport(handler)
+
+    async def fake_new_pinned_fetch_client(hostname, timeout):
+        # The pinned transport is swapped out for a mock so no real network is
+        # touched; the allowlist/DNS hardening being tested is still exercised.
+        return httpx.AsyncClient(transport=transport, follow_redirects=False)
+
+    monkeypatch.setattr(
+        "app.services.search_service._new_pinned_fetch_client", fake_new_pinned_fetch_client
+    )
+
+    content, error = await fetch_document_from_url("https://en.wikipedia.org/start")
+
+    assert content is None
+    assert error is not None
+    assert "not in allowlist" in error
+
+
+@pytest.mark.asyncio
+async def test_fetch_success_with_pinned_client(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=b"hello from wikipedia", headers={"Content-Type": "text/plain"}
+        )
+
+    async def fake_new_pinned_fetch_client(hostname, timeout):
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler), follow_redirects=False)
+
+    monkeypatch.setattr(
+        "app.services.search_service._new_pinned_fetch_client", fake_new_pinned_fetch_client
+    )
+    monkeypatch.setattr(
+        "app.services.search_service._resolve_public_address",
+        AsyncMock(return_value="93.184.216.34"),
+    )
+
+    content, error = await fetch_document_from_url("https://en.wikipedia.org/wiki/Python")
+
+    assert error is None
+    assert content == b"hello from wikipedia"
+
+
+@pytest.mark.asyncio
+async def test_fetch_rejects_non_public_dns(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.search_service._resolve_public_address", AsyncMock(return_value=None)
+    )
+
+    content, error = await fetch_document_from_url("https://en.wikipedia.org/wiki/Python")
+
+    assert content is None
+    assert error is not None
+    assert "public DNS" in error
+
+
+@pytest.mark.asyncio
+async def test_pinned_backend_connects_to_validated_ip_only(monkeypatch):
+    """The pinned backend must dial the validated IP, never the rebindable hostname."""
+    from app.services.search_service import _new_pinned_fetch_client
+
+    reader = MagicMock()
+    writer = MagicMock()
+    writer.get_extra_info.return_value = None
+    writer.start_tls = AsyncMock()
+    writer.close = MagicMock()
+    writer.wait_closed = AsyncMock()
+
+    connect_targets = []
+
+    async def fake_open_connection(host, port, **kwargs):
+        connect_targets.append((host, port))
+        return reader, writer
+
+    monkeypatch.setattr(
+        "app.services.search_service._resolve_public_address",
+        AsyncMock(return_value="93.184.216.34"),
+    )
+    monkeypatch.setattr("app.services.search_service.asyncio.open_connection", fake_open_connection)
+
+    client = await _new_pinned_fetch_client("attacker.example", 15.0)
+    try:
+        backend = client._transport._pool._network_backend
+        stream = await backend.connect_tcp(host="rebound.internal", port=443)
+        assert stream is not None
+    finally:
+        await client.aclose()
+
+    assert connect_targets, "expected at least one pinned connect"
+    assert connect_targets[0][0] == "93.184.216.34"
+    # The connection must go to the pinned public IP, even though the pool asked
+    # for a (potentially rebound) hostname.
+    assert connect_targets[0][1] == 443
+
+
+@pytest.mark.asyncio
+async def test_dns_resolution_rejects_private_addresses(monkeypatch):
+    class FakeLoop:
+        async def getaddrinfo(self, *args, **kwargs):
+            return [(None, None, None, None, ("127.0.0.1", 443))]
+
+    monkeypatch.setattr("app.services.search_service.asyncio.get_running_loop", lambda: FakeLoop())
+
+    assert await _validate_resolved_addresses("attacker.example") is False
 
 
 def test_sanitize_url_security():

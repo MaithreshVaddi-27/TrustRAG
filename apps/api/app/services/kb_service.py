@@ -153,6 +153,11 @@ async def delete_kb(kb_id_str: str, user_id_str: str) -> None:
 
         # 4. Delete the KB record itself
         await get_collection(Collections.KNOWLEDGE_BASES).delete_one({"_id": kb_id})
+
+        # Cached answers must never outlive the evidence that produced them.
+        from app.core.semantic_cache import invalidate_semantic_cache
+
+        invalidate_semantic_cache(kb_id_str)
         logger.info("Snapshot KB permanently deleted", kb_id=kb_id_str)
         return
 
@@ -170,6 +175,10 @@ async def delete_kb(kb_id_str: str, user_id_str: str) -> None:
 
     # 4. Delete the KB record itself
     await get_collection(Collections.KNOWLEDGE_BASES).delete_one({"_id": kb_id})
+
+    from app.core.semantic_cache import invalidate_semantic_cache
+
+    invalidate_semantic_cache(kb_id_str)
     logger.info("Original KB deleted with all associated data", kb_id=kb_id_str)
 
 
@@ -212,6 +221,11 @@ async def add_document(
     try:
         result = await doc_coll.insert_one(doc_doc)
         doc_doc["_id"] = result.inserted_id
+
+        # New evidence can change the best answer for an already cached query.
+        from app.core.semantic_cache import invalidate_semantic_cache
+
+        invalidate_semantic_cache(kb_id_str)
         return serialize_doc(doc_doc)
     except pymongo.errors.DuplicateKeyError as exc:
         if "doc_kb_content_hash_unique" in str(exc):
@@ -456,7 +470,13 @@ async def rollback_kb_to_snapshot(
         },
     )
 
-    # 3. Return the restored (formerly snapshot) KB.
+    # 3. Cached answers for both identities are stale after a rollback.
+    from app.core.semantic_cache import invalidate_semantic_cache
+
+    invalidate_semantic_cache(kb_id_str)
+    invalidate_semantic_cache(snapshot_kb_id_str)
+
+    # 4. Return the restored (formerly snapshot) KB.
     return await get_kb(snapshot_kb_id_str, user_id_str)
 
 
@@ -512,4 +532,8 @@ async def delete_document(doc_id_str: str, user_id_str: str) -> None:
 
     # 3. Delete document record itself
     await doc_coll.delete_one({"_id": doc_id})
+
+    from app.core.semantic_cache import invalidate_semantic_cache
+
+    invalidate_semantic_cache(kb_id_str)
     logger.info("Document deleted successfully", doc_id=doc_id_str, kb_id=kb_id_str)

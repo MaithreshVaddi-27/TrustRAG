@@ -343,12 +343,12 @@ export default function SettingsPage() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-400">
-                  Native local inference server. Active model: <code className="text-emerald-300 font-mono">{providersData?.providers?.ollama?.default_model || 'granite4.2:3b-q4_K_M'}</code>
+                  Native local inference server. Active model: <code className="text-emerald-300 font-mono">{providersData?.providers?.ollama?.default_model || ''}</code>
                 </p>
                 <div className="mt-2 text-[11px] text-slate-400 space-y-1">
                   <div>Endpoint: <code className="text-slate-300 font-mono">http://localhost:11434</code></div>
                   <div>Discovery Command: <code className="text-emerald-400 font-mono">ollama list</code></div>
-                  <div>Configured LLMs (<code className="text-slate-500 font-mono">ollama list</code>): <span className="text-slate-300 font-mono">{providersData?.providers?.ollama?.models?.join(', ') || 'granite4.2:3b-q4_K_M, gemma3:1b'}</span></div>
+                  <div>Configured LLMs (<code className="text-slate-500 font-mono">ollama list</code>): <span className="text-slate-300 font-mono">{providersData?.providers?.ollama?.models?.join(', ') || ''}</span></div>
                 </div>
               </div>
 
@@ -376,19 +376,19 @@ export default function SettingsPage() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-400">
-                  OpenAI-compatible server. Active model: <code className="text-cyan-300 font-mono">{providersData?.providers?.llama_cpp?.default_model || 'occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M'}</code>
+                  OpenAI-compatible server. Active model: <code className="text-cyan-300 font-mono">{providersData?.providers?.llama_cpp?.default_model || ''}</code>
                 </p>
                 <div className="mt-2 text-[11px] text-slate-400 space-y-1">
                   <div>Endpoint: <code className="text-slate-300 font-mono">http://127.0.0.1:8080/v1</code></div>
                   <div>Discovery Command: <code className="text-cyan-400 font-mono">llama-server --cache-list</code></div>
-                  <div>Cache GGUF Models: <span className="text-slate-300 font-mono">{providersData?.providers?.llama_cpp?.cache_models?.join(', ') || 'occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M, occ-ai/OCC-RAG-0.6B-GGUF:Q4_K_M, ibm-granite/granite-4.2-3b-GGUF:Q4_K_M, ibm-granite/granite-4.0-h-1b-GGUF:Q4_K_M'}</span></div>
-                  <div>Configured LLMs: <span className="text-cyan-300 font-mono">{providersData?.providers?.llama_cpp?.models?.join(', ') || 'occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M, occ-ai/OCC-RAG-0.6B-GGUF:Q4_K_M, ibm-granite/granite-4.2-3b-GGUF:Q4_K_M, ibm-granite/granite-4.0-h-1b-GGUF:Q4_K_M'}</span></div>
+                  <div>Cache GGUF Models: <span className="text-slate-300 font-mono">{providersData?.providers?.llama_cpp?.cache_models?.join(', ') || ''}</span></div>
+                  <div>Configured LLMs: <span className="text-cyan-300 font-mono">{providersData?.providers?.llama_cpp?.models?.join(', ') || ''}</span></div>
                 </div>
               </div>
 
               {!providersData?.providers?.llama_cpp?.connected && (
                 <div className="p-2.5 bg-surface-900/60 border border-slate-700/50 rounded-lg text-[11px] text-slate-400">
-                  💡 Start server: <code className="bg-surface-950 px-1 py-0.5 rounded text-cyan-300 font-mono">llama-server -hf occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M --port 8080</code>
+                  💡 Start server: <code className="bg-surface-950 px-1 py-0.5 rounded text-cyan-300 font-mono">llama-server -hf ibm-granite/granite-4.2-3b-GGUF:Q4_K_M --port 8080</code>
                 </div>
               )}
             </div>

@@ -30,11 +30,13 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Cache directory for persistence
+# Cache directory for persistence. `parents[2]` resolves to apps/api/ — the same
+# base the embedding SQLite cache (disk_cache.py) and model-discovery snapshot
+# (local_llm.py) use, so CACHE_DIR coalesces all three caches into one directory.
 CACHE_DIR = Path(
     os.getenv(
         "CACHE_DIR",
-        Path(__file__).resolve().parents[3] / "data" / "cache",
+        Path(__file__).resolve().parents[2] / "data" / "cache",
     )
 )
 PERSISTENCE_FILE = CACHE_DIR / "semantic_cache.json"
@@ -107,16 +109,18 @@ def _load_persisted_cache() -> None:
 
 
 def _persist_cache() -> None:
-    """Persist semantic cache to disk."""
+    """Persist semantic cache to disk, including an explicit empty state."""
     global _last_persist_time
-    if not _SEMANTIC_CACHE:
-        return
-
     try:
         _ensure_cache_dir()
-        # Convert numpy arrays to lists for JSON serialization
+        # Snapshot under the lock so a concurrent insert/evict during serialization
+        # can't mutate the deque mid-iteration (RuntimeError: deque mutated during
+        # iteration). RLock is reentrant, so this is safe even when the caller
+        # already holds _CACHE_LOCK.
+        with _CACHE_LOCK:
+            snapshot = list(_SEMANTIC_CACHE)
         serializable = []
-        for entry in _SEMANTIC_CACHE:
+        for entry in snapshot:
             serializable.append(
                 {
                     "kb_id": entry["kb_id"],
@@ -129,7 +133,6 @@ def _persist_cache() -> None:
                 }
             )
 
-        # Write atomically
         temp_file = PERSISTENCE_FILE.with_suffix(".tmp")
         with open(temp_file, "w", encoding="utf-8") as f:
             json.dump(serializable, f)
@@ -196,22 +199,36 @@ def check_semantic_cache(
     kb_id: str,
     query_vector: list[float],
     similarity_threshold: float = 0.94,
+    embedding_model: str | None = None,
 ) -> dict[str, Any] | None:
     """
     Search the semantic response cache for an equivalent previously verified answer.
     Returns cached result dict if similarity >= similarity_threshold, else None.
+
+    Entries are namespaced by embedding model so a re-index with a different
+    embedding space can never serve stale vectors/answers (SEC correctness).
     """
     if not query_vector:
         return None
 
     query_arr = np.asarray(query_vector, dtype=np.float32)
+    model_key = (embedding_model or "").strip().lower()
+
+    def _entry_matches(entry: dict[str, Any]) -> bool:
+        if entry.get("kb_id") != kb_id:
+            return False
+        if model_key and str(entry.get("embedding_model", "") or "").strip().lower() != model_key:
+            return False
+        return True
 
     with _CACHE_LOCK:
         # 1. Exact string fast path (check recent entries first)
         normalized_q = query.strip().lower()
         for entry in reversed(_SEMANTIC_CACHE):
-            if entry["kb_id"] == kb_id:
+            if _entry_matches(entry):
                 if entry["query"].strip().lower() == normalized_q:
+                    if len(entry.get("vector", [])) != len(query_vector):
+                        continue  # dimension change: never serve stale space
                     logger.info("Semantic cache exact hit", query=query, kb_id=kb_id)
                     return entry["response"]
 
@@ -219,8 +236,13 @@ def check_semantic_cache(
         if len(_SEMANTIC_CACHE) == 0:
             return None
 
-        # Filter entries by kb_id for vectorized search
-        kb_indices = [i for i, e in enumerate(_SEMANTIC_CACHE) if e["kb_id"] == kb_id]
+        # Filter entries by kb_id (+ embedding model + vector dim) for
+        # vectorized search so mixed-dimension spaces never matmul.
+        kb_indices = [
+            i
+            for i, e in enumerate(_SEMANTIC_CACHE)
+            if _entry_matches(e) and len(e.get("vector", [])) == len(query_vector)
+        ]
         if not kb_indices:
             return None
 
@@ -273,27 +295,38 @@ def check_semantic_cache(
     return None
 
 
+def _json_safe(value: Any) -> Any:
+    """Return a JSON-serializable copy, converting BSON ObjectIds to strings."""
+    return json.loads(json.dumps(value, default=str))
+
+
 def store_semantic_cache(
     query: str,
     kb_id: str,
     query_vector: list[float],
     response_data: dict[str, Any],
+    embedding_model: str | None = None,
 ) -> None:
     """
-    Save a successfully verified analysis to the semantic cache.
-    Evicts oldest entries when capacity exceeds _MAX_CACHE_ENTRIES (handled by deque).
+    Save a verified answer to the semantic cache using JSON-safe data only.
+
+    Audit artifacts (Mongo ObjectIds, evidence rows, claim documents) are
+    intentionally not trusted from cache. The graph revalidates those against
+    the current database before serving the answer.
     """
     if not query_vector or not response_data:
         return
 
+    safe_response = _json_safe(response_data)
     global _SEMANTIC_CACHE, _MATRIX_DIRTY
     with _CACHE_LOCK:
         entry = {
             "kb_id": kb_id,
             "query": query,
             "vector": np.asarray(query_vector, dtype=np.float32),
-            "response": response_data,
+            "response": safe_response,
             "timestamp": time.time(),
+            "embedding_model": (embedding_model or "").strip().lower(),
         }
         _SEMANTIC_CACHE.append(entry)
         _MATRIX_DIRTY = True
@@ -302,12 +335,35 @@ def store_semantic_cache(
     logger.debug("Stored response in semantic cache", query=query, kb_id=kb_id)
 
 
-def clear_semantic_cache() -> None:
+def invalidate_semantic_cache(kb_id: str) -> int:
+    """Remove all cached answers for a knowledge base and persist the removal."""
+    global _SEMANTIC_CACHE, _MATRIX_DIRTY
+    removed = 0
+    with _CACHE_LOCK:
+        kept: deque[dict[str, Any]] = deque(maxlen=_MAX_CACHE_ENTRIES)
+        while _SEMANTIC_CACHE:
+            entry = _SEMANTIC_CACHE.popleft()
+            if entry["kb_id"] == kb_id:
+                removed += 1
+            else:
+                kept.append(entry)
+        _SEMANTIC_CACHE = kept
+        _MATRIX_DIRTY = True
+
+    if removed:
+        _persist_cache()
+        logger.info("Invalidated semantic cache entries", kb_id=kb_id, removed=removed)
+    return removed
+
+
+def clear_semantic_cache(persist: bool = False) -> None:
     """Clear the semantic cache (useful for testing)."""
     global _SEMANTIC_CACHE, _MATRIX_DIRTY
     with _CACHE_LOCK:
         _SEMANTIC_CACHE.clear()
         _MATRIX_DIRTY = True
+    if persist:
+        _persist_cache()
 
 
 def prune_context_tokens(context: str, max_chars: int = 6000) -> str:

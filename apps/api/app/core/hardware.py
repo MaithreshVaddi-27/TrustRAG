@@ -214,21 +214,21 @@ def detect_hardware_profile() -> dict[str, Any]:
     total_ram = mem["total_gb"]
     if total_ram <= 8.5:
         tier = "lean_accelerated" if device in ("mps", "cuda") else "lean_cpu"
-        recommended_llm = "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M"
+        recommended_llm = "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
         recommended_llm_alt = "granite4.2:3b-q4_K_M"
         recommended_embedding = "BAAI/bge-small-en-v1.5"
         max_batch_size = 16
         max_concurrency = 2
     elif total_ram <= 16.5:
         tier = "standard_accelerated" if device in ("mps", "cuda") else "standard_cpu"
-        recommended_llm = "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M"
+        recommended_llm = "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
         recommended_llm_alt = "granite4.2:3b-q4_K_M"
         recommended_embedding = "BAAI/bge-small-en-v1.5"
         max_batch_size = 32
         max_concurrency = 4
     else:
         tier = "high_performance"
-        recommended_llm = "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M"
+        recommended_llm = "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
         recommended_llm_alt = "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
         recommended_embedding = "BAAI/bge-small-en-v1.5"
         max_batch_size = 64

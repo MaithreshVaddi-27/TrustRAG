@@ -46,3 +46,24 @@ def test_health_endpoint_mongo_degraded():
         assert data["status"] == "degraded"
         assert data["services"]["mongodb"] == "degraded"
         assert data["services"]["qdrant"] == "ok"
+
+
+def test_no_fastapi_deprecation_warning_on_requests():
+    """Regression: custom default_response_class (ORJSONResponse) warned per request.
+
+    The app must serialize via FastAPI's native path — any
+    FastAPIDeprecationWarning raised as an error fails this test.
+    """
+    import warnings
+
+    from fastapi.exceptions import FastAPIDeprecationWarning
+
+    with (
+        patch("app.api.v1.health.mongo_health_check", AsyncMock(return_value=True)),
+        patch("app.api.v1.health.qdrant_health_check", return_value=True),
+        warnings.catch_warnings(),
+    ):
+        warnings.simplefilter("error", FastAPIDeprecationWarning)
+        response = client.get("/api/v1/health")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/json")

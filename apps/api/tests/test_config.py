@@ -211,3 +211,112 @@ class TestSettings:
         settings = self._make_settings(app_env="development")
         assert settings.is_development()
         assert not settings.is_production()
+
+
+class TestAnalysisModelPolicy:
+    def test_known_local_model_override_is_allowed(self, monkeypatch) -> None:
+        from app.api.v1.schemas.analysis import AnalysisCreate
+
+        # Patch the discovery cache to include the expected model
+        monkeypatch.setattr(
+            "app.core.local_llm.get_discovered_llms",
+            lambda provider: (
+                frozenset(["granite4.2:3b-q4_K_M"]) if provider == "ollama" else frozenset()
+            ),
+        )
+
+        request = AnalysisCreate(
+            knowledge_base_id="64ee39d09c6292376e191983",
+            query="What changed?",
+            llm_provider="ollama",
+            llm_model="granite4.2:3b-q4_K_M",
+        )
+        assert request.llm_model == "granite4.2:3b-q4_K_M"
+
+    def test_arbitrary_huggingface_llm_model_is_rejected(self) -> None:
+        from pydantic import ValidationError
+
+        from app.api.v1.schemas.analysis import AnalysisCreate
+
+        with pytest.raises(ValidationError, match="not enabled"):
+            AnalysisCreate(
+                knowledge_base_id="64ee39d09c6292376e191983",
+                query="Load this model",
+                llm_provider="ollama",
+                llm_model="attacker/arbitrary-model",
+            )
+
+    def test_runtime_discovered_llamacpp_model_is_allowed(self, monkeypatch) -> None:
+        """Models discovered from the running llama.cpp server must be selectable.
+
+        Regression for: the /models dropdown lists live-discovered GGUFs, but the
+        AnalysisCreate allowlist only accepted the static INSTALLED_LLAMACPP_LLMS,
+        so newly-installed weights (e.g. SmolLM3-3B GGUF) were rejected on submit.
+        """
+        from app.api.v1.schemas.analysis import AnalysisCreate
+
+        discovered = {"huggingface/SmolLM3-3B-GGUF:Q4_K_M"}
+        monkeypatch.setattr(
+            "app.core.local_llm.get_discovered_llms",
+            lambda provider: frozenset(discovered) if provider == "llama_cpp" else frozenset(),
+        )
+
+        request = AnalysisCreate(
+            knowledge_base_id="64ee39d09c6292376e191983",
+            query="Analyze using the freshly installed GGUF",
+            llm_provider="llama_cpp",
+            llm_model="huggingface/SmolLM3-3B-GGUF:Q4_K_M",
+        )
+        assert request.llm_model == "huggingface/SmolLM3-3B-GGUF:Q4_K_M"
+
+    def test_non_discovered_model_still_rejected_with_empty_caches(self) -> None:
+        """Without discovery or static allowlist matches, requests stay rejected."""
+        from pydantic import ValidationError
+
+        from app.api.v1.schemas.analysis import AnalysisCreate
+
+        with pytest.raises(ValidationError, match="not enabled"):
+            AnalysisCreate(
+                knowledge_base_id="64ee39d09c6292376e191983",
+                query="This must stay blocked",
+                llm_provider="llama_cpp",
+                llm_model="attacker/arbitrary-model",
+            )
+
+    def test_merge_discovered_llms_filters_embedding_models(self) -> None:
+        from app.core.local_llm import get_discovered_llms, merge_discovered_llms
+
+        merge_discovered_llms("ollama", ["granite4.2:3b-q4_K_M", "nomic-embed-text"])
+        discovered = get_discovered_llms("ollama")
+        assert "granite4.2:3b-q4_K_M" in discovered
+        assert "nomic-embed-text" not in discovered
+
+    def test_arbitrary_embedding_repository_is_rejected(self, monkeypatch) -> None:
+        from pydantic import ValidationError
+
+        # Patch discovered models so the LLM validation passes
+        import app.core.local_llm as _llm_mod
+        from app.api.v1.schemas.analysis import AnalysisCreate
+
+        _orig_get_discovered = _llm_mod.get_discovered_llms
+        _llm_mod.get_discovered_llms = lambda provider: frozenset(
+            ["granite4.2:3b-q4_K_M", "gemma3:1b"]
+            if provider == "ollama"
+            else ["occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M", "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"]
+        )
+
+        try:
+            with pytest.raises(
+                ValidationError,
+                match="Embedding model is not enabled for provider 'huggingface'",
+            ):
+                AnalysisCreate(
+                    knowledge_base_id="64ee39d09c6292376e191983",
+                    query="Embed this",
+                    llm_provider="ollama",
+                    llm_model="granite4.2:3b-q4_K_M",
+                    embedding_provider="huggingface",
+                    embedding_model="attacker/untrusted-code",
+                )
+        finally:
+            _llm_mod.get_discovered_llms = _orig_get_discovered

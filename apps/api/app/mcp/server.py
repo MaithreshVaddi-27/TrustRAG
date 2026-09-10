@@ -18,6 +18,7 @@ import json
 import sys
 from typing import Any
 
+from app.core.exceptions import RetrievalOutageError
 from app.core.logging import get_logger
 from app.db.mongodb import Collections, connect_db, get_collection
 from app.retrieval.retriever import retrieve_hybrid_chunks
@@ -200,7 +201,20 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
         except (TypeError, ValueError):
             top_k = 5
         top_k = max(1, min(top_k, 50))
-        candidates = await retrieve_hybrid_chunks(query=query, kb_id=kb_id, top_k_override=top_k)
+        try:
+            candidates = await retrieve_hybrid_chunks(
+                query=query, kb_id=kb_id, top_k_override=top_k
+            )
+        except RetrievalOutageError as exc:
+            logger.error("trustrag_search outage", error=str(exc))
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"trustrag_search unavailable (retrieval outage): {exc}",
+                    }
+                ]
+            }
         results = [
             {
                 "chunk_id": str(c.get("chunk_id")),

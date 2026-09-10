@@ -56,9 +56,9 @@ docs/
 
 ---
 
-## Current Stack (2026-09-07)
+## Current Stack (2026-09-08)
 
-- **LLM**: llama.cpp (local, `occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M`), Ollama (installed: `granite4.2:3b-q4_K_M`, `gemma3:1b`), Gemini, NVIDIA NIM — selectable per request.
+- **LLM**: llama.cpp (local, `ibm-granite/granite-4.2-3b-GGUF:Q4_K_M`), Ollama (installed: `granite4.2:3b-q4_K_M`, `gemma3:1b`), Gemini, NVIDIA NIM — selectable per request.
 - **Embeddings**: HuggingFace BGE (local, 384d) by default; Gemini/NVIDIA available via env.
 - **Retrieval**: Qdrant (embedded local or cloud) + sparse BM25 + RRF; reranker runs on detected device (Metal/CUDA/CPU).
 - **Local LLM server**: start via `./scripts/start_local_llm.sh` (auto GPU offload + KV budget).

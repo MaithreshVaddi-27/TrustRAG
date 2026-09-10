@@ -23,7 +23,9 @@ def test_auth_login_rate_limit_returns_429():
     """Two login attempts allowed per low ceiling; the third gets a 429."""
     settings = get_settings()
     original_limit = settings.rate_limit_auth_per_minute
+    original_trusted = settings.trusted_proxy_ips
     settings.rate_limit_auth_per_minute = 2
+    settings.trusted_proxy_ips = "testclient"
     try:
         mock_collection = MagicMock()
         # find_one returns None → authenticate_user rejects with 401 (no user).
@@ -42,13 +44,16 @@ def test_auth_login_rate_limit_returns_429():
             assert third.status_code == 429
     finally:
         settings.rate_limit_auth_per_minute = original_limit
+        settings.trusted_proxy_ips = original_trusted
 
 
 def test_rate_limit_not_hit_below_ceiling():
     """Requests within the allowance succeed without a 429."""
     settings = get_settings()
     original_limit = settings.rate_limit_auth_per_minute
+    original_trusted = settings.trusted_proxy_ips
     settings.rate_limit_auth_per_minute = 10
+    settings.trusted_proxy_ips = "testclient"
     try:
         mock_collection = MagicMock()
         mock_collection.find_one = AsyncMock(return_value=None)
@@ -65,3 +70,17 @@ def test_rate_limit_not_hit_below_ceiling():
             assert all(r.status_code != 429 for r in responses)
     finally:
         settings.rate_limit_auth_per_minute = original_limit
+        settings.trusted_proxy_ips = original_trusted
+
+
+def test_forwarded_for_ignored_without_trusted_proxy():
+    """A direct client cannot rotate X-Forwarded-For to evade rate limits."""
+    from types import SimpleNamespace
+
+    from app.core.rate_limiter import _get_client_ip
+
+    request = SimpleNamespace(
+        headers={"x-forwarded-for": "203.0.113.99"},
+        client=SimpleNamespace(host="192.0.2.10"),
+    )
+    assert _get_client_ip(request) == "192.0.2.10"

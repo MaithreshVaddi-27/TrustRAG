@@ -15,7 +15,7 @@ from bson import ObjectId
 from langgraph.graph import END, StateGraph
 
 from app.core.config import get_model_config
-from app.core.context import ContextManager, Message, get_context_config
+from app.core.exceptions import RetrievalOutageError
 from app.core.logging import get_logger
 from app.core.model_registry import get_verification_model
 from app.db.mongodb import Collections, get_collection
@@ -49,8 +49,9 @@ class AgentState(TypedDict):
     reliability_score: float | None
     diagnosis_type: (
         str | None
-    )  # RETRIEVAL_FAILURE | EVIDENCE_CONFLICT | LOW_COVERAGE | VERIFICATION_TIMEOUT
-    # | VERIFICATION_ERROR | RETRIEVAL_ERROR | GENERATION_ERROR | None
+    )  # RETRIEVAL_FAILURE | RETRIEVAL_OUTAGE | EVIDENCE_CONFLICT | LOW_COVERAGE
+    # | VERIFICATION_TIMEOUT | VERIFICATION_ERROR | RETRIEVAL_ERROR
+    # | GENERATION_ERROR | None
     diagnosis_failures: list[str]
     web_search_enabled: bool
     web_search_provider: str  # "tavily" | "duckduckgo" | "both"
@@ -58,6 +59,9 @@ class AgentState(TypedDict):
     llm_model: str | None
     embedding_provider: str | None
     embedding_model: str | None
+    # True when the answer text is reused from semantic cache; retrieval and
+    # verification still rerun against the current knowledge base for auditability.
+    cache_hit: bool
     # Error tracking for fallback paths
     node_errors: list[dict[str, Any]]
 
@@ -196,9 +200,11 @@ async def retrieval_node(state: AgentState) -> AgentState:
                     },
                 )
             else:
-                # Double the retrieval search size to fetch more context
-                top_k_override = cfg.dense_top_k * 2
-                max_context_override = cfg.max_context_chunks * 2
+                # OPT (local-LLM load): cap widened retrieval so recovery does
+                # not pay 2x Qdrant/rerank/Mongo for chunks the 8-chunk
+                # generation cap throws away anyway.
+                top_k_override = min(cfg.dense_top_k * 2, cfg.max_context_chunks + 16)
+                max_context_override = min(cfg.max_context_chunks * 2, cfg.max_context_chunks + 4)
                 logger.info(
                     "Recovery: expanded search retrieval size triggered",
                     top_k=top_k_override,
@@ -224,7 +230,33 @@ async def retrieval_node(state: AgentState) -> AgentState:
         if state.get("embedding_model"):
             retrieve_kwargs["embedding_model"] = state.get("embedding_model")
 
-        candidates = await retrieve_hybrid_chunks(**retrieve_kwargs)
+        try:
+            candidates = await retrieve_hybrid_chunks(**retrieve_kwargs)
+        except RetrievalOutageError as exc:
+            # Infra outage (Qdrant / embedding service unreachable) — NOT
+            # "no evidence". Surface it distinctly, store a clear message,
+            # and exhaust recovery budget so the graph ends instead of
+            # burning LLM calls on rewrites that cannot fix an outage.
+            logger.error("Retrieval outage — vector search unavailable", error=str(exc))
+            await add_trace_event(
+                state["analysis_id"],
+                "retrieval.outage",
+                {"message": f"Search service unavailable: {exc}"},
+            )
+            state["chunks"] = []
+            state["evidence_ids"] = []
+            state["claims"] = []
+            state["answer"] = (
+                "The knowledge base search service is temporarily unavailable, "
+                "so I could not search for evidence. Please wait a few minutes "
+                "and try again — this is not a finding of 'no evidence'."
+            )
+            state["verdict_status"] = "FAIL"
+            state["reliability_score"] = 0.0
+            state["diagnosis_type"] = "RETRIEVAL_OUTAGE"
+            state["diagnosis_failures"] = [str(exc)]
+            state["attempts"] = cfg.max_recovery_attempts
+            return state
 
         if not candidates and state.get("attempts", 0) == 0:
             from app.db.qdrant import get_collection_name, get_qdrant_client, init_kb_collection
@@ -262,21 +294,25 @@ async def retrieval_node(state: AgentState) -> AgentState:
                     )
 
                     doc_coll = get_collection(Collections.DOCUMENTS)
-                    doc_map = {}
-                    for c in chunks:
-                        d_id = str(c["document_id"])
-                        if d_id not in doc_map:
-                            d_obj = await doc_coll.find_one({"_id": c["document_id"]})
-                            doc_map[d_id] = (
-                                d_obj.get("filename", "document") if d_obj else "document"
-                            )
+                    # Single batched lookup (was N+1 find_one per distinct
+                    # document — thousands of round trips on large KBs).
+                    doc_ids = list({c["document_id"] for c in chunks})
+                    doc_map: dict[str, str] = {}
+                    if doc_ids:
+                        async for d_obj in doc_coll.find(
+                            {"_id": {"$in": doc_ids}}, {"filename": 1}
+                        ):
+                            doc_map[str(d_obj["_id"])] = d_obj.get("filename", "document")
 
                     contextual_texts = [
                         f"[{doc_map.get(str(c['document_id']), 'document')} | "
                         f"{c.get('zone', 'body').upper()}] {c['text']}"
                         for c in chunks
                     ]
-                    embed_model = get_embedding_model()
+                    embed_model = get_embedding_model(
+                        provider=state.get("embedding_provider"),
+                        model=state.get("embedding_model"),
+                    )
                     dense_vectors = await asyncio.to_thread(
                         embed_model.embed_documents, contextual_texts
                     )
@@ -310,11 +346,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                             )
                         )
                     await q_client.upsert(collection_name=col_name, points=sync_points)
-                    candidates = await retrieve_hybrid_chunks(
-                        query=state["current_query"],
-                        kb_id=state["kb_id"],
-                        top_k_override=top_k_override,
-                    )
+                    candidates = await retrieve_hybrid_chunks(**retrieve_kwargs)
                 elif points_count == 0 and mongo_chunks_count == 0:
                     logger.warning("Knowledge base collection is empty", kb_id=state["kb_id"])
                     await add_trace_event(
@@ -530,17 +562,49 @@ async def generation_node(state: AgentState) -> AgentState:
     cfg = get_model_config()
     generation_timeout = cfg.llm_timeout_seconds
 
-    # Get context management config
-    context_cfg = get_context_config()
-
     async def _run_generation() -> AgentState:
         logger.info("Agent Generation Node starting")
+
+        # Semantic-cache answers are reused only after fresh retrieval has
+        # persisted evidence for this run. Verification below must re-prove the
+        # answer against the current knowledge base, never trust cached claims.
+        if state.get("cache_hit") and state.get("answer"):
+            await add_trace_event(
+                state["analysis_id"],
+                "generation.cache_reused",
+                {"message": "Reused cached answer; verifying against fresh evidence"},
+            )
+            return state
 
         # If answer was already formulated by the 0-chunk empty KB guard, preserve it
         empty_kb_guard = state.get("diagnosis_failures") == [
             "Knowledge base contains 0 indexed chunks"
         ]
-        if state.get("answer") and not state.get("chunks") and empty_kb_guard:
+        # A retrieval outage also stores a final user-facing message in the
+        # retrieval node — never overwrite it with a grounded-ABSTAIN.
+        outage_guard = state.get("diagnosis_type") == "RETRIEVAL_OUTAGE"
+        if state.get("answer") and not state.get("chunks") and (empty_kb_guard or outage_guard):
+            return state
+
+        # Futile-regeneration guard: on a regenerate retry the chunk set is
+        # unchanged (retrieval short-circuits above), and the model already
+        # refused these exact segments with ABSTAIN. Re-invoking burns a full
+        # local generation (~60s on 2-3B models) for a certain repeat refusal
+        # — keep the ABSTAIN and let verification close out the run.
+        if (
+            state.get("recovery_strategy") == "regenerate"
+            and (state.get("answer") or "").strip() == "ABSTAIN"
+            and state.get("chunks")
+        ):
+            logger.info("Skipping futile regeneration (prior ABSTAIN on identical chunks)")
+            await add_trace_event(
+                state["analysis_id"],
+                "generation.skipped",
+                {
+                    "message": "Model already abstained on these segments — "
+                    "skipping repeat generation",
+                },
+            )
             return state
 
         await add_trace_event(
@@ -549,36 +613,14 @@ async def generation_node(state: AgentState) -> AgentState:
             {"message": "Reasoning grounded answer from verified context"},
         )
 
-        # Build context with conversation history management
-        context_manager = ContextManager(
-            strategy=context_cfg.get("strategy", "hybrid"),
-            max_tokens=context_cfg.get("max_tokens", cfg.max_input_tokens),
-        )
-
-        # Add current query as user message
-        context_manager.add_message(Message(role="user", content=state["current_query"]))
-
-        # Get managed context (with sliding window/summarization)
-        await context_manager.get_context(reserve_tokens=2000)
-
         answer = await generate_grounded_answer(
             state["current_query"],
             state["chunks"],
             provider=state.get("llm_provider"),
             model=state.get("llm_model"),
-            # Pass managed context if generator supports it
         )
 
-        # Add assistant response to context
-        context_manager.add_message(Message(role="assistant", content=answer))
-
         state["answer"] = answer
-        if context_manager.manager:
-            state["context"] = [m.to_dict() for m in context_manager.manager.messages]
-        elif context_manager.window_manager:
-            state["context"] = [m.to_dict() for m in context_manager.window_manager.messages]
-        else:
-            state["context"] = []
         return state
 
     # Fallback state for generation failure
@@ -611,12 +653,17 @@ async def verification_node(state: AgentState) -> AgentState:
     # no evidence — after recovery, chunks may exist with a stale diagnosis
     # from an earlier round, and the fresh answer MUST be verified.
     if (
-        state.get("diagnosis_type") == "RETRIEVAL_FAILURE"
+        state.get("diagnosis_type") in ("RETRIEVAL_FAILURE", "RETRIEVAL_OUTAGE")
         and state.get("answer")
         and not state.get("chunks")
     ):
         state["attempts"] = cfg.max_recovery_attempts
-        state["verdict_status"] = "PASS"
+        if state.get("diagnosis_type") == "RETRIEVAL_OUTAGE":
+            # Outage stays FAIL so it is never cached as an answer and never
+            # mistaken for a passed analysis; attempts=max still ends the run.
+            state["verdict_status"] = "FAIL"
+        else:
+            state["verdict_status"] = "PASS"
         return state
 
     answer = state["answer"]
@@ -771,6 +818,7 @@ async def recovery_node(state: AgentState) -> AgentState:
         # Clear prior failed/abstained answer and claims so recovery generates and verifies freshly
         state["answer"] = None
         state["claims"] = []
+        state["cache_hit"] = False
         # Clear the prior round's diagnosis/verdict too — verification_node
         # branches on diagnosis_type, and a stale RETRIEVAL_FAILURE would
         # short-circuit verification of the fresh answer (skipping it entirely).
@@ -789,17 +837,20 @@ async def recovery_node(state: AgentState) -> AgentState:
         )
 
         if strategy == "query_rewrite":
-            # Invoke Gemini to rewrite the query targeting the missing facts
+            # Use LLM to expand acronyms and terms contextually (no hardcoded map)
+            # so it adapts to any knowledge base domain.
+            # Invoke LLM to rewrite the query targeting the missing facts
             missing_claims = missing_claims_snapshot
             if missing_claims:
                 missing_str = "\n".join(f"- {c}" for c in missing_claims)
-                rewrite_prompt = f"""You are a query expansion assistant.
-Your task is to rewrite the original user query to search for the missing
-factual details listed below.
-Combine the original query with context requirements. Generate a single,
-concise search query.
+                rewrite_prompt = f"""You are a query expansion assistant for an IR system.
+The original query may contain acronyms or ambiguous terms.
+Your task: rewrite the query to search for the missing factual details below.
+- Expand any acronyms/abbreviations to their full forms (e.g., IRS → Internal Revenue Service)
+- Add synonyms or related terms that would help retrieval
+- Keep the query focused and concise (5 to 12 words)
 
-Output only the expanded search query string. Do not include markdown headers or commentary.
+Output only the expanded search query string. No markdown or commentary.
 
 <ORIGINAL_QUERY>
 {state["query"]}
@@ -812,10 +863,12 @@ Output only the expanded search query string. Do not include markdown headers or
                 # Query rewrite triggered because generation abstained / insufficient context
                 rewrite_prompt = f"""You are a search query expansion assistant for an IR system.
 The original query did not return sufficient information to answer the question.
-Your task is to expand the query by resolving ambiguous acronyms and terms.
-Keep the query focused and concise (5 to 12 words), ideal for search engines.
+Your task: expand the query by resolving ambiguous acronyms and terms.
+- Expand any acronyms/abbreviations to their full forms
+- Add synonyms or related terms that would help retrieval
+- Keep the query focused and concise (5 to 12 words)
 
-Output only the expanded search query string. Do not include markdown or quotes.
+Output only the expanded search query string. No markdown or quotes.
 
 <ORIGINAL_QUERY>
 {state["query"]}
@@ -839,23 +892,35 @@ Output only the expanded search query string. Do not include markdown or quotes.
                         elif hasattr(item, "text"):
                             parts.append(item.text)
                     new_query = "".join(parts)
-                new_query = str(new_query).strip()
+                new_query = str(new_query).strip().strip("\"'")
 
-                logger.info(
-                    "Query rewritten successfully", original=state["query"], rewritten=new_query
-                )
-                state["current_query"] = new_query
-                state["recovery_strategy"] = "query_rewrite"
+                if not new_query or len(new_query) < 3:
+                    # Small local models sometimes return an empty rewrite.
+                    # An empty query would waste a full retrieval+generation
+                    # round on unranked content — keep the original instead.
+                    logger.warning(
+                        "Query rewrite returned empty text, keeping original query",
+                        original=state["query"],
+                    )
+                    state["recovery_strategy"] = None
+                else:
+                    logger.info(
+                        "Query rewritten successfully",
+                        original=state["query"],
+                        rewritten=new_query,
+                    )
+                    state["current_query"] = new_query
+                    state["recovery_strategy"] = "query_rewrite"
 
-                await add_trace_event(
-                    state["analysis_id"],
-                    "recovery.rewrite",
-                    {
-                        "message": "Rewriting query to target missing details",
-                        "original_query": state["query"],
-                        "rewritten_query": new_query,
-                    },
-                )
+                    await add_trace_event(
+                        state["analysis_id"],
+                        "recovery.rewrite",
+                        {
+                            "message": "Rewriting query to target missing details",
+                            "original_query": state["query"],
+                            "rewritten_query": new_query,
+                        },
+                    )
             except Exception as exc:
                 logger.error("Query rewrite failed, falling back to original query", error=str(exc))
                 state["recovery_strategy"] = None
@@ -1009,10 +1074,15 @@ async def execute_agentic_rag_flow(
         "llm_model": llm_model,
         "embedding_provider": embedding_provider,
         "embedding_model": embedding_model,
+        "cache_hit": False,
+        "node_errors": [],
     }
 
-    # ── Semantic Response Cache Fast-Path (0% Compute Load) ────────────────────
-    q_vec: list[float] = []
+    # ── Semantic answer reuse (safe mode) ──────────────────────────────────────
+    # Cache only the answer text. Retrieval and NLI still rerun against the
+    # current KB so claims, evidence IDs, integrity status, and verdict always
+    # belong to this analysis and cannot be stale after document deletion.
+    q_vec: list[float] | None = None
     if not web_search_enabled:
         try:
             from app.core.model_registry import get_embedding_model
@@ -1025,31 +1095,30 @@ async def execute_agentic_rag_flow(
                 try:
                     q_vec = await emb_model.aembed_query(query)
                 except Exception:
-                    q_vec = emb_model.embed_query(query)
+                    q_vec = await asyncio.to_thread(emb_model.embed_query, query)
                 _query_cache.set(cache_key, q_vec)
 
-            cached_resp = check_semantic_cache(query, kb_id_str, q_vec, similarity_threshold=0.94)
-            if cached_resp:
+            cached_resp = check_semantic_cache(
+                query,
+                kb_id_str,
+                q_vec,
+                similarity_threshold=0.94,
+                embedding_model=f"{embedding_provider or ''}:{embedding_model or ''}",
+            )
+            if cached_resp and isinstance(cached_resp.get("answer"), str):
+                initial_state["answer"] = cached_resp["answer"]
+                initial_state["cache_hit"] = True
                 await add_trace_event(
                     analysis_id_str,
                     "cache.hit",
                     {
                         "message": (
-                            "Semantic cache match (similarity >= 94%). "
-                            "Serving verified answer with 0% compute load."
+                            "Semantic cache matched a prior answer (similarity >= 94%). "
+                            "Generation is skipped; retrieval and NLI revalidation continue."
                         ),
                         "cached_query": query,
                     },
                 )
-                return {
-                    **initial_state,
-                    "answer": cached_resp["answer"],
-                    "reliability_score": cached_resp.get("reliability_score", 1.0),
-                    "verdict_status": cached_resp.get("verdict_status", "PASS"),
-                    "chunks": cached_resp.get("chunks", []),
-                    "evidence_ids": cached_resp.get("evidence_ids", []),
-                    "claims": cached_resp.get("claims", []),
-                }
         except Exception as cache_err:
             logger.debug("Semantic cache check bypassed", error=str(cache_err))
 
@@ -1074,20 +1143,14 @@ async def execute_agentic_rag_flow(
                     query_vector=q_vec,
                     response_data={
                         "answer": final_state["answer"],
-                        "reliability_score": final_state.get("reliability_score"),
-                        "verdict_status": final_state.get("verdict_status"),
-                        "chunks": final_state.get("chunks", []),
-                        "evidence_ids": final_state.get("evidence_ids", []),
-                        "claims": final_state.get("claims", []),
                     },
+                    embedding_model=f"{embedding_provider or ''}:{embedding_model or ''}",
                 )
             except Exception as store_err:
                 logger.debug("Semantic cache store skipped", error=str(store_err))
 
         return final_state
     finally:
-        import asyncio
-
         from app.core.memory import trim_memory
 
         await asyncio.to_thread(trim_memory)

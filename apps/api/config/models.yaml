@@ -16,7 +16,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 runtime:
-  config_version: "1.3"
+  config_version: "1.5"
 
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
@@ -27,17 +27,19 @@ llm:
   llamacpp_base_url: "http://127.0.0.1:8080/v1"
   # Supported local models (exactly what is installed):
   #   ollama (`ollama list`):
-  #     - granite4.2:3b-q4_K_M      # 2.2GB
-  #     - gemma3:1b                  # 815MB fallback
+  #     - Impulse2000/smollm3:3b-q4_K_M
+  #     - granite4.2:3b-q4_K_M
+  #     - gemma3:1b
   #   llama_cpp (`llama-server --cache-list`):
-  #     - occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M   # ACTIVE: 1.7B RAG-tuned, ~1.1GB
-  #     - occ-ai/OCC-RAG-0.6B-GGUF:Q4_K_M
-  #     - ibm-granite/granite-4.2-3b-GGUF:Q4_K_M
+  #     - ibm-granite/granite-4.2-3b-GGUF:Q4_K_M     # ACTIVE: 3B Granite, ~2.2GB
+  #     - ggml-org/SmolLM3-3B-GGUF:Q4_K_M
+  #     - bartowski/EXAONE-3.5-2.4B-Instruct-GGUF:Q4_K_S
+  #     - LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
   #     - ibm-granite/granite-4.0-h-1b-GGUF:Q4_K_M
-  model: occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M
+  model: ibm-granite/granite-4.2-3b-GGUF:Q4_K_M
   # Per-provider yaml defaults (used when the env override is empty).
   model_ollama: granite4.2:3b-q4_K_M
-  model_llamacpp: occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M
+  model_llamacpp: ibm-granite/granite-4.2-3b-GGUF:Q4_K_M
   temperature: 0.2
   top_p: 0.9
   max_output_tokens: 1024
@@ -62,10 +64,10 @@ embedding:
 verification:
   framework: langchain
   provider: llama_cpp
-  model: occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M
+  model: ibm-granite/granite-4.2-3b-GGUF:Q4_K_M
   # Per-provider yaml defaults (used when the env override is empty).
   model_ollama: granite4.2:3b-q4_K_M
-  model_llamacpp: occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M
+  model_llamacpp: ibm-granite/granite-4.2-3b-GGUF:Q4_K_M
   temperature: 0.0          # Zero temperature for deterministic verification
   max_output_tokens: 512
   timeout_seconds: 120
@@ -120,23 +122,21 @@ reliability:
 
 # ─── Recovery Policy ──────────────────────────────────────────────────────────
 recovery:
-  max_recovery_attempts: 2          # Hard ceiling — prevents infinite loops
-  max_query_rewrites: 2
-  max_reretrieval_attempts: 2
+  max_recovery_attempts: 1          # Single recovery round only — cuts latency
+  max_query_rewrites: 1
+  max_reretrieval_attempts: 1
   # Strategy costs (relative units) — prefer cheaper strategies first
   strategy_priority:
     - query_rewrite
     - re_retrieve
-    - evidence_expansion
-    - conflict_resolution
-    - claim_filtering
-    - controlled_regeneration
-    - abstention
+    - regenerate
 
 # ─── Context & Cost Controls ──────────────────────────────────────────────────
 cost_controls:
   max_input_tokens: 100000          # Hard limit per LLM call
   max_verification_claims: 8        # Small models choke on 20; 8 keeps NLI focused
+  max_individual_nli_fallback: 5    # Cap per-claim LLM verifications when batch NLI
+                                    # fails (each is a full call); remainder → NEUTRAL
   enable_response_caching: true     # Semantic response caching enabled
 
 # ─── Inference Acceleration & KV Cache Optimization ───────────────────────────

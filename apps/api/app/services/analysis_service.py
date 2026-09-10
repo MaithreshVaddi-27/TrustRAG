@@ -21,7 +21,7 @@ from app.api.v1.schemas.analysis import (
     ReliabilitySummary,
     TraceEventResponse,
 )
-from app.core.config import get_model_config
+from app.core.config import get_model_config, get_settings
 from app.core.exceptions import AuthorizationError, InputValidationError, NotFoundError
 from app.core.logging import get_logger
 from app.db.mongodb import Collections, get_collection
@@ -243,6 +243,24 @@ async def create_analysis(
                 f"{cfg.embedding_dimensionality}d. Re-upload the documents to re-index.",
                 detail=f"kb_dim={kb.embedding_dim} server_dim={cfg.embedding_dimensionality}",
             )
+
+    # LOCAL-LLM PREFLIGHT: when the effective provider is a local inference
+    # server, verify it answers in ~3s. Without this, a stopped ollama /
+    # llama-server burns minutes of 120s timeouts across ~9 sequential calls
+    # before the pipeline abstains or fails. Raises LLMUnavailableError → 503
+    # with the exact start command so the UI can alert instead of hanging.
+    effective_llm_provider = (schema.llm_provider or cfg.llm_provider or "").strip().lower()
+    if effective_llm_provider in ("ollama", "llama_cpp", "llamacpp"):
+        from app.core.local_llm import probe_local_llm_server
+
+        settings = get_settings()
+        if effective_llm_provider == "ollama":
+            llm_base_url = settings.ollama_base_url
+            probe_provider = "ollama"
+        else:
+            llm_base_url = settings.llamacpp_base_url
+            probe_provider = "llama_cpp"
+        await probe_local_llm_server(probe_provider, llm_base_url)
     analysis_doc = {
         "user_id": ObjectId(user_id_str),
         "knowledge_base_id": ObjectId(schema.knowledge_base_id),
@@ -557,6 +575,41 @@ async def run_analysis_pipeline(
                 embedding_provider=embedding_provider,
                 embedding_model=embedding_model,
             )
+
+        if final_state.get("diagnosis_type") == "RETRIEVAL_OUTAGE":
+            # Retrieval infrastructure outage — never present this as
+            # "no evidence found" / abstention. Store as failed with the
+            # outage detail so operators and users can tell it apart.
+            outage_failures = final_state.get("diagnosis_failures") or [
+                "Retrieval service unavailable"
+            ]
+            outage_answer = final_state.get("answer") or (
+                "The knowledge base search service is temporarily unavailable, "
+                "so I could not search for evidence. Please wait a few minutes "
+                "and try again — this is not a finding of 'no evidence'."
+            )
+            await analyses_coll.update_one(
+                {"_id": analysis_id},
+                {
+                    "$set": {
+                        "status": "failed",
+                        "answer": outage_answer,
+                        "error_message": outage_failures[0],
+                        "reliability": {"score": 0.0, "status": "FAILED"},
+                        "diagnosis": {
+                            "type": "RETRIEVAL_OUTAGE",
+                            "failures": outage_failures,
+                        },
+                        "updated_at": datetime.now(UTC),
+                    }
+                },
+            )
+            await add_trace_event(
+                analysis_id_str,
+                "analysis.outage",
+                {"message": outage_failures[0]},
+            )
+            return
 
         answer = final_state["answer"]
         cfg = get_model_config()

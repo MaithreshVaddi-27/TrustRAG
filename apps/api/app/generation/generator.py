@@ -134,15 +134,38 @@ def _chunk_order_key(chunk: dict[str, Any]) -> tuple[float, str]:
     return (-float(score or 0.0), text.lower()[:120])
 
 
-def format_context(chunks: list[dict[str, Any]]) -> str:
-    """Format evidence segments into a clean structured block with deduplication."""
+def format_context_with_chunk_indices(
+    chunks: list[dict[str, Any]],
+    # OPT (local-LLM load): 5500 chars + system prompt overflowed the local
+    # 2048-token window (num_ctx) and produced truncated stubs. 3000 chars
+    # keeps generation + batch-NLI prompts inside small-model context.
+    max_chars: int = 3000,
+) -> tuple[str, list[int]]:
+    """Format chunks and return the original index represented by each segment.
+
+    The NLI model sees segments after deterministic sorting and deduplication.
+    Callers that map model-returned segment numbers back to persisted evidence
+    must use these original indexes; using raw chunk positions can link a claim
+    to the wrong evidence after reranking or duplicate removal.
+
+    Segment numbering must stay aligned with the returned ``chunk_indices``.
+    Each segment is therefore pruned (whitespace/markdown normalization) on its
+    own and kept whole — never partially truncated — so pruning cannot renumber,
+    merge, or silently drop ``Segment N`` headers that the verifier maps onto
+    evidence IDs (see verifier.execute_claim_verification).
+    """
     if not chunks:
-        return "No context segments available."
+        return "No context segments available.", []
+
+    from app.core.semantic_cache import prune_context_tokens
 
     formatted = []
+    chunk_indices: list[int] = []
     seen_prefixes: set[str] = set()
-    idx = 1
-    for c in sorted(chunks, key=_chunk_order_key):
+    indexed_chunks = sorted(enumerate(chunks), key=lambda item: _chunk_order_key(item[1]))
+    total_chars = 0
+    display_idx = 0
+    for chunk_idx, c in indexed_chunks:
         text = c.get("text", "").strip()
         if not text:
             continue
@@ -151,16 +174,38 @@ def format_context(chunks: list[dict[str, Any]]) -> str:
         if prefix in seen_prefixes:
             continue
         seen_prefixes.add(prefix)
+        display_idx += 1
 
         filename = _sanitize_label(c.get("filename") or "unknown_doc")
         page = int(c.get("page") or 1)
-        formatted.append(f"--- Segment {idx} [Source: {filename}, Page {page}] ---\n{text}")
-        idx += 1
+        body = prune_context_tokens(text)
+        segment = f"--- Segment {display_idx} [Source: {filename}, Page {page}] ---\n{body}"
+        segment_len = len(segment) + (2 if formatted else 0)
 
-    raw_context = "\n\n".join(formatted)
-    from app.core.semantic_cache import prune_context_tokens
+        # Enforce the char budget at whole-segment granularity so trailing
+        # segments are dropped (with their header) rather than partially kept —
+        # a partial segment would desync the segment numbers and evidence mapping.
+        if formatted and total_chars + segment_len > max_chars:
+            break
+        if not formatted and segment_len > max_chars:
+            # First segment alone exceeds the budget: keep it anyway rather than
+            # returning nothing; it remains internally consistent.
+            formatted.append(segment)
+            chunk_indices.append(chunk_idx)
+            total_chars += segment_len
+            break
 
-    return prune_context_tokens(raw_context, max_chars=5500)
+        formatted.append(segment)
+        chunk_indices.append(chunk_idx)
+        total_chars += segment_len
+
+    return "\n\n".join(formatted), chunk_indices
+
+
+def format_context(chunks: list[dict[str, Any]]) -> str:
+    """Format evidence segments into a clean structured block with deduplication."""
+    context, _ = format_context_with_chunk_indices(chunks)
+    return context
 
 
 async def generate_grounded_answer(
@@ -204,8 +249,11 @@ async def generate_grounded_answer(
 
         response = await llm.ainvoke(messages)
 
-        # Standardize result
+        # Standardize result (guard: None content must not become "None")
         answer = response.content
+        if answer is None:
+            logger.warning("LLM returned empty content, abstaining")
+            return "ABSTAIN"
         if isinstance(answer, bytes):
             answer = answer.decode("utf-8")
         elif isinstance(answer, list):

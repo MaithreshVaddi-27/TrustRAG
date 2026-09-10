@@ -67,7 +67,16 @@ def setup_dependency_override(mock_user_doc):
 @patch("app.db.mongodb.create_indexes")
 def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
     # Mock kb ownership check inside analysis_service (real get_kb returns KBResponse)
+    # Patch discovered models so the default model is allowed
+    import app.core.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
+
+    _orig_get_discovered = _llm_mod.get_discovered_llms
+    _llm_mod.get_discovered_llms = lambda provider: frozenset(
+        ["granite4.2:3b-q4_K_M", "gemma3:1b"]
+        if provider == "ollama"
+        else ["occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M", "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"]
+    )
 
     mock_kb = KBResponse(
         id=str(mock_kb_doc["_id"]),
@@ -85,6 +94,11 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
         with (
             patch("app.services.analysis_service.get_collection", return_value=mock_collection),
             patch("app.services.analysis_service.add_trace_event", AsyncMock()) as mock_add_trace,
+            # Local-LLM preflight probe (no inference server in CI)
+            patch(
+                "app.core.local_llm.probe_local_llm_server",
+                AsyncMock(return_value=None),
+            ),
         ):
             payload = {
                 "knowledge_base_id": "64ee39d09c6292376e191982",
@@ -102,13 +116,77 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
             assert call_kwargs["event"] == "analysis.started"
             assert call_kwargs["data"]["message"] == "Analysis run initiated"
 
+    # Restore original
+    _llm_mod.get_discovered_llms = _orig_get_discovered
+
 
 @patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
-def test_create_analysis_rejects_embedding_mismatch(mock_create_indexes, mock_connect, mock_kb_doc):
-    """A KB pinned to one embedding space must reject analyses requesting another."""
+def test_create_analysis_fails_fast_when_local_llm_down(
+    mock_create_indexes, mock_connect, mock_kb_doc
+):
+    """Stopped ollama/llama-server → synchronous 503 alert, not a silent burn."""
+    import app.core.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
+    from app.core.exceptions import LLMUnavailableError
+
+    _orig_get_discovered = _llm_mod.get_discovered_llms
+    _llm_mod.get_discovered_llms = lambda provider: frozenset(
+        ["ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"] if provider == "llama_cpp" else frozenset()
+    )
+
+    mock_kb = KBResponse(
+        id=str(mock_kb_doc["_id"]),
+        name=mock_kb_doc["name"],
+        description=mock_kb_doc["description"],
+        user_id=str(mock_kb_doc["user_id"]),
+        created_at="2026-08-27T10:00:00Z",
+    )
+    with (
+        patch("app.services.analysis_service.get_kb", return_value=mock_kb),
+        patch(
+            "app.core.local_llm.probe_local_llm_server",
+            AsyncMock(
+                side_effect=LLMUnavailableError(
+                    "Local LLM server 'llama_cpp' is not reachable at "
+                    "http://127.0.0.1:8080/v1. Start it with "
+                    "'./scripts/start_local_llm.sh' (llama-server on :8080)."
+                )
+            ),
+        ),
+    ):
+        payload = {
+            "knowledge_base_id": "64ee39d09c6292376e191982",
+            "query": "Is there a 45 days policy?",
+            "llm_provider": "llama_cpp",
+        }
+        response = client.post("/api/v1/analyses", json=payload)
+        _llm_mod.get_discovered_llms = _orig_get_discovered
+        assert response.status_code == 503
+        body = response.json()
+        assert body["error"]["code"] == "LLM_UNAVAILABLE"
+        assert "start_local_llm.sh" in body["error"]["message"]
+
+
+@patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_create_analysis_rejects_embedding_mismatch(
+    mock_create_indexes, mock_connect, mock_kb_doc, mock_user_doc
+):
+    """A KB pinned to one embedding space must reject analyses requesting another."""
+    import app.core.local_llm as _llm_mod
+    from app.api.v1.schemas.kb import KBResponse
+
+    _orig_get_discovered = _llm_mod.get_discovered_llms
+    _llm_mod.get_discovered_llms = lambda provider: frozenset(
+        ["granite4.2:3b-q4_K_M", "gemma3:1b"]
+        if provider == "ollama"
+        else ["occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M", "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"]
+    )
+
+    app.dependency_overrides[get_current_user] = lambda: mock_user_doc
 
     mock_kb = KBResponse(
         id=str(mock_kb_doc["_id"]),
@@ -129,7 +207,15 @@ def test_create_analysis_rejects_embedding_mismatch(mock_create_indexes, mock_co
         response = client.post("/api/v1/analyses", json=payload)
 
         assert response.status_code == 422
-        assert "Embedding mismatch" in response.json()["error"]["message"]
+        resp = response.json()
+        if "error" in resp:
+            assert "Embedding mismatch" in str(resp["error"].get("message", ""))
+        elif isinstance(resp.get("detail"), list):
+            assert any("Embedding mismatch" in str(d.get("msg", "")) for d in resp["detail"])
+        else:
+            assert "Embedding mismatch" in str(resp.get("detail", resp.get("message", "")))
+    _llm_mod.get_discovered_llms = _orig_get_discovered
+    app.dependency_overrides.clear()
 
 
 def _ticket_collection():
@@ -159,8 +245,15 @@ def test_stream_trace_endpoint(mock_create_indexes, mock_connect):
 
     # Mint a short-lived stream ticket (JWT is never passed in the URL).
     # Same fake store must span mint + consume (separate HTTP requests).
+    # Ownership is verified via analysis_service.get_analysis before issuance.
     fake_tickets = _ticket_collection()
-    with patch("app.api.v1.analyses.get_collection", return_value=fake_tickets):
+    with (
+        patch("app.api.v1.analyses.get_collection", return_value=fake_tickets),
+        patch(
+            "app.services.analysis_service.get_analysis",
+            AsyncMock(return_value={"id": "64ee39d09c6292376e191983"}),
+        ),
+    ):
         ticket_response = client.post("/api/v1/analyses/64ee39d09c6292376e191983/stream-ticket")
         assert ticket_response.status_code == 201
         ticket = ticket_response.json()["ticket"]
@@ -183,7 +276,13 @@ def test_stream_trace_rejects_invalid_and_reused_ticket(mock_create_indexes, moc
     analysis_id = "64ee39d09c6292376e191983"
     fake_tickets = _ticket_collection()
 
-    with patch("app.api.v1.analyses.get_collection", return_value=fake_tickets):
+    with (
+        patch("app.api.v1.analyses.get_collection", return_value=fake_tickets),
+        patch(
+            "app.services.analysis_service.get_analysis",
+            AsyncMock(return_value={"id": analysis_id}),
+        ),
+    ):
         # No ticket at all → 401
         assert client.get(f"/api/v1/analyses/{analysis_id}/stream").status_code in (401, 422)
 
@@ -214,6 +313,24 @@ def test_stream_trace_rejects_invalid_and_reused_ticket(mock_create_indexes, moc
         with patch("app.services.analysis_service.sse_event_generator", side_effect=mock_generator):
             assert client.get(stream_url).status_code == 200
             assert client.get(stream_url).status_code == 401
+
+
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_stream_ticket_requires_ownership(mock_create_indexes, mock_connect):
+    """Ticket issuance for a foreign/missing analysis must not succeed (IDOR guard)."""
+    from app.core.exceptions import NotFoundError
+
+    fake_tickets = _ticket_collection()
+    with (
+        patch("app.api.v1.analyses.get_collection", return_value=fake_tickets),
+        patch(
+            "app.services.analysis_service.get_analysis",
+            AsyncMock(side_effect=NotFoundError("Analysis not found")),
+        ),
+    ):
+        resp = client.post("/api/v1/analyses/64ee39d09c6292376e199999/stream-ticket")
+        assert resp.status_code == 404
 
 
 @patch("app.db.mongodb.connect_db")

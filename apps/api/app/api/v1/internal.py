@@ -126,9 +126,17 @@ async def internal_search(
 
     Requires search:read permission.
     """
+    from app.core.exceptions import RetrievalOutageError
     from app.retrieval.retriever import retrieve_hybrid_chunks
 
-    results = await retrieve_hybrid_chunks(query=query, kb_id=kb_id, top_k_override=top_k)
+    try:
+        results = await retrieve_hybrid_chunks(query=query, kb_id=kb_id, top_k_override=top_k)
+    except RetrievalOutageError as exc:
+        return {
+            "results": [],
+            "count": 0,
+            "error": f"retrieval outage: {exc}",
+        }
 
     return {
         "results": results,

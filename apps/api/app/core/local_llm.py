@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
+import threading
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, TypeVar
@@ -23,10 +25,53 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable, RunnableLambda
 from pydantic import BaseModel, Field
 
-from app.core.exceptions import ConfigurationError
+from app.core.exceptions import ConfigurationError, LLMUnavailableError
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Reuse HTTP connections for the Ollama/llama.cpp request fan-out. One analysis
+# can perform generation, decomposition, batch NLI, fallback NLI, and recovery;
+# per-call clients previously discarded keep-alive connections every time.
+_HTTP_CLIENTS: dict[tuple[str, float, int], httpx.AsyncClient] = {}
+_HTTP_CLIENTS_LOCK = threading.Lock()
+
+# OPT (local-LLM load): local inference servers are serial (llama-server -np 2,
+# Ollama default queue). Without an LLM-level semaphore, 2 concurrent analyses
+# x ~9 sequential calls pile up into timeout cascades. Serialize local
+# generations here; the analysis-level semaphore in analysis_service.py is
+# per-process and too coarse to protect the single inference server.
+_LOCAL_LLM_SEMAPHORE = asyncio.Semaphore(int(os.getenv("LOCAL_LLM_MAX_CONCURRENCY", "1")))
+
+
+def _shared_http_client(base_url: str, timeout: float) -> httpx.AsyncClient:
+    """Return a per-event-loop, per-endpoint pooled AsyncClient."""
+    try:
+        loop_id = id(asyncio.get_running_loop())
+    except RuntimeError:
+        loop_id = 0
+    key = (base_url.rstrip("/"), float(timeout), loop_id)
+    with _HTTP_CLIENTS_LOCK:
+        client = _HTTP_CLIENTS.get(key)
+        if client is None or client.is_closed:
+            client = httpx.AsyncClient(timeout=timeout)
+            _HTTP_CLIENTS[key] = client
+        return client
+
+
+async def close_local_llm_clients() -> None:
+    """Close all pooled local-LLM HTTP clients during application shutdown."""
+    with _HTTP_CLIENTS_LOCK:
+        clients = list(_HTTP_CLIENTS.values())
+        _HTTP_CLIENTS.clear()
+    if clients:
+        results = await asyncio.gather(
+            *(client.aclose() for client in clients), return_exceptions=True
+        )
+        errors = [str(result) for result in results if isinstance(result, Exception)]
+        if errors:
+            logger.debug("One or more local LLM clients failed to close", errors=errors)
+
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -59,6 +104,12 @@ def _convert_messages_to_dict(messages: list[Any]) -> list[dict[str, str]]:
                     "content": str(m.get("content", "")),
                 }
             )
+        elif isinstance(m, str):
+            converted.append({"role": "user", "content": m})
+        else:
+            logger.warning("Dropping unsupported message type", msg_type=type(m).__name__)
+    if not converted:
+        raise ConfigurationError("No valid messages to send to local LLM (empty prompt)")
     return converted
 
 
@@ -117,9 +168,16 @@ class ChatOllamaClient(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
-        import asyncio
-
-        return asyncio.run(self._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs))
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(
+                self._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+            )
+        raise ConfigurationError(
+            "Synchronous Ollama generation cannot run inside an active event loop; "
+            "use ainvoke() instead."
+        )
 
     async def _agenerate(
         self,
@@ -134,10 +192,10 @@ class ChatOllamaClient(BaseChatModel):
         options: dict[str, Any] = {
             "temperature": kwargs.get("temperature", self.temperature),
             "top_p": kwargs.get("top_p", self.top_p),
-            # PERF 2026-09-06 (lean 8GB hosts): 2k context halves the Ollama
-            # KV-cache on unified memory; 1k token cap stops runaway
-            # generations (up to 9 LLM calls per analysis with recovery).
-            "num_ctx": kwargs.get("num_ctx", 2048),
+            # OPT (local-LLM load): 2048 overflowed with 3000-char contexts +
+            # system prompt and produced truncated stubs. 4096 matches
+            # llama-server -c 4096 and fits the reduced context budget.
+            "num_ctx": kwargs.get("num_ctx", 4096),
             "num_predict": kwargs.get("max_tokens", 1024),
             "repeat_penalty": kwargs.get("repeat_penalty", self.repeat_penalty),
         }
@@ -160,7 +218,8 @@ class ChatOllamaClient(BaseChatModel):
             payload["format"] = requested_format
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with _LOCAL_LLM_SEMAPHORE:
+                client = _shared_http_client(self.base_url, self.timeout)
                 res = await client.post(endpoint, json=payload)
                 if res.status_code == 404:
                     with suppress(Exception):
@@ -173,16 +232,16 @@ class ChatOllamaClient(BaseChatModel):
                                 payload["model"] = match
                                 res = await client.post(endpoint, json=payload)
 
-                if res.status_code == 404:
-                    raise ConfigurationError(
-                        "Ollama model "
-                        f"'{self.model}' not found. Please run 'ollama pull {self.model}' "
-                        "in your terminal."
-                    )
-                res.raise_for_status()
-                data = res.json()
-                content = data.get("message", {}).get("content", "")
-                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
+            if res.status_code == 404:
+                raise ConfigurationError(
+                    "Ollama model "
+                    f"'{self.model}' not found. Please run 'ollama pull {self.model}' "
+                    "in your terminal."
+                )
+            res.raise_for_status()
+            data = res.json()
+            content = data.get("message", {}).get("content", "")
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
         except httpx.ConnectError as exc:
             raise ConfigurationError(
                 "Cannot connect to Ollama at "
@@ -297,9 +356,16 @@ class ChatLlamaCppClient(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
-        import asyncio
-
-        return asyncio.run(self._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs))
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(
+                self._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+            )
+        raise ConfigurationError(
+            "Synchronous llama.cpp generation cannot run inside an active event loop; "
+            "use ainvoke() instead."
+        )
 
     async def _agenerate(
         self,
@@ -328,13 +394,14 @@ class ChatLlamaCppClient(BaseChatModel):
             payload["response_format"] = {"type": "json_object"}
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with _LOCAL_LLM_SEMAPHORE:
+                client = _shared_http_client(self.base_url, self.timeout)
                 res = await client.post(endpoint, json=payload)
-                res.raise_for_status()
-                data = res.json()
-                choices = data.get("choices", [])
-                content = choices[0].get("message", {}).get("content", "") if choices else ""
-                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
+            res.raise_for_status()
+            data = res.json()
+            choices = data.get("choices", [])
+            content = choices[0].get("message", {}).get("content", "") if choices else ""
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
         except httpx.ConnectError as exc:
             raise ConfigurationError(
                 f"Cannot connect to llama.cpp server at '{self.base_url}'. "
@@ -424,22 +491,135 @@ class ChatLlamaCppClient(BaseChatModel):
 # the llama.cpp LLM selector. Embeddings are fixed via EMBEDDING_* env / models.yaml
 # and pinned per-KB at ingest — never user-selected per request.
 
-# ─── Canonical installed-model sets ──────────────────────────────────────────
-# The ONLY hardcoded local model ids in the backend. These seed offline
-# display and merge with live `ollama list` / `llama-server --cache-list` /
-# /v1/models output at runtime — prune here when a model is deleted locally.
-# Cloud (gemini/nvidia) ids are API-side and live in models.py, not here.
-INSTALLED_OLLAMA_LLMS = [
-    "granite4.2:3b-q4_K_M",
-    "gemma3:1b",
-]
+# ─── Runtime model discovery cache ────────────────────────────────────────────
+# Only models actually discovered via `ollama list` and `llama-server --cache-list`
+# are cached here. No hardcoded fallbacks — the UI should only show models
+# actually installed on the user's system.
+_DISCOVERED_LLMS: dict[str, set[str]] = {}
+_DISCOVERED_LLMS_LOCK = threading.Lock()
 
-INSTALLED_LLAMACPP_LLMS = [
-    "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
-    "occ-ai/OCC-RAG-0.6B-GGUF:Q4_K_M",
-    "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
-    "ibm-granite/granite-4.0-h-1b-GGUF:Q4_K_M",
-]
+
+def merge_discovered_llms(provider: str, models: list[str], replace: bool = False) -> None:
+    """Cache live-discovered GENERATIVE model ids for a local provider.
+
+    With ``replace=True`` the bucket is replaced by the fresh authoritative
+    list (used when live CLI/API discovery succeeded) so uninstalled models
+    stop being offered. An empty fresh list never wipes the cache — a
+    transient discovery failure must not break in-flight request validation.
+    """
+    clean = [m for m in models if m and not _is_embedding_model_name(m)]
+    if not clean:
+        return
+    with _DISCOVERED_LLMS_LOCK:
+        if replace:
+            _DISCOVERED_LLMS[provider] = set(clean)
+        else:
+            bucket = _DISCOVERED_LLMS.setdefault(provider, set())
+            bucket.update(clean)
+
+
+async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 3.0) -> None:
+    """Fail fast when a local inference server is not running.
+
+    Raises LLMUnavailableError with copy-paste start instructions instead of
+    letting an analysis burn minutes of timeouts before abstaining. Only the
+    configured base URL is echoed (no secrets); transport details stay in logs.
+    """
+    norm = (provider or "").strip().lower()
+    base = (base_url or "").rstrip("/")
+    if norm == "ollama":
+        probe_url = f"{base}/api/tags"
+        start_hint = "Start it with 'ollama serve' (then 'ollama pull <model>' if needed)."
+    else:
+        probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
+        start_hint = "Start it with './scripts/start_local_llm.sh' (llama-server on :8080)."
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            res = await client.get(probe_url)
+        if res.status_code >= 500:
+            raise LLMUnavailableError(
+                f"Local LLM server '{norm}' at {base} returned HTTP {res.status_code}. {start_hint}"
+            )
+    except LLMUnavailableError:
+        raise
+    except Exception as exc:
+        logger.warning("Local LLM server probe failed", provider=norm, base_url=base)
+        raise LLMUnavailableError(
+            f"Local LLM server '{norm}' is not reachable at {base}. {start_hint}"
+        ) from exc
+
+
+def get_discovered_llms(provider: str) -> frozenset[str]:
+    """Return cached live-discovered model ids for a provider (empty if unknown)."""
+    with _DISCOVERED_LLMS_LOCK:
+        return frozenset(_DISCOVERED_LLMS.get(provider, set()))
+
+
+# ─── Discovery snapshot (cross-process seeding) ──────────────────────────────
+# The discovery cache above is in-memory per process. A process started later
+# (e.g. the backend after scripts/discover_local_models.py) re-seeds from this
+# JSON snapshot so a pre-run discovery script actually warms the server.
+_DISCOVERY_SNAPSHOT_PATH = Path(__file__).resolve().parents[2] / "data" / "discovered_models.json"
+
+
+def save_discovery_snapshot() -> None:
+    """Persist the current discovered-model cache for later processes."""
+    with _DISCOVERED_LLMS_LOCK:
+        payload = {
+            "providers": {
+                provider: sorted(models) for provider, models in _DISCOVERED_LLMS.items()
+            },
+        }
+    try:
+        _DISCOVERY_SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _DISCOVERY_SNAPSHOT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        logger.debug("Persisted model discovery snapshot", path=str(_DISCOVERY_SNAPSHOT_PATH))
+    except Exception as exc:
+        logger.debug("Failed to persist model discovery snapshot", error=str(exc))
+
+
+def load_discovery_snapshot() -> None:
+    """Seed the in-process discovery cache from a previously-persisted snapshot."""
+    try:
+        data = json.loads(_DISCOVERY_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return
+    except Exception as exc:
+        logger.debug("Failed to load model discovery snapshot", error=str(exc))
+        return
+    providers = data.get("providers", {}) if isinstance(data, dict) else {}
+    for provider, models in providers.items():
+        if isinstance(models, list):
+            merge_discovered_llms(str(provider), [str(m) for m in models])
+
+
+async def seed_local_model_discovery() -> dict[str, list[str]]:
+    """
+    Discover locally-installed GENERATIVE models and warm the shared cache.
+
+    Sources (CLI-only, no server dependency):
+      - ollama    -> `ollama list`
+      - llama_cpp -> `llama-server --cache-list`
+
+    Loads any previously-persisted snapshot, refreshes the in-process cache from
+    the live CLIs, then persists the result so a backend started later seeds
+    identically. Runs at API startup and standalone via scripts/discover_local_models.py.
+    """
+    load_discovery_snapshot()
+
+    ollama_models = [
+        m for m in await discover_ollama_cli_models() if not _is_embedding_model_name(m)
+    ]
+    llamacpp_models = [
+        m for m in await discover_llamacpp_cache_models() if not _is_embedding_model_name(m)
+    ]
+
+    merge_discovered_llms("ollama", ollama_models)
+    merge_discovered_llms("llama_cpp", llamacpp_models)
+    save_discovery_snapshot()
+
+    return {"ollama": ollama_models, "llama_cpp": llamacpp_models}
+
 
 _EMBEDDING_NAME_KEYWORDS = (
     "embed",
@@ -473,7 +653,13 @@ async def discover_ollama_cli_models() -> list[str]:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=4.0)
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=4.0)
+        except TimeoutError:
+            with suppress(Exception):
+                proc.kill()
+                await proc.wait()
+            raise
         if proc.returncode == 0:
             lines = stdout.decode().strip().split("\n")
             for line in lines[1:]:  # skip header
@@ -499,7 +685,13 @@ async def discover_llamacpp_cache_models() -> list[str]:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=4.0)
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=4.0)
+        except TimeoutError:
+            with suppress(Exception):
+                proc.kill()
+                await proc.wait()
+            raise
         if proc.returncode == 0:
             lines = stdout.decode().strip().split("\n")
             for line in lines:
@@ -530,6 +722,7 @@ async def check_ollama_status(base_url: str = "http://localhost:11434") -> dict[
     """
     Discover Ollama status and GENERATIVE models via 'ollama list' CLI + HTTP API.
     Embedding models are excluded — embeddings are not selected per request.
+    Only models actually installed on the system are returned.
     """
     endpoint = f"{base_url.rstrip('/')}/api/tags"
     cli_llms = [m for m in await discover_ollama_cli_models() if not _is_embedding_model_name(m)]
@@ -546,23 +739,20 @@ async def check_ollama_status(base_url: str = "http://localhost:11434") -> dict[
     except Exception as exc:
         logger.debug("Ollama HTTP check failed", error=str(exc))
 
-    # Canonical installed set seeds the list; live CLI/API results merge below.
-    primary_ollama_llms = list(INSTALLED_OLLAMA_LLMS)
-
-    # Merge models preserving order with primary models at the top
+    # Only use models actually discovered via CLI or API.
+    # Ollama serves every pulled model on demand, so the CLI+API union is
+    # exactly the servable set (unlike llama-server, which serves one model).
     all_llms = list(
-        dict.fromkeys(
-            primary_ollama_llms
-            + cli_llms
-            + [m for m in api_models if not _is_embedding_model_name(m)]
-        )
+        dict.fromkeys(cli_llms + [m for m in api_models if not _is_embedding_model_name(m)])
     )
 
     # If CLI succeeded, Ollama daemon is installed and active
     if cli_llms:
         connected = True
 
-    default_model = "granite4.2:3b-q4_K_M" if "granite4.2:3b-q4_K_M" in all_llms else all_llms[0]
+    # Default to first discovered model, or empty if none
+    default_model = all_llms[0] if all_llms else ""
+    merge_discovered_llms("ollama", all_llms, replace=True)
 
     return {
         "connected": connected,
@@ -577,6 +767,7 @@ async def check_llamacpp_status(base_url: str = "http://127.0.0.1:8080/v1") -> d
     """
     Discover llama.cpp status and GENERATIVE models via 'llama-server --cache-list',
     HTTP /v1/models endpoint, and local HuggingFace cache. Embedding GGUFs excluded.
+    Only models actually installed on the system are returned.
     """
     endpoint = f"{base_url.rstrip('/')}/models"
     cache_models = await discover_llamacpp_cache_models()
@@ -594,36 +785,35 @@ async def check_llamacpp_status(base_url: str = "http://127.0.0.1:8080/v1") -> d
     except Exception as exc:
         logger.debug("llama.cpp HTTP check failed", error=str(exc))
 
-    primary_llamacpp_llms = list(INSTALLED_LLAMACPP_LLMS)
+    # llama-server serves ONLY the model(s) passed via --model (reported by
+    # /v1/models). Cached/HF blobs are NOT servable until loaded, so when the
+    # server is connected the selector lists exactly the API set — otherwise
+    # users pick phantom models that fail at generation time. Offline, fall
+    # back to the cache/HF union so the UI still shows what can be started.
+    api_llms = [m for m in api_models if not _is_embedding_model_name(m)]
+    if connected and api_llms:
+        combined = list(dict.fromkeys(api_llms))
+    else:
+        # The HF-hub scan returns bare repo ids (`org/model-GGUF`) while the
+        # server and cache-list return quantified ids (`org/model-GGUF:Q4_K_M`)
+        # for the same weights — drop the bare form when a quantified sibling
+        # is listed so the selector never shows one model twice.
+        quantified_bases = {m.split(":")[0] for m in api_models if ":" in m}
+        hf_llms = [
+            m
+            for m in hf_models
+            if not _is_embedding_model_name(m) and (":" in m or m not in quantified_bases)
+        ]
+        combined = list(dict.fromkeys(api_llms + cache_models + hf_llms))
 
-    # The HF-hub scan returns bare repo ids (`org/model-GGUF`) while the server
-    # and cache-list return quantified ids (`org/model-GGUF:Q4_K_M`) for the
-    # same weights — drop the bare form when a quantified sibling is listed so
-    # the selector never shows one model twice.
-    quantified_bases = {m.split(":")[0] for m in (*primary_llamacpp_llms, *api_models) if ":" in m}
-    hf_llms = [
-        m
-        for m in hf_models
-        if not _is_embedding_model_name(m) and (":" in m or m not in quantified_bases)
-    ]
-
-    combined = list(
-        dict.fromkeys(
-            primary_llamacpp_llms
-            + [m for m in api_models if not _is_embedding_model_name(m)]
-            + cache_models
-            + hf_llms
-        )
-    )
+    # Default to ibm-granite/granite-4.2-3b-GGUF:Q4_K_M if discovered, else first discovered
     default_model = (
-        "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M"
-        if "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M" in combined
-        else (
-            "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
-            if "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M" in combined
-            else combined[0]
-        )
+        "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
+        if "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M" in combined
+        else (combined[0] if combined else "")
     )
+
+    merge_discovered_llms("llama_cpp", combined, replace=True)
 
     return {
         "connected": connected,

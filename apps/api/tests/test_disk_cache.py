@@ -79,3 +79,9 @@ def test_disk_cache_batch(tmp_path, monkeypatch):
     # Verify vector precision
     assert abs(cached_map[0][0] - 1.0) < 1e-4
     assert abs(cached_map[2][2] - 1.0) < 1e-4
+
+    duplicate_cached, duplicate_missing = get_cached_embeddings_batch(
+        [texts[0], "uncached", texts[0]], model
+    )
+    assert duplicate_missing == [1]
+    assert duplicate_cached[0] == duplicate_cached[2]

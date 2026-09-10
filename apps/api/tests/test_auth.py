@@ -168,3 +168,50 @@ def test_expired_token_rejected(mock_create_indexes, mock_connect, mock_user_doc
     with patch("app.api.deps.get_collection", side_effect=fake_get_collection):
         response = client.get("/api/v1/auth/me", headers=headers)
         assert response.status_code == 401
+
+
+def test_service_token_rejected_as_user_token():
+    """Cross-type confusion: a service JWT must never authenticate as a user."""
+    from app.core.exceptions import AuthenticationError
+    from app.core.security import create_service_token, decode_access_token
+
+    svc = create_service_token("ingestion-worker", permissions=["search:read"])
+    with pytest.raises(AuthenticationError):
+        decode_access_token(svc)
+
+
+def test_hash_password_rejects_overlong_input():
+    """bcrypt truncates past 72 bytes — new credentials must be rejected, not truncated."""
+    from app.core.security import hash_password
+
+    with pytest.raises(ValueError, match="72 bytes"):
+        hash_password("Aa1!" + "x" * 69)  # 73 bytes total
+    # Exactly 72 bytes still hashes fine.
+    hashed = hash_password("Aa1!" + "x" * 68)
+    assert hashed.startswith("$2b$")
+
+
+def test_verify_password_explicit_truncation_keeps_legacy_hashes():
+    """Hashes minted before the ceiling (from truncated prefixes) still verify."""
+    from app.core.security import BCRYPT_MAX_PASSWORD_BYTES, hash_password, verify_password
+
+    prefix = "Aa1!" + "x" * 68  # exactly 72 bytes
+    assert len(prefix.encode("utf-8")) == BCRYPT_MAX_PASSWORD_BYTES
+    legacy_hash = hash_password(prefix)
+    # Legacy owner typing a longer password with the same 72-byte prefix still matches.
+    assert verify_password(prefix + "extra-suffix", legacy_hash) is True
+    assert verify_password("WrongPass123!xxxx", legacy_hash) is False
+
+
+def test_register_rejects_password_over_bcrypt_limit():
+    """Two long passwords sharing a 72-byte prefix must never both register."""
+    from pydantic import ValidationError
+
+    from app.api.v1.schemas.auth import UserRegister
+
+    long_a = "Aa1!" + "x" * 69 + "A"  # >72 bytes
+    long_b = "Aa1!" + "x" * 69 + "B"  # same 72-byte prefix, differs after
+    assert long_a.encode("utf-8")[:72] == long_b.encode("utf-8")[:72]
+    for pwd in (long_a, long_b):
+        with pytest.raises(ValidationError):
+            UserRegister(email="t@example.com", password=pwd, full_name="T")

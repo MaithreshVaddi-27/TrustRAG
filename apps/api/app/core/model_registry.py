@@ -14,6 +14,9 @@ Changing a model requires updating models.yaml only — no code changes.
 
 from __future__ import annotations
 
+import asyncio
+import threading
+from collections import OrderedDict
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -109,7 +112,7 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
 
             llm = ChatLlamaCppClient(
                 base_url=settings.llamacpp_base_url,
-                model=active_model or "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
+                model=active_model or "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
                 temperature=cfg.llm_temperature,
                 top_p=cfg.llm_top_p,
                 max_tokens=cfg.llm_max_output_tokens,
@@ -206,7 +209,7 @@ def get_verification_model(provider: str | None = None, model: str | None = None
 
             return ChatLlamaCppClient(
                 base_url=settings.llamacpp_base_url,
-                model=active_model or "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
+                model=active_model or "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
                 temperature=0.0,
                 max_tokens=cfg.verification_max_output_tokens,
                 timeout=float(cfg.verification_timeout_seconds),
@@ -307,16 +310,21 @@ class CachedEmbeddingsWrapper(Embeddings):
         self, base_embeddings: Any, max_cache_size: int = 512, model_name: str = "default"
     ) -> None:
         self._base = base_embeddings
-        self._cache: dict[str, list[float]] = {}
-        self._keys: list[str] = []
+        self._cache: OrderedDict[str, list[float]] = OrderedDict()
+        # get_embedding_model is lru_cache'd per (provider, model), so every
+        # caller for the same embedding serves from ONE wrapper instance. The
+        # in-memory LRU is mutated via asyncio.to_thread (thread pool) and from
+        # the event loop, so it must be guarded by a lock.
+        self._mem_lock = threading.RLock()
         self._max_size = max_cache_size
         self._model_name = getattr(
             base_embeddings, "model", getattr(base_embeddings, "model_name", model_name)
         )
 
     def embed_query(self, text: str) -> list[float]:
-        if text in self._cache:
-            return self._cache[text]
+        cached = self._lookup_mem(text)
+        if cached is not None:
+            return cached
 
         from app.core.disk_cache import get_cached_embedding, set_cached_embedding
 
@@ -331,19 +339,20 @@ class CachedEmbeddingsWrapper(Embeddings):
         return vec
 
     async def aembed_query(self, text: str) -> list[float]:
-        if text in self._cache:
-            return self._cache[text]
+        cached = self._lookup_mem(text)
+        if cached is not None:
+            return cached
 
         from app.core.disk_cache import get_cached_embedding, set_cached_embedding
 
-        disk_hit = get_cached_embedding(text, self._model_name)
+        disk_hit = await asyncio.to_thread(get_cached_embedding, text, self._model_name)
         if disk_hit:
             self._store_mem(text, disk_hit)
             return disk_hit
 
         vec = await self._base.aembed_query(text)
         self._store_mem(text, vec)
-        set_cached_embedding(text, self._model_name, vec)
+        await asyncio.to_thread(set_cached_embedding, text, self._model_name, vec)
         return vec
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
@@ -373,7 +382,9 @@ class CachedEmbeddingsWrapper(Embeddings):
 
         from app.core.disk_cache import get_cached_embeddings_batch, set_cached_embedding
 
-        cached_map, missing_indices = get_cached_embeddings_batch(texts, self._model_name)
+        cached_map, missing_indices = await asyncio.to_thread(
+            get_cached_embeddings_batch, texts, self._model_name
+        )
         if not missing_indices:
             return [cached_map[i] for i in range(len(texts))]
 
@@ -384,16 +395,23 @@ class CachedEmbeddingsWrapper(Embeddings):
             vec = computed_vectors[i]
             cached_map[idx] = vec
             self._store_mem(texts[idx], vec)
-            set_cached_embedding(texts[idx], self._model_name, vec)
+            await asyncio.to_thread(set_cached_embedding, texts[idx], self._model_name, vec)
 
         return [cached_map[i] for i in range(len(texts))]
 
+    def _lookup_mem(self, key: str) -> list[float] | None:
+        with self._mem_lock:
+            value = self._cache.get(key)
+            if value is not None:
+                self._cache.move_to_end(key)
+            return value
+
     def _store_mem(self, key: str, val: list[float]) -> None:
-        if len(self._cache) >= self._max_size and self._keys:
-            oldest = self._keys.pop(0)
-            self._cache.pop(oldest, None)
-        self._cache[key] = val
-        self._keys.append(key)
+        with self._mem_lock:
+            self._cache[key] = val
+            self._cache.move_to_end(key)
+            while len(self._cache) > self._max_size:
+                self._cache.popitem(last=False)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._base, name)
@@ -423,10 +441,16 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
         active_provider = "huggingface"  # SPLADE uses sentence-transformers under the hood
 
     def _wrap_with_cache(base_emb):
-        """Wrap embedding model with persistent disk cache."""
+        """Wrap embedding model with persistent disk cache.
+
+        The disk cache (embedding_cache.db) is shared across providers, so the
+        cache key must carry the provider — otherwise two providers serving the
+        same model string but different vectors would cross-contaminate.
+        """
         from app.core.model_registry import CachedEmbeddingsWrapper
 
-        return CachedEmbeddingsWrapper(base_emb, model_name=active_model)
+        cache_label = f"{active_provider}::{active_model}"
+        return CachedEmbeddingsWrapper(base_emb, model_name=cache_label)
 
     # ── Retired: local LLM-server embeddings (LLM-only now) ────────────────────
     _emb_model_lower = active_model.lower() if isinstance(active_model, str) else ""
@@ -627,61 +651,6 @@ def get_reranker():  # type: ignore[return]
             f"Failed to initialize reranker '{cfg.reranker_model}'",
             detail=str(exc),
         ) from exc
-
-
-# ─── Shared Embedding Manager ────────────────────────────────────────────────
-# Provides a shared embedding model instance across workers for memory efficiency.
-
-
-class SharedEmbeddingManager:
-    """Singleton manager for shared embedding models across workers."""
-
-    _instance: SharedEmbeddingManager | None = None
-
-    @classmethod
-    def get_instance(cls) -> SharedEmbeddingManager:
-        """Return the shared singleton instance (creates it on first call)."""
-        return cls()
-
-    def __new__(cls) -> SharedEmbeddingManager:
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-            cls._instance._model = None
-            cls._instance._device = None
-        return cls._instance
-
-    def initialize(self, model_name: str, device: str) -> bool:
-        """Initialize the shared embedding model.
-
-        Returns True if successfully initialized, False if already initialized.
-        """
-        if self._initialized:
-            return False
-
-        try:
-            from langchain_huggingface import HuggingFaceEmbeddings
-
-            self._model = HuggingFaceEmbeddings(
-                model_name=model_name,
-                model_kwargs={"device": device},
-                encode_kwargs={"normalize_embeddings": True},
-            )
-            self._device = device
-            self._initialized = True
-            return True
-        except Exception as exc:
-            logger.error(
-                "Failed to initialize shared embedding model",
-                model=model_name,
-                device=device,
-                error=str(exc),
-            )
-            return False
-
-    def get_model(self) -> Any:
-        """Get the initialized embedding model instance."""
-        return self._model
 
 
 # ─── Registry info ────────────────────────────────────────────────────────────

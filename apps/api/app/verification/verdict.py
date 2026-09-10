@@ -31,6 +31,7 @@ class DiagnosisType(StrEnum):
     """Diagnosis categories for failed/abstained analyses."""
 
     RETRIEVAL_FAILURE = "RETRIEVAL_FAILURE"
+    RETRIEVAL_OUTAGE = "RETRIEVAL_OUTAGE"
     EVIDENCE_CONFLICT = "EVIDENCE_CONFLICT"
     LOW_COVERAGE = "LOW_COVERAGE"
     NONE = "NONE"

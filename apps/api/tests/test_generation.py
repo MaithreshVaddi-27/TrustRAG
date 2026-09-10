@@ -4,11 +4,16 @@ Unit tests for the grounded answer generation module.
 
 from __future__ import annotations
 
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.generation.generator import format_context, generate_grounded_answer
+from app.generation.generator import (
+    format_context,
+    format_context_with_chunk_indices,
+    generate_grounded_answer,
+)
 
 
 def test_context_formatting():
@@ -45,6 +50,51 @@ def test_context_format_orders_by_score_then_text():
 
     formatted = format_context([low, high])
     assert formatted.index("high relevance") < formatted.index("low relevance")
+
+
+def test_context_format_returns_original_chunk_indexes_after_sort_and_dedup():
+    """NLI segment numbers must map back to the evidence list positions."""
+    low = {
+        "filename": "doc-low.txt",
+        "page": 1,
+        "text": "Revenue disclosure uses the local fiscal reporting calendar.",
+        "rrf_score": 0.1,
+    }
+    duplicate_low = dict(low)
+    high = {
+        "filename": "doc-high.txt",
+        "page": 2,
+        "text": "The approved policy permits refunds within thirty days.",
+        "rrf_score": 0.9,
+    }
+
+    context, chunk_indices = format_context_with_chunk_indices([low, duplicate_low, high])
+
+    assert "Segment 1" in context
+    assert "high.txt" in context
+    assert chunk_indices == [2, 0]
+
+
+def test_context_segment_numbers_align_with_chunk_indices_under_truncation():
+    """When the char budget forces trailing segments out, the kept segments must
+    be numbered 1..N contiguous and stay index-aligned so the verifier can map
+    NLI segment numbers onto the right evidence IDs."""
+    chunks = [
+        {
+            "filename": f"doc{i}.txt",
+            "page": 1,
+            "text": f"Keyword unique {i} " * 10,
+            "rrf_score": 0.9,
+        }
+        for i in range(3)
+    ]
+
+    context, chunk_indices = format_context_with_chunk_indices(chunks, max_chars=120)
+
+    assert chunk_indices, "at least one segment must survive a small budget"
+    # Every surviving segment must be present exactly once, numbered 1..N.
+    segment_numbers = sorted(int(m.group(1)) for m in re.finditer(r"Segment (\d+)", context))
+    assert segment_numbers == list(range(1, len(chunk_indices) + 1))
 
 
 @pytest.mark.asyncio

@@ -248,7 +248,7 @@ GET /api/v1/health
 # Expected response
 {
   "status": "ok",
-  "timestamp": "2026-08-27T10:00:00Z",
+  "timestamp": "2026-09-08T10:00:00Z",
   "app": "TRUSTRAG",
   "version": "0.1.0",
   "services": {
@@ -256,9 +256,9 @@ GET /api/v1/health
     "qdrant": "ok"
   },
   "models": {
-    "config_version": "1.3",
+    "config_version": "1.5",
     "llm_provider": "llama_cpp",
-    "llm_model": "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
+    "llm_model": "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
     "embedding_model": "BAAI/bge-small-en-v1.5",
     "embedding_provider": "huggingface"
   }

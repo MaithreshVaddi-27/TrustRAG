@@ -22,23 +22,43 @@ from app.core.exceptions import AuthenticationError
 
 ALGORITHM = "HS256"
 
+# bcrypt silently truncates inputs longer than 72 bytes, which would make two
+# distinct long passwords verify identically. New credentials must never exceed
+# this ceiling (enforced here and in the auth schemas).
+BCRYPT_MAX_PASSWORD_BYTES = 72
+
 # Service-to-service authentication constants
 SERVICE_TOKEN_TYPE = "service"  # noqa: S105 — token-type label, not a credential
 SERVICE_TOKEN_TTL_HOURS = 24  # Service tokens valid for 24 hours
 
 
 def hash_password(password: str) -> str:
-    """Hash password using standard bcrypt gensalt."""
+    """Hash password using standard bcrypt gensalt.
+
+    Raises:
+        ValueError: If the UTF-8 encoded password exceeds bcrypt's 72-byte
+            limit (it would otherwise be silently truncated).
+    """
     pwd_bytes = password.encode("utf-8")
+    if len(pwd_bytes) > BCRYPT_MAX_PASSWORD_BYTES:
+        raise ValueError(
+            f"Password must be at most {BCRYPT_MAX_PASSWORD_BYTES} bytes "
+            "(bcrypt silently truncates longer inputs)."
+        )
     salt = bcrypt.gensalt(rounds=12)
     hashed = bcrypt.hashpw(pwd_bytes, salt)
     return hashed.decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify plain password against hashed password."""
+    """Verify plain password against hashed password.
+
+    Truncation is applied explicitly (not silently) so hashes created before
+    the 72-byte ceiling was enforced keep verifying for their legacy owners.
+    """
     try:
-        return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+        pwd_bytes = plain_password.encode("utf-8")[:BCRYPT_MAX_PASSWORD_BYTES]
+        return bcrypt.checkpw(pwd_bytes, hashed_password.encode("utf-8"))
     except Exception:
         return False
 
@@ -90,6 +110,13 @@ def decode_access_token(token: str) -> dict[str, Any]:
     settings = get_settings()
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
+        # User and service tokens share the secret/algorithm — never accept a
+        # service token where a user token is required (and vice versa is
+        # already enforced in decode_service_token).
+        if payload.get("type") == SERVICE_TOKEN_TYPE:
+            raise AuthenticationError(
+                "Invalid authentication token", detail="Service token used as user token"
+            )
         return payload
     except ExpiredSignatureError as exc:
         raise AuthenticationError("Token signature has expired", detail=str(exc)) from exc

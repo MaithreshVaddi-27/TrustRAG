@@ -98,6 +98,13 @@
   }
 }
 
+/* Visible keyboard focus — Apple HIG agency: every pointer path needs a keyboard path */
+:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.7);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 /* Global press feedback — Apple HIG: "Give people consistent feedback" */
 @media (hover: hover) and (pointer: fine) {
   button:not(:disabled):active,

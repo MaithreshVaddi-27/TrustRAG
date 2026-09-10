@@ -285,6 +285,7 @@ async def verify_claim_nli(
     chunks: list[dict[str, Any]],
     provider: str | None = None,
     model: str | None = None,
+    context_str: str | None = None,
 ) -> dict[str, Any]:
     """
     Perform NLI verification check on a single claim against retrieved evidence segments.
@@ -297,10 +298,12 @@ async def verify_claim_nli(
       }
     """
     try:
-        # Format candidate segments
-        from app.generation.generator import format_context
+        # Format candidate segments unless the caller already built the exact
+        # prompt context and segment-to-chunk mapping for this verification round.
+        if context_str is None:
+            from app.generation.generator import format_context
 
-        context_str = format_context(chunks)
+            context_str = format_context(chunks)
 
         model_obj = get_verification_model(provider=provider, model=model)
         structured_nli = model_obj.with_structured_output(NLIVerdict)
@@ -331,6 +334,7 @@ async def batch_verify_claims_nli(
     chunks: list[dict[str, Any]],
     provider: str | None = None,
     model: str | None = None,
+    context_str: str | None = None,
 ) -> dict[int, dict[str, Any]]:
     """
     Verify multiple claims simultaneously in a single structured call.
@@ -346,9 +350,10 @@ async def batch_verify_claims_nli(
     if not claims or not chunks:
         return {}
 
-    from app.generation.generator import format_context
+    if context_str is None:
+        from app.generation.generator import format_context
 
-    context_str = format_context(chunks)
+        context_str = format_context(chunks)
     claims_list_str = "\n".join(f"{i}. {text}" for i, text in enumerate(claims, start=1))
 
     prompt_str = BATCH_NLI_PROMPT_TEMPLATE.format(
@@ -443,32 +448,90 @@ async def execute_claim_verification(
         claims_texts = claims_texts[:max_claims]
 
     # 2. Execute verification (attempt batch verification first to prevent 429 errors)
+    # Build the prompt and the segment->original-chunk map together. NLI segment
+    # numbers refer to the sorted/deduplicated context, not the raw rerank order.
+    from app.generation.generator import format_context_with_chunk_indices
+
+    context_str, context_chunk_indices = format_context_with_chunk_indices(chunks)
+    batch_kwargs: dict[str, Any] = {
+        "provider": provider,
+        "model": model,
+        "context_str": context_str,
+    }
     results_map: dict[int, dict[str, Any]] = {}
     try:
-        results_map = await batch_verify_claims_nli(
-            claims_texts, chunks, provider=provider, model=model
-        )
+        results_map = await batch_verify_claims_nli(claims_texts, chunks, **batch_kwargs)
     except Exception as exc:
+        # Small local models frequently fail structured batch output transiently
+        # (truncated JSON). One retry costs 1 call and usually succeeds; without
+        # it every claim falls back to an individual LLM call (up to 8x load).
         logger.warning(
-            "Batch verification encountered error, falling back to individual checks",
+            "Batch verification failed, retrying once before individual fallback",
             error=str(exc),
         )
+        try:
+            results_map = await batch_verify_claims_nli(claims_texts, chunks, **batch_kwargs)
+        except Exception as retry_exc:
+            logger.warning(
+                "Batch verification retry failed, falling back to individual checks",
+                error=str(retry_exc),
+            )
 
     # 3. Process each claim and persist to MongoDB (Batch Optimized)
+    # Bound the per-claim fallback: each miss costs a full LLM call, so cap it
+    # and mark the remainder NEUTRAL (conservative — never inflates trust).
+    # OPT (local-LLM load): early-exit — if the batch already proves the
+    # contradiction rate is over the threshold, skip all individual fallbacks.
+    fallback_budget = max(0, int(cfg.max_individual_nli_fallback or 0))
+    try:
+        _threshold = float(getattr(cfg, "maximum_contradiction_rate", 0.2) or 0.2)
+        _contra = sum(
+            1 for _r in results_map.values() if str(_r.get("verdict", "")).upper() == "CONTRADICTED"
+        )
+        if _contra and len(claims_texts) and (_contra / max(1, len(claims_texts))) > _threshold:
+            logger.info(
+                "Verification early-exit: contradiction rate already over threshold",
+                contradicted=_contra,
+                total=len(claims_texts),
+            )
+            fallback_budget = 0
+    except Exception as exc:
+        logger.debug("Contradiction early-exit check skipped", error=str(exc))
     claim_docs = []
     for i, text in enumerate(claims_texts, start=1):
         if i in results_map:
             nli_res = results_map[i]
-        else:
+        elif fallback_budget > 0:
+            fallback_budget -= 1
             # Fallback to individual claim verification (same provider/model —
             # cfg defaults would silently switch engines mid-analysis otherwise)
-            nli_res = await verify_claim_nli(text, chunks, provider=provider, model=model)
+            nli_res = await verify_claim_nli(
+                text,
+                chunks,
+                provider=provider,
+                model=model,
+                context_str=context_str,
+            )
+        else:
+            nli_res = {
+                "verdict": "NEUTRAL",
+                "supporting_segments": [],
+                "explanation": (
+                    "Verification skipped: batch NLI unavailable and the "
+                    "per-claim fallback budget is exhausted."
+                ),
+            }
 
-        # Resolve 1-based supporting segments list to MongoDB Evidence IDs
+        # Resolve 1-based NLI segment numbers through the exact sorted/deduped
+        # context order back to the persisted evidence IDs. Raw rerank order is
+        # not safe here and previously linked claims to the wrong evidence.
         supporting_evidence_ids = []
         for idx in nli_res.get("supporting_segments", []):
-            if 0 < idx <= len(evidence_ids):
-                supporting_evidence_ids.append(evidence_ids[idx - 1])
+            if not isinstance(idx, int) or not 0 < idx <= len(context_chunk_indices):
+                continue
+            chunk_idx = context_chunk_indices[idx - 1]
+            if 0 <= chunk_idx < len(evidence_ids):
+                supporting_evidence_ids.append(evidence_ids[chunk_idx])
 
         subj, pred, obj = extract_claim_triple_heuristic(text)
         claim_doc = {

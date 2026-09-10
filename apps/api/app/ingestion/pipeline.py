@@ -24,8 +24,21 @@ from app.ingestion.sparse_vector import generate_sparse_vector
 
 logger = get_logger(__name__)
 
+# Ingestion can run several CPU/embedding-heavy background jobs at once. Keep
+# it serialized per event loop so uploads cannot starve the local model or API.
+_INGESTION_SEMAPHORES: dict[int, asyncio.Semaphore] = {}
 
-async def index_parsed_chunks(
+
+def _get_ingestion_semaphore() -> asyncio.Semaphore:
+    loop_id = id(asyncio.get_running_loop())
+    semaphore = _INGESTION_SEMAPHORES.get(loop_id)
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(1)
+        _INGESTION_SEMAPHORES[loop_id] = semaphore
+    return semaphore
+
+
+async def _index_parsed_chunks(
     doc_id_str: str,
     kb_id_str: str,
     chunks: list[dict[str, Any]] | None = None,
@@ -248,6 +261,22 @@ async def index_parsed_chunks(
         from app.core.memory import trim_memory
 
         await asyncio.to_thread(trim_memory)
+
+
+async def index_parsed_chunks(
+    doc_id_str: str,
+    kb_id_str: str,
+    chunks: list[dict[str, Any]] | None = None,
+    strategy: ChunkingStrategy | None = None,
+) -> None:
+    """Run one ingestion job at a time per API process."""
+    async with _get_ingestion_semaphore():
+        await _index_parsed_chunks(
+            doc_id_str=doc_id_str,
+            kb_id_str=kb_id_str,
+            chunks=chunks,
+            strategy=strategy,
+        )
 
 
 def hashlib_qdrant_id(doc_id_str: str, chunk_index: int) -> str:

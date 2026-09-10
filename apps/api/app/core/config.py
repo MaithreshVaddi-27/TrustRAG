@@ -103,6 +103,7 @@ class Settings(BaseSettings):
     jwt_secret: str
     jwt_expiry_minutes: int = 60
     cors_origins: str = "http://localhost:5173"
+    trusted_proxy_ips: str = ""  # Comma-separated proxy IPs/CIDRs allowed to supply X-Forwarded-For
 
     # ── Hugging Face ──────────────────────────────────────────────────────────
     hf_token: str = ""  # Optional read-only token to prevent download rate-limits
@@ -178,6 +179,8 @@ class Settings(BaseSettings):
     # ── Rate limiting ─────────────────────────────────────────────────────────
     rate_limit_analyses_per_minute: int = 10
     rate_limit_auth_per_minute: int = 20
+    rate_limit_upload_per_minute: int = 10
+    rate_limit_url_ingest_per_minute: int = 10
 
     # ── Model Configuration Overrides (env takes precedence over models.yaml) ──
     gemini_model: str = Field(
@@ -207,6 +210,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def trusted_proxy_list(self) -> list[str]:
+        return [p.strip() for p in self.trusted_proxy_ips.split(",") if p.strip()]
 
     # ── Validation ────────────────────────────────────────────────────────────
     @field_validator("jwt_secret")
@@ -310,7 +317,7 @@ class ModelConfig:
             return (
                 env_model
                 or str(self._get("llm", "model_llamacpp", required=False) or "")
-                or str(self._get("llm", "model") or "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M")
+                or str(self._get("llm", "model") or "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M")
             )
         env_model = os.environ.get("LLM_MODEL") or os.environ.get("GEMINI_MODEL")
         if env_model:
@@ -428,7 +435,9 @@ class ModelConfig:
             return (
                 env_model
                 or str(self._get("verification", "model_llamacpp", required=False) or "")
-                or str(self._get("verification", "model") or "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M")
+                or str(
+                    self._get("verification", "model") or "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
+                )
             )
         val = self._get("verification", "model")
         env_model = os.environ.get("GEMINI_VERIFICATION_MODEL") or os.environ.get(
@@ -549,6 +558,11 @@ class ModelConfig:
     @property
     def max_verification_claims(self) -> int:
         return int(self._get("cost_controls", "max_verification_claims"))
+
+    @property
+    def max_individual_nli_fallback(self) -> int:
+        value = self._get("cost_controls", "max_individual_nli_fallback", required=False)
+        return int(value) if value is not None else 5
 
     def as_snapshot(self) -> dict[str, Any]:
         """Return a flat dict for recording with each analysis run."""

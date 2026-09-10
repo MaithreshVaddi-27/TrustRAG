@@ -8,7 +8,7 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![Ollama](https://img.shields.io/badge/Ollama-Local_Offline-000000?logo=ollama&logoColor=white)](https://ollama.com)
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF_Server-orange)](https://github.com/ggerganov/llama.cpp)
-[![Tests](https://img.shields.io/badge/Backend%20Tests-111%20Passing-brightgreen)](apps/api/tests)
+[![Tests](https://img.shields.io/badge/Backend%20Tests-169%20Passing-brightgreen)](apps/api/tests)
 [![Tests](https://img.shields.io/badge/Frontend%20Tests-15%20Passing-brightgreen)](apps/web)
 [![E2E](https://img.shields.io/badge/Playwright%20E2E-2%20Passing-brightgreen)](apps/web/e2e)
 [![Load](https://img.shields.io/badge/k6%20Load%20Smoke-Passing-brightgreen)](load-test/smoke.js)
@@ -163,7 +163,16 @@ TrustRAG/
 │       │   └── verification/         # Batch NLI verifier & SHA-256 evidence integrity auditor
 │       ├── config/
 │       │   └── models.yaml           # Centralized configuration registry for models and thresholds
-│       └── tests/                    # 111 automated unit & integration test suites (100% pass)
+│       └── tests/                    # 169 automated unit & integration tests (100% pass)
+│
+├── scripts/                          # Operator tooling
+│   ├── discover_local_models.py      # Pre-backend model discovery (ollama list, llama-server --cache-list)
+│   ├── start_local_llm.sh            # Hardware-aware llama-server launcher
+│   ├── apply_ports.py                # Port registry → docker-compose/Dockerfiles/CI/Vite propagation
+│   └── clear_qdrant.py               # Qdrant collection list/purge utility
+│
+├── config/
+│   └── ports.yaml                    # Single source of truth for service ports & hosts
 │
 ├── docs/                             # Engineering documentation repository
 │   ├── architecture/                 # End-to-end design specifications and ADRs
@@ -218,7 +227,7 @@ This branch (**`ui-redesign`**) serves as the **Local-First AI Reliability Workb
 The backend is packaged as a high-efficiency multi-stage container ready for deployment on any Docker, Kubernetes, or cloud container platform:
 
 1. **Production Runtime Highlights**:
-   * **Base Image**: `python:3.11-slim` multi-stage build installing production-only dependencies (`pip install .`).
+   * **Reproducible Dependencies**: Builder stage installs production-only deps with `uv sync --locked` against the committed `apps/api/uv.lock`, eliminating non-deterministic `pip install .` resolution.
    * **Hardware-Aware Autotuning**: Automatically senses host hardware (Apple Silicon Metal / NVIDIA CUDA / CPU) and allocates layers/workers accordingly.
    * **Non-Root Execution**: Runs under unprivileged `trustrag` user (UID 1001) for strict container security.
    * **Instant Port Binding**: Non-blocking `lifespan` startup architecture binds `$PORT` immediately with `/api/v1/health` probes.
@@ -234,6 +243,12 @@ The backend is packaged as a high-efficiency multi-stage container ready for dep
    | `QDRANT_API_KEY` | Optional for local Qdrant, required for Qdrant Cloud |
    | `JWT_SECRET` | 64-character random hex string for signing JWT tokens |
    | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:3000` |
+   | `TRUSTED_PROXY_IPS` | Comma-separated proxy IPs/CIDRs allowed to supply `X-Forwarded-For`; leave empty when clients connect directly |
+   | `RATE_LIMIT_ANALYSES_PER_MINUTE` | Analysis requests/min per client (default `10`) |
+   | `RATE_LIMIT_AUTH_PER_MINUTE` | Auth requests/min per client (default `20`) |
+   | `RATE_LIMIT_UPLOAD_PER_MINUTE` | Document uploads/min per client (default `10`) |
+   | `RATE_LIMIT_URL_INGEST_PER_MINUTE` | URL-ingest requests/min per client (default `10`) |
+   | `CACHE_DIR` | Override path for SQLite embedding + semantic JSON caches (default `apps/api/data/cache`) |
 
 ### 2. Frontend Web Application (`apps/web`)
 
@@ -297,6 +312,7 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 - **Embedded RocksDB Storage**: Qdrant runs embedded via native Rust engine (`./data/qdrant/`) with `on_disk=True` for raw dense vectors and sparse indices.
 - **INT8 Scalar Quantization**: Vector embeddings are quantized from float32 to int8 (`ScalarQuantizationConfig`), cutting vector RAM by **75%** with $<0.5\%$ recall loss.
 - **Query Embedding LRU Cache**: Thread-safe in-memory cache (1024 entries) provides instant $O(1)$ lookup for repeat questions and LangGraph recovery sub-queries, eliminating remote API latency.
+- **Unified Persistent Cache Directory**: The SQLite embedding cache (`embedding_cache.db`), semantic answer cache (`semantic_cache.json`), and model-discovery snapshot all coalesce under `apps/api/data/` (override with `CACHE_DIR` for the two caches). Embedding-cache keys are **provider-namespaced** (`provider::model:text`), so two providers serving the same model string can never cross-contaminate vectors.
 - **PyTorch Container Pruning**: Decoupled heavy PyTorch and `sentence-transformers` into optional dependencies, shrinking deployment container images from **~2.8 GB to ~350 MB**.
 
 ### 8. Universal Model Context Protocol (MCP) Server
@@ -339,7 +355,7 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 - **Local-First Native Async Engines**: [`ChatOllamaClient`](apps/api/app/core/local_llm.py) and [`ChatLlamaCppClient`](apps/api/app/core/local_llm.py) conform to LangChain's `BaseChatModel` interface with native async non-blocking execution.
 - **Pre-Configured Models** (exactly what is installed — see `ollama list` / `llama-server --cache-list`):
   * **Ollama**: `granite4.2:3b-q4_K_M` (2.2GB default), `gemma3:1b` (815MB fallback).
-  * **llama.cpp**: `occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M` (~1.1GB default) served over port `8080` (`http://127.0.0.1:8080/v1`), plus `OCC-RAG-0.6B`, `granite-4.2-3b` and `granite-4.0-h-1b` GGUFs.
+  * **llama.cpp**: `ibm-granite/granite-4.2-3b-GGUF:Q4_K_M` (~2.2GB default) served over port `8080` (`http://127.0.0.1:8080/v1`), plus `granite-4.0-h-1b` GGUF.
 - **Structured Pydantic Output**: Native support for `with_structured_output(...)` enables reliable, schema-validated atomic claim decomposition and NLI verdict generation without cloud dependencies.
 - **Complete Zero-Key Operation**: TRUSTRAG boots and executes 100% offline without requiring any third-party cloud API keys.
 - **Hardware-aware model launch**: Run `./scripts/start_local_llm.sh` to boot `llama-server`. It auto-detects your accelerator (Metal on Apple Silicon, CUDA on NVIDIA) and passes `-ngl all --flash-attn on`, plus memory-tiered `-c` / `-np` budgets so the host stays responsive. No flags needed on your end.
@@ -348,7 +364,13 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 - **Real-Time Shell Introspection**:
   * **`ollama list`**: Automatically introspects installed generative LLMs (`granite4.2:3b-q4_K_M`, `gemma3:1b`). Embedding models are excluded — ollama is LLM-only; embeddings come from BGE/Gemini/NVIDIA.
   * **`llama-server --cache-list`**: Introspects cached generative GGUF blobs. Embedding GGUFs are excluded — llama.cpp is LLM-only.
-- **Interactive UI Model Switcher**: The Playground workbench and Settings diagnostic page dynamically display detected models, active endpoints, and port telemetry.
+- **Pre-Backend Discovery Snapshot**: Run [`scripts/discover_local_models.py`](scripts/discover_local_models.py) *before* starting the API to persist a JSON snapshot (`apps/api/data/discovered_models.json`) so every locally installed model is selectable from the **very first** request — no need to trigger discovery first:
+  ```bash
+  apps/api/.venv/bin/python scripts/discover_local_models.py
+  ```
+  The API also re-seeds discovery in the background on startup, so the snapshot stays fresh across restarts and already-running processes.
+- **Validator-Allowlisted Selection**: Any model the discovery layer reports is accepted by the analysis request validator — the UI dropdown never offers a model that the API later rejects (fixes the old `Model is not enabled for provider 'llama_cpp'` failure when a just-installed model like `SmolLM3-3B` was selected before the static list knew it).
+- **Interactive UI Model Switcher**: The Playground workbench and Settings diagnostic page dynamically display detected models, active endpoints, and port telemetry. The Playground auto-refreshes the model list every 8s and exposes a manual **refresh** button beside the model selector; Settings re-checks every 15s.
 
 ### 15. Multi-Dimensional Vector Embeddings & L2 Normalization
 - **Choice of SOTA Embedding Engines**:
@@ -417,6 +439,11 @@ JWT_SECRET=replace_with_a_secure_random_64_character_hex_string
 # Frontend origin (production: https://your-frontend-domain.com)
 CORS_ORIGINS=http://localhost:5173
 
+# Optional: only these direct proxy peers may supply X-Forwarded-For / X-Real-IP.
+# Leave empty when clients connect straight to the API (rate-limit identity then
+# uses the direct remote address — prevents header spoofing).
+TRUSTED_PROXY_IPS=
+
 # Google Gemini API (only if models.yaml uses gemini)
 GEMINI_API_KEY=your_gemini_api_key_here
 
@@ -440,6 +467,12 @@ QDRANT_URL=local
 # (QDRANT_API_KEY only for Cloud.)
 ```
 
+> 💡 **Optional rate-limit tuning** (defaults are local-friendly; override per deploy):
+> `RATE_LIMIT_ANALYSES_PER_MINUTE=10`, `RATE_LIMIT_AUTH_PER_MINUTE=20`,
+> `RATE_LIMIT_UPLOAD_PER_MINUTE=10`, `RATE_LIMIT_URL_INGEST_PER_MINUTE=10`.
+> Set `CACHE_DIR` to relocate the shared SQLite embedding + semantic JSON caches
+> (default `apps/api/data/cache`).
+
 ---
 
 ### Zero-API-Key Local Mode (DuckDuckGo + Local BGE)
@@ -449,7 +482,7 @@ Want to run TRUSTRAG with **zero external API calls for search and embeddings**?
    - The system automatically loads `BAAI/bge-small-en-v1.5` locally in CPU memory.
 2. Toggle **DuckDuckGo** in the Playground Web Search drawer.
    - Live internet grounding runs completely free without needing any Tavily API key!
-3. Use a local LLM (`llama_cpp` + `occ-ai/OCC-RAG-1.7B-GGUF`, or Ollama) for
+3. Use a local LLM (`llama_cpp` + `ibm-granite/granite-4.2-3b-GGUF:Q4_K_M`, or Ollama) for
    reasoning — no `GEMINI_API_KEY` / `NVIDIA_API_KEY` needed. Cloud keys are
    only required when `models.yaml` selects a cloud provider.
 
@@ -466,7 +499,7 @@ brew services start mongodb-community
 # Models
 ollama pull granite4.2:3b-q4_K_M      # 2.2GB — default local LLM
 ollama pull gemma3:1b                  # 815MB — fallback / light mode
-# llama.cpp (GGUF cache): place occ-ai/OCC-RAG under ~/.cache/llama.cpp,
+# llama.cpp (GGUF cache): place ibm-granite/granite-4.2-3b-GGUF:Q4_K_M under ~/.cache/llama.cpp,
 # then launch: ./scripts/start_local_llm.sh  (auto Metal GPU offload)
 ```
 
@@ -542,7 +575,14 @@ This is the fastest, lightest method for development on macOS/Linux. It bypasses
 
    (Or run `ollama serve` instead if `AI_PROVIDER=ollama`.)
 
-3. **Start Backend Service (Embedded Qdrant)**:
+3. **Discover local models (optional but recommended)**:
+   ```bash
+   # Snapshot installed Ollama / llama.cpp models so every model is selectable
+   # in the UI from the very first request:
+   apps/api/.venv/bin/python scripts/discover_local_models.py
+   ```
+
+4. **Start Backend Service (Embedded Qdrant)**:
    ```bash
    cd apps/api
    python3 -m venv .venv
@@ -553,7 +593,7 @@ This is the fastest, lightest method for development on macOS/Linux. It bypasses
    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
    ```
 
-4. **Verify Health Endpoint**:
+5. **Verify Health Endpoint**:
    ```bash
    curl -s http://localhost:8000/api/v1/health | jq
    ```
@@ -570,7 +610,7 @@ This is the fastest, lightest method for development on macOS/Linux. It bypasses
    }
    ```
 
-5. **Start Frontend Workbench**:
+6. **Start Frontend Workbench**:
    ```bash
    cd apps/web
    npm install
@@ -751,14 +791,14 @@ Interactive Swagger documentation is available at `http://localhost:8000/docs` i
 
 TRUSTRAG enforces automated quality checks across both backend and frontend layers, all wired into GitHub Actions:
 
-**Backend — 111 tests, ruff-clean (check + format):**
+**Backend — 169 tests, ruff-clean (check + format):**
 ```bash
 cd apps/api
-.venv/bin/python -m pytest tests/ -q --no-header --no-cov   # 111 passed
+.venv/bin/python -m pytest tests/ -q --no-header --no-cov   # 169 passed
 .venv/bin/python -m ruff check app/ tests/                  # All checks passed!
 .venv/bin/python -m ruff format --check app/ tests/         # formatted
 ```
-Includes **rate-limiter threshold tests** (`tests/test_rate_limit.py`) asserting `429 Too Many Requests` once the per-minute auth ceiling is exceeded.
+Includes **rate-limiter threshold tests** (`tests/test_rate_limit.py`) asserting `429 Too Many Requests` once the per-minute auth ceiling is exceeded, alongside **model-discovery regression tests** (`tests/test_local_llm.py`, `tests/test_config.py`) covering snapshot round-trips, live-merge cache seeding, and discovered-model validator acceptance.
 
 **Frontend — 17 tests (15 Vitest unit/component + 2 Playwright E2E), 0 lint errors:**
 ```bash
@@ -783,7 +823,7 @@ Gated on exit code + thresholds: **<1% failed requests, p95 < 300ms, p99 < 500ms
 | Job | Checks |
 |---|---|
 | `backend-lint` | `ruff check` + `ruff format --check` |
-| `backend-test` | Full 111-test pytest suite + `models.yaml` config validation |
+| `backend-test` | Full 169-test pytest suite + `models.yaml` config validation |
 | `frontend-lint` | ESLint + 15 Vitest tests |
 | `frontend-build` | Production bundle compilation (artifact uploaded) |
 | `e2e` | MongoDB service + live API + Chromium Playwright smoke **+ k6 load smoke** (artifacts on failure) |
@@ -820,6 +860,7 @@ Gated on exit code + thresholds: **<1% failed requests, p95 < 300ms, p99 < 500ms
 
 - 📊 [**Master Architecture & Systems Audit (`docs/audits/comprehensive_system_audit.md`)**](docs/audits/comprehensive_system_audit.md) — Multi-disciplinary evaluation across Systems, Security, AI/ML, and QA.
 - 📋 [**Senior Engineering Audit Report (`docs/AUDIT_REPORT.md`)**](docs/AUDIT_REPORT.md) — Comprehensive technical quality report with zero open defects across P0–P3.
+- 🔎 [**Model Discovery & Hardening Audit (`docs/audits/2026-09-08_model_discovery_and_hardening_audit.md`)**](docs/audits/2026-09-08_model_discovery_and_hardening_audit.md) — Local-model discovery pipeline, validator allowlist sync, and the cache/thread-safety hardening pass.
 - 🛡️ [**Security & DevSecOps Audit (`docs/ui-redesign-audit/SECURITY.md`)**](docs/ui-redesign-audit/SECURITY.md) — Physical collection isolation, anti-IDOR defense, SSRF protection, and cryptographic SHA-256 provenance.
 - 🧠 [**AI/ML Performance & Latency Audit (`docs/ui-redesign-audit/AI-ML.md`)**](docs/ui-redesign-audit/AI-ML.md) — Matryoshka 384d MRL embeddings, hybrid RRF search, and zero local GPU RAM operation.
 - 🧪 [**Quality Assurance Testing Report (`docs/ui-redesign-audit/QA.md`)**](docs/ui-redesign-audit/QA.md) — Automated tests across whitebox, blackbox, and E2E test suites.

@@ -14,6 +14,7 @@ from typing import Any
 from qdrant_client.http import models
 
 from app.core.config import get_model_config
+from app.core.exceptions import RetrievalOutageError
 from app.core.logging import get_logger
 from app.core.model_registry import get_embedding_model
 from app.db.mongodb import Collections, get_collection
@@ -138,6 +139,27 @@ class QueryEmbeddingLRUCache:
 
 
 _query_cache = QueryEmbeddingLRUCache(capacity=1024)
+_collection_dimension_cache: OrderedDict[str, int] = OrderedDict()
+_collection_dimension_lock = threading.Lock()
+
+
+async def _get_collection_dimension(client: Any, collection_name: str) -> int | None:
+    """Return cached Qdrant vector dimensions, avoiding a metadata call per query."""
+    with _collection_dimension_lock:
+        cached = _collection_dimension_cache.get(collection_name)
+        if cached is not None:
+            _collection_dimension_cache.move_to_end(collection_name)
+            return cached
+
+    col_info = await client.get_collection(collection_name)
+    target_dim = getattr(col_info.config.params.vectors, "size", None)
+    if isinstance(target_dim, int):
+        with _collection_dimension_lock:
+            _collection_dimension_cache[collection_name] = target_dim
+            _collection_dimension_cache.move_to_end(collection_name)
+            while len(_collection_dimension_cache) > 512:
+                _collection_dimension_cache.popitem(last=False)
+    return target_dim
 
 
 async def dense_search(
@@ -147,29 +169,52 @@ async def dense_search(
     embedding_provider: str | None = None,
     embedding_model: str | None = None,
 ) -> list[Any]:
-    """Retrieve top_k chunks using dense vector embeddings with LRU cache."""
+    """Retrieve top_k chunks using dense vector embeddings with LRU cache.
+
+    Raises:
+        RetrievalOutageError: When the retrieval infrastructure (Qdrant or the
+            embedding service) is unavailable. This is an outage, NOT evidence
+            that the knowledge base lacks matching content — callers must
+            distinguish it from an empty result list.
+    """
     try:
         client = await get_qdrant_client()
-        collection_name = get_collection_name(kb_id)
+    except Exception as exc:
+        logger.error("Qdrant client unavailable for dense search", error=str(exc))
+        raise RetrievalOutageError(
+            f"Vector store unavailable during dense retrieval: {exc}", detail=str(exc)
+        ) from exc
+    collection_name = get_collection_name(kb_id)
 
-        # Check LRU cache first to eliminate redundant computation
-        cache_key = f"{embedding_provider or ''}:{embedding_model or ''}:{query}"
+    try:
+        # Check LRU cache first to eliminate redundant computation.
+        # Normalized key avoids repeat embeddings for case/whitespace variants.
+        cache_key = (
+            f"{(embedding_provider or '').strip().lower()}:"
+            f"{(embedding_model or '').strip().lower()}:{query.strip().lower()}"
+        )
         cached_vec = _query_cache.get(cache_key)
         if cached_vec is not None:
             query_vector = cached_vec
         else:
-            embed_model = get_embedding_model(embedding_provider, embedding_model)
-            # Embed query text in background thread to avoid freezing asyncio event loop
-            query_vector = await asyncio.to_thread(embed_model.embed_query, query)
-            _query_cache.set(cache_key, query_vector)
+            try:
+                embed_model = get_embedding_model(embedding_provider, embedding_model)
+                # Embed query text in background thread to avoid freezing asyncio event loop
+                query_vector = await asyncio.to_thread(embed_model.embed_query, query)
+                _query_cache.set(cache_key, query_vector)
+            except Exception as exc:
+                logger.error("Embedding service unavailable for dense search", error=str(exc))
+                raise RetrievalOutageError(
+                    f"Embedding service unavailable during dense retrieval: {exc}",
+                    detail=str(exc),
+                ) from exc
 
         # Safely align query vector dimension to collection's expected dimension.
         # NOTE: truncate/pad across embedding spaces returns plausible-looking
         # garbage — the create-analysis pin guard (422) is the real defense;
         # this alignment is a last resort, so any mismatch is logged loudly.
         try:
-            col_info = await client.get_collection(collection_name)
-            target_dim = getattr(col_info.config.params.vectors, "size", None)
+            target_dim = await _get_collection_dimension(client, collection_name)
             if target_dim:
                 if len(query_vector) > target_dim:
                     logger.warning(
@@ -203,25 +248,46 @@ async def dense_search(
             limit=top_k,
             with_payload=True,
         )
-        return response.points
+        # A successful, empty response is genuine "no evidence" — NOT an outage.
+        return list(getattr(response, "points", []) or [])
+    except RetrievalOutageError:
+        raise
     except Exception as exc:
         logger.error("Dense search failed", kb_id=kb_id, error=str(exc))
-        return []
+        raise RetrievalOutageError(
+            f"Vector store query failed during dense retrieval: {exc}", detail=str(exc)
+        ) from exc
 
 
 async def sparse_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
-    """Retrieve top_k chunks using token-frequency sparse representations."""
+    """Retrieve top_k chunks using token-frequency sparse representations.
+
+    Raises:
+        RetrievalOutageError: When the vector store is unavailable. An empty
+            sparse representation (query with no indexable tokens) is genuine
+            "no evidence" and returns [] instead.
+    """
     try:
         client = await get_qdrant_client()
-        collection_name = get_collection_name(kb_id)
+    except Exception as exc:
+        logger.error("Qdrant client unavailable for sparse search", error=str(exc))
+        raise RetrievalOutageError(
+            f"Vector store unavailable during sparse retrieval: {exc}", detail=str(exc)
+        ) from exc
+    collection_name = get_collection_name(kb_id)
 
+    try:
         # Generate token weights with query-noise stopword filtering
         sparse_rep = generate_sparse_vector(query, is_query=True)
-        if not sparse_rep["indices"]:
-            return []
+    except Exception as exc:
+        logger.error("Sparse vector generation failed", kb_id=kb_id, error=str(exc))
+        return []
+    if not sparse_rep["indices"]:
+        return []
 
-        sparse_vec = models.SparseVector(indices=sparse_rep["indices"], values=sparse_rep["values"])
+    sparse_vec = models.SparseVector(indices=sparse_rep["indices"], values=sparse_rep["values"])
 
+    try:
         response = await client.query_points(
             collection_name=collection_name,
             query=sparse_vec,
@@ -229,10 +295,13 @@ async def sparse_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
             limit=top_k,
             with_payload=True,
         )
-        return response.points
+        # A successful, empty response is genuine "no evidence" — NOT an outage.
+        return list(getattr(response, "points", []) or [])
     except Exception as exc:
         logger.error("Sparse search failed", kb_id=kb_id, error=str(exc))
-        return []
+        raise RetrievalOutageError(
+            f"Vector store query failed during sparse retrieval: {exc}", detail=str(exc)
+        ) from exc
 
 
 def reciprocal_rank_fusion(
@@ -356,7 +425,12 @@ async def apply_temporal_filtering(
         r["effective_from"] = eff_from
         r["effective_until"] = eff_until
 
-        # Apply boundary checks
+        # Apply boundary checks (normalize naive datetimes to UTC-aware
+        # so legacy Mongo records never raise TypeError on comparison).
+        if eff_from and getattr(eff_from, "tzinfo", None) is None:
+            eff_from = eff_from.replace(tzinfo=UTC)
+        if eff_until and getattr(eff_until, "tzinfo", None) is None:
+            eff_until = eff_until.replace(tzinfo=UTC)
         if eff_from and ref_time < eff_from:
             logger.debug("Filtered chunk due to effective_from window limit", doc_id=doc_id_str)
             continue
@@ -382,23 +456,39 @@ async def retrieve_hybrid_chunks(
 
     Performs dual-retrieval, fuses using RRF, and applies temporal validity filters.
     Returns results ready for reranking or direct model generation context.
+
+    An empty return means the search executed successfully but found no
+    matching evidence. A RetrievalOutageError means the retrieval
+    infrastructure (Qdrant / embedding service) was unreachable — callers
+    must surface that as an outage, never as "no evidence found".
     """
     cfg = get_model_config()
 
     dense_top = top_k_override if top_k_override is not None else cfg.dense_top_k
     sparse_top = top_k_override if top_k_override is not None else cfg.sparse_top_k
 
-    # Run dense + sparse searches concurrently
-    dense_res, sparse_res = await asyncio.gather(
-        dense_search(
-            query,
-            kb_id,
-            top_k=dense_top,
-            embedding_provider=embedding_provider,
-            embedding_model=embedding_model,
-        ),
-        sparse_search(query, kb_id, top_k=sparse_top),
-    )
+    # Run dense + sparse searches concurrently with a hard budget so a
+    # hung embedding/Qdrant call cannot pin a worker (OPT: local-LLM load).
+    try:
+        dense_res, sparse_res = await asyncio.wait_for(
+            asyncio.gather(
+                dense_search(
+                    query,
+                    kb_id,
+                    top_k=dense_top,
+                    embedding_provider=embedding_provider,
+                    embedding_model=embedding_model,
+                ),
+                sparse_search(query, kb_id, top_k=sparse_top),
+            ),
+            timeout=60.0,
+        )
+    except TimeoutError as exc:
+        from app.core.exceptions import RetrievalOutageError
+
+        raise RetrievalOutageError(
+            "Hybrid retrieval timed out (dense+sparse budget 60s)", detail=str(exc)
+        ) from exc
 
     # Fuse ranks
     fused = reciprocal_rank_fusion(dense_res, sparse_res, k=cfg.rrf_k)

@@ -14,6 +14,13 @@ def _validate_password_complexity(password: str) -> str:
     """Validate password meets complexity requirements."""
     if len(password) < 12:
         raise ValueError("Password must be at least 12 characters long.")
+    # bcrypt operates on bytes and silently truncates past 72 — reject such
+    # passwords outright so two long passwords can never hash identically.
+    if len(password.encode("utf-8")) > 72:
+        raise ValueError(
+            "Password must be at most 72 bytes long (bcrypt limit); "
+            "use a shorter password or a passphrase within that bound."
+        )
     if not re.search(r"[A-Z]", password):
         raise ValueError("Password must contain at least one uppercase letter.")
     if not re.search(r"[a-z]", password):

@@ -50,13 +50,17 @@ export default function PlaygroundPage() {
     }
   }, [knowledgeBases, kbId])
 
-  const { data: providersData } = useQuery({
+  const { data: providersData, refetch: refetchProviders } = useQuery({
     queryKey: ['model-providers'],
     queryFn: modelService.getProviders,
+    // Re-poll every 8s so a model installed while the page is open (e.g. after
+    // running scripts/discover_local_models.py or pulling a new GGUF) shows up
+    // in the dropdown without a page reload.
+    refetchInterval: 8000,
   })
 
   const [selectedProvider, setSelectedProvider] = useState('llama_cpp')
-  const [selectedModel, setSelectedModel] = useState('occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M')
+  const [selectedModel, setSelectedModel] = useState('')
 
   const [selectedEmbeddingProvider, setSelectedEmbeddingProvider] = useState('huggingface')
   const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState('BAAI/bge-small-en-v1.5')
@@ -72,22 +76,15 @@ export default function PlaygroundPage() {
     }
   }, [providersData?.active_embedding_provider, providersData?.active_embedding_model])
 
-  const activeProviderInfo = providersData?.providers?.[selectedProvider]
-  const availableModels = activeProviderInfo?.models?.length 
-    ? activeProviderInfo.models 
-    : (selectedProvider === 'ollama' 
-        ? ['granite4.2:3b-q4_K_M', 'gemma3:1b'] 
-        : (selectedProvider === 'llama_cpp' 
-            ? ['occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M', 'occ-ai/OCC-RAG-0.6B-GGUF:Q4_K_M', 'ibm-granite/granite-4.2-3b-GGUF:Q4_K_M', 'ibm-granite/granite-4.0-h-1b-GGUF:Q4_K_M'] 
-            : ['default']))
+const activeProviderInfo = providersData?.providers?.[selectedProvider]
+  const availableModels = activeProviderInfo?.models?.length
+    ? activeProviderInfo.models
+    : []
 
   const activeEmbeddingProviderInfo = providersData?.embedding_providers?.[selectedEmbeddingProvider]
   const availableEmbeddingModels = activeEmbeddingProviderInfo?.models?.length
     ? activeEmbeddingProviderInfo.models
-    : [
-        { id: 'BAAI/bge-small-en-v1.5', name: 'BAAI/bge-small-en-v1.5 (384d SOTA)', dim: 384, tag: 'Recommended' },
-        { id: 'sentence-transformers/all-MiniLM-L6-v2', name: 'all-MiniLM-L6-v2 (384d Fast)', dim: 384, tag: 'Fast' },
-      ]
+    : []
 
   const handleReset = () => {
     setQuery('')
@@ -174,7 +171,10 @@ export default function PlaygroundPage() {
     } catch (err) {
       console.error("Failed to start analysis:", err)
       setLoading(false)
-      const detail = err.response?.data?.detail || err.message || "Failed to start analysis"
+      // Backend error shape is { error: { code, message } } — surface the
+      // actionable message (e.g. LLM_UNAVAILABLE start instructions), not a
+      // generic axios status string.
+      const detail = err.response?.data?.error?.message || err.response?.data?.detail || err.message || "Failed to start analysis"
       setErrorMsg(typeof detail === 'string' ? detail : JSON.stringify(detail))
     }
   }
@@ -250,7 +250,7 @@ export default function PlaygroundPage() {
       }
     } catch (err) {
       console.error("Failed to fetch final analysis data:", err)
-      const detail = err.response?.data?.detail || err.message || "Failed to fetch analysis"
+      const detail = err.response?.data?.error?.message || err.response?.data?.detail || err.message || "Failed to fetch analysis"
       setErrorMsg(typeof detail === 'string' ? detail : JSON.stringify(detail))
     } finally {
       setLoading(false)
@@ -343,6 +343,7 @@ export default function PlaygroundPage() {
           activeEmbeddingProviderInfo={activeEmbeddingProviderInfo}
           availableModels={availableModels}
           availableEmbeddingModels={availableEmbeddingModels}
+          refetchProviders={refetchProviders}
           selectedKb={selectedKb}
           knowledgeBases={knowledgeBases}
           kbEmbeddingPin={kbEmbeddingPin}

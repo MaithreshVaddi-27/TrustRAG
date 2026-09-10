@@ -1,13 +1,14 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # TRUSTRAG API — Multi-stage Dockerfile
 # ─────────────────────────────────────────────────────────────────────────────
-# Stage 1 (builder): install dependencies in a venv
+# Stage 1 (builder): install dependencies in a venv using uv for reproducible builds
 # Stage 2 (runtime): copy only the venv + source, no build tools
 #
 # Security:
 #   - Runs as non-root user (trustrag)
 #   - No dev tools in the runtime image
 #   - Secrets injected via environment at runtime — never baked into image
+#   - Dependencies locked via uv.lock for reproducible builds
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Builder ──────────────────────────────────────────────────────────────────
@@ -22,17 +23,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
+# Install uv for fast, reproducible dependency installation
+RUN pip install --no-cache-dir uv
+
 # Create isolated venv
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy dependency spec and install
-COPY pyproject.toml .
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir .
+# Copy dependency spec and lockfile, then install with uv for reproducibility
+COPY pyproject.toml uv.lock .
+RUN uv sync --locked --no-dev --python /opt/venv/bin/python
 
-
-# ── Runtime ───────────────────────────────────────────────────────────────────
+# ─── Runtime ───────────────────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
 
 WORKDIR /app

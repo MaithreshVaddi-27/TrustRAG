@@ -88,6 +88,17 @@ class RetrievalError(TrustRAGError):
     """Raised when retrieval from Qdrant fails."""
 
 
+class RetrievalOutageError(TrustRAGError):
+    """
+    Raised when the retrieval infrastructure itself is unavailable.
+
+    Distinct from a normal empty result: an empty candidate list means the
+    knowledge base genuinely contains no matching evidence, while this error
+    means Qdrant / the embedding service could not be reached at all (a
+    transient infrastructure outage). Callers MUST NOT conflate the two.
+    """
+
+
 class EmbeddingError(TrustRAGError):
     """Raised when embedding generation fails."""
 

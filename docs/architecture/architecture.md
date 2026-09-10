@@ -46,11 +46,11 @@ FastAPI (Python 3.12, Default Port 8000)
     ├─── app/agent/        LangGraph stateful self-healing workflow
     └─── app/evaluation/   Experiment runner & benchmark metrics
          │
-         ├─── Local Engines:
-          │       Ollama (Port 11434, LLM-only): granite4.2:3b-q4_K_M, gemma3:1b
-          │       llama.cpp (Port 8080, LLM-only): occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M
-          │             (+ OCC-RAG-0.6B, ibm-granite/granite-4.2-3b, ibm-granite/granite-4.0-h-1b GGUFs)
-          │       HuggingFace: BAAI/bge-small-en-v1.5 (384d SOTA embeddings)
+├─── Local Engines:
+           │       Ollama (Port 11434, LLM-only): granite4.2:3b-q4_K_M, gemma3:1b
+           │       llama.cpp (Port 8080, LLM-only): ibm-granite/granite-4.2-3b-GGUF:Q4_K_M
+           │             (+ ibm-granite/granite-4.0-h-1b GGUF)
+           │       HuggingFace: BAAI/bge-small-en-v1.5 (384d SOTA embeddings)
          │
          ├─── Cloud Engines (Optional):
          │       Google Gemini: gemini-3.5-flash-lite / models/gemini-embedding-001

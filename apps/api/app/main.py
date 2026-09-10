@@ -23,7 +23,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, ORJSONResponse
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -40,6 +40,7 @@ from app.core.exceptions import (
     FileTooLargeError,
     IngestionError,
     InputValidationError,
+    LLMUnavailableError,
     NotFoundError,
     TrustRAGError,
     UnsupportedFormatError,
@@ -47,7 +48,7 @@ from app.core.exceptions import (
 )
 from app.core.hardware import get_cached_hardware_profile
 from app.core.logging import configure_logging, get_logger
-from app.core.model_registry import SharedEmbeddingManager, get_embedding_model
+from app.core.model_registry import get_embedding_model
 from app.core.rate_limiter import limiter
 from app.core.tracing import init_tracing, tracing_middleware
 from app.db.mongodb import connect_db, create_indexes, disconnect_db
@@ -65,12 +66,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     Startup:
       1. Configure structured logging
-      2. Initialize shared embedding model (for multi-worker memory efficiency)
-      3. Connect to MongoDB Atlas
-      4. Create/verify all indexes
+      2. Connect to MongoDB
+      3. Create/verify all indexes
+      4. Start non-blocking model and hardware warmup
 
     Shutdown:
-      1. Close MongoDB connection
+      1. Close local-LLM HTTP connection pools
+      2. Close MongoDB connection
     """
     # ── Startup ──────────────────────────────────────────────────────────
     configure_logging()
@@ -133,33 +135,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         verification_model=cfg.verification_model,
     )
 
-    # Initialize shared embedding model for multi-worker memory efficiency
-    # (H.2.1: Eliminates 3x memory waste when running with multiple workers)
-    if cfg.embedding_provider in ("huggingface", "local"):
-        from app.core.hardware import get_optimal_torch_device
-
-        opt_device = get_optimal_torch_device()
-        # Use CPU for shared model (GPU tensors can't be easily shared across processes)
-        shared_device = "cpu" if opt_device == "cuda" else opt_device
-
-        shared_manager = SharedEmbeddingManager.get_instance()
-        initialized = shared_manager.initialize(
-            model_name=cfg.embedding_model,
-            device=shared_device,
-        )
-        if initialized:
-            logger.info(
-                "Shared embedding model initialized for worker sharing",
-                model=cfg.embedding_model,
-                device=shared_device,
-            )
-        else:
-            logger.info(
-                "Shared embedding model already initialized or failed", model=cfg.embedding_model
-            )
-
+    # The model registry owns one cached embedding instance. A separate startup
+    # manager used to load a second copy that no serving path consumed.
     await connect_db()
     await create_indexes()
+
+    # Seed the local-model discovery cache from the persisted snapshot so a
+    # pre-run `scripts/discover_local_models.py` (or any earlier process) is
+    # honored before the server answers its first request.
+    from app.core.local_llm import load_discovery_snapshot, seed_local_model_discovery
+
+    load_discovery_snapshot()
 
     logger.info("TRUSTRAG API ready")
 
@@ -189,7 +175,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.warning("Hardware profile warmup deferred", error=str(hw_err))
 
     async def _async_warmup() -> None:
-        await asyncio.gather(_warmup_embeddings(), _warmup_hardware())
+        # Live-refresh discovery (fast CLI subprocesses) alongside the heavier
+        # embedding warmup and hardware probe; discovery re-persists the snapshot
+        # so already-running processes / future restarts stay in sync.
+        await asyncio.gather(_warmup_embeddings(), _warmup_hardware(), seed_local_model_discovery())
 
     warmup_task = asyncio.create_task(_async_warmup())
 
@@ -199,6 +188,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not warmup_task.done():
         warmup_task.cancel()
     logger.info("TRUSTRAG API shutting down")
+    from app.core.local_llm import close_local_llm_clients
+
+    await close_local_llm_clients()
     await disconnect_db()
 
 
@@ -267,6 +259,14 @@ def _register_exception_handlers(app: FastAPI) -> None:
         return _error_response(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", exc.message
         )
+
+    @app.exception_handler(LLMUnavailableError)
+    async def llm_unavailable_handler(request: Request, exc: LLMUnavailableError) -> JSONResponse:
+        # Actionable by design: the message names only the configured base URL
+        # plus the start command (no secrets) so the UI can alert the user to
+        # start their local inference server instead of timing out silently.
+        logger.warning("Local LLM server unavailable", error=exc.message)
+        return _error_response(status.HTTP_503_SERVICE_UNAVAILABLE, "LLM_UNAVAILABLE", exc.message)
 
     @app.exception_handler(ConfigurationError)
     async def configuration_error_handler(
@@ -355,7 +355,9 @@ def create_app() -> FastAPI:
         description="AI Reliability Workbench — Retrieval, Verification, Diagnosis, Recovery",
         version="0.1.0",
         lifespan=lifespan,
-        default_response_class=ORJSONResponse,
+        # NOTE: no custom default_response_class — FastAPI ≥0.115 serializes
+        # typed endpoints directly to JSON bytes via Pydantic (faster than a
+        # custom ORJSONResponse, which is deprecated and warns per request).
         # Disable automatic /docs in production to reduce attack surface
         docs_url="/docs" if not settings.is_production() else None,
         redoc_url="/redoc" if not settings.is_production() else None,
