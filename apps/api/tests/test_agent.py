@@ -4,6 +4,7 @@ Unit tests for the Agentic Adaptive Recovery LangGraph workflow.
 
 from __future__ import annotations
 
+import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -216,11 +217,12 @@ async def test_verification_node_fail(mock_execute):
 @patch("app.agent.graph.get_verification_model")
 @pytest.mark.asyncio
 async def test_recovery_node_rewrite(mock_model, mock_collection):
-    # Mock LLM query rewrite
+    # Mock LLM query rewrite (local providers go through a token-capped bind)
     mock_response = MagicMock()
     mock_response.content = "rewritten search query"
     mock_llm = MagicMock()
     mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+    mock_llm.bind = MagicMock(return_value=mock_llm)
     mock_model.return_value = mock_llm
 
     mock_db = MagicMock()
@@ -244,6 +246,152 @@ async def test_recovery_node_rewrite(mock_model, mock_collection):
     assert res["recovery_strategy"] == "query_rewrite"
     assert res["cache_hit"] is False
     mock_db.insert_one.assert_called_once()
+    # Rewrite reserves a small output budget on local inference (RAM saving).
+    mock_llm.bind.assert_called_once_with(max_tokens=128)
+
+
+@patch("app.agent.graph.add_trace_event", AsyncMock())
+@patch("app.agent.graph.execute_claim_verification")
+@pytest.mark.asyncio
+async def test_verification_node_refusal_skips_llm_calls(mock_execute):
+    """Hedged answers skip decomposition+NLI (deterministic refusal gate)."""
+    state = {
+        "analysis_id": "64ee39d09c6292376e191983",
+        "answer": "I cannot verify this against the retrieved segments.",
+        "chunks": [{"text": "some context"}],
+        "evidence_ids": [],
+        "verdict_status": None,
+        "claims": [],
+        "attempts": 0,
+    }
+
+    res = await verification_node(state)
+
+    mock_execute.assert_not_called()
+    assert res["claims"] == []
+    assert res["verdict_status"] == "FAIL"
+
+
+def test_sanitize_rewritten_query_strips_instruction_echo():
+    """Rewrite echo ("Expanded Search Query: ...") must not reach retrieval."""
+    from app.agent.graph import _sanitize_rewritten_query
+
+    assert (
+        _sanitize_rewritten_query("Expanded Search Query: What are the steps of IRS?")
+        == "What are the steps of IRS?"
+    )
+    assert _sanitize_rewritten_query('"Rewritten Query: foo bar baz"') == "foo bar baz"
+    assert _sanitize_rewritten_query("   ") == ""
+    assert _sanitize_rewritten_query(None) == ""
+    assert _sanitize_rewritten_query("What are the steps of IRS?") == ("What are the steps of IRS?")
+
+
+def test_rewrite_prompts_have_no_tax_agency_example():
+    """The acronym example must not bias IRS toward Internal Revenue Service."""
+    source = inspect.getsource(recovery_node)
+    assert "Internal Revenue Service" not in source
+
+
+@patch("app.agent.graph.add_trace_event", AsyncMock())
+@patch("app.agent.graph.get_collection")
+@patch("app.agent.graph.get_verification_model")
+@pytest.mark.asyncio
+async def test_recovery_empty_rewrite_on_abstain_short_circuits(mock_model, mock_collection):
+    """Empty rewrite after ABSTAIN reuses saved chunks (no repeat spend)."""
+    mock_response = MagicMock()
+    mock_response.content = "   "
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+    mock_llm.bind = MagicMock(return_value=mock_llm)
+    mock_model.return_value = mock_llm
+
+    mock_db = MagicMock()
+    mock_db.insert_one = AsyncMock()
+    mock_collection.return_value = mock_db
+
+    state = {
+        "analysis_id": "64ee39d09c6292376e191983",
+        "query": "original",
+        "current_query": "original",
+        "answer": "ABSTAIN",
+        "claims": [],
+        "chunks": [{"text": "same evidence"}],
+        "attempts": 0,
+        "recovery_strategy": None,
+        "cache_hit": False,
+    }
+
+    res = await recovery_node(state)
+    assert res["current_query"] == "original"
+    assert res["recovery_strategy"] == "regenerate"
+
+
+@patch("app.agent.graph.add_trace_event", AsyncMock())
+@patch("app.agent.graph.get_collection")
+@patch("app.agent.graph.get_verification_model")
+@pytest.mark.asyncio
+async def test_recovery_empty_rewrite_on_hedge_short_circuits(mock_model, mock_collection):
+    """Empty rewrite after a hedged refusal also reuses saved chunks."""
+    mock_response = MagicMock()
+    mock_response.content = ""
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+    mock_llm.bind = MagicMock(return_value=mock_llm)
+    mock_model.return_value = mock_llm
+
+    mock_db = MagicMock()
+    mock_db.insert_one = AsyncMock()
+    mock_collection.return_value = mock_db
+
+    state = {
+        "analysis_id": "64ee39d09c6292376e191983",
+        "query": "original",
+        "current_query": "original",
+        "answer": "There is insufficient evidence to answer this.",
+        "claims": [],
+        "chunks": [{"text": "same evidence"}],
+        "attempts": 0,
+        "recovery_strategy": None,
+        "cache_hit": False,
+    }
+
+    res = await recovery_node(state)
+    assert res["current_query"] == "original"
+    assert res["recovery_strategy"] == "regenerate"
+
+
+@patch("app.agent.graph.add_trace_event", AsyncMock())
+@patch("app.agent.graph.get_collection")
+@patch("app.agent.graph.get_verification_model")
+@pytest.mark.asyncio
+async def test_recovery_empty_rewrite_with_real_answer_retries(mock_model, mock_collection):
+    """Empty rewrite after a real failed answer keeps full re-retrieval."""
+    mock_response = MagicMock()
+    mock_response.content = ""
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+    mock_llm.bind = MagicMock(return_value=mock_llm)
+    mock_model.return_value = mock_llm
+
+    mock_db = MagicMock()
+    mock_db.insert_one = AsyncMock()
+    mock_collection.return_value = mock_db
+
+    state = {
+        "analysis_id": "64ee39d09c6292376e191983",
+        "query": "original",
+        "current_query": "original",
+        "answer": "First attempt answer",
+        "claims": [{"text": "Claim", "state": "NEUTRAL"}],
+        "chunks": [{"text": "same evidence"}],
+        "attempts": 0,
+        "recovery_strategy": None,
+        "cache_hit": False,
+    }
+
+    res = await recovery_node(state)
+    assert res["current_query"] == "original"
+    assert res["recovery_strategy"] is None
 
 
 @pytest.mark.asyncio

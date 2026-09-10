@@ -38,9 +38,15 @@ def get_llamacpp_launch_args() -> list[str]:
 
     args: list[str] = []
 
+    # Quantized KV cache: q8_0 halves KV-cache RAM with negligible quality loss
+    # (community-measured; safe default per llama.cpp docs). Travels with
+    # --flash-attn on — without FA the server dequantizes per attention op and
+    # the saving turns into a slowdown. CPU-only path keeps f16 (no FA there).
+    kv_quant_flags = ["-ctk", "q8_0", "-ctv", "q8_0"]
+
     if is_arm_mac:
         # Metal is native on Apple Silicon — no further probe needed.
-        args += ["-ngl", "all", "--flash-attn", "on"]
+        args += ["-ngl", "all", "--flash-attn", "on", *kv_quant_flags]
     else:
         # CUDA only when a GPU both exists and responds.
         smi = shutil.which("nvidia-smi")
@@ -53,7 +59,15 @@ def get_llamacpp_launch_args() -> list[str]:
                     stderr=subprocess.DEVNULL,
                     timeout=5,
                 )
-                args += ["-ngl", "all", "--flash-attn", "on", "--split-mode", "layer"]
+                args += [
+                    "-ngl",
+                    "all",
+                    "--flash-attn",
+                    "on",
+                    *kv_quant_flags,
+                    "--split-mode",
+                    "layer",
+                ]
             except Exception as exc:
                 logger.debug("nvidia-smi probe failed; no GPU flags", error=str(exc))
     # else: CPU-only — no GPU flags.

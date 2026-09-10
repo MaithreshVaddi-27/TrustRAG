@@ -3,6 +3,7 @@ Tests for hardware acceleration detection, memory profiling, and model recommend
 """
 
 import platform
+import shutil
 import sys
 
 from app.core.hardware import (
@@ -44,6 +45,26 @@ def test_llamacpp_launch_args_fit_host():
         assert "-ngl" in args and "all" in args
         fa_i = args.index("--flash-attn")
         assert args[fa_i + 1] == "on"
+        # Lean-RAM: quantized KV cache halves KV memory; travels with flash-attn.
+        assert args[args.index("-ctk") + 1] == "q8_0"
+        assert args[args.index("-ctv") + 1] == "q8_0"
+
+
+def test_llamacpp_cpu_path_has_no_kv_quant_flags(monkeypatch):
+    """CPU-only hosts get no GPU flags (quantized KV needs flash-attn)."""
+    import app.core.hardware as hw
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(shutil, "which", lambda *a, **k: None)
+    monkeypatch.setattr(
+        hw,
+        "get_system_memory_info",
+        lambda: {"total_gb": 8.0, "free_gb": 4.0, "used_gb": 4.0, "usage_pct": 50.0},
+    )
+    args = hw.get_llamacpp_launch_args()
+    assert "-ctk" not in args and "-ctv" not in args
+    assert args[-4:] == ["-c", "4096", "-np", "2"]
 
 
 def test_detect_hardware_profile():

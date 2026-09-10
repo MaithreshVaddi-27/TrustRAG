@@ -244,12 +244,20 @@ async def create_analysis(
                 detail=f"kb_dim={kb.embedding_dim} server_dim={cfg.embedding_dimensionality}",
             )
 
+    # Resolve EFFECTIVE engine now: the persisted doc (and every downstream
+    # consumer: HUD chips, trace, export dossier) must name what will actually
+    # run — not the raw nullable request fields (previously stored "" → the UI
+    # rendered "DEFAULT" and audits couldn't tell granite from EXAONE).
+    effective_llm_provider = (schema.llm_provider or cfg.llm_provider or "").strip().lower()
+    effective_llm_model = schema.llm_model or cfg.llm_model_for(effective_llm_provider)
+    effective_embedding_provider = schema.embedding_provider or cfg.embedding_provider
+    effective_embedding_model = schema.embedding_model or cfg.embedding_model
+
     # LOCAL-LLM PREFLIGHT: when the effective provider is a local inference
     # server, verify it answers in ~3s. Without this, a stopped ollama /
     # llama-server burns minutes of 120s timeouts across ~9 sequential calls
     # before the pipeline abstains or fails. Raises LLMUnavailableError → 503
     # with the exact start command so the UI can alert instead of hanging.
-    effective_llm_provider = (schema.llm_provider or cfg.llm_provider or "").strip().lower()
     if effective_llm_provider in ("ollama", "llama_cpp", "llamacpp"):
         from app.core.local_llm import probe_local_llm_server
 
@@ -273,10 +281,10 @@ async def create_analysis(
         "config_snapshot": cfg.as_snapshot(),
         "web_search_enabled": schema.enable_web_search,
         "web_search_provider": schema.web_search_provider,
-        "llm_provider": schema.llm_provider,
-        "llm_model": schema.llm_model,
-        "embedding_provider": schema.embedding_provider,
-        "embedding_model": schema.embedding_model,
+        "llm_provider": effective_llm_provider,
+        "llm_model": effective_llm_model,
+        "embedding_provider": effective_embedding_provider,
+        "embedding_model": effective_embedding_model,
     }
 
     result = await get_collection(Collections.ANALYSES).insert_one(analysis_doc)
@@ -288,10 +296,10 @@ async def create_analysis(
         event="analysis.started",
         data={
             "message": "Analysis run initiated",
-            "provider": schema.llm_provider or cfg.llm_provider,
-            "model": schema.llm_model or cfg.llm_model,
-            "embedding_provider": schema.embedding_provider or cfg.embedding_provider,
-            "embedding_model": schema.embedding_model or cfg.embedding_model,
+            "provider": effective_llm_provider,
+            "model": effective_llm_model,
+            "embedding_provider": effective_embedding_provider,
+            "embedding_model": effective_embedding_model,
         },
     )
 
@@ -304,10 +312,10 @@ async def create_analysis(
         user_id_str=user_id_str,
         web_search_enabled=schema.enable_web_search,
         web_search_provider=schema.web_search_provider,
-        llm_provider=schema.llm_provider,
-        llm_model=schema.llm_model,
-        embedding_provider=schema.embedding_provider,
-        embedding_model=schema.embedding_model,
+        llm_provider=effective_llm_provider,
+        llm_model=effective_llm_model,
+        embedding_provider=effective_embedding_provider,
+        embedding_model=effective_embedding_model,
     )
 
     return serialize_analysis(analysis_doc)

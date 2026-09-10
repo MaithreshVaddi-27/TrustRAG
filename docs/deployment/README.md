@@ -44,8 +44,16 @@ cp .env.example .env
 | `CORS_ORIGINS` | Yes | Comma-separated allowed origins |
 | `GEMINI_API_KEY` | Conditional | Only if models.yaml uses gemini |
 | `NVIDIA_API_KEY` | Conditional | Only if models.yaml uses nvidia |
+| `TAVILY_API_KEY` | No | Web search grounding (else free DuckDuckGo) |
+| `HF_TOKEN` | No | Read-only token to avoid Hub rate-limits on embedding download |
 | `APP_ENV` | No | `development` (default) + `staging`/`production` |
 | `LOG_LEVEL` | No | `INFO` (default) |
+| `JWT_EXPIRY_MINUTES` | No | JWT lifetime, default 60 |
+| `TRUSTED_PROXY_IPS` | No | Proxy peers allowed to supply `X-Forwarded-For` (empty = direct) |
+| `RATE_LIMIT_*_PER_MINUTE` | No | Per-client ceilings (analyses/auth/upload/url-ingest) |
+| `CACHE_DIR` | No | SQLite embedding + semantic-cache directory |
+| `LOCAL_LLM_MAX_CONCURRENCY` | No | Concurrent local generations, default 1 (raise only on parallel servers) |
+| `AI_PROVIDER`, `EMBEDDING_PROVIDER`, `SEARCH_PROVIDER`, `*_MODEL`, `*_BASE_URL`, `EMBEDDING_DIM` | No | Per-deploy overrides; env wins over models.yaml/ports.yaml (see `.env.example`) |
 
 Generate a strong JWT secret:
 ```bash

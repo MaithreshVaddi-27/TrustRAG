@@ -220,6 +220,17 @@ async def test_seed_local_model_discovery(monkeypatch, tmp_path):
                 _llm_mod._DISCOVERED_LLMS[k] = set(v)
 
 
+def test_local_cap_kwargs_only_for_local_providers():
+    """Task-sized output caps must never leak to cloud APIs (foreign params)."""
+    assert _llm_mod.local_cap_kwargs("llama_cpp", 128) == {"max_tokens": 128}
+    assert _llm_mod.local_cap_kwargs("ollama", 384) == {"max_tokens": 384}
+    assert _llm_mod.local_cap_kwargs("LLAMA_CPP", 384) == {"max_tokens": 384}
+    assert _llm_mod.local_cap_kwargs("gemini", 384) == {}
+    assert _llm_mod.local_cap_kwargs("nvidia", 384) == {}
+    assert _llm_mod.local_cap_kwargs(None, 384) == {}
+    assert _llm_mod.local_cap_kwargs("", 384) == {}
+
+
 # ─── Local-server preflight probe + discovery replace tests ───────────────────
 
 

@@ -13,6 +13,7 @@ from app.generation.generator import (
     format_context,
     format_context_with_chunk_indices,
     generate_grounded_answer,
+    strip_stray_abstain,
 )
 
 
@@ -120,3 +121,21 @@ async def test_generation_successful_call(mock_get_llm):
 
     assert answer == "Grounded answer text."
     mock_llm.ainvoke.assert_called_once()
+
+
+def test_strip_stray_abstain_matrix():
+    """Trailing bare ABSTAIN (small-model habit) is peeled, never content."""
+    good = "Refunds are available for 45 days with processing in a week."
+    assert strip_stray_abstain(f"{good}\nABSTAIN") == good
+    assert strip_stray_abstain(f"{good}    ABSTAIN") == good
+    assert strip_stray_abstain(f"{good}\nABSTAIN.") == good
+    assert strip_stray_abstain(f"{good}\nABSTAIN ABSTAIN") == good
+    assert strip_stray_abstain("ABSTAIN") == "ABSTAIN"
+    assert strip_stray_abstain("  ABSTAIN  ") == "ABSTAIN"
+    assert strip_stray_abstain("") == ""
+    # Lowercase prose endings are content and must survive.
+    assert strip_stray_abstain("Voters have the right to abstain.") == (
+        "Voters have the right to abstain."
+    )
+    # Nothing substantive left behind the token means genuine refusal.
+    assert strip_stray_abstain("ABSTAIN\nsee above") == "ABSTAIN"

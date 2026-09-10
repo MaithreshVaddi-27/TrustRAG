@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
 import { Activity, CheckCircle2, Cpu, Database, Globe, Layers, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
+import { compactTraceEvents, displayMessage } from './traceEvents'
+import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
 
 /**
  * PipelineTelemetryHUD — Ultra-premium, executive live telemetry HUD.
@@ -17,21 +19,24 @@ export function PipelineTelemetryHUD({
 }) {
   // Determine current active pipeline stage from events
   const status = useMemo(() => {
-    const eventNames = new Set(events.map(e => e.event))
-    const lastEvent = events[events.length - 1]
+    const compacted = compactTraceEvents(events)
+    const eventNames = new Set(compacted.map(e => e.event))
+    const lastEvent = compacted[compacted.length - 1]
 
     const retrievalDone = eventNames.has('retrieval.completed')
     const generationDone = eventNames.has('generation.completed') || eventNames.has('claims.started')
     const verificationDone = eventNames.has('claims.verified')
     const isCompleted = eventNames.has('analysis.completed') || eventNames.has('analysis.abstained')
-    const isRecovering = eventNames.has('recovery.rewrite') || eventNames.has('recovery.expanded')
+    const isRecovering = eventNames.has('recovery.rewrite')
+      || eventNames.has('recovery.re_retrieve')
+      || eventNames.has('recovery.regenerate')
+      || eventNames.has('recovery.started')
 
-    // Find live message
+    // Live message: prefer the richest detail, never a bare tautology.
     let liveMessage = 'Initializing autonomous pipeline…'
-    if (lastEvent?.data?.message) {
-      liveMessage = lastEvent.data.message
-    } else if (lastEvent?.event) {
-      liveMessage = lastEvent.event.replace(/[._]/g, ' ')
+    if (lastEvent) {
+      liveMessage = displayMessage(lastEvent.event, lastEvent.data?.message)
+        || lastEvent.event.replace(/[._]/g, ' ')
     }
 
     return {
@@ -41,9 +46,13 @@ export function PipelineTelemetryHUD({
       isCompleted,
       isRecovering,
       liveMessage,
-      eventCount: events.length,
+      eventCount: compacted.length,
     }
   }, [events])
+
+  const modelShort = shortModelId(model)
+  const providerLabel = providerShortLabel(provider)
+  const embeddingShort = shortModelId(embeddingModel)
 
   return (
     <div className="rounded-2xl border border-cyan-500/30 bg-gradient-to-b from-surface-900/95 via-surface-900/80 to-surface-950/90 p-4 sm:p-5 backdrop-blur-xl shadow-xl shadow-cyan-950/20 space-y-4">
@@ -71,15 +80,21 @@ export function PipelineTelemetryHUD({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-[11px] font-mono shrink-0">
-          <span className="px-2 py-0.5 rounded-md bg-purple-950/80 border border-purple-800/50 text-purple-300 flex items-center gap-1">
-            <Cpu size={11} className="text-purple-400" />
-            {provider?.toUpperCase() || 'LOCAL'}: {model || 'DEFAULT'}
+        <div className="flex items-center gap-2 text-[11px] font-mono shrink-0 min-w-0">
+          <span
+            className="px-2 py-0.5 rounded-md bg-purple-950/80 border border-purple-800/50 text-purple-300 flex items-center gap-1 max-w-[240px]"
+            title={model ? `${providerLabel}: ${model}` : providerLabel}
+          >
+            <Cpu size={11} className="text-purple-400 shrink-0" />
+            <span className="truncate tracking-tight">{providerLabel}: {modelShort || 'DEFAULT'}</span>
           </span>
           {embeddingModel && (
-            <span className="px-2 py-0.5 rounded-md bg-emerald-950/80 border border-emerald-800/50 text-emerald-300 flex items-center gap-1">
-              <Layers size={11} className="text-emerald-400" />
-              {embeddingModel.includes('/') ? embeddingModel.split('/')[1] : embeddingModel}
+            <span
+              className="px-2 py-0.5 rounded-md bg-emerald-950/80 border border-emerald-800/50 text-emerald-300 flex items-center gap-1 max-w-[200px]"
+              title={embeddingModel}
+            >
+              <Layers size={11} className="text-emerald-400 shrink-0" />
+              <span className="truncate tracking-tight">{embeddingShort}</span>
             </span>
           )}
           <span className="px-2 py-0.5 rounded-md bg-surface-950 border border-slate-800 text-slate-400">
@@ -122,7 +137,8 @@ export function PipelineTelemetryHUD({
         {/* Stage 3: Grounded Reasoning */}
         <StageCard
           title="3. Grounded Synthesis"
-          subtitle={`${provider?.toUpperCase() || 'LLM'} (${model || 'DEFAULT'})`}
+          subtitle={`${providerLabel} · ${modelShort || 'DEFAULT'}`}
+          subtitleTitle={model ? `${providerLabel} (${model})` : providerLabel}
           icon={Sparkles}
           done={status.generationDone}
           active={status.retrievalDone && !status.generationDone}
@@ -141,7 +157,7 @@ export function PipelineTelemetryHUD({
   )
 }
 
-function StageCard({ title, subtitle, icon: Icon, done, active }) {
+function StageCard({ title, subtitle, subtitleTitle, icon: Icon, done, active }) {
   return (
     <div
       className={`rounded-xl p-3 border transition-all duration-300 flex flex-col justify-between ${
@@ -165,7 +181,7 @@ function StageCard({ title, subtitle, icon: Icon, done, active }) {
           <span className="w-2 h-2 rounded-full bg-slate-700 shrink-0" />
         )}
       </div>
-      <p className="text-[11px] text-slate-400 leading-tight">
+      <p className="text-[11px] text-slate-400 leading-tight truncate" title={subtitleTitle || subtitle}>
         {subtitle}
       </p>
     </div>

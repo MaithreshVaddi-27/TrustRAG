@@ -3,7 +3,7 @@
 **Date**: 2026-09-10 (Round 2 appended same day — live Playground trace diagnosis)
 **Roles**: Senior Backend · Senior AI/ML · Senior Security · Senior Optimization · Senior Testing (blackbox + whitebox)
 **Scope**: `apps/api` backend with emphasis on the RAG pipeline and local-LLM load (Ollama + llama.cpp); Round 2 adds Playground trace forensics + scoped Apple-design UI polish
-**Status**: AUDITED · CRITICAL BUGS FIXED · RAG/LLM OPTIMIZATIONS APPLIED · 169/169 TESTS PASSING · RUFF CLEAN · FRONTEND LINT+15 TESTS+BUILD GREEN
+**Status**: AUDITED · CRITICAL BUGS FIXED · RAG/LLM OPTIMIZATIONS APPLIED · 185/185 TESTS PASSING · RUFF CLEAN · FRONTEND LINT+21 TESTS+BUILD GREEN
 
 > Note: the working tree contained uncommitted changes before this audit (config retunes,
 > model-discovery hardening, ticket-based SSE auth). Findings below are against that working
@@ -194,7 +194,229 @@ global `:focus-visible` ring (keyboard path for every pointer path). Verified:
 deferred: gesture-driven sheets/carousels (no such component), haptics/audio
 (utility rule — no meaningful moment), full-type-scale retune (needs design review).
 
-## 11. Residual risks / next round
+## 11. Round 3 — Playground production-detail pass (screenshot-driven, skills applied)
+
+Source: user screenshot of `/playground` mid-run. Skills: `apple-design` (motion,
+materials, type, warning-feedback) + `frontend-ui-engineering` (a11y, system
+adherence, verification checklist). No backend changes this round.
+
+Formatting/content defects fixed (all verified against the screenshot):
+- U1. Topbar showed the SERVER DEFAULT model (`llama.cpp: ibm-granite/granit…`,
+  truncated) while the run used the Playground selection (EXAONE). Playground now
+  publishes `{provider, model, embedding*}` to `localStorage` +
+  `trustrag:engine-change` event; AppLayout pills show the effective selection with
+  a cyan (Playground) / slate (server-default) source dot and full-id tooltips.
+- U2. HUD model chip + Stage-3 subtitle rendered full GGUF ids across 3 lines,
+  breaking card rhythm. New `src/lib/modelLabels.js` (`shortModelId`,
+  `providerShortLabel`: `EXAONE-3.5-2.4B-Instruct`, `granite-4.2-3b`,
+  `bge-small-en-v1.5`) used in HUD, results header, topbar; full ids kept in
+  `title` tooltips. Cards back to uniform 2-line rhythm with ellipsis.
+- U3. Event stream noise: backend emits lifecycle pairs plus summary events
+  ("Retrieval completed" ×2, "…successfully" tautologies). New
+  `compactTraceEvents` (collapse consecutive same-type, keep richest message) +
+  `displayMessage` (suppress label-restating messages) in `traceEvents.js`,
+  applied to the feed, the "N events logged" pill, and the HUD counter so all
+  three agree. Timestamps now always visible (tabular-nums, `HH:MM:SS`) instead
+  of hover-only.
+- U4. Missing trace metadata: added EVENT_META for `retrieval.outage`,
+  `generation.skipped` (Round 2), `cache.hit`, `recovery.started/completed`,
+  `recovery.skipped` — previously fell back to raw `snake.case` labels.
+- U5. HUD `isRecovering` checked a non-existent `recovery.expanded` event; now
+  matches the real set (`recovery.rewrite/re_retrieve/regenerate/started`).
+- U6. Embedding dropdown rendered `BAAI/bge-small-en-v1.5 (384d SOTA) [Recomm…`
+  (truncated). Options now read `bge-small-en-v1.5 · 384d — Recommended` with
+  full-id tooltips. LLM native select keeps full ids (accuracy over brevity in
+  form controls).
+- U7. Global `:focus-visible` ring (keyboard path for every pointer path).
+Verification: `npm run lint` clean, Vitest 20/20 (new `modelLabels.test.js`, 5 tests),
+`npm run build` succeeds. Other pages swept for the same truncation class — none found.
+
+## 12. Round 4 — ultra-low-RAM techniques (web research + implementation)
+
+Researched current (2026) llama.cpp/Ollama memory practice: KV-cache quantization
+(`-ctk/-ctv q8_0`, `OLLAMA_KV_CACHE_TYPE=q8_0`) halves KV RAM at negligible quality
+cost and must travel with flash-attention; `-c` is a TOTAL shared budget allocated
+up front (never over-reserve); `-np` slots share that budget and compete for
+bandwidth — serial clients (`LOCAL_LLM_MAX_CONCURRENCY=1`) are what keep a 4096
+per-request window safe on a `-c 4096` server; `OLLAMA_MAX_LOADED_MODELS=1` on 8GB
+(default keeps 3 models resident); `OLLAMA_NUM_PARALLEL` multiplies KV by N.
+
+Applied (all local-only; cloud paths untouched):
+- L1. `hardware.py`: `-ctk q8_0 -ctv q8_0` on Metal + CUDA launch paths (FA already
+  on there — the required companion). CPU-only path keeps f16 (no FA → dequant
+  overhead). Biggest server-side win: ~50% smaller KV reservation.
+- L2. Task-sized output caps via new `local_cap_kwargs()` (`local_llm.py`), which
+  returns `{}` for cloud providers so foreign params never leak to Gemini/NVIDIA:
+  rewrite 128 (graph `bind`), decompose 768, batch NLI 768 (deliberately generous —
+  a truncated batch JSON costs a retry + 5 fallbacks), single NLI 384. Generation
+  stays 1024 (answer quality). Smaller `num_predict` = smaller per-call KV growth
+  + shorter wall time on every one of the ~9 calls/analysis.
+- L3. `Dockerfile`: `TOKENIZERS_PARALLELISM=false` (no forked tokenizer thread pool
+  next to torch + embedded Qdrant). Docker already pins `--workers 1`, so torch/BGE
+  can never double-load in two workers; lifespan embedding warmup closes the
+  first-request race.
+- L4. `.env.example`: documented Ollama-server env block (`KV_CACHE_TYPE`,
+  `FLASH_ATTENTION`, `MAX_LOADED_MODELS=1`, `NUM_PARALLEL=1`, `KEEP_ALIVE`) —
+  server-side vars, clearly labeled as not backend-read.
+- Tests added (4): Metal KV flags, CPU-path exclusion, `local_cap_kwargs`
+  provider matrix, local caps on all three structured calls, cloud no-cap proof,
+  rewrite `bind(max_tokens=128)` assertion. Suite: **173 passed**.
+
+Deferred (evaluated, not taken): ONNX BGE runtime (replaces torch+s-t, but a
+migration with parity eval — needs its own round); `-np 1` on lean tier (saves
+nothing — `-c` is the reservation, and `-np 2` preserves direct-server use);
+`--cache-ram` spill (30-50% slower; wrong trade on 8GB unified memory);
+`OLLAMA_CONTEXT_LENGTH` override (per-request `num_ctx` already governs spend).
+
+## 13. Round 5 — DEFAULT-model runs, repeat-refusal short-circuit, heat triage
+
+Trigger: `What are steps in DataMining?` → ABSTAINED/FAILED ("No claims extracted"),
+HUD + header showing `llama.cpp: DEFAULT`; host heating/hanging (load avg ~4.7,
+only ~2GB free of 8GB; 65s + 117s generations on a 2-3B model = thermal-throttle
+spiral; no inference server process found running at diagnosis time).
+
+Fixed:
+- D1. Fresh page loads never selected a model (`selectedModel` stayed `""` until
+  first click) → runs went out model-less and rendered DEFAULT everywhere.
+  Playground now auto-selects the discovered provider default one-shot (never
+  clobbers a user pick). Covered by new `PlaygroundPage.test.jsx`.
+- D2. Analysis docs stored raw nullable `llm_model` (`""`) → provenance said
+  DEFAULT. `create_analysis` now persists + executes + traces the EFFECTIVE
+  engine (`schema ⩔ cfg` resolution), so doc, trace, HUD, and dossier agree.
+- D3. Empty rewrite after an already-refused answer repeated a full
+  retrieval+generation round (~2 min, all heat). Now routes through `regenerate`
+  (retrieval short-circuits) with the ABSTAIN marker restored so the
+  futile-generation guard skips the repeat call — the round costs one rewrite
+  call. Real-answer failures still re-retrieve as before. (Implementation note:
+  recovery clears `answer` first, so the guard keys off a `prior_answer`
+  snapshot — the first version keyed off cleared state and could never fire.)
+- Tests: 2 recovery short-circuit tests, effective-engine assertions,
+  Playground auto-select test. Suite: backend **175 passed**, frontend **21 passed**.
+
+Heat/hang triage (this machine): the applied cuts (KV-quant flags — NEED A SERVER
+RESTART to take effect; task token caps; LLM semaphore; skipped futile rounds)
+shrink both peak RAM and sustained full-tilt minutes, which is what cooks an 8GB
+host. Remaining guidance: restart llama-server via `scripts/start_local_llm.sh`
+(new flags print on launch), prefer the 3B granite default over 2.4B EXAONE for
+instruction-following per watt, and optionally cap mongod (`wiredTiger
+engineConfig cacheSizeGB: 1` — default sizes to ~3.5GB on 8GB). Lean-tier
+analysis concurrency stays 2 (LLM already serialized; lowering it cuts throughput
+without cutting total work). Thread caps (`-t`) deliberately untouched — a speed
+trade with no measurement behind it.
+
+## 14. Round 6 — refusal-gate cascade (AI/ML optimization, web-grounded)
+
+Trigger: `what are steps in Information Retrevial system?` on granite-4.2-3b →
+41s decomposition → `claims.empty` → full repeat round on the identical query.
+Short labels + counts now render correctly (Rounds 3/5 verified live).
+
+Analysis: the model didn't emit ABSTAIN — it hedged in prose, so every guard
+missed it: decomposition burned 41s of throttled inference to return [], batch
+NLI was skipped only by the empty-claims accident, and the rewrite came back
+empty (twice across models — 2-3B models routinely blank on terse prompts).
+Research consensus applied: (a) cascade architecture — deterministic filters
+first, LLM as escalation only ("deciding what never reaches the LLM"); (b)
+refusal-first RAG — a hard pre-inference gate beats a prompt plea; (c) never
+blind-retry empties at temperature 0 (same output, doubled bill).
+
+Applied:
+- G1. `is_refusal_answer()` (`verifier.py`, 10 conservative regexes + ABSTAIN):
+  hedged answers skip decomposition AND batch/fallback NLI entirely and take the
+  existing FAIL→recovery/abstain path. False-positive cost is bounded by design
+  (a misread FAILs into recovery, which can still regenerate and pass — the gate
+  never asserts). Saves 1-7 LLM calls on every refusal (~1-4 throttled minutes).
+- G2. Empty-rewrite short-circuit extended from exact-ABSTAIN to any refusal via
+  the same helper; `prior_answer` snapshot retained (recovery clears state first).
+- G3. Decompose cap 768→512 (≤15 short claims fit; loopers hit the wall sooner;
+  truncation degrades to bounded single-claim fallback).
+- G4. Both rewrite prompts gained "Never reply empty; if unsure, return the
+  original query with spelling corrected" (also covers the `Retrevial` typo class).
+- Tests: refusal matrix (incl. grounded-text non-matches), verification skip
+  (execute not called), hedge-rewrite short-circuit. Suite: **178 passed**.
+
+What this trace costs now: generation → refusal gate (0 calls) → rewrite (1 short
+call) → empty + refusal → regenerate short-circuit (retrieval.reused,
+generation.skipped, 0 calls) → abstain. From ~9 calls / ~4 min to ~2 calls.
+
+Remaining (needs your terminal): backend logs stream to stdout only (no file
+appender — confirm rewrite-empties vs errors via the `Query rewrite returned
+empty` / `failed` log lines); restart llama-server for Round-4 flags; if
+decompositions still crawl, the host is thermally throttled — cool it before
+judging latency.
+
+## 15. Round 7 — trailing-ABSTAIN poisoning + batch-failure design flaw (forensics)
+
+Trigger: pasted answer — a GOOD grounded IRS overview ending in a stray `ABSTAIN`
+token — surfaced as failed/abstained (analysis `6aa2baf0`, LFM2.5-1.2B). Mongo
+forensics: status `completed`, reliability FAILED, `LOW_COVERAGE 0/5 supported`;
+all 11 persisted claims read "Verification service unavailable or quota limit
+reached." Control: gemini-3.5-flash-lite on the same query → TRUSTED 1.0. So the
+KB is fine; the local path failed twice, in two distinct ways:
+
+- F1. **Batch total-failure poisoned the individual fallback (design flaw).**
+  `batch_verify_claims_nli` caught everything and returned all-NEUTRAL rows, so
+  `execute`'s `if i in results_map` was always true and the budgeted per-claim
+  fallback (smaller prompts, higher tiny-model success) NEVER ran — while the
+  retry-on-raise code above it was dead. Fix: batch raises on total failure
+  (partial maps unchanged), restoring retry-once → budgeted-individuals. No test
+  depended on the poison rows. On this answer the claims read as genuinely
+  supported, so the same run would plausibly verify instead of 0/5 FAIL.
+- F2. **Stray trailing ABSTAIN token.** Small models append the token instead of
+  emitting it alone. New `strip_stray_abstain()` (`generator.py`, wired into
+  generation): drops trailing blank lines + bare uppercase ABSTAIN tokens,
+  returns "ABSTAIN" only when nothing substantive remains; lowercase prose
+  endings ("...right to abstain.") provably survive (tested).
+- Production-readiness files: `.env.example` gained the missing documented
+  surface (APP_ENV, LOG_LEVEL, JWT_EXPIRY_MINUTES, base-URL + provider/model
+  overrides incl. KB-pin warnings, SEARCH_PROVIDER); `.gitignore` gained
+  `.history/`, `*.code-workspace`, `.tool-versions`,
+  `docker-compose.override.yml` (verified `apps/api/uv.lock` tracking +
+  existing coverage — no other gaps found); README endpoint table completed
+  (`detail`, `stream-ticket`, `models/*`) and upload formats corrected to the
+  true seven.
+- Tests: batch-raises, batch-failure→individual-recovery, stray-ABSTAIN matrix.
+  Suite: **181 passed**.
+
+## 16. Round 8 — local-LLM claims rescue + push readiness (screenshots)
+
+Trigger: SmolLM2-1.7B run (`00f7855b`) — fluent 384-word answer, 16 VERIFIED
+chunks, yet `completed/FAILED 0% / 0 assertions`; rewrite visibly polluted:
+`Searching knowledge base for query: 'Expanded Search Query: What are…'` (the
+model echoed the instruction frame and it was searched literally).
+
+Forensics + fixes (claims for local LLMs):
+- C1. **Empty-structured backstop.** ≤3B models return valid-but-empty
+  `{"claims": []}`; the pipeline previously accepted it → claims.empty. Now a
+  deterministic sentence split (zero LLM calls, same >40-char bar as the blob
+  path, meta-filtered, capped) feeds NLI — every piece still verified, NEUTRAL
+  when unsupported. The pasted answer would have produced ~9 sentence-claims.
+- C2. **Rewrite sanitization.** `_sanitize_rewritten_query()` strips
+  `Expanded/Rewritten/Search Query:` prefixes, wrapping quotes, and whitespace
+  collapse — applied before state, trace event, and retrieval. The polluted
+  query from the screenshot now searches cleanly.
+- C3. **Prompt bias fix.** Both rewrite prompts used `IRS → Internal Revenue
+  Service` as the acronym example — on a KB where IRS means Information
+  Retrieval System this actively mis-expands (visible in the answer text).
+  Replaced with a neutral API example; regression test asserts the tax-agency
+  string never reappears.
+- Cleanup: deleted 1332 lines of dead code — `core/secrets_manager.py` (Vault/
+  SOPS/Age backends, zero importers) and `core/context.py` (ContextManager
+  family; prior audits already record its removal from the loop) + one stale
+  comment. Frontend orphan scan: none. No other unreferenced modules found.
+- Docs: `.env.example` completed (APP_ENV, LOG_LEVEL, JWT_EXPIRY_MINUTES, base
+  URLs, all provider/model overrides, SEARCH_PROVIDER); `.gitignore` +4
+  (`.history/`, `*.code-workspace`, `.tool-versions`,
+  `docker-compose.override.yml`); deployment env table completed; architecture
+  recovery diagram + guardrails updated to match code; README endpoints/formats/
+  counts synced.
+- Push readiness: no secrets tracked (placeholders only), `.env` untracked,
+  CI runs lint+format+tests+ports+models.yaml checks, tree contains exactly the
+  audit work (27 modified + 2 deleted + 3 new files, zero CRLF noise).
+- Tests: backstop (empty→sentences, refusal stays empty), batch-raises,
+  batch-failure→individual-recovery, stray-ABSTAIN matrix, sanitize + prompt
+  unit tests. Suite: backend **185 passed**, frontend **21 passed**.
+
+## 17. Residual risks / next round
 
 1. `lru_cache` on user-controlled model strings can pin HF models/HTTP clients (RAM/GPU leak) — needs bounded registry with eviction + close.
 2. `InMemoryCache` LLM cache is unbounded and keyed on never-repeated NLI prompts — scope to generation or key on `(query, chunk-hash)`.

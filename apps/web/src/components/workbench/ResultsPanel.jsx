@@ -11,6 +11,8 @@ import { FormattedAnswer } from './FormattedAnswer'
 import { EmptyState } from './EmptyState'
 import { PipelineTelemetryHUD } from './PipelineTelemetryHUD'
 import { copyToClipboard } from '@/lib/clipboard'
+import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
+import { compactTraceEvents } from './traceEvents'
 import api from '@/lib/api'
 
 const TABS = [
@@ -85,8 +87,8 @@ export function ResultsPanel({
           <div className="flex items-center justify-between pb-3 mb-2 border-b border-slate-800/80 shrink-0">
             <div className="flex items-center gap-2">
               <span className="section-heading !mb-0 text-slate-200">Real-Time Event Stream</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-cyan-950/70 border border-cyan-800/40 text-cyan-300">
-                {currentTraceEvents.length} events logged
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-cyan-950/70 border border-cyan-800/40 text-cyan-300 tabular-nums">
+                {compactTraceEvents(currentTraceEvents).length} events logged
               </span>
             </div>
             <span className="text-[10px] font-mono text-cyan-400 flex items-center gap-1.5 bg-surface-950 px-2.5 py-1 rounded-lg border border-slate-800 shadow-sm">
@@ -122,9 +124,12 @@ export function ResultsPanel({
 
         <div className="flex items-center gap-2.5 shrink-0">
           {analysis.llm_provider && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-950/80 text-purple-300 border border-purple-700/50 text-[10px] font-mono">
-              <Cpu size={11} className="text-purple-400" />
-              {analysis.llm_provider.toUpperCase()}: {analysis.llm_model || 'DEFAULT'}
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-950/80 text-purple-300 border border-purple-700/50 text-[10px] font-mono max-w-[260px]"
+              title={analysis.llm_model ? `${providerShortLabel(analysis.llm_provider)}: ${analysis.llm_model}` : providerShortLabel(analysis.llm_provider)}
+            >
+              <Cpu size={11} className="text-purple-400 shrink-0" />
+              <span className="truncate tracking-tight">{providerShortLabel(analysis.llm_provider)}: {shortModelId(analysis.llm_model) || 'DEFAULT'}</span>
             </span>
           )}
           {analysis.web_search_enabled && (

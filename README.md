@@ -8,8 +8,8 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![Ollama](https://img.shields.io/badge/Ollama-Local_Offline-000000?logo=ollama&logoColor=white)](https://ollama.com)
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF_Server-orange)](https://github.com/ggerganov/llama.cpp)
-[![Tests](https://img.shields.io/badge/Backend%20Tests-169%20Passing-brightgreen)](apps/api/tests)
-[![Tests](https://img.shields.io/badge/Frontend%20Tests-15%20Passing-brightgreen)](apps/web)
+[![Tests](https://img.shields.io/badge/Backend%20Tests-185%20Passing-brightgreen)](apps/api/tests)
+[![Tests](https://img.shields.io/badge/Frontend%20Tests-21%20Passing-brightgreen)](apps/web)
 [![E2E](https://img.shields.io/badge/Playwright%20E2E-2%20Passing-brightgreen)](apps/web/e2e)
 [![Load](https://img.shields.io/badge/k6%20Load%20Smoke-Passing-brightgreen)](load-test/smoke.js)
 [![Bandit](https://img.shields.io/badge/Bandit%20SAST-0%20Issues-brightgreen)](docs/AUDIT_REPORT.md)
@@ -163,7 +163,7 @@ TrustRAG/
 │       │   └── verification/         # Batch NLI verifier & SHA-256 evidence integrity auditor
 │       ├── config/
 │       │   └── models.yaml           # Centralized configuration registry for models and thresholds
-│       └── tests/                    # 169 automated unit & integration tests (100% pass)
+│       └── tests/                    # 185 automated unit & integration tests (100% pass)
 │
 ├── scripts/                          # Operator tooling
 │   ├── discover_local_models.py      # Pre-backend model discovery (ollama list, llama-server --cache-list)
@@ -768,15 +768,20 @@ All protected endpoints require `Authorization: Bearer <JWT>`.
 | `GET` | `/api/v1/knowledge-bases` | User | List all Knowledge Bases owned by current user |
 | `POST` | `/api/v1/knowledge-bases` | User | Create a new Knowledge Base |
 | `DELETE` | `/api/v1/knowledge-bases/{id}` | User | Cascade-delete a Knowledge Base, all its documents, chunks, and vectors |
-| `POST` | `/api/v1/knowledge-bases/{id}/documents` | User | Upload document (`.pdf`, `.txt`, `.md`, ≤20MB) for chunking and vector indexing |
+| `POST` | `/api/v1/knowledge-bases/{id}/documents` | User | Upload document (`.pdf`, `.txt`, `.md`, `.docx`, `.csv`, `.json`, `.html`, ≤20MB) for chunking and vector indexing |
 | `GET` | `/api/v1/knowledge-bases/{id}/documents` | User | List documents in a Knowledge Base |
 | `GET` | `/api/v1/documents/{id}` | User | Fetch single document metadata |
 | `DELETE` | `/api/v1/documents/{id}` | User | Delete single document, associated MongoDB chunks, and Qdrant points |
 | `POST` | `/api/v1/analyses` | User | Trigger LangGraph agentic analysis pipeline (rate-limited: 10/min) |
 | `GET` | `/api/v1/analyses` | User | List analysis history for authenticated user |
 | `GET` | `/api/v1/analyses/{id}` | User | Fetch analysis details, answer, reliability score, and diagnosis |
+| `GET` | `/api/v1/analyses/{id}/detail` | User | Single-round-trip finalize payload (analysis + claims + evidence + trace) |
 | `GET` | `/api/v1/analyses/{id}/export` | User | Export complete verifiable JSON / JSON-LD audit dossier |
-| `GET` | `/api/v1/analyses/{id}/stream` | User | Server-Sent Events (SSE) live telemetry stream |
+| `POST` | `/api/v1/analyses/{id}/stream-ticket` | User | Issue 60s single-use SSE ticket (JWTs never go in stream URLs) |
+| `GET` | `/api/v1/analyses/{id}/stream` | User | Server-Sent Events (SSE) live telemetry stream (ticket required) |
+| `GET` | `/api/v1/models/providers` | User | Provider status, discovered models, hardware profile (preset sync) |
+| `GET` | `/api/v1/models/hardware` | User | Hardware acceleration and resource health profile |
+| `POST` | `/api/v1/models/memory/trim` | User | Trigger proactive heap compaction and GC |
 | `GET` | `/api/v1/analyses/{id}/claims` | User | Fetch decomposed claims and NLI verification states |
 | `GET` | `/api/v1/analyses/{id}/evidence` | User | Fetch retrieved evidence chunks with provenance and integrity status |
 | `GET` | `/api/v1/conflicts` | User | Fetch all claim contradictions and compromised evidence for the user |
@@ -791,16 +796,16 @@ Interactive Swagger documentation is available at `http://localhost:8000/docs` i
 
 TRUSTRAG enforces automated quality checks across both backend and frontend layers, all wired into GitHub Actions:
 
-**Backend — 169 tests, ruff-clean (check + format):**
+**Backend — 185 tests, ruff-clean (check + format):**
 ```bash
 cd apps/api
-.venv/bin/python -m pytest tests/ -q --no-header --no-cov   # 169 passed
+.venv/bin/python -m pytest tests/ -q --no-header --no-cov   # 185 passed
 .venv/bin/python -m ruff check app/ tests/                  # All checks passed!
 .venv/bin/python -m ruff format --check app/ tests/         # formatted
 ```
 Includes **rate-limiter threshold tests** (`tests/test_rate_limit.py`) asserting `429 Too Many Requests` once the per-minute auth ceiling is exceeded, alongside **model-discovery regression tests** (`tests/test_local_llm.py`, `tests/test_config.py`) covering snapshot round-trips, live-merge cache seeding, and discovered-model validator acceptance.
 
-**Frontend — 17 tests (15 Vitest unit/component + 2 Playwright E2E), 0 lint errors:**
+**Frontend — 23 tests (21 Vitest unit/component + 2 Playwright E2E), 0 lint errors:**
 ```bash
 cd apps/web
 npm run test          # Vitest unit & component tests
@@ -823,8 +828,8 @@ Gated on exit code + thresholds: **<1% failed requests, p95 < 300ms, p99 < 500ms
 | Job | Checks |
 |---|---|
 | `backend-lint` | `ruff check` + `ruff format --check` |
-| `backend-test` | Full 169-test pytest suite + `models.yaml` config validation |
-| `frontend-lint` | ESLint + 15 Vitest tests |
+| `backend-test` | Full 185-test pytest suite + `models.yaml` config validation |
+| `frontend-lint` | ESLint + 21 Vitest tests |
 | `frontend-build` | Production bundle compilation (artifact uploaded) |
 | `e2e` | MongoDB service + live API + Chromium Playwright smoke **+ k6 load smoke** (artifacts on failure) |
 | `docker-build` | Multi-stage image build **+ Trivy HIGH/CRITICAL vulnerability gate** |

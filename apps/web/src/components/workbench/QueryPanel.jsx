@@ -3,6 +3,7 @@ import {
   RotateCcw, AlertTriangle, CornerDownLeft, Layers, ServerOff
 } from 'lucide-react'
 import { motion } from 'motion/react'
+import { shortModelId } from '@/lib/modelLabels'
 
 const SAMPLE_PRESETS = [
   "What is the cancellation and refund policy?",
@@ -420,8 +421,8 @@ export function QueryPanel({
                   disabled={loading}
                   className="w-full bg-surface-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-500/50">
                 {availableEmbeddingModels.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.name || m.id} {m.tag ? `[${m.tag}]` : ''}
+                  <option key={m.id} value={m.id} title={m.id}>
+                    {shortModelId(m.id)}{m.dim ? ` · ${m.dim}d` : ''}{m.tag ? ` — ${m.tag}` : ''}
                   </option>
                 ))}
                 </select>

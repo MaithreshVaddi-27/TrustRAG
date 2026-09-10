@@ -14,6 +14,8 @@ from typing import Any, Literal
 from bson import ObjectId
 from pydantic import BaseModel, Field
 
+from app.core.config import get_model_config
+from app.core.local_llm import local_cap_kwargs
 from app.core.logging import get_logger
 from app.core.model_registry import get_verification_model
 from app.db.mongodb import Collections, get_collection
@@ -76,6 +78,41 @@ def _is_meta_claim(text: str) -> bool:
     if any(p in lowered for p in _META_CLAIM_PATTERNS):
         return True
     return any(rx.search(lowered) for rx in _META_CLAIM_REGEXES)
+
+
+# ─── Refusal gate (deterministic pre-filter, zero LLM calls) ──────────────────
+# Small local models often refuse with hedged prose ("I cannot verify…",
+# "insufficient evidence…") instead of the exact ABSTAIN token. Decomposition +
+# batch NLI + fallbacks cannot extract claims from a refusal — running them
+# burns minutes of throttled inference for a guaranteed claims.empty. Detect
+# the refusal deterministically and skip straight to the FAIL/recovery path
+# (industry "cascade" practice: the LLM is the escalation path, not the filter).
+# False-positive cost is bounded: a misread answer FAILs into recovery, which
+# can still regenerate and pass — the system never asserts from this gate.
+
+_REFUSAL_REGEXES = (
+    re.compile(r"couldn.?t verify"),
+    re.compile(r"could not verify"),
+    re.compile(r"cann?ot (provide|give|answer|verify|ground)"),
+    re.compile(r"can.?t answer"),
+    re.compile(r"unable to (answer|verify|provide|ground)"),
+    re.compile(r"do n[o']t have (enough|sufficient)"),
+    re.compile(r"insufficient (evidence|information|context|grounding|support)"),
+    re.compile(
+        r"no (verifiable|sufficient|relevant) (claims|evidence|information|context|support)"
+    ),
+    re.compile(r"cannot be (verified|grounded|supported)"),
+)
+
+
+def is_refusal_answer(answer: str | None) -> bool:
+    """True for ABSTAIN and hedged-refusal prose no verifier can use."""
+    if not answer:
+        return False
+    if answer.strip() == "ABSTAIN":
+        return True
+    lowered = answer.lower()
+    return any(rx.search(lowered) for rx in _REFUSAL_REGEXES)
 
 
 # ─── Pydantic Schemas for Structured LLM Mappings ─────────────────────────────
@@ -258,7 +295,11 @@ async def decompose_answer_to_claims(
 
     try:
         model_obj = get_verification_model(provider=provider, model=model)
-        structured_llm = model_obj.with_structured_output(ClaimDecomposition)
+        # Local-RAM: ≤15 short claim strings fit in 512 tokens; looping
+        # small models hit the cap instead of running to 1024. Truncation
+        # falls back to single-claim verification (bounded), never a spiral.
+        cap = local_cap_kwargs(provider or get_model_config().verification_provider, max_tokens=512)
+        structured_llm = model_obj.with_structured_output(ClaimDecomposition, **cap)
 
         logger.info("Running answer claim decomposition", answer_len=len(answer))
 
@@ -306,7 +347,9 @@ async def verify_claim_nli(
             context_str = format_context(chunks)
 
         model_obj = get_verification_model(provider=provider, model=model)
-        structured_nli = model_obj.with_structured_output(NLIVerdict)
+        # Local-RAM: one verdict JSON (~100 tokens) — cap the runaway default.
+        cap = local_cap_kwargs(provider or get_model_config().verification_provider, max_tokens=384)
+        structured_nli = model_obj.with_structured_output(NLIVerdict, **cap)
 
         prompt_str = NLI_PROMPT_TEMPLATE.format(context_str=context_str, claim=claim)
 
@@ -341,11 +384,14 @@ async def batch_verify_claims_nli(
 
     Drastically reduces API calls from N to 1, preventing 429 RESOURCE_EXHAUSTED errors.
     Returns:
-      dict mapping 1-based claim_id -> {
-        "verdict": "SUPPORTED" | "CONTRADICTED" | "NEUTRAL",
-        "supporting_segments": [1-based indices],
-        "explanation": "text explanation"
-      }
+        dict mapping 1-based claim_id -> {
+            "verdict": "SUPPORTED" | "CONTRADICTED" | "NEUTRAL",
+            "supporting_segments": [1-based indices],
+            "explanation": "text explanation"
+        }
+    Raises:
+        The underlying model/parse error on total failure (partial maps are
+        returned as-is; missing ids fall back per-claim upstream).
     """
     if not claims or not chunks:
         return {}
@@ -361,7 +407,11 @@ async def batch_verify_claims_nli(
     )
 
     model_obj = get_verification_model(provider=provider, model=model)
-    structured_batch = model_obj.with_structured_output(BatchNLIVerdict)
+    # Local-RAM: 8 verdicts fit comfortably in 768 tokens; the 1024 default
+    # only grows KV cache. (Kept generous — a truncated batch JSON costs a
+    # retry plus up to 5 fallback calls, which would dwarf the saving.)
+    cap = local_cap_kwargs(provider or get_model_config().verification_provider, max_tokens=768)
+    structured_batch = model_obj.with_structured_output(BatchNLIVerdict, **cap)
 
     try:
         logger.info("Executing batch NLI verification", claim_count=len(claims))
@@ -380,15 +430,12 @@ async def batch_verify_claims_nli(
 
     except Exception as exc:
         logger.error("Batch NLI verification failed", error=str(exc))
-        # Fallback: mark all claims as NEUTRAL so the pipeline degrades gracefully without crashing
-        fallback_results: dict[int, dict[str, Any]] = {}
-        for i in range(1, len(claims) + 1):
-            fallback_results[i] = {
-                "verdict": "NEUTRAL",
-                "supporting_segments": [],
-                "explanation": "Verification service unavailable or quota limit reached.",
-            }
-        return fallback_results
+        # Total batch failure raises (never poison rows): the caller's retry +
+        # per-claim individual fallback is the designed recovery, and it only
+        # runs when the map comes back empty. Returning all-NEUTRAL rows here
+        # would mark every claim "verified" as failed and permanently suppress
+        # the individual path that succeeds on smaller prompts.
+        raise
 
 
 async def execute_claim_verification(
@@ -414,6 +461,18 @@ async def execute_claim_verification(
 
     # 1. Decompose answer into atomic assertions
     claims_texts = await decompose_answer_to_claims(answer, provider=provider, model=model)
+    if not claims_texts and answer and not is_refusal_answer(answer):
+        # Empty-structured backstop: ≤3B models often return valid-but-empty
+        # {"claims": []} JSON. Deterministic sentence split instead — zero LLM
+        # calls, and every piece is still NLI-verified downstream (NEUTRAL when
+        # unsupported, never inflated).
+        parts = [s.strip() for s in re.split(r"(?<=[.!?])\s+", answer) if len(s.strip()) > 40]
+        if parts:
+            logger.info(
+                "Empty structured decomposition; split answer into sentences",
+                sentences=len(parts),
+            )
+            claims_texts = parts
     # Weak-model fallback: when structured decomposition fails, the fallback is
     # the whole answer as ONE claim — a single meta sentence inside it would
     # nuke substantive facts at the filter below. Split long blobs into

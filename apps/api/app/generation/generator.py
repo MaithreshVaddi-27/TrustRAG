@@ -53,6 +53,41 @@ Strict Constraints:
 """
 
 
+def strip_stray_abstain(answer: str) -> str:
+    """Remove a trailing standalone ABSTAIN token from a substantive answer.
+
+    Small local models obey "output exactly ABSTAIN when unsupported" by
+    APPENDING the token to a full answer instead of emitting it alone. Feeding
+    that token to decomposition/NLI poisons verification (and rendering it
+    confuses users). A trailing bare ABSTAIN is never content: drop trailing
+    blank lines and a final all-caps ABSTAIN token/line, then return the rest —
+    or "ABSTAIN" when nothing substantive remains. Case-sensitive and
+    end-anchored on purpose: a sentence ending "...right to abstain." is
+    lowercase prose and must survive.
+    """
+    if not answer:
+        return answer
+    text = answer.strip()
+    if text == "ABSTAIN":
+        return "ABSTAIN"
+    # Drop trailing blank lines, then a final standalone ABSTAIN token,
+    # optionally followed by a period (repeated: "ABSTAIN ABSTAIN").
+    while True:
+        stripped = text.rstrip()
+        if not stripped:
+            return "ABSTAIN"
+        parts = stripped.rsplit(None, 1)
+        last = parts[-1].rstrip(".") if parts else ""
+        if last == "ABSTAIN":
+            text = stripped[: len(stripped) - len(parts[-1])].rstrip()
+            continue
+        break
+    text = text.strip()
+    if len(text) < 20:
+        return "ABSTAIN"
+    return text
+
+
 def _sanitize_label(value: str, max_len: int = 80) -> str:
     """Strip control characters and truncate label to prevent context boundary injection."""
     # Remove newlines, tabs, and other control chars that could break segment delimiters
@@ -280,6 +315,17 @@ async def generate_grounded_answer(
                 clean_len=len(extracted),
             )
             answer = extracted
+
+        # Peel a stray trailing ABSTAIN token small models append to real
+        # answers (instruction-following failure, not a refusal).
+        peeled = strip_stray_abstain(answer)
+        if peeled != answer:
+            logger.info(
+                "Stripped stray trailing ABSTAIN token from generation",
+                raw_len=len(answer),
+                clean_len=len(peeled),
+            )
+            answer = peeled
 
         logger.info(
             "Grounded generation completed", answer_len=len(answer), abstained=(answer == "ABSTAIN")

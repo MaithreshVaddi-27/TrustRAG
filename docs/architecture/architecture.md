@@ -114,8 +114,9 @@ TRUSTRAG adopts the open **Model Context Protocol (MCP)** specification to decou
    [recovery_node] ────────────────┘          │
    - Reset stale state["answer"]              │
    - Adaptive strategy selection:             │
-     * Query Rewrite (target missing claims)  │
-     * Expanded Retrieval (top_k=40)          │
+     * Query Rewrite (sanitized, empty-guarded)│
+     * Expanded Retrieval (capped widening)   │
+     * Regenerate (retrieval short-circuit)   │
                                               │
      Max attempts reached?                    │
      ├── Thresholds met ──────────────────────┴──► [ANSWER]
@@ -125,6 +126,10 @@ TRUSTRAG adopts the open **Model Context Protocol (MCP)** specification to decou
 **Guardrails:**
 - Bounded strictly by `max_recovery_attempts` in `models.yaml`.
 - State reset logic: `state["answer"] = None` and `state["claims"] = []` prevent stale abstentions from propagating when newly retrieved segments provide the missing facts.
+- Refusal gate: hedged refusals skip decomposition/NLI entirely (zero LLM calls).
+- Empty-decomposition backstop: valid-but-empty claim JSON falls back to deterministic sentence splitting (still NLI-verified downstream).
+- Batch total-failure raises into retry + budgeted per-claim fallback (never all-NEUTRAL poison rows).
+- Local-inference economy: task-sized output caps, single-flight local LLM semaphore, quantized KV cache (`-ctk/-ctv q8_0`), empty-rewrite and futile-regeneration short-circuits.
 
 ---
 

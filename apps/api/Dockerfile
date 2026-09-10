@@ -64,6 +64,10 @@ COPY --chown=trustrag:trustrag config/ ./config/
 # caches and the named model_cache volume (docker-compose) are writable without root.
 RUN mkdir -p /app/.model_cache && chown -R trustrag:trustrag /app
 ENV HOME=/app
+# Lean-RAM: tokenizers must not spawn its own thread pool after fork (it would
+# duplicate memory pressure next to torch + Qdrant); torch threads are already
+# capped to 1 at embedding init (see model_registry).
+ENV TOKENIZERS_PARALLELISM=false
 
 # Drop to non-root
 USER trustrag

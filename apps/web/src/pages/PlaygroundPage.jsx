@@ -61,9 +61,36 @@ export default function PlaygroundPage() {
 
   const [selectedProvider, setSelectedProvider] = useState('llama_cpp')
   const [selectedModel, setSelectedModel] = useState('')
+  // Auto-select the discovered default on first load so runs never go out
+  // with an empty model (previously rendered as "DEFAULT" everywhere).
+  // One-shot: once set — by the user or here — nothing overrides it.
+  const activeProviderDefault = providersData?.providers?.[selectedProvider]?.default_model
+  useEffect(() => {
+    if (!selectedModel && activeProviderDefault) {
+      setSelectedModel(activeProviderDefault)
+    }
+  }, [activeProviderDefault, selectedModel])
 
   const [selectedEmbeddingProvider, setSelectedEmbeddingProvider] = useState('huggingface')
   const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState('BAAI/bge-small-en-v1.5')
+
+  // Publish the effective engine to the top telemetry bar (AppLayout reads the
+  // same localStorage key + event) so the navbar pills always show what the
+  // Playground will actually run — not just the server default.
+  useEffect(() => {
+    try {
+      localStorage.setItem('trustrag.playground.engine', JSON.stringify({
+        provider: selectedProvider,
+        model: selectedModel,
+        embeddingProvider: selectedEmbeddingProvider,
+        embeddingModel: selectedEmbeddingModel,
+        ts: Date.now(),
+      }))
+      window.dispatchEvent(new CustomEvent('trustrag:engine-change'))
+    } catch {
+      // private-mode storage denial must never break the workbench
+    }
+  }, [selectedProvider, selectedModel, selectedEmbeddingProvider, selectedEmbeddingModel])
 
   useEffect(() => {
     if (!userTouchedEmbeddingRef.current) {

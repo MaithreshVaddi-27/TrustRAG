@@ -273,3 +273,216 @@ def test_extract_claim_triple_heuristics():
     assert extract_claim_triple_heuristic("") == (None, None, None)
     assert extract_claim_triple_heuristic("   ") == (None, None, None)
     assert extract_claim_triple_heuristic("Warning") == ("Warning", None, None)
+
+
+@patch("app.verification.verifier.get_verification_model")
+@pytest.mark.asyncio
+async def test_local_task_token_caps_applied(mock_get_model):
+    """Local inference uses task-sized output caps (KV/wall-time savings)."""
+    from app.verification.verifier import (
+        BatchNLIVerdict,
+        ClaimVerdict,
+        batch_verify_claims_nli,
+    )
+
+    calls = {}
+
+    def _structured(schema, **kwargs):
+        calls[schema.__name__] = kwargs
+        inner = MagicMock()
+        if schema.__name__ == "ClaimDecomposition":
+            inner.ainvoke = AsyncMock(return_value=ClaimDecomposition(claims=["Claim one."]))
+        elif schema.__name__ == "BatchNLIVerdict":
+            inner.ainvoke = AsyncMock(
+                return_value=BatchNLIVerdict(
+                    verdicts=[
+                        ClaimVerdict(
+                            claim_id=1,
+                            verdict="SUPPORTED",
+                            supporting_segments=[1],
+                            explanation="Supported.",
+                        )
+                    ]
+                )
+            )
+        else:
+            inner.ainvoke = AsyncMock(
+                return_value=NLIVerdict(
+                    verdict="SUPPORTED",
+                    supporting_segments=[1],
+                    explanation="Supported.",
+                )
+            )
+        return inner
+
+    mock_model = MagicMock()
+    mock_model.with_structured_output = MagicMock(side_effect=_structured)
+    mock_get_model.return_value = mock_model
+
+    chunks = [{"text": "Segment one."}]
+    await decompose_answer_to_claims("Some grounded answer text.", provider="llama_cpp")
+    assert calls["ClaimDecomposition"] == {"max_tokens": 512}
+
+    await verify_claim_nli("Claim one.", chunks, provider="ollama", context_str="Segment one.")
+    assert calls["NLIVerdict"] == {"max_tokens": 384}
+
+    await batch_verify_claims_nli(
+        ["Claim one."], chunks, provider="llama_cpp", context_str="Segment one."
+    )
+    assert calls["BatchNLIVerdict"] == {"max_tokens": 768}
+
+
+@patch("app.verification.verifier.get_verification_model")
+@pytest.mark.asyncio
+async def test_cloud_providers_receive_no_foreign_cap(mock_get_model):
+    """Cloud chat models must not receive local-only max_tokens bindings."""
+    from app.verification.verifier import BatchNLIVerdict, batch_verify_claims_nli
+
+    calls = {}
+
+    def _structured(schema, **kwargs):
+        calls[schema.__name__] = kwargs
+        inner = MagicMock()
+        inner.ainvoke = AsyncMock(return_value=BatchNLIVerdict(verdicts=[]))
+        return inner
+
+    mock_model = MagicMock()
+    mock_model.with_structured_output = MagicMock(side_effect=_structured)
+    mock_get_model.return_value = mock_model
+
+    await batch_verify_claims_nli(
+        ["Claim one."], [{"text": "Segment one."}], provider="gemini", context_str="Segment one."
+    )
+    assert calls["BatchNLIVerdict"] == {}
+
+
+def test_is_refusal_answer_matrix():
+    """Refusal gate: hedges skip verification; grounded text never matches."""
+    from app.verification.verifier import is_refusal_answer
+
+    assert is_refusal_answer("ABSTAIN") is True
+    assert is_refusal_answer("") is False
+    assert is_refusal_answer(None) is False
+    assert is_refusal_answer("I couldn't verify this against the segments.") is True
+    assert is_refusal_answer("I cannot answer from the provided context.") is True
+    assert is_refusal_answer("Unable to ground this claim in evidence.") is True
+    assert is_refusal_answer("There is insufficient evidence to answer.") is True
+    assert is_refusal_answer("No verifiable claims in the answer.") is True
+    assert is_refusal_answer("This cannot be verified from the sources.") is True
+    # Grounded answers — including ones that QUOTE the word in passing — pass.
+    assert is_refusal_answer("Refunds are available for 45 days.") is False
+    assert is_refusal_answer("The policy lists three steps.") is False
+    assert is_refusal_answer("ABSTAIN is not in the text.") is False
+
+
+@patch("app.verification.verifier.get_verification_model")
+@pytest.mark.asyncio
+async def test_batch_total_failure_raises_instead_of_poisoning(mock_get_model):
+    """Total batch failure must raise so retry + individual fallback can run."""
+    from app.verification.verifier import batch_verify_claims_nli
+
+    mock_structured = MagicMock()
+    mock_structured.ainvoke = AsyncMock(side_effect=RuntimeError("model blew up"))
+    mock_model = MagicMock()
+    mock_model.with_structured_output = MagicMock(return_value=mock_structured)
+    mock_get_model.return_value = mock_model
+
+    with pytest.raises(RuntimeError, match="model blew up"):
+        await batch_verify_claims_nli(
+            ["Claim one."],
+            [{"text": "Segment one."}],
+            provider="llama_cpp",
+            context_str="Segment one.",
+        )
+
+
+@patch("app.verification.verifier.verify_claim_nli")
+@patch("app.verification.verifier.batch_verify_claims_nli")
+@patch("app.verification.verifier.decompose_answer_to_claims")
+@pytest.mark.asyncio
+async def test_total_batch_failure_recovers_via_individual_calls(
+    mock_decompose, mock_batch_verify, mock_individual
+):
+    """The pasted-answer bug: batch dies → budgeted individuals still verify."""
+    from bson import ObjectId
+
+    mock_decompose.return_value = ["Refunds take 45 days.", "Ranking uses models."]
+    mock_batch_verify.side_effect = Exception("batch JSON unparseable")
+    mock_individual.return_value = {
+        "verdict": "SUPPORTED",
+        "supporting_segments": [1],
+        "explanation": "Ok",
+    }
+
+    mock_collection = MagicMock()
+    mock_collection.insert_many = AsyncMock(
+        return_value=MagicMock(inserted_ids=[ObjectId("64ee39d09c6292376e191986")] * 2)
+    )
+    with patch("app.verification.verifier.get_collection", return_value=mock_collection):
+        claims = await execute_claim_verification(
+            analysis_id_str="64ee39d09c6292376e191983",
+            answer="Refunds take 45 days. Ranking uses models.",
+            chunks=[{"text": "Refunds take 45 days. Ranking uses models."}],
+            evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
+        )
+
+    assert mock_batch_verify.call_count == 2  # initial + one retry
+    assert mock_individual.call_count == 2  # both claims within budget
+    assert all(c["state"] == "SUPPORTED" for c in claims)
+
+
+@patch("app.verification.verifier.get_verification_model")
+@pytest.mark.asyncio
+async def test_empty_structured_decomposition_falls_back_to_sentences(mock_get_model):
+    """≤3B models return valid-but-empty claims JSON → deterministic split."""
+    from app.verification.verifier import (
+        ClaimDecomposition,
+        execute_claim_verification,
+    )
+
+    mock_structured = MagicMock()
+    mock_structured.ainvoke = AsyncMock(return_value=ClaimDecomposition(claims=[]))
+    mock_model = MagicMock()
+    mock_model.with_structured_output = MagicMock(return_value=mock_structured)
+    mock_get_model.return_value = mock_model
+
+    with patch("app.verification.verifier.batch_verify_claims_nli") as mock_batch:
+        mock_batch.return_value = {
+            1: {"verdict": "SUPPORTED", "supporting_segments": [1], "explanation": "Ok"},
+            2: {"verdict": "SUPPORTED", "supporting_segments": [1], "explanation": "Ok"},
+        }
+        mock_collection = MagicMock()
+        mock_collection.insert_many = AsyncMock(
+            return_value=MagicMock(inserted_ids=[ObjectId("64ee39d09c6292376e191986")] * 2)
+        )
+        with patch("app.verification.verifier.get_collection", return_value=mock_collection):
+            claims = await execute_claim_verification(
+                analysis_id_str="64ee39d09c6292376e191983",
+                answer=(
+                    "The system normalizes incoming documents into a standard format. "
+                    "It then builds an index for fast retrieval of relevant information."
+                ),
+                chunks=[{"text": "Normalization and indexing enable retrieval."}],
+                evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
+            )
+
+    assert len(claims) == 2
+    assert all(c["state"] == "SUPPORTED" for c in claims)
+
+
+@patch("app.verification.verifier.get_verification_model")
+@pytest.mark.asyncio
+async def test_empty_decomposition_of_refusal_stays_empty(mock_get_model):
+    """Refusals must not be sentence-split into pseudo-claims."""
+    from app.verification.verifier import execute_claim_verification
+
+    mock_get_model.side_effect = AssertionError("no LLM call expected")
+    mock_collection = MagicMock()
+    with patch("app.verification.verifier.get_collection", return_value=mock_collection):
+        claims = await execute_claim_verification(
+            analysis_id_str="64ee39d09c6292376e191983",
+            answer="ABSTAIN",
+            chunks=[{"text": "Segment one."}],
+            evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
+        )
+    assert claims == []

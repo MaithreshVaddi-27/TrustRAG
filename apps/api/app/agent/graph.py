@@ -8,6 +8,7 @@ Coordinates retrieval, generation, verification, and adaptive recovery loops
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC, datetime
 from typing import Any, TypedDict
 
@@ -25,7 +26,7 @@ from app.retrieval.retriever import _query_cache, retrieve_hybrid_chunks
 from app.services.analysis_service import add_trace_event
 from app.verification.integrity import audit_evidence_integrity
 from app.verification.verdict import Thresholds, compute_verdict
-from app.verification.verifier import execute_claim_verification
+from app.verification.verifier import execute_claim_verification, is_refusal_answer
 
 logger = get_logger(__name__)
 
@@ -588,15 +589,15 @@ async def generation_node(state: AgentState) -> AgentState:
 
         # Futile-regeneration guard: on a regenerate retry the chunk set is
         # unchanged (retrieval short-circuits above), and the model already
-        # refused these exact segments with ABSTAIN. Re-invoking burns a full
-        # local generation (~60s on 2-3B models) for a certain repeat refusal
-        # — keep the ABSTAIN and let verification close out the run.
+        # refused these exact segments. Re-invoking burns a full local
+        # generation (~60s on 2-3B models) for a certain repeat refusal —
+        # keep the refusal and let verification close out the run.
         if (
             state.get("recovery_strategy") == "regenerate"
-            and (state.get("answer") or "").strip() == "ABSTAIN"
+            and is_refusal_answer(state.get("answer"))
             and state.get("chunks")
         ):
-            logger.info("Skipping futile regeneration (prior ABSTAIN on identical chunks)")
+            logger.info("Skipping futile regeneration (prior refusal on identical chunks)")
             await add_trace_event(
                 state["analysis_id"],
                 "generation.skipped",
@@ -668,7 +669,7 @@ async def verification_node(state: AgentState) -> AgentState:
 
     answer = state["answer"]
 
-    if not answer or answer == "ABSTAIN":
+    if not answer or answer == "ABSTAIN" or is_refusal_answer(answer):
         state["claims"] = []
         state["reliability_score"] = None
         state["diagnosis_type"] = "RETRIEVAL_FAILURE"
@@ -801,6 +802,29 @@ async def verification_node(state: AgentState) -> AgentState:
     return state
 
 
+# Small models echo the instruction frame around the rewrite itself
+# ("Expanded Search Query: <query>"). Searching that literally pollutes
+# retrieval with junk tokens, so strip known meta-prefixes, wrapping quotes,
+# and collapsed whitespace before the rewrite is used or traced.
+_REWRITE_META_PREFIXES = (
+    "expanded search query:",
+    "rewritten query:",
+    "rewritten search query:",
+    "search query:",
+    "expanded query:",
+)
+
+
+def _sanitize_rewritten_query(raw: str | None) -> str:
+    text = (raw or "").strip().strip("\"'`")
+    lowered = text.lower()
+    for prefix in _REWRITE_META_PREFIXES:
+        if lowered.startswith(prefix):
+            text = text[len(prefix) :].strip().strip("\"'`")
+            lowered = text.lower()
+    return re.sub(r"\s+", " ", text).strip()
+
+
 async def recovery_node(state: AgentState) -> AgentState:
     """Determine adaptive strategy and execute recovery step (e.g. Query Rewriting)."""
     cfg = get_model_config()
@@ -814,6 +838,9 @@ async def recovery_node(state: AgentState) -> AgentState:
         missing_claims_snapshot = [
             c["text"] for c in state.get("claims", []) if c.get("state") != "SUPPORTED"
         ]
+        # Snapshot the refused answer too: the empty-rewrite guard below needs
+        # to know the model already abstained on these chunks.
+        prior_answer = state.get("answer")
 
         # Clear prior failed/abstained answer and claims so recovery generates and verifies freshly
         state["answer"] = None
@@ -846,11 +873,13 @@ async def recovery_node(state: AgentState) -> AgentState:
                 rewrite_prompt = f"""You are a query expansion assistant for an IR system.
 The original query may contain acronyms or ambiguous terms.
 Your task: rewrite the query to search for the missing factual details below.
-- Expand any acronyms/abbreviations to their full forms (e.g., IRS → Internal Revenue Service)
+- Expand acronyms/abbreviations to full forms
+  (e.g., API → Application Programming Interface)
 - Add synonyms or related terms that would help retrieval
 - Keep the query focused and concise (5 to 12 words)
 
 Output only the expanded search query string. No markdown or commentary.
+Never reply empty: if unsure, return the original query with spelling corrected.
 
 <ORIGINAL_QUERY>
 {state["query"]}
@@ -869,16 +898,26 @@ Your task: expand the query by resolving ambiguous acronyms and terms.
 - Keep the query focused and concise (5 to 12 words)
 
 Output only the expanded search query string. No markdown or quotes.
+Never reply empty: if unsure, return the original query with spelling corrected.
 
 <ORIGINAL_QUERY>
 {state["query"]}
 </ORIGINAL_QUERY>
 """
             try:
+                from app.core.local_llm import local_cap_kwargs
+
                 model = get_verification_model(
                     provider=state.get("llm_provider"), model=state.get("llm_model")
                 )
-                response = await model.ainvoke(rewrite_prompt)
+                # Local-RAM: a 5-12 word rewrite must not reserve 1024 output
+                # tokens of KV cache. Cloud providers ignore the foreign key.
+                cap = local_cap_kwargs(
+                    state.get("llm_provider") or cfg.verification_provider,
+                    max_tokens=128,
+                )
+                invoker = model.bind(**cap) if cap else model
+                response = await invoker.ainvoke(rewrite_prompt)
                 new_query = response.content
                 if isinstance(new_query, bytes):
                     new_query = new_query.decode("utf-8")
@@ -892,7 +931,7 @@ Output only the expanded search query string. No markdown or quotes.
                         elif hasattr(item, "text"):
                             parts.append(item.text)
                     new_query = "".join(parts)
-                new_query = str(new_query).strip().strip("\"'")
+                new_query = _sanitize_rewritten_query(str(new_query))
 
                 if not new_query or len(new_query) < 3:
                     # Small local models sometimes return an empty rewrite.
@@ -902,7 +941,28 @@ Output only the expanded search query string. No markdown or quotes.
                         "Query rewrite returned empty text, keeping original query",
                         original=state["query"],
                     )
-                    state["recovery_strategy"] = None
+                    if is_refusal_answer(prior_answer) and state.get("chunks"):
+                        # ...and the model already refused these exact chunks:
+                        # re-searching the identical query can only return the
+                        # same context for a certain repeat refusal. Route
+                        # through regenerate so retrieval short-circuits and
+                        # the futile-generation guard skips the repeat call —
+                        # the round then costs ~zero instead of minutes.
+                        state["recovery_strategy"] = "regenerate"
+                        # Restore the refusal cleared above: it arms the
+                        # futile-generation guard (regenerate + refusal +
+                        # unchanged chunks → skip) so the round costs ~zero.
+                        state["answer"] = prior_answer
+                        await add_trace_event(
+                            state["analysis_id"],
+                            "recovery.regenerate",
+                            {
+                                "message": "Empty rewrite on already-refused evidence — "
+                                "reusing saved segments without new retrieval spend",
+                            },
+                        )
+                    else:
+                        state["recovery_strategy"] = None
                 else:
                     logger.info(
                         "Query rewritten successfully",

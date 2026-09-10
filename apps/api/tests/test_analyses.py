@@ -111,6 +111,9 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
             assert data["query"] == "Is there a 45 days policy?"
             assert data["status"] == "pending"
             assert data["reliability"]["status"] == "PENDING"
+            # Provenance: doc records the effective engine, never blanks.
+            assert data["llm_provider"] == "llama_cpp"
+            assert data["llm_model"] == "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
             call_kwargs = mock_add_trace.call_args.kwargs
             assert call_kwargs["analysis_id_str"] == "64ee39d09c6292376e191983"
             assert call_kwargs["event"] == "analysis.started"

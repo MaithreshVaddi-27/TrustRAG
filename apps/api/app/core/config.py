@@ -7,7 +7,6 @@ Business code must import from this module — never read env vars directly.
 Separation of concerns:
   .env          → secrets, deployment-specific values (GEMINI_API_KEY, URIs, etc.)
   models.yaml   → model IDs, thresholds, tuning parameters, retrieval config
-  Vault/SOPS/Age → production secrets (optional, via secrets_manager)
 """
 
 from __future__ import annotations

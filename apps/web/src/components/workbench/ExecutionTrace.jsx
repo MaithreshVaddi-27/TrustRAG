@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { clsx } from 'clsx'
 import { ChevronRight, Loader2 } from 'lucide-react'
-import { EVENT_META } from './traceEvents'
+import { EVENT_META, compactTraceEvents, displayMessage } from './traceEvents'
 
 /**
  * ExecutionTrace — clean, compact live SSE trace event feed as before,
@@ -13,13 +13,15 @@ import { EVENT_META } from './traceEvents'
  */
 export function ExecutionTrace({ events = [], isLive = false }) {
   const bottomRef = useRef(null)
+  // Collapse backend lifecycle duplicates so each pipeline moment reads once.
+  const visibleEvents = useMemo(() => compactTraceEvents(events), [events])
 
   // Auto-scroll to newest event during live processing
   useEffect(() => {
     if (isLive && bottomRef.current) {
       bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
-  }, [events.length, isLive])
+  }, [visibleEvents.length, isLive])
 
   return (
     <div className="space-y-1 font-mono text-xs">
@@ -34,7 +36,7 @@ export function ExecutionTrace({ events = [], isLive = false }) {
         <p className="text-slate-500 text-sm font-sans py-4 text-center">No trace events yet.</p>
       )}
 
-      {events.map((evt, i) => (
+      {visibleEvents.map((evt, i) => (
         <TraceEvent key={i} evt={evt} />
       ))}
 
@@ -50,19 +52,22 @@ function TraceEvent({ evt }) {
     label: evt.event,
   }
   const Icon = meta.icon
+  // Backend sometimes restates the label ("retrieval completed successfully")
+  // — render the message only when it adds information.
+  const message = displayMessage(evt.event, evt.data?.message)
 
   return (
     <div className="trace-event group">
       <Icon size={13} className={clsx('shrink-0 mt-0.5', meta.color)} />
       <div className="flex-1 min-w-0">
-        <span className={clsx('font-semibold', meta.color)}>{meta.label}</span>
-        {evt.data?.message && (
+        <span className={clsx('font-semibold tracking-tight', meta.color)}>{meta.label}</span>
+        {message && (
           <span className="text-slate-300 ml-2 font-sans break-words leading-relaxed">
-            {evt.data.message}
+            {message}
           </span>
         )}
         {evt.data?.rewritten_query && (
-          <span className="text-cyan-300 ml-2 font-mono text-[11px] block mt-0.5">
+          <span className="text-cyan-300 ml-2 font-mono text-[11px] block mt-0.5 break-words">
             ↳ Expanded: {evt.data.rewritten_query}
           </span>
         )}
@@ -70,8 +75,8 @@ function TraceEvent({ evt }) {
           <span className="text-slate-500 ml-2 font-mono">({evt.data.latency_ms}ms)</span>
         )}
       </div>
-      <span className="text-slate-500 shrink-0 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity ml-2">
-        {evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : ''}
+      <span className="text-slate-600 group-hover:text-slate-400 shrink-0 text-[10px] font-mono tabular-nums transition-colors ml-2">
+        {evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString('en-GB', { hour12: false }) : ''}
       </span>
     </div>
   )

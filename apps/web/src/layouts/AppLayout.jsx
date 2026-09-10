@@ -12,6 +12,16 @@ import {
 import { useAuthStore } from '@/store/authStore'
 import { authService } from '@/services/auth'
 import { modelService } from '@/services/api'
+import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
+
+function readPlaygroundEngine() {
+  try {
+    const raw = localStorage.getItem('trustrag.playground.engine')
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
 
 const NAV = [
   { label: 'Dashboard',       to: '/dashboard',       icon: LayoutDashboard, badge: null },
@@ -51,6 +61,28 @@ export default function AppLayout({ children }) {
 
   // Mobile drawer state
   const [isMobileOpen, setIsMobileOpen] = useState(false)
+
+  // Playground engine override: the top pills show what the Playground will
+  // actually run (user selection), falling back to the server default.
+  const [playgroundEngine, setPlaygroundEngine] = useState(readPlaygroundEngine)
+  useEffect(() => {
+    const sync = () => setPlaygroundEngine(readPlaygroundEngine())
+    window.addEventListener('trustrag:engine-change', sync)
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener('trustrag:engine-change', sync)
+      window.removeEventListener('storage', sync)
+    }
+  }, [])
+
+  const serverProvider = providersData?.active_provider
+  const serverModel = providersData?.active_model
+  const effProvider = playgroundEngine?.provider || serverProvider
+  const effModel = playgroundEngine?.model || serverModel
+  const isEngineOverride = !!playgroundEngine?.model && playgroundEngine.model !== serverModel
+  const serverEmbeddingModel = providersData?.active_embedding_model
+  const effEmbeddingModel = playgroundEngine?.embeddingModel || serverEmbeddingModel
+  const isEmbeddingOverride = !!playgroundEngine?.embeddingModel && playgroundEngine.embeddingModel !== serverEmbeddingModel
 
   // Motion values for spring animations
   const sidebarWidth = useSpring(isCollapsed ? 72 : 240, { damping: 15, stiffness: 150 })
@@ -175,21 +207,35 @@ export default function AppLayout({ children }) {
             <span>API Online</span>
           </motion.div>
 
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300">
-            <Cpu size={12} className="text-primary-400" />
-            <span className="max-w-[200px] truncate" title={providersData?.active_model}>
-              {providersData?.active_provider === 'ollama'
-                ? `Ollama: ${providersData?.active_model || 'granite4.2:3b-q4_K_M'}`
-                : (providersData?.active_provider === 'llama_cpp' || providersData?.active_provider === 'llamacpp')
-                ? `llama.cpp: ${providersData?.active_model || 'GGUF'}`
-                : (providersData?.active_model || 'Local LLM')}
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300"
+            title={effModel
+              ? `${providerShortLabel(effProvider)}: ${effModel} · ${isEngineOverride ? 'Playground selection' : 'Server default'}`
+              : 'Engine model not configured'}
+          >
+            <Cpu size={12} className="text-primary-400 shrink-0" />
+            <span
+              className={`w-1.5 h-1.5 rounded-full shrink-0 ${isEngineOverride ? 'bg-cyan-400' : 'bg-slate-500'}`}
+              title={isEngineOverride ? 'Playground selection' : 'Server default'}
+            />
+            <span className="max-w-[220px] truncate tracking-tight">
+              {providerShortLabel(effProvider)}: {shortModelId(effModel) || 'Local LLM'}
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300">
-            <Layers size={12} className="text-cyan-400" />
-            <span className="max-w-[210px] truncate" title={providersData?.active_embedding_model}>
-              {providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'}
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300"
+            title={effEmbeddingModel
+              ? `${effEmbeddingModel} · ${isEmbeddingOverride ? 'Playground selection' : 'Server default'}`
+              : 'Embedding model not configured'}
+          >
+            <Layers size={12} className="text-cyan-400 shrink-0" />
+            <span
+              className={`w-1.5 h-1.5 rounded-full shrink-0 ${isEmbeddingOverride ? 'bg-cyan-400' : 'bg-slate-500'}`}
+              title={isEmbeddingOverride ? 'Playground selection' : 'Server default'}
+            />
+            <span className="max-w-[210px] truncate tracking-tight">
+              {shortModelId(effEmbeddingModel) || 'bge-small-en-v1.5'}
             </span>
           </div>
 

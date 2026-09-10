@@ -134,6 +134,8 @@ apps/web/*.local
 # ─── IDE ──────────────────────────────────────────────────────────────────────
 .idea/
 .vscode/
+.history/
+*.code-workspace
 *.swp
 *.swo
 *~
@@ -165,6 +167,9 @@ logs/
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
 .docker/
+# Local compose overrides (personal ports/volumes) must never be committed.
+docker-compose.override.yml
+docker-compose.override.yaml
 
 # ─── Qdrant local data ────────────────────────────────────────────────────────
 qdrant_storage/
@@ -216,6 +221,7 @@ uv.lock
 *.seed
 *.pid.lock
 .python-version
+.tool-versions
 
 # ─── Temporary / Scratch files ────────────────────────────────────────────────
 *.tmp

@@ -75,6 +75,23 @@ async def close_local_llm_clients() -> None:
 
 T = TypeVar("T", bound=BaseModel)
 
+# Providers served by a local inference process (single-tenant, serial).
+# Output caps and concurrency guards apply ONLY here — cloud chat models use
+# different parameter names (e.g. max_output_tokens) and must not receive ours.
+LOCAL_LLM_PROVIDERS = frozenset({"ollama", "llama_cpp", "llamacpp"})
+
+
+def local_cap_kwargs(provider: str | None, max_tokens: int) -> dict[str, int]:
+    """Task-sized output caps for local inference servers only.
+
+    A rewrite needs ~20 words, a single NLI verdict ~100 tokens — letting them
+    inherit the 1024-token default grows per-call KV cache and wall time for
+    nothing. Returns {} for cloud providers (foreign parameter names).
+    """
+    if (provider or "").strip().lower() in LOCAL_LLM_PROVIDERS:
+        return {"max_tokens": int(max_tokens)}
+    return {}
+
 
 def _convert_messages_to_dict(messages: list[Any]) -> list[dict[str, str]]:
     """Normalize LangChain message objects or tuples into OpenAI/Ollama role dicts."""
