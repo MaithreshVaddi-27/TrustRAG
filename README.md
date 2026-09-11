@@ -7,7 +7,7 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![Ollama](https://img.shields.io/badge/Ollama-Local_Offline-000000?logo=ollama&logoColor=white)](https://ollama.com)
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF_Server-orange)](https://github.com/ggerganov/llama.cpp)
-[![Tests](https://img.shields.io/badge/Backend%20Tests-191%20Passing-brightgreen)](apps/api/tests)
+[![Tests](https://img.shields.io/badge/Backend%20Tests-192%20Passing-brightgreen)](apps/api/tests)
 [![Tests](https://img.shields.io/badge/Frontend%20Tests-21%20Passing-brightgreen)](apps/web)
 [![E2E](https://img.shields.io/badge/Playwright%20E2E-2%20Passing-brightgreen)](apps/web/e2e)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
@@ -51,7 +51,6 @@ Think of it as a fact-checking layer for RAG. It runs 100% locally on your machi
   - [Step 2 — Clone and configure](#step-2--clone-and-configure)
   - [Step 3 — Start services](#step-3--start-services)
   - [Step 4 — Open the UI](#step-4--open-the-ui)
-- [Running with Docker](#running-with-docker)
 - [Try it from the command line](#try-it-from-the-command-line)
 - [Architecture](#architecture)
 - [Technology stack](#technology-stack)
@@ -129,7 +128,7 @@ When the system isn't confident in its answer, it doesn't guess. It either heals
 | Tool | Version | Why |
 |---|---|---|
 | **Python** | 3.11+ | Backend runtime |
-| **Node.js** | 20+ | Frontend build tools |
+| **Node.js** | 22+ | Frontend build tools (see `engines` in `apps/web/package.json`) |
 | **MongoDB** | 7.0+ | Document & metadata storage |
 | **Ollama** or **llama.cpp** | Latest | Local LLM inference (zero API keys) |
 | **Git** | Any recent | Clone the repo |
@@ -333,14 +332,22 @@ npm run dev
 #### Option B: Docker Compose
 
 ```bash
-# Start backend + Qdrant + MongoDB
+# Start backend (FastAPI + Qdrant + MongoDB)
 docker compose up -d
+
+# Check health
+curl -s http://localhost:8000/api/v1/health | jq
 
 # Start frontend separately (not in docker-compose)
 cd apps/web
 npm install
 npm run dev
+
+# Stop everything
+docker compose down
 ```
+
+The frontend always runs locally via `npm run dev` (it's not in docker-compose).
 
 ---
 
@@ -353,25 +360,6 @@ Open **http://localhost:5173** in your browser. You'll see the TrustRAG workbenc
 3. **Ask a question** — TrustRAG will retrieve evidence, generate an answer, verify every claim, and show you exactly what it found.
 
 The default local model is `gemma3:1b` via Ollama (or `LiquidAI/LFM2.5-1.2B-Instruct-GGUF` via llama.cpp). Both run on your CPU — no GPU required.
-
----
-
-## Running with Docker
-
-If you prefer Docker for the backend services:
-
-```bash
-# Start backend (FastAPI + Qdrant + MongoDB)
-docker compose up -d
-
-# Check health
-curl -s http://localhost:8000/api/v1/health | jq
-
-# Stop everything
-docker compose down
-```
-
-The frontend always runs locally via `npm run dev` (it's not in docker-compose).
 
 ---
 
@@ -449,13 +437,13 @@ TrustRAG/
 │   │   │   ├── services/           # Business logic: KB, analysis, auth
 │   │   │   └── verification/       # Batch NLI verifier & SHA-256 auditor
 │   │   ├── config/models.yaml      # Model IDs, thresholds, tuning
-│   │   └── tests/                  # 191 tests (all passing)
+│   │   └── tests/                  # 192 tests (all passing)
 │   │
 │   └── web/                        # React 18 + Vite 6 frontend
 │       ├── src/
 │       │   ├── components/         # ClaimInspector, EvidenceViewer, ExecutionTrace
 │       │   ├── layouts/            # AppLayout, Sidebar, AuthGuard
-│       │   ├── pages/              # 11 lazy-loaded pages
+│       │   ├── pages/              # 13 lazy-loaded pages
 │       │   └── lib/                # API client, auth store, SSE streaming
 │       └── package.json
 │
@@ -503,7 +491,7 @@ TrustRAG/
 
 ## Testing
 
-TrustRAG has 191 backend tests, 21 frontend tests, and 2 E2E tests — all passing.
+TrustRAG has 192 backend tests, 21 frontend tests, and 2 E2E tests — all passing.
 
 **Backend:**
 ```bash
