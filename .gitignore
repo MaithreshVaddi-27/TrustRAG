@@ -2,13 +2,6 @@
 .env
 .env.*
 !.env.example
-.env.local
-.env.production
-.env.staging
-.env.development.local
-.env.test.local
-.env.production.local
-.env.staging.local
 *.pem
 *.key
 *.p12
@@ -81,7 +74,6 @@ dmypy.json
 .pyre/
 .pytype/
 cython_debug/
-poetry.lock
 
 # ─── Coverage / test output ──────────────────────────────────────────────────
 .coverage
@@ -146,6 +138,7 @@ apps/web/*.local
 *.sublime-workspace
 .cursor/
 .windsurf/
+.claude/
 
 # ─── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
@@ -171,10 +164,6 @@ logs/
 docker-compose.override.yml
 docker-compose.override.yaml
 
-# ─── Qdrant local data ────────────────────────────────────────────────────────
-qdrant_storage/
-qdrant_data/
-
 # ─── Runtime data (Qdrant collections, caches, model snapshots) ────────────────
 data/
 apps/api/data/
@@ -199,6 +188,7 @@ bandit-report.json
 safety-report.json
 trivy-report.json
 semgrep-report.json
+pip-audit-report.json
 
 # ─── Package manager lockfiles ────────────────────────────────────────────────
 # apps/web uses npm (package-lock.json is committed)

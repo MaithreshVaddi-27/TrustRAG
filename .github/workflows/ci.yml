@@ -11,6 +11,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   # ── Backend ───────────────────────────────────────────────────────────────
   backend-lint:
@@ -112,7 +116,7 @@ jobs:
               sys.exit(1)
           # Check no secrets
           content = open('config/models.yaml').read()
-          forbidden = ['api_key', 'password', 'secret', 'mongodb+srv', 'AIza']
+          forbidden = ['api_key', 'API_KEY', 'password', 'secret', 'mongodb+srv', 'AIza', 'sk-']
           for f in forbidden:
               if f in content:
                   print('FAIL: Potential secret found:', f)
@@ -182,6 +186,12 @@ jobs:
         image: mongo:7
         ports:
           - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping:1})' --quiet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 10s
 
     steps:
       - uses: actions/checkout@v4
@@ -212,8 +222,7 @@ jobs:
           CORS_ORIGINS: http://localhost:5173
           AI_PROVIDER: ollama
           OLLAMA_BASE_URL: http://127.0.0.1:11434
-          EMBEDDING_PROVIDER: google_genai
-          GEMINI_API_KEY: test-key
+          EMBEDDING_PROVIDER: huggingface
         run: |
           nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/api.log 2>&1 &
           for i in $(seq 1 60); do
@@ -283,7 +292,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Scan image for vulnerabilities (Trivy)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@master
         with:
           image-ref: trustrag-api:test
           format: table
@@ -307,8 +316,12 @@ jobs:
     steps:
       - name: Check all jobs passed
         run: |
-          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" || "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
-            echo "CI FAILED"
+          if [[ "${{ needs.*.result }}" != *"success"* ]]; then
+            echo "CI FAILED — one or more jobs did not succeed"
+            echo "Job results:"
+            for result in ${{ join(needs.*.result, ' ') }}; do
+              echo "  $result"
+            done
             exit 1
           fi
           echo "CI PASSED"
