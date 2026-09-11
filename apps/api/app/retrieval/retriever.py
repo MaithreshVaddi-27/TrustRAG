@@ -95,24 +95,6 @@ def detect_query_ambiguity(scores: list[float]) -> dict[str, Any]:
     return detector.detect(scores)
 
 
-# Global instance
-_ambiguity_detector: AmbiguityDetector | None = None
-
-
-def get_ambiguity_detector() -> AmbiguityDetector:
-    """Get the global ambiguity detector instance."""
-    global _ambiguity_detector
-    if _ambiguity_detector is None:
-        _ambiguity_detector = AmbiguityDetector()
-    return _ambiguity_detector
-
-
-def clear_ambiguity_detector() -> None:
-    """Clear the cached ambiguity detector."""
-    global _ambiguity_detector
-    _ambiguity_detector = None
-
-
 class QueryEmbeddingLRUCache:
     """Thread-safe LRU cache for query vector embeddings to prevent redundant API calls."""
 

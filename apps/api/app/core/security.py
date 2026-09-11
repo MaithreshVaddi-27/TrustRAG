@@ -180,31 +180,3 @@ def decode_service_token(token: str) -> dict[str, Any]:
         raise AuthenticationError("Service token signature has expired", detail=str(exc)) from exc
     except JWTError as exc:
         raise AuthenticationError("Invalid service token", detail=str(exc)) from exc
-
-
-def verify_service_permission(token: str, required_permission: str) -> bool:
-    """
-    Verify a service token has the required permission.
-
-    Args:
-        token: Service JWT token
-        required_permission: Permission string to check (e.g., "ingest:write")
-
-    Returns:
-        True if token has permission, False otherwise
-    """
-    try:
-        payload = decode_service_token(token)
-        permissions = payload.get("permissions", [])
-        return required_permission in permissions
-    except AuthenticationError:
-        return False
-
-
-def get_service_name_from_token(token: str) -> str | None:
-    """Extract service name from a valid service token."""
-    try:
-        payload = decode_service_token(token)
-        return payload.get("sub")
-    except AuthenticationError:
-        return None

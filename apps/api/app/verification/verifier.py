@@ -479,10 +479,8 @@ async def execute_claim_verification(
     # sentences first so filtering stays per-assertion. Each piece is still
     # NLI-verified individually; nothing unverified passes.
     if len(claims_texts) == 1 and len(claims_texts[0]) > 400:
-        import re as _re
-
         parts = [
-            s.strip() for s in _re.split(r"(?<=[.!?])\s+", claims_texts[0]) if len(s.strip()) > 40
+            s.strip() for s in re.split(r"(?<=[.!?])\s+", claims_texts[0]) if len(s.strip()) > 40
         ]
         if parts:
             logger.info("Split fallback answer blob into sentences", sentences=len(parts))

@@ -36,10 +36,6 @@ class AuthorizationError(TrustRAGError):
     """Raised when the authenticated user lacks permission for a resource."""
 
 
-class TokenError(TrustRAGError):
-    """Raised for JWT validation failures."""
-
-
 # ─── Resource ─────────────────────────────────────────────────────────────────
 
 
@@ -54,14 +50,6 @@ class ConflictError(TrustRAGError):
 # ─── Knowledge Base & Documents ───────────────────────────────────────────────
 
 
-class KnowledgeBaseError(TrustRAGError):
-    """Raised for knowledge-base-level operations."""
-
-
-class DocumentError(TrustRAGError):
-    """Raised for document upload/processing failures."""
-
-
 class IngestionError(TrustRAGError):
     """Raised when document ingestion fails at any pipeline stage."""
 
@@ -72,13 +60,6 @@ class UnsupportedFormatError(IngestionError):
 
 class FileTooLargeError(IngestionError):
     """Raised when an uploaded file exceeds the configured size limit."""
-
-
-class MaliciousDocumentError(IngestionError):
-    """
-    Raised when suspicious/potentially malicious content is detected.
-    This is a best-effort defense — do not claim complete protection.
-    """
 
 
 # ─── AI / Retrieval ───────────────────────────────────────────────────────────
@@ -119,10 +100,6 @@ class LLMUnavailableError(GenerationError):
     """Raised when the Gemini API is unavailable or rate-limited."""
 
 
-class ContextTooLargeError(GenerationError):
-    """Raised when the assembled context exceeds the token limit."""
-
-
 # ─── Infrastructure ───────────────────────────────────────────────────────────
 
 
@@ -137,10 +114,6 @@ class VectorStoreError(TrustRAGError):
 # ─── Analysis ─────────────────────────────────────────────────────────────────
 
 
-class AnalysisError(TrustRAGError):
-    """Raised for analysis-level failures."""
-
-
 class AnalysisNotFoundError(NotFoundError):
     """Raised when an analysis ID does not exist for this user."""
 
@@ -150,7 +123,3 @@ class AnalysisNotFoundError(NotFoundError):
 
 class InputValidationError(TrustRAGError):
     """Raised when API input fails domain-level validation beyond Pydantic."""
-
-
-class RateLimitError(TrustRAGError):
-    """Raised when a rate limit is exceeded."""

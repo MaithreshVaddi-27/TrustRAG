@@ -123,8 +123,6 @@ reliability:
 # ─── Recovery Policy ──────────────────────────────────────────────────────────
 recovery:
   max_recovery_attempts: 1          # Single recovery round only — cuts latency
-  max_query_rewrites: 1
-  max_reretrieval_attempts: 1
   # Strategy costs (relative units) — prefer cheaper strategies first
   strategy_priority:
     - query_rewrite

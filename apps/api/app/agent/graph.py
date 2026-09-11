@@ -17,6 +17,7 @@ from langgraph.graph import END, StateGraph
 
 from app.core.config import get_model_config
 from app.core.exceptions import RetrievalOutageError
+from app.core.llm_utils import normalize_llm_content
 from app.core.logging import get_logger
 from app.core.model_registry import get_verification_model
 from app.db.mongodb import Collections, get_collection
@@ -68,7 +69,6 @@ class AgentState(TypedDict):
 
 
 # ─── Standardized Error Handling ─────────────────────────────────────────────
-# TEST COMMENT
 
 
 async def _execute_with_fallback(
@@ -441,15 +441,6 @@ async def retrieval_node(state: AgentState) -> AgentState:
                             "sources": web_sources,
                         },
                     )
-                web_done_msg = f"Web grounding done via MCP ({search_prov.upper()})"
-                await add_trace_event(
-                    state["analysis_id"],
-                    "web_search.completed",
-                    {
-                        "message": web_done_msg,
-                        "count": len(web_items) if web_items else 0,
-                    },
-                )
             except Exception as web_exc:
                 logger.error("Web search MCP grounding failed", error=str(web_exc))
 
@@ -918,19 +909,7 @@ Never reply empty: if unsure, return the original query with spelling corrected.
                 )
                 invoker = model.bind(**cap) if cap else model
                 response = await invoker.ainvoke(rewrite_prompt)
-                new_query = response.content
-                if isinstance(new_query, bytes):
-                    new_query = new_query.decode("utf-8")
-                elif isinstance(new_query, list):
-                    parts = []
-                    for item in new_query:
-                        if isinstance(item, dict) and "text" in item:
-                            parts.append(item["text"])
-                        elif isinstance(item, str):
-                            parts.append(item)
-                        elif hasattr(item, "text"):
-                            parts.append(item.text)
-                    new_query = "".join(parts)
+                new_query = normalize_llm_content(response.content)
                 new_query = _sanitize_rewritten_query(str(new_query))
 
                 if not new_query or len(new_query) < 3:

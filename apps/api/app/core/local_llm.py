@@ -22,7 +22,7 @@ from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
-from langchain_core.runnables import Runnable, RunnableLambda
+from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field
 
 from app.core.exceptions import ConfigurationError, LLMUnavailableError
@@ -130,29 +130,7 @@ def _convert_messages_to_dict(messages: list[Any]) -> list[dict[str, str]]:
     return converted
 
 
-def _extract_json_substring(text: str) -> str:
-    """Safely extract valid JSON payload from an LLM output string."""
-    cleaned = text.strip()
-    # Strip markdown code blocks if wrapped
-    if "```" in cleaned:
-        match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, re.IGNORECASE)
-        if match:
-            cleaned = match.group(1).strip()
 
-    # If starts with '{' or '[', find matching closing bracket
-    start_brace = cleaned.find("{")
-    start_bracket = cleaned.find("[")
-
-    if start_brace != -1 and (start_bracket == -1 or start_brace < start_bracket):
-        end_brace = cleaned.rfind("}")
-        if end_brace != -1 and end_brace > start_brace:
-            return cleaned[start_brace : end_brace + 1]
-    elif start_bracket != -1:
-        end_bracket = cleaned.rfind("]")
-        if end_bracket != -1 and end_bracket > start_bracket:
-            return cleaned[start_bracket : end_bracket + 1]
-
-    return cleaned
 
 
 # ─── Ollama Chat Model ─────────────────────────────────────────────────────────
@@ -273,74 +251,15 @@ class ChatOllamaClient(BaseChatModel):
             ) from exc
 
     def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:
-        """
-        Return a Runnable that prompts for structured JSON and parses into the Pydantic schema.
-        """
-        schema_dict = schema.model_json_schema()
-        schema_json = json.dumps(schema_dict, indent=2)
-        props = schema_dict.get("properties", {})
-        template = {k: f"<{v.get('type', 'value')}>" for k, v in props.items()}
-        template_str = json.dumps(template)
+        """Prompt for structured JSON and parse into the Pydantic schema."""
+        from app.core.llm_utils import build_structured_output_runnable
 
-        async def _invoke_structured(input_messages: Any) -> T:
-            # Ensure input messages list
-            if isinstance(input_messages, (str, BaseMessage, tuple)):
-                msgs = [input_messages]
-            else:
-                msgs = list(input_messages)
-
-            # Append instruction for JSON conforming to schema
-            instruction = (
-                f"\n\nYou MUST respond ONLY with valid JSON using the keys {list(props.keys())}.\n"
-                f"Required JSON structure:\n{template_str}\n"
-                f"Full schema reference:\n{schema_json}\n"
-                "Return raw JSON only, without markdown fences, explanation, "
-                "or meta-schema wrapper."
-            )
-
-            # Append to last message or add new human message
-            augmented_messages = list(msgs)
-            if augmented_messages:
-                last = augmented_messages[-1]
-                if isinstance(last, tuple) and len(last) == 2:
-                    augmented_messages[-1] = (last[0], f"{last[1]}{instruction}")
-                elif isinstance(last, HumanMessage):
-                    augmented_messages[-1] = HumanMessage(content=f"{last.content}{instruction}")
-                else:
-                    augmented_messages.append(HumanMessage(content=instruction))
-            else:
-                augmented_messages.append(HumanMessage(content=instruction))
-
-            # Invoke model with format="json"
-            result = await self._agenerate(augmented_messages, format="json", **kwargs)
-            raw_text = result.generations[0].message.content
-            cleaned_json = _extract_json_substring(raw_text)
-
-            try:
-                return schema.model_validate_json(cleaned_json)
-            except Exception as parse_err:
-                logger.warning(
-                    "JSON schema parsing failed, attempting repair",
-                    raw=raw_text[:200],
-                    error=str(parse_err),
-                )
-                try:
-                    data = json.loads(cleaned_json)
-                    if isinstance(data, dict):
-                        # 1. Check if model wrapped inside "properties" (common with small LLMs)
-                        if "properties" in data and isinstance(data["properties"], dict):
-                            with suppress(Exception):
-                                return schema.model_validate(data["properties"])
-                        # 2. Check if model wrapped inside another sub-dict
-                        for v in data.values():
-                            if isinstance(v, dict):
-                                with suppress(Exception):
-                                    return schema.model_validate(v)
-                    return schema.model_validate(data)
-                except Exception:
-                    raise parse_err from None
-
-        return RunnableLambda(_invoke_structured)  # type: ignore[return-value]
+        return build_structured_output_runnable(
+            generate_fn=self._agenerate,
+            schema=schema,
+            json_format_kwargs={"format": "json"},
+            extra_kwargs=kwargs,
+        )
 
 
 # ─── llama.cpp Chat Model ──────────────────────────────────────────────────────
@@ -433,70 +352,15 @@ class ChatLlamaCppClient(BaseChatModel):
             ) from exc
 
     def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:
-        """
-        Return a Runnable prompting llama.cpp for structured JSON, parsed into Pydantic.
-        """
-        schema_dict = schema.model_json_schema()
-        schema_json = json.dumps(schema_dict, indent=2)
-        props = schema_dict.get("properties", {})
-        template = {k: f"<{v.get('type', 'value')}>" for k, v in props.items()}
-        template_str = json.dumps(template)
+        """Return a Runnable prompting llama.cpp for structured JSON, parsed into Pydantic."""
+        from app.core.llm_utils import build_structured_output_runnable
 
-        async def _invoke_structured(input_messages: Any) -> T:
-            if isinstance(input_messages, (str, BaseMessage, tuple)):
-                msgs = [input_messages]
-            else:
-                msgs = list(input_messages)
-
-            instruction = (
-                f"\n\nYou MUST respond ONLY with valid JSON using the keys {list(props.keys())}.\n"
-                f"Required JSON structure:\n{template_str}\n"
-                f"Full schema reference:\n{schema_json}\n"
-                "Return raw JSON only, without markdown fences, explanation, "
-                "or meta-schema wrapper."
-            )
-
-            augmented_messages = list(msgs)
-            if augmented_messages:
-                last = augmented_messages[-1]
-                if isinstance(last, tuple) and len(last) == 2:
-                    augmented_messages[-1] = (last[0], f"{last[1]}{instruction}")
-                elif isinstance(last, HumanMessage):
-                    augmented_messages[-1] = HumanMessage(content=f"{last.content}{instruction}")
-                else:
-                    augmented_messages.append(HumanMessage(content=instruction))
-            else:
-                augmented_messages.append(HumanMessage(content=instruction))
-
-            result = await self._agenerate(
-                augmented_messages, response_format={"type": "json_object"}, **kwargs
-            )
-            raw_text = result.generations[0].message.content
-            cleaned_json = _extract_json_substring(raw_text)
-
-            try:
-                return schema.model_validate_json(cleaned_json)
-            except Exception as parse_err:
-                logger.warning(
-                    "llama.cpp JSON schema validation failed, attempting parse",
-                    raw=raw_text[:200],
-                    error=str(parse_err),
-                )
-                try:
-                    data = json.loads(cleaned_json)
-                    if isinstance(data, dict):
-                        if "properties" in data and isinstance(data["properties"], dict):
-                            with suppress(Exception):
-                                return schema.model_validate(data["properties"])
-                        for v in data.values():
-                            if isinstance(v, dict):
-                                with suppress(Exception):
-                                    return schema.model_validate(v)
-                    return schema.model_validate(data)
-                except Exception:
-                    raise parse_err from None
-
-        return RunnableLambda(_invoke_structured)  # type: ignore[return-value]
+        return build_structured_output_runnable(
+            generate_fn=self._agenerate,
+            schema=schema,
+            json_format_kwargs={"response_format": {"type": "json_object"}},
+            extra_kwargs=kwargs,
+        )
 
 
 # ─── Health & CLI Model Discovery Helpers ─────────────────────────────────────

@@ -528,10 +528,6 @@ class ModelConfig:
         return int(self._get("recovery", "max_recovery_attempts"))
 
     @property
-    def max_query_rewrites(self) -> int:
-        return int(self._get("recovery", "max_query_rewrites"))
-
-    @property
     def recovery_strategy_priority(self) -> list[str]:
         """Return ordered recovery strategies, e.g. ['query_rewrite', 're_retrieve']."""
         val = self._get("recovery", "strategy_priority", required=False)
