@@ -9,6 +9,7 @@ Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench
 ```
 docs/
 ├── README.md                  # Master index (this file)
+├── TRUSTRAG_specs.md          # Full product specification
 ├── ROADMAP.md                 # Product vision, milestones, phase tracking
 ├── AUDIT_REPORT.md            # Aggregated audit report
 ├── architecture/

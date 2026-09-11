@@ -459,12 +459,23 @@ TrustRAG/
 │       │   └── lib/                # API client, auth store, SSE streaming
 │       └── package.json
 │
+├── docs/                           # Project documentation
+│   ├── TRUSTRAG_specs.md           # Full product specification
+│   ├── architecture/               # System design, ADRs
+│   ├── audits/                     # Dated audit trail
+│   ├── deployment/                 # Deployment guide
+│   ├── security/                   # Threat model, security controls
+│   └── evaluation/                 # Methodology
+│
 ├── scripts/
 │   ├── discover_local_models.py    # Pre-boot model discovery snapshot
 │   ├── start_local_llm.sh          # Hardware-aware llama-server launcher
 │   ├── apply_ports.py              # Propagate port changes everywhere
 │   ├── setup.sh                    # Prerequisite checker
 │   └── clear_qdrant.py             # Qdrant collection purge utility
+│
+├── load-test/
+│   └── smoke.js                    # k6 smoke test
 │
 ├── config/ports.yaml               # Single source of truth for service ports
 ├── docker-compose.yml              # Backend + Qdrant + MongoDB

@@ -10,7 +10,7 @@ Never continue with known failures. Do not generate the whole project blindly.
 
 ## Before Contributing
 
-1. Read `TRUSTRAG_specs.md` — it is the source of truth
+1. Read `docs/TRUSTRAG_specs.md` — it is the source of truth
 2. Review open ADRs in `docs/architecture/decision-log.md`
 3. Check the threat model before touching security-sensitive code
 
