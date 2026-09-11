@@ -130,9 +130,6 @@ def _convert_messages_to_dict(messages: list[Any]) -> list[dict[str, str]]:
     return converted
 
 
-
-
-
 # ─── Ollama Chat Model ─────────────────────────────────────────────────────────
 
 
@@ -632,11 +629,7 @@ async def check_ollama_status(base_url: str = "http://localhost:11434") -> dict[
         connected = True
 
     # Default to gemma3:1b if discovered, else first discovered
-    default_model = (
-        "gemma3:1b"
-        if "gemma3:1b" in all_llms
-        else (all_llms[0] if all_llms else "")
-    )
+    default_model = "gemma3:1b" if "gemma3:1b" in all_llms else (all_llms[0] if all_llms else "")
     merge_discovered_llms("ollama", all_llms, replace=True)
 
     return {

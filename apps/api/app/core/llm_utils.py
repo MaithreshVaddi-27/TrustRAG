@@ -52,9 +52,7 @@ def extract_json_substring(text: str) -> str:
     """Safely extract valid JSON payload from an LLM output string."""
     cleaned = text.strip()
     if "```" in cleaned:
-        match = re.search(
-            r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, re.IGNORECASE
-        )
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, re.IGNORECASE)
         if match:
             cleaned = match.group(1).strip()
 
@@ -126,9 +124,7 @@ def build_structured_output_runnable(
             if isinstance(last, tuple) and len(last) == 2:
                 augmented_messages[-1] = (last[0], f"{last[1]}{instruction}")
             elif isinstance(last, HumanMessage):
-                augmented_messages[-1] = HumanMessage(
-                    content=f"{last.content}{instruction}"
-                )
+                augmented_messages[-1] = HumanMessage(content=f"{last.content}{instruction}")
             else:
                 augmented_messages.append(HumanMessage(content=instruction))
         else:
@@ -152,9 +148,7 @@ def build_structured_output_runnable(
             try:
                 data = json.loads(cleaned_json)
                 if isinstance(data, dict):
-                    if "properties" in data and isinstance(
-                        data["properties"], dict
-                    ):
+                    if "properties" in data and isinstance(data["properties"], dict):
                         with suppress(Exception):
                             return schema.model_validate(data["properties"])
                     for v in data.values():

@@ -329,6 +329,3 @@ async def generate_grounded_answer(
         logger.error("Grounded generation failed", error=str(exc))
         # Default to ABSTAIN on runtime exception to ensure reliability
         return "ABSTAIN"
-
-
-
