@@ -45,6 +45,8 @@ Think of it as a fact-checking layer for RAG. It runs 100% locally on your machi
 - [What is this?](#what-is-this)
 - [Quick Links](#quick-links)
 - [How the self-healing loop works](#how-the-self-healing-loop-works)
+- [Pipeline stages in detail](#pipeline-stages-in-detail)
+- [Reliability, verdicts & recovery](#reliability-verdicts--recovery)
 - [Getting Started](#getting-started)
   - [What you need](#what-you-need)
   - [Step 1 — Install platform tools](#step-1--install-platform-tools)
@@ -53,8 +55,12 @@ Think of it as a fact-checking layer for RAG. It runs 100% locally on your machi
   - [Step 4 — Open the UI](#step-4--open-the-ui)
 - [Try it from the command line](#try-it-from-the-command-line)
 - [Architecture](#architecture)
+- [API reference](#api-reference)
+- [Configuration reference](#configuration-reference)
 - [Technology stack](#technology-stack)
 - [Testing](#testing)
+- [CI/CD](#cicd)
+- [Frontend pages](#frontend-pages)
 - [Troubleshooting](#troubleshooting)
 - [Documentation](#documentation)
 - [License](#license)
@@ -118,6 +124,59 @@ Think of it as a fact-checking layer for RAG. It runs 100% locally on your machi
 ```
 
 When the system isn't confident in its answer, it doesn't guess. It either heals itself or tells you it doesn't know. That's the point.
+
+---
+
+## Pipeline stages in detail
+
+Each stage below names the code that runs it and the `config/models.yaml` knob that tunes it. Env vars always win over YAML.
+
+| # | Stage | What happens | Key knobs |
+|---|---|---|---|
+| 1 | **Normalize & zone** | Noise cleanup, hyphen repair, filler stripping; text split into ~512-char chunks (64-char overlap, word-boundary snapped) with zone tags — titles/headers score higher than body | `ingestion.chunk_size: 512`, `chunk_overlap: 64` |
+| 2 | **Hybrid retrieval** | Dense vectors (`BAAI/bge-small-en-v1.5`, 384d, local CPU) + BM25 sparse vectors fused with Reciprocal Rank Fusion; embedding model is **pinned per KB at ingest** | `retrieval.dense_top_k: 20`, `sparse_top_k: 20`, `rrf_k: 60`, `fusion_top_k: 20` |
+| 3 | **Rerank (optional)** | Cross-encoder rescoring of fused candidates; **off by default** until you baseline retrieval quality | `reranker.enabled: false`, `model: cross-encoder/ms-marco-MiniLM-L-6-v2`, `top_k: 8` |
+| 4 | **Integrity audit** | SHA-256 tamper check per chunk + temporal validity windows (`effective_from`/`effective_until`); corrupted segments are excluded before generation | — (always on) |
+| 5 | **Grounded generation** | Answer strictly conditioned on ≤8 surviving chunks within a 3000-char context budget (fits small-model windows); empty/insufficient context → `ABSTAIN`, never a guess | `retrieval.max_context_chunks: 8`, `llm.temperature: 0.2` |
+| 6 | **Claim decomposition + NLI** | Answer split into ≤8 atomic, self-contained claims; each judged `SUPPORTED` / `CONTRADICTED` / `NEUTRAL` against the evidence in one batch call, with full per-claim fallback if the batch fails | `cost_controls.max_verification_claims: 8`, `max_individual_nli_fallback: 8`, `verification.temperature: 0.0` |
+| 7 | **Verdict & recovery** | Coverage/contradiction scored against thresholds (see below); on FAIL one recovery round runs, then either a grounded answer or safe `ABSTAIN` | `reliability.*`, `recovery.max_recovery_attempts: 1` |
+
+> **Single-document note:** with one short document, any query retrieves roughly the same chunks. If verification still fails 0/8, suspect the NLI judge or truncated context — not retrieval. Check the Claims tab explanations and the analysis trace.
+
+---
+
+## Reliability, verdicts & recovery
+
+### Thresholds (`reliability` in `models.yaml`)
+
+| Threshold | Default | Meaning |
+|---|---|---|
+| `minimum_evidence_coverage` | `0.80` | ≥80% of claims must be SUPPORTED (7 of 8) |
+| `maximum_contradiction_rate` | `0.20` | ≤20% of claims may be CONTRADICTED |
+| `abstain_below` | `0.50` | Scores below this → abstain instead of answering |
+
+Reliability score = `coverage × (1 − contradiction_rate)`. These are engineering defaults, not calibrated probabilities.
+
+### Verdicts
+
+| Status | Meaning |
+|---|---|
+| `TRUSTED` | Passed coverage and contradiction thresholds |
+| `UNCERTAIN` | Failed thresholds but score ≥ `abstain_below` — shown with warnings |
+| `FAILED` | Failed thresholds and score < `abstain_below` |
+| `ABSTAINED` | Model explicitly abstained — correct behavior on zero evidence, not an error |
+
+Failure diagnoses: `RETRIEVAL_FAILURE` (no usable evidence), `RETRIEVAL_OUTAGE` (search infra down — distinct from "no evidence"), `EVIDENCE_CONFLICT` (too many contradictions), `LOW_COVERAGE` (too few supported claims).
+
+### Recovery strategies (one round, in priority order)
+
+| Strategy | What it does | When it wins |
+|---|---|---|
+| `query_rewrite` | LLM expands acronyms/synonyms targeting the unverified claims (5–12 words) | Missing-fact failures |
+| `re_retrieve` | Doubles search width (`top_k`, context) for thin evidence | Genuinely thin evidence |
+| `regenerate` | Retries generation on saved chunks with zero retrieval spend | Evidence already sufficient (auto-downgraded from `re_retrieve`) |
+
+Configure via `recovery.strategy_priority`. The rewrite is sanitized — instruction echoes collapse back to the original query instead of polluting retrieval.
 
 ---
 
@@ -472,6 +531,80 @@ TrustRAG/
 
 ---
 
+## API reference
+
+Base URL: `http://localhost:8000/api/v1`. Interactive docs at `/docs`. Auth is Bearer JWT (`POST /auth/login` → `Authorization: Bearer <token>`). Rate limits: 10 analyses/min, 20 auth/min, 10 uploads/min, 10 URL ingests/min.
+
+### Auth (`/auth`)
+
+| Method & path | Purpose |
+|---|---|
+| `POST /auth/register` | Create account |
+| `POST /auth/login` | Verify credentials, return access JWT |
+| `GET /auth/me` | Current user profile |
+| `POST /auth/logout` | Revoke current token |
+
+### Knowledge bases & documents
+
+| Method & path | Purpose |
+|---|---|
+| `POST /knowledge-bases` | Create a KB |
+| `GET /knowledge-bases` | List your KBs |
+| `GET /knowledge-bases/{kb_id}` | KB metadata |
+| `DELETE /knowledge-bases/{kb_id}` | Delete a KB (cascades) |
+| `GET /knowledge-bases/{kb_id}/documents` | List documents in a KB |
+| `POST /knowledge-bases/{kb_id}/documents` | Upload a document (.pdf/.txt/.md/.docx/.csv/.json/.html) |
+| `POST /knowledge-bases/{kb_id}/documents/from-url` | Ingest a document from URL |
+| `GET /documents/{doc_id}` | Document details |
+| `DELETE /documents/{doc_id}` | Delete a document |
+
+### Analyses — the RAG pipeline
+
+| Method & path | Purpose |
+|---|---|
+| `POST /analyses` | Start an analysis run (201) |
+| `GET /analyses` | Paginated history (`limit` ≤ 200, `skip`) |
+| `GET /analyses/{id}` | Run details + verdict |
+| `GET /analyses/{id}/claims` | Atomic claims with NLI verdicts |
+| `GET /analyses/{id}/evidence` | Retrieved segments with scores |
+| `GET /analyses/{id}/trace` | Step-by-step execution timeline |
+| `GET /analyses/{id}/detail` | Answer + claims + evidence + trace in one call |
+| `GET /analyses/{id}/export` | Audit & compliance dossier |
+| `POST /analyses/{id}/stream-ticket` | Short-lived SSE ticket |
+| `GET /analyses/{id}/stream` | Live execution trace (Server-Sent Events) |
+
+### Verification artifacts, experiments & ops
+
+| Method & path | Purpose |
+|---|---|
+| `GET /claims`, `GET /evidence`, `GET /conflicts` | Cross-run claim/evidence/conflict listings |
+| `POST /experiments`, `GET /experiments`, `GET /experiments/{exp_id}` | Experiment runs |
+| `GET /experimentation/flags` | Feature flags |
+| `GET /models/providers` | AI provider status + installed models |
+| `GET /models/hardware` | Hardware acceleration & resource profile |
+| `POST /models/memory/trim` | Heap compaction + GC |
+| `GET /health` | App health (MongoDB, Qdrant, hardware) |
+| `/internal/*` (`tokens`, `ingest/*`, `search`, `verify/claims`, `health`, `status`) | Service-to-service diagnostics — not for UI use |
+
+---
+
+## Configuration reference
+
+Two files own all non-secret config. **Env vars always win** over both.
+
+| File | Owns | Example knobs |
+|---|---|---|
+| `apps/api/config/models.yaml` | Model IDs, thresholds, tuning | LLM/embedding model IDs, `retrieval.*`, `reliability.*`, `recovery.*`, `cost_controls.*`, `optimization.*` |
+| `config/ports.yaml` | Ports + derived base URLs | backend `8000`, frontend `5173`, Ollama `11434`, llama.cpp `8080`, MongoDB `27017`, Qdrant `6335:6333` host:container |
+
+Change a port in `ports.yaml`, then run `python3 scripts/apply_ports.py` (CI enforces with `--check`).
+
+**`.env` holds secrets + deploy overrides only** (see `.env.example`): `JWT_SECRET` (required, ≥32 chars), `MONGODB_URI`, `QDRANT_URL` (`local` = embedded, no server), `CORS_ORIGINS`, plus optional `AI_PROVIDER` / `EMBEDDING_PROVIDER` / model overrides and cloud keys (`GEMINI_API_KEY`, `NVIDIA_API_KEY`, `TAVILY_API_KEY`). Accepted aliases (e.g. `OLLAMA_HOST` for `OLLAMA_BASE_URL`) are listed in `.env.example` — note a globally-exported `OLLAMA_HOST` is picked up automatically.
+
+> **Embedding pin:** the embedding model is pinned per knowledge base at ingest time. Switching `EMBEDDING_MODEL` afterwards requires re-creating the KB — old vectors won't match the new dimensionality.
+
+---
+
 ## Technology stack
 
 | Layer | What | Details |
@@ -529,6 +662,54 @@ k6 run load-test/smoke.js
 # Thresholds: <1% failures, p95 < 300ms, p99 < 500ms
 ```
 
+### What each backend test file covers
+
+| File | Covers |
+|---|---|
+| `test_agent.py` | LangGraph nodes: retrieval, generation, verification, recovery, query-rewrite sanitization |
+| `test_analyses.py` / `test_auth.py` / `test_kb.py` / `test_experiments.py` / `test_health.py` | REST endpoints for analyses, auth, knowledge bases, experiments, health |
+| `test_config.py` | `models.yaml`/`ports.yaml` loading, validation, snapshots |
+| `test_ports.py` | Port-registry drift (`apply_ports.py --check` equivalent) |
+| `test_generation.py` | Grounded answer generation, ABSTAIN rules, scaffold stripping |
+| `test_verification.py` | Claim decomposition, batch/individual NLI, fallback budget, verdict math |
+| `test_integrity.py` | SHA-256 evidence audit, temporal windows |
+| `test_retrieval.py` / `test_preprocessor.py` / `test_ingestion.py` | Hybrid retrieval, text normalization, chunking, ingestion pipeline |
+| `test_local_llm.py` / `test_hardware.py` | Ollama/llama.cpp clients, model registry, hardware profiles |
+| `test_disk_cache.py` / `test_semantic_cache.py` | Embedding disk cache, semantic answer cache |
+| `test_rate_limit.py` | Per-route rate limiting |
+| `test_search_mcp.py` | MCP web-search tools (Tavily/DuckDuckGo/hybrid) |
+
+---
+
+## CI/CD
+
+Every push/PR to `main`, `develop`, or `ui-redesign` runs two workflows (least-privilege tokens, concurrency-cancelled):
+
+**CI (`.github/workflows/ci.yml`)** — `backend-lint` (ruff + format + ports drift) → `backend-test` (pytest) → `backend-config-validate` (`models.yaml` schema + secret scan) → `frontend-lint` (eslint + vitest) → `frontend-build` → `e2e` (Playwright + k6 against MongoDB service + live backend) → `docker-build` (API image + Trivy HIGH/CRITICAL scan) → `ci-gate` (fails on any failure/cancel/skip).
+
+**Security (`.github/workflows/security.yml`)** — weekly Monday scan plus every push: `python-audit` (`pip-audit`, strict), `npm-audit` (high+), `secret-scan` (rejects committed `.env`, scans `models.yaml`), `sast` (Bandit on `app/`).
+
+---
+
+## Frontend pages
+
+All 13 pages are lazy-loaded and auth-guarded (public: landing/login/register only):
+
+| Route | Page | Purpose |
+|---|---|---|
+| `/` | Landing | Product intro |
+| `/login`, `/register` | Auth | Sign in / create account |
+| `/dashboard` | Dashboard | Overview of KBs, runs, reliability |
+| `/playground` | Playground | Ask questions, watch live verification + recovery |
+| `/knowledge-bases` | Knowledge Bases | Create KBs, upload documents |
+| `/evidence` | Evidence | Retrieved segments across runs |
+| `/claims` | Claims | Atomic claims with NLI verdicts |
+| `/conflicts` | Conflicts | Source & claim contradictions |
+| `/experiments` | Experiments | Experiment runs |
+| `/traces/:id` | Trace | Per-analysis execution timeline |
+| `/settings` | Settings | Providers, models, preferences |
+| `*` | NotFound | 404 |
+
 ---
 
 ## Troubleshooting
@@ -571,6 +752,15 @@ When running via Docker, Qdrant maps host port `6335` to container port `6333`. 
 
 **Embedding model download on first boot:**
 The BGE embedding model (~120MB) downloads automatically from HuggingFace on the first API startup. It's cached at `~/.cache/huggingface` after that. If you hit rate limits, set `HF_TOKEN` in your `.env`.
+
+**Wrong Ollama host picked up:**
+`OLLAMA_HOST` is an accepted alias for `OLLAMA_BASE_URL` — if it's exported globally (Ollama sets it on some installs), the backend uses it silently. Unset it or set `OLLAMA_BASE_URL` explicitly in `.env` to override.
+
+**Changed embedding model, retrieval looks off:**
+Vectors are pinned per knowledge base at ingest. After switching `EMBEDDING_MODEL`/`EMBEDDING_DIM`, re-create the KB and re-upload — old vectors won't match.
+
+**0% FAILED even with evidence present:**
+Open the Claims tab and read the per-claim explanations: `NEUTRAL` with "Verification could not be completed" means the local NLI judge failed to emit a verdict (check the model server logs), while "fallback budget exhausted" would mean claims were never attempted. Verification judges the same ~3000-char context the answer was generated from — claims drawn from beyond it can't verify.
 
 ---
 
