@@ -13,7 +13,7 @@ docs/
 ├── AUDIT_REPORT.md            # Aggregated audit report
 ├── architecture/
 │   ├── architecture.md        # End-to-end system design, MCP tools, LangGraph loop, data flow
-│   └── decision-log.md        # ADRs D-01 through D-19
+│   └── decision-log.md        # ADRs D-01 through D-20
 ├── audits/
 │   ├── 2026-09-10_senior_backend_ai_security_optimization_audit.md
 │   ├── 2026-09-08_model_discovery_and_hardening_audit.md
@@ -42,7 +42,7 @@ docs/
 
 ### 1. Architecture & Design
 - [**System Architecture (`architecture/architecture.md`)**](architecture/architecture.md): LangGraph agent loop, MCP tools, hybrid retrieval (dense + sparse RRF), claim decomposition → NLI verification → verdict pipeline.
-- [**Decision Log (`architecture/decision-log.md`)**](architecture/decision-log.md): Architectural Decision Records covering technology choices and storage layers.
+- [**Decision Log (`architecture/decision-log.md`)**](architecture/decision-log.md): Architectural Decision Records covering technology choices, storage layers, and code quality decisions.
 
 ### 2. Audits (most current on top)
 - [**2026-09-10 — Senior Backend AI Security & Optimization Audit**](audits/2026-09-10_senior_backend_ai_security_optimization_audit.md): Production-readiness pass — chunk quality, RAM/LLM tuning, security hardening, dead code removal.

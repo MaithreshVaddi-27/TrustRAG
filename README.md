@@ -354,15 +354,15 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 ### 13. 100% Private Local LLMs (Ollama & llama.cpp)
 - **Local-First Native Async Engines**: [`ChatOllamaClient`](apps/api/app/core/local_llm.py) and [`ChatLlamaCppClient`](apps/api/app/core/local_llm.py) conform to LangChain's `BaseChatModel` interface with native async non-blocking execution.
 - **Pre-Configured Models** (exactly what is installed — see `ollama list` / `llama-server --cache-list`):
-  * **Ollama**: `granite4.2:3b-q4_K_M` (2.2GB default), `gemma3:1b` (815MB fallback).
-  * **llama.cpp**: `ibm-granite/granite-4.2-3b-GGUF:Q4_K_M` (~2.2GB default) served over port `8080` (`http://127.0.0.1:8080/v1`), plus `granite-4.0-h-1b` GGUF.
+ * **Ollama**: `gemma3:1b` (815MB default), or any installed generative LLM.
+ * **llama.cpp**: `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M` (~800MB default) served over port `8080` (`http://127.0.0.1:8080/v1`), or any GGUF model.
 - **Structured Pydantic Output**: Native support for `with_structured_output(...)` enables reliable, schema-validated atomic claim decomposition and NLI verdict generation without cloud dependencies.
 - **Complete Zero-Key Operation**: TRUSTRAG boots and executes 100% offline without requiring any third-party cloud API keys.
 - **Hardware-aware model launch**: Run `./scripts/start_local_llm.sh` to boot `llama-server`. It auto-detects your accelerator (Metal on Apple Silicon, CUDA on NVIDIA) and passes `-ngl all --flash-attn on`, plus memory-tiered `-c` / `-np` budgets so the host stays responsive. No flags needed on your end.
 
 ### 14. Native CLI Model Discovery (ollama list & llama-server)
 - **Real-Time Shell Introspection**:
-  * **`ollama list`**: Automatically introspects installed generative LLMs (`granite4.2:3b-q4_K_M`, `gemma3:1b`). Embedding models are excluded — ollama is LLM-only; embeddings always come from local BGE.
+  * **`ollama list`**: Automatically introspects installed generative LLMs (`gemma3:1b`, etc.). Embedding models are excluded — ollama is LLM-only; embeddings always come from local BGE.
   * **`llama-server --cache-list`**: Introspects cached generative GGUF blobs. Embedding GGUFs are excluded — llama.cpp is LLM-only.
 - **Pre-Backend Discovery Snapshot**: Run [`scripts/discover_local_models.py`](scripts/discover_local_models.py) *before* starting the API to persist a JSON snapshot (`apps/api/data/discovered_models.json`) so every locally installed model is selectable from the **very first** request — no need to trigger discovery first:
   ```bash
@@ -377,7 +377,7 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
   * **HuggingFace BGE**: `BAAI/bge-small-en-v1.5` (384-dimensional dense vectors, zero API cost, sub-35ms CPU latency).
   * **HuggingFace MiniLM**: `all-MiniLM-L6-v2` (384-dimensional dense vectors, fast alternative).
   * **LLM servers are LLM-only**: ollama / llama.cpp never provide embeddings.
-- **Dimension-Safe Retrieval with L2 Normalization**: When querying a 384d Qdrant collection with a 768d embedding model, [`dense_search()`](apps/api/app/retrieval/retriever.py) automatically truncates and re-normalizes the vector ($\|v\|_2 = 1.0$), ensuring strict mathematical consistency for cosine similarity calculations.
+- **Dimension-Safe Retrieval with L2 Normalization**: [`dense_search()`](apps/api/app/retrieval/retriever.py) ensures strict mathematical consistency for cosine similarity calculations via L2 normalization ($\|v\|_2 = 1.0$).
 
 ---
 
@@ -390,7 +390,7 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 | **Backend** | FastAPI | Python 3.11, Pydantic v2 | High-throughput asynchronous REST API, custom middleware |
 | **Local LLMs** | Ollama & llama.cpp | Port 11434 & Port 8080 | 100% private, offline LLM synthesis and NLI verification |
 | **Cloud LLMs** | Google Gemini & NVIDIA NIM | Gemini 3.5 Flash Lite / Llama 3.3 70B | Cloud-native grounded reasoning and batch NLI claim verification |
-| **Dense Embeddings** | Multi-Provider Engine | 384d (BGE / Gemini) & 768d (Ollama) | Dense semantic vector representations with dimensional alignment |
+| **Dense Embeddings** | Local BGE (zero API cost) | 384d (BAAI/bge-small-en-v1.5) | Dense semantic vector representations with dimensional alignment |
 | **Agent Protocols** | Model Context Protocol (MCP) | JSON-RPC 2.0 (stdio) | Universal tool interface for external AI coding agents & local LLM chat |
 | **State Machine** | LangGraph | `StateGraph` | Multi-node deterministic agent state machine |
 | **Primary Database** | MongoDB Community | v7.0+ (Local Host / Atlas Cloud) | Permanent storage of metadata, chunks, claims, and execution traces |
@@ -406,7 +406,7 @@ When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contrad
 - **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** ≥ v4.x
 - **[Node.js](https://nodejs.org/)** ≥ 20.x (with npm)
 - **[MongoDB Community Edition](https://www.mongodb.com/try/download/community)** running locally on port `27017` (or a MongoDB Atlas connection string)
-- **[Google Gemini API Key](https://aistudio.google.com/app/apikey)** (Free tier available)
+- **[Google Gemini API Key](https://aistudio.google.com/app/apikey)** (optional — only if `models.yaml` selects a cloud provider)
 
 ---
 
@@ -482,7 +482,7 @@ Want to run TRUSTRAG with **zero external API calls for search and embeddings**?
    - The system automatically loads `BAAI/bge-small-en-v1.5` locally in CPU memory.
 2. Toggle **DuckDuckGo** in the Playground Web Search drawer.
    - Live internet grounding runs completely free without needing any Tavily API key!
-3. Use a local LLM (`llama_cpp` + `ibm-granite/granite-4.2-3b-GGUF:Q4_K_M`, or Ollama) for
+3. Use a local LLM (`llama_cpp` + `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`, or Ollama) for
    reasoning — no `GEMINI_API_KEY` / `NVIDIA_API_KEY` needed. Cloud keys are
    only required when `models.yaml` selects a cloud provider.
 
@@ -497,9 +497,8 @@ brew update && brew install git node python llama.cpp ollama mongodb-community
 brew services start mongodb-community
 
 # Models
-ollama pull granite4.2:3b-q4_K_M      # 2.2GB — default local LLM
-ollama pull gemma3:1b                  # 815MB — fallback / light mode
-# llama.cpp (GGUF cache): place ibm-granite/granite-4.2-3b-GGUF:Q4_K_M under ~/.cache/llama.cpp,
+ollama pull gemma3:1b                  # 815MB — default local LLM
+# llama.cpp (GGUF cache): place LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M under ~/.cache/llama.cpp,
 # then launch: ./scripts/start_local_llm.sh  (auto Metal GPU offload)
 ```
 
@@ -516,8 +515,7 @@ sudo apt install -y mongodb-org && sudo systemctl enable --now mongod
 
 # Ollama (daemon)
 curl -fsSL https://ollama.com/install.sh | sh && ollama serve &
-ollama pull granite4.2:3b-q4_K_M
-ollama pull gemma3:1b
+ollama pull gemma3:1b                  # 815MB — default local LLM
 
 # llama.cpp — build (~2 min) or grab a release zip:
 sudo apt install -y build-essential curl unzip
@@ -537,8 +535,7 @@ cmake -B build -DGGML_NATIVE=on && cmake --build build -j$(nproc)
 winget install --id Git.Git OpenJS.NodeJS Python.Python.3.12 MongoDB.CommunityServer Ollama.Ollama
 Start-Service MongoDB
 ollama serve &
-ollama pull granite4.2:3b-q4_K_M
-ollama pull gemma3:1b
+ollama pull gemma3:1b                  # 815MB — default local LLM
 
 # llama.cpp GGUF: grab a prebuilt release zip containing llama-server.exe
 # (https://github.com/ggml-org/llama.cpp/releases) and add it to PATH.

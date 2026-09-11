@@ -280,3 +280,60 @@ project. Embeddings are local-only (`huggingface`: `BAAI/bge-small-en-v1.5`,
 - `apps/api/app/api/v1/models.py`, `apps/web/.../QueryPanel.jsx`, `apps/web/.../SettingsPage.jsx` (UI)
 - `apps/api/app/ingestion/pipeline.py` (Gemini rate-limit pacing removed)
 - `apps/api/config/models.yaml`, `.env.example`, `scripts/setup.sh` (new), docs
+
+---
+
+## D-20: Shared LLM Utilities Extraction & Dead Config Cleanup
+
+**Date:** 2026-09-11
+**Status:** Accepted & Implemented
+**Phase:** 17
+
+**Decision:** Extract shared LLM helper functions into a single `core/llm_utils.py`
+module and remove all dead code accumulated across rounds of rapid iteration.
+
+**Changes:**
+1. **New `apps/api/app/core/llm_utils.py`** — three shared functions:
+   - `normalize_llm_content()` — normalizes `response.content` from any LLM provider
+     (str, bytes, list-of-dicts, list-of-objects) to a plain string.
+   - `extract_json_substring()` — safely extracts valid JSON from LLM output that may
+     contain markdown fences or preamble text.
+   - `build_structured_output_runnable()` — builds a `RunnableLambda` that prompts for
+     structured JSON and parses into a Pydantic model. Used by both `ChatOllamaClient`
+     and `ChatLlamaCppClient` which differ only in their JSON-mode kwargs.
+
+2. **`apps/api/app/core/local_llm.py`**:
+   - Removed duplicate `_extract_json_substring()` (now imports from `llm_utils`).
+   - Both `with_structured_output()` implementations (Ollama `format="json"` and
+     llama.cpp `response_format`) now delegate to `build_structured_output_runnable()`.
+
+3. **`apps/api/app/agent/graph.py`** and **`apps/api/app/generation/generator.py`**:
+   - Replaced inline 12-line LLM content normalization blocks with
+     `normalize_llm_content()` calls.
+
+4. **Dead code removal (~300 lines across 8 files):**
+   - `retriever.py`: Removed unused `get_ambiguity_detector`, `clear_ambiguity_detector`,
+     `_ambiguity_detector` global.
+   - `security.py`: Removed unused `verify_service_permission`, `get_service_name_from_token`.
+   - `exceptions.py`: Removed 7 unused exception classes.
+   - `sparse_vector.py`: Removed dead `STOPWORDS` set (~175 lines).
+   - `graph.py`: Removed stale `# TEST COMMENT` and duplicate `web_search.completed` trace.
+   - `generator.py`: Removed unused `generate_grounded_answer_stream()` (~50 lines).
+   - `verifier.py`: Removed redundant `import re as _re`.
+   - `config.py`: Removed dead `max_query_rewrites` property.
+   - `models.yaml`: Removed dead `max_query_rewrites: 1` and `max_reretrieval_attempts: 1`.
+
+**Rationale:**
+- Inline normalization in graph.py and generator.py was duplicated logic that silently
+  diverged across providers (bytes, list-of-dicts, etc.). A single helper eliminates
+  an entire class of provider-specific content bugs.
+- `_extract_json_substring()` existed in both `local_llm.py` (private) and now
+  `llm_utils.py` (public). One copy is sufficient.
+- Dead code from earlier iterations (ambiguity detector, permission helpers, stopwords,
+  max_query_rewrites) added cognitive load and maintenance surface with zero value.
+- Shared `build_structured_output_runnable()` reduces the `with_structured_output()`
+  implementation from ~60 duplicated lines to ~5 delegate lines per client.
+
+**Consequences:** All 191 tests pass. ruff check clean. New file is ~168 lines.
+The shared helper is the single source of truth for JSON extraction and structured
+output across all local LLM providers.
