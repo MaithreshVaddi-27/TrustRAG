@@ -16,6 +16,7 @@ __pycache__/
 *.so
 .Python
 build/
+dist/
 develop-eggs/
 downloads/
 eggs/
@@ -31,6 +32,7 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.whl
 MANIFEST
 *.manifest
 *.spec
@@ -221,7 +223,6 @@ uv.lock
 test.txt
 test_*.txt
 .superpowers/
-.claude/worktrees/
 
 # ─── Agent memory & machine-local dirs ────────────────────────────────────────
 .remember/

@@ -316,12 +316,8 @@ jobs:
     steps:
       - name: Check all jobs passed
         run: |
-          if [[ "${{ needs.*.result }}" != *"success"* ]]; then
-            echo "CI FAILED — one or more jobs did not succeed"
-            echo "Job results:"
-            for result in ${{ join(needs.*.result, ' ') }}; do
-              echo "  $result"
-            done
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" || "${{ contains(needs.*.result, 'cancelled') }}" == "true" || "${{ contains(needs.*.result, 'skipped') }}" == "true" ]]; then
+            echo "CI FAILED — one or more jobs failed, was cancelled, or was skipped"
             exit 1
           fi
           echo "CI PASSED"
