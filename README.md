@@ -1,7 +1,6 @@
-# TrustRAG — Production AI Reliability Workbench
+# TrustRAG
 
-> **Retrieve. Verify. Diagnose. Recover.**  
-> An open-source, multi-tenant AI reliability platform that detects hallucinations, audits evidence integrity, decomposes assertions into atomic claims, and self-heals low-confidence RAG responses using an adaptive LangGraph loop.
+> **Your local-first RAG reliability workbench** — catch hallucinations, audit evidence, and self-heal low-confidence answers using an adaptive LangGraph loop. Everything runs on your machine. No API keys required.
 
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -11,495 +10,173 @@
 [![Tests](https://img.shields.io/badge/Backend%20Tests-191%20Passing-brightgreen)](apps/api/tests)
 [![Tests](https://img.shields.io/badge/Frontend%20Tests-21%20Passing-brightgreen)](apps/web)
 [![E2E](https://img.shields.io/badge/Playwright%20E2E-2%20Passing-brightgreen)](apps/web/e2e)
-[![Load](https://img.shields.io/badge/k6%20Load%20Smoke-Passing-brightgreen)](load-test/smoke.js)
-[![Bandit](https://img.shields.io/badge/Bandit%20SAST-0%20Issues-brightgreen)](docs/AUDIT_REPORT.md)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
-### 🔗 Local Workbench Quick Links (Branch: `ui-redesign`)
+---
 
-| Service | Local URL | Description |
+## What is this?
+
+Standard RAG systems fail silently. They grab some context, generate an answer, and present it as fact — even when the answer is wrong. There's no audit trail, no verification, no way to know if you can trust the output.
+
+TrustRAG fixes that. It's a full reliability pipeline that:
+
+1. **Decomposes** responses into individual factual claims.
+2. **Validates** each claim against your documents using batch NLI (Natural Language Inference).
+3. **Audits** source integrity with SHA-256 hashes and temporal validity windows.
+4. **Self-heals** when confidence is low — rewriting queries and expanding search via a LangGraph state machine, then either returning a grounded answer or safely abstaining.
+
+Think of it as a fact-checking layer for RAG. It runs 100% locally on your machine with Ollama or llama.cpp — no cloud API keys needed unless you want them.
+
+---
+
+## Quick Links
+
+| Service | URL | What it does |
 |---|---|---|
-| 🌐 **Frontend Workbench** | **[http://localhost:5173](http://localhost:5173)** | AI Reliability Workbench & Local Model Playground |
-| ⚡ **Backend REST API** | **[http://localhost:8000](http://localhost:8000)** | FastAPI Agentic RAG Engine with Local Model Support |
-| 📖 **Interactive API Docs** | **[http://localhost:8000/docs](http://localhost:8000/docs)** | Swagger OpenAPI interactive documentation & test runner |
-| 🩺 **System Health & Hardware** | **[http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health)** | Live hardware profiling (Metal/CUDA/CPU), memory guard & telemetry |
+| **Frontend Workbench** | [http://localhost:5173](http://localhost:5173) | The React UI — upload docs, ask questions, see verification results |
+| **Backend API** | [http://localhost:8000](http://localhost:8000) | FastAPI engine — all the RAG, NLI, and LangGraph magic |
+| **Interactive Docs** | [http://localhost:8000/docs](http://localhost:8000/docs) | Swagger UI — test every endpoint right in your browser |
+| **Health Check** | [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) | Live system status — MongoDB, Qdrant, hardware profile |
 
 ---
 
-## 📑 Table of Contents
+## Table of Contents
 
-- [Overview](#-overview)
-- [Self-Healing Reliability Loop](#-self-healing-reliability-loop)
-- [System Architecture](#-system-architecture)
-- [Ultra-Premium Dark Workbench UI](#-ultra-premium-dark-workbench-ui)
-- [Deployment & Production Readiness](#-deployment--production-readiness)
-- [Core Engineering Capabilities](#-core-engineering-capabilities)
-  - [1. Multi-Tenant User Isolation & Anti-IDOR](#1-multi-tenant-user-isolation--anti-idor)
-  - [2. Rule-Based Stemming & Document Zoning](#2-rule-based-stemming--document-zoning)
-  - [3. Hybrid Retrieval with RRF](#3-hybrid-retrieval-with-rrf)
-  - [4. Batch NLI Claim Verification](#4-batch-nli-claim-verification)
-  - [5. SHA-256 Provenance & Temporal Filtering](#5-sha-256-provenance--temporal-filtering)
-  - [6. Adaptive LangGraph Recovery Loop](#6-adaptive-langgraph-recovery-loop)
-  - [7. Ultra-Low RAM & On-Disk Storage Architecture](#7-ultra-low-ram--on-disk-storage-architecture)
-  - [8. Universal Model Context Protocol (MCP) Server](#8-universal-model-context-protocol-mcp-server)
-  - [9. Multi-Provider AI (Gemini + NVIDIA NIM)](#9-multi-provider-ai-gemini--nvidia-nim)
-  - [10. Local SOTA Embeddings (BAAI/bge-small-en-v1.5)](#10-local-sota-embeddings-baaibge-small-en-v15)
-  - [11. Live Web Search Grounding via MCP (Tavily + DuckDuckGo)](#11-live-web-search-grounding-via-mcp-tavily--duckduckgo)
-  - [12. Enterprise Security Hardening & SSRF Defense](#12-enterprise-security-hardening--ssrf-defense)
-  - [13. 100% Private Local LLMs (Ollama & llama.cpp)](#13-100-private-local-llms-ollama--llamacpp)
-  - [14. Native CLI Model Discovery (ollama list & llama-server)](#14-native-cli-model-discovery-ollama-list--llama-server)
-  - [15. Multi-Dimensional Vector Embeddings & L2 Normalization](#15-multi-dimensional-vector-embeddings--l2-normalization)
-- [Technology Stack](#-technology-stack)
-- [Getting Started](#-getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Environment Configuration](#1-environment-configuration)
-  - [Option A: Running Locally with Native Resources (Recommended)](#option-a-running-locally-with-native-resources-recommended)
-  - [Option B: Running with Docker Compose](#option-b-running-with-docker-compose)
-  - [Zero-API-Key Local Mode (DuckDuckGo + Local BGE)](#zero-api-key-local-mode-duckduckgo--local-bge)
-- [End-to-End Walkthrough via CLI](#-end-to-end-walkthrough-via-cli)
-- [API Reference](#-api-reference)
-- [Testing & Quality Assurance](#-testing--quality-assurance)
-- [Troubleshooting & FAQ](#-troubleshooting--faq)
-- [Documentation Index](#-documentation-index)
-- [License](#-license)
+- [What is this?](#what-is-this)
+- [Quick Links](#quick-links)
+- [How the self-healing loop works](#how-the-self-healing-loop-works)
+- [Getting Started](#getting-started)
+  - [What you need](#what-you-need)
+  - [Step 1 — Install platform tools](#step-1--install-platform-tools)
+  - [Step 2 — Clone and configure](#step-2--clone-and-configure)
+  - [Step 3 — Start services](#step-3--start-services)
+  - [Step 4 — Open the UI](#step-4--open-the-ui)
+- [Running with Docker](#running-with-docker)
+- [Try it from the command line](#try-it-from-the-command-line)
+- [Architecture](#architecture)
+- [Technology stack](#technology-stack)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
+- [Documentation](#documentation)
+- [License](#license)
 
 ---
 
-## 🎯 Overview
-
-Standard RAG (Retrieval-Augmented Generation) systems fail silently. When dense embeddings retrieve tangential context or LLMs extrapolate unsupported claims, traditional applications present hallucinations as fact without warning or auditability.
-
-**TRUSTRAG transforms RAG into a verifiable, closed-loop reliability pipeline:**
-1. **Decomposes** generated responses into verifiable, atomic claims.
-2. **Validates** each assertion against retrieved context using high-throughput batch Natural Language Inference (NLI).
-3. **Audits** underlying chunks against cryptographic SHA-256 source hashes and temporal validity windows (`Effective from: YYYY-MM-DD`).
-4. **Self-Heals** when confidence is low — rewriting queries and expanding search parameters via an adaptive LangGraph state machine before choosing between a **Trusted Grounded Answer** or a **Safe Abstention**.
-
----
-
-## 🔄 Self-Healing Reliability Loop
+## How the self-healing loop works
 
 ```
-                        User Query
-                            │
-                            ▼
-              ┌───────────────────────────┐
-              │ 1. Text Normalization     │ ── NFKD, de-hyphenation, query-noise removal
-              │    & Document Zoning      │ ── Porter Stemmer (5 steps), Title/Header weights
-              └─────────────┬─────────────┘
-                            │
-                            ▼
-              ┌───────────────────────────┐
-              │ 2. Hybrid Retrieval       │ ── Dense (Local BGE, 384d)
-              │    & Reciprocal Fusion    │ ── Sparse Token-Frequency BM25
-              └─────────────┬─────────────┘ ── RRF Scoring & Temporal Window Filter
-                            │
-                            ▼
-              ┌───────────────────────────┐
-              │ 3. Grounded Generation    │ ── Gemini 2.5/3.5, strictly conditioned
-              └─────────────┬─────────────┘
-                            │
-                            ▼
-              ┌───────────────────────────┐
-              │ 4. Claim Decomposition    │ ── Extracts atomic verifiable statements
-              │    & Batch NLI Verify     │ ── SUPPORTED | CONTRADICTED | NEUTRAL
-              └─────────────┬─────────────┘
-                            │
-                            ▼
-              ┌───────────────────────────┐
-              │ 5. SHA-256 Hash Audit     │ ── Tamper detection vs MongoDB document_chunks
-              │    & Reliability Scoring  │ ── Coverage & Contradiction Thresholds
-              └─────────────┬─────────────┘
-                            │
-             ┌──────────────┴──────────────┐
-             │                             │
-    [Meets Thresholds]            [Below Threshold]
-             │                             │
-             ▼                             ▼
-   ┌───────────────────┐        ┌──────────────────────────────────┐
-   │  Grounded Answer  │        │ 6. Adaptive LangGraph Recovery   │
-   │  + Evidence Cards │        │    Loop (Max 2 attempts)         │
-   │  + Citations Trace│        └─────────────────┬────────────────┘
-   └───────────────────┘                          │
-                         ┌────────────────────────┴────────────────────────┐
-                         │                                                 │
-                   [Recovered]                                    [Recovery Exhausted]
-                         │                                                 │
-                         ▼                                                 ▼
-               ┌───────────────────┐                             ┌───────────────────┐
-               │  Grounded Answer  │                             │   Safe ABSTAIN    │
-               │  (After Healing)  │                             │   (No Guessing)   │
-               └───────────────────┘                             └───────────────────┘
+                        Your Question
+                             │
+                             ▼
+               ┌───────────────────────────┐
+               │ 1. Text Normalization     │  clean up noise, fix hyphens, strip fluff
+               │    & Document Zoning      │  weight titles/headers higher than body
+               └─────────────┬─────────────┘
+                             │
+                             ▼
+               ┌───────────────────────────┐
+               │ 2. Hybrid Retrieval       │  Dense vectors (BGE, 384d) + BM25 keywords
+               │    + Reciprocal Fusion    │  combined with RRF scoring
+               └─────────────┬─────────────┘
+                             │
+                             ▼
+               ┌───────────────────────────┐
+               │ 3. Grounded Generation    │  LLM answer, strictly conditioned on evidence
+               └─────────────┬─────────────┘
+                             │
+                             ▼
+               ┌───────────────────────────┐
+               │ 4. Claim Decomposition    │  break answer into atomic facts
+               │    + Batch NLI Verify     │  SUPPORTED | CONTRADICTED | NEUTRAL
+               └─────────────┬─────────────┘
+                             │
+                             ▼
+               ┌───────────────────────────┐
+               │ 5. SHA-256 Hash Audit     │  tamper detection on source chunks
+               │    + Reliability Scoring  │  coverage vs contradiction thresholds
+               └─────────────┬─────────────┘
+                             │
+              ┌──────────────┴──────────────┐
+              │                             │
+     [Meets Thresholds]            [Below Threshold]
+              │                             │
+              ▼                             ▼
+    ┌───────────────────┐        ┌────────────────────────────┐
+    │  Grounded Answer  │        │ 6. Adaptive Recovery Loop  │
+    │  + Evidence Cards │        │    rewrite query, expand   │
+    │  + Citations      │        │    search, retry (1 round) │
+    └───────────────────┘        └────────────┬───────────────┘
+                                              │
+                                    ┌─────────┴─────────┐
+                                    │                   │
+                              [Recovered]      [Recovery Exhausted]
+                                    │                   │
+                                    ▼                   ▼
+                          ┌───────────────┐   ┌───────────────┐
+                          │  Grounded     │   │  Safe         │
+                          │  Answer       │   │  ABSTAIN      │
+                          └───────────────┘   └───────────────┘
 ```
+
+When the system isn't confident in its answer, it doesn't guess. It either heals itself or tells you it doesn't know. That's the point.
 
 ---
 
-## 🏛️ System Architecture
+## Getting Started
 
-TRUSTRAG is architected as a modular monorepo comprising a reactive frontend workbench and an asynchronous, domain-driven API service:
+### What you need
 
-```
-TrustRAG/
-├── apps/
-│   ├── web/                          # React 18 + Vite 6 Workbench Application
-│   │   ├── src/
-│   │   │   ├── components/workbench/ # ClaimInspector, EvidenceViewer, ExecutionTrace, ReliabilityBadge
-│   │   │   ├── layouts/              # Responsive AppLayout, Sidebar, and AuthGuard
-│   │   │   ├── pages/                # 11 Pages: Playground, KBs, Claims, Conflicts, Evidence, Trace...
-│   │   │   ├── services/             # Axios instance, Bearer interceptors, SSE streaming client
-│   │   │   └── index.css             # Glassmorphic dark design system with micro-animations
-│   │   └── package.json
-│   │
-│   └── api/                          # FastAPI Asynchronous Service
-│       ├── app/
-│       │   ├── agent/                # LangGraph StateGraph state machine & adaptive recovery loop
-│       │   ├── api/                  # FastAPI routers, dependency injection, and Pydantic v2 schemas
-│       │   ├── core/                 # App config, logging, rate limiting, security, model registry
-│       │   ├── db/                   # MongoDB (Motor async driver) & Qdrant vector database clients
-│       │   ├── generation/           # Context-grounded generation prompts and LLM invocation
-│       │   ├── ingestion/            # Multi-format parsers (PDF/DOCX/TXT/MD/CSV/JSON/HTML), Porter stemmer, chunker
-│       │   ├── retrieval/            # Dense search, sparse search, RRF fusion, CrossEncoder reranking
-│       │   ├── services/             # Business logic: analysis runs, KB, auth, experiments
-│       │   └── verification/         # Batch NLI verifier & SHA-256 evidence integrity auditor
-│       ├── config/
-│       │   └── models.yaml           # Centralized configuration registry for models and thresholds
-│       └── tests/                    # 191 automated unit & integration tests (100% pass)
-│
-├── scripts/                          # Operator tooling
-│   ├── discover_local_models.py      # Pre-backend model discovery (ollama list, llama-server --cache-list)
-│   ├── start_local_llm.sh            # Hardware-aware llama-server launcher
-│   ├── apply_ports.py                # Port registry → docker-compose/Dockerfiles/CI/Vite propagation
-│   └── clear_qdrant.py               # Qdrant collection list/purge utility
-│
-├── config/
-│   └── ports.yaml                    # Single source of truth for service ports & hosts
-│
-├── docs/                             # Engineering documentation repository
-│   ├── architecture/                 # End-to-end design specifications and ADRs
-│   ├── audits/                       # Quality audits, fix logs, and multi-tenant verification
-│   ├── security/                     # Security controls, threat modeling, and defense-in-depth
-│   ├── evaluation/                   # Reliability benchmark methodology and metric models
-│   └── deployment/                   # Docker deployment, scaling, and operations guides
-│
-├── docker-compose.yml                # Multi-service composition (FastAPI + Qdrant + MongoDB bridge)
-├── .env.example                      # Template for secrets and environment configuration
-└── TRUSTRAG_specs.md                 # Baseline architectural specification
-```
+| Tool | Version | Why |
+|---|---|---|
+| **Python** | 3.11+ | Backend runtime |
+| **Node.js** | 20+ | Frontend build tools |
+| **MongoDB** | 7.0+ | Document & metadata storage |
+| **Ollama** or **llama.cpp** | Latest | Local LLM inference (zero API keys) |
+| **Git** | Any recent | Clone the repo |
+
+Optional (only if you want cloud features):
+- Google Gemini API key — for cloud LLM reasoning
+- NVIDIA NIM API key — for enterprise NIM models
+- Tavily API key — for AI-powered web search (DuckDuckGo is free and works without a key)
 
 ---
 
-## 💎 Ultra-Premium Dark Workbench UI
+### Step 1 — Install platform tools
 
-The frontend interface has been rebuilt from the ground up to deliver a state-of-the-art developer and observability experience. The `ui-redesign` branch delivers a production-grade React 18 + Vite 6 workbench with per-component CSS, Apple Design motion principles, and zero runtime bugs.
-
-### Design System
-- **Cyber Cyan Palette**: Electric Azure & Cyan (`#0ea5e9`, `#38bdf8`) on obsidian surfaces (`#040711`, `#080c16`). Verified = Emerald, warnings = Amber, contradictions = Crimson.
-- **Typography**: Inter (sans) + JetBrains Mono (code). Font scale from `text-[10px]` (metadata) to `text-2xl` (headings).
-- **Glassmorphism**: Translucent `glass-card`, `glass-nav`, `glass-sidebar` with backdrop blur and subtle borders.
-- **Micro-Animations**: Spring-based motion (damping 15, stiffness 150) via `motion/react`. Staggered entrance animations. Global `:active` press feedback on all interactive elements.
-
-### Architecture
-```
-apps/web/src/
-├── styles/              # 16 external CSS files (typography, animations, materials, per-component)
-├── components/
-│   ├── landing/         # 8 sub-components: Hero, Bento, Simulation, Benchmarks, etc.
-│   └── workbench/       # ClaimInspector, EvidenceViewer, ExecutionTrace, FormattedAnswer
-├── layouts/             # AppLayout (sidebar + telemetry navbar), AuthLayout
-├── pages/               # 12 lazy-loaded pages with React.Suspense boundaries
-└── lib/                 # API client, auth store, React Query providers
-```
-
-### Key Features
-- **Vendor-Split Code Splitting**: 26 optimized chunks — `react-vendor` (180 kB), `motion-vendor` (127 kB), `chart-vendor` (393 kB), `ui-vendor` (103 kB). AppLayout reduced from 140 kB → 14 kB (90% reduction).
-- **Full Favicon Set**: PNG favicons (16/32/180/192/512px) with PWA manifest.
-- **Accessibility**: `prefers-reduced-motion` support in CSS animations and `motion/react` springs. `aria-label` on all icon-only buttons. Touch targets ≥ 44px on coarse pointers.
-- **Responsive**: Collapsible sidebar (desktop), slide-out drawer (mobile), responsive page padding (`p-4 sm:p-6 lg:p-8`).
-
----
-
-## 🚀 Deployment & Production Readiness
-
-This branch (**`ui-redesign`**) serves as the **Local-First AI Reliability Workbench** and is structured to be 100% production-ready for self-hosted, on-premises, or containerized deployments.
-
-### 1. Backend Service (`apps/api/Dockerfile`)
-
-The backend is packaged as a high-efficiency multi-stage container ready for deployment on any Docker, Kubernetes, or cloud container platform:
-
-1. **Production Runtime Highlights**:
-   * **Reproducible Dependencies**: Builder stage installs production-only deps with `uv sync --locked` against the committed `apps/api/uv.lock`, eliminating non-deterministic `pip install .` resolution.
-   * **Hardware-Aware Autotuning**: Automatically senses host hardware (Apple Silicon Metal / NVIDIA CUDA / CPU) and allocates layers/workers accordingly.
-   * **Non-Root Execution**: Runs under unprivileged `trustrag` user (UID 1001) for strict container security.
-   * **Instant Port Binding**: Non-blocking `lifespan` startup architecture binds `$PORT` immediately with `/api/v1/health` probes.
-   * **SSE Keep-Alive**: Emits SSE comment pings to keep persistent HTTP connections alive through reverse proxies.
-
-2. **Core Environment Variables**:
-   | Variable | Description / Recommended Value |
-   |---|---|
-   | `APP_ENV` | `production` or `development` |
-   | `MONGODB_URI` | MongoDB connection string (e.g. `mongodb://localhost:27017/trustrag_db` or Atlas) |
-   | `MONGODB_DATABASE` | `trustrag_db` |
-   | `QDRANT_URL` | Qdrant endpoint (e.g. `http://localhost:6335` or cloud cluster) |
-   | `QDRANT_API_KEY` | Optional for local Qdrant, required for Qdrant Cloud |
-   | `JWT_SECRET` | 64-character random hex string for signing JWT tokens |
-   | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:3000` |
-   | `TRUSTED_PROXY_IPS` | Comma-separated proxy IPs/CIDRs allowed to supply `X-Forwarded-For`; leave empty when clients connect directly |
-   | `RATE_LIMIT_ANALYSES_PER_MINUTE` | Analysis requests/min per client (default `10`) |
-   | `RATE_LIMIT_AUTH_PER_MINUTE` | Auth requests/min per client (default `20`) |
-   | `RATE_LIMIT_UPLOAD_PER_MINUTE` | Document uploads/min per client (default `10`) |
-   | `RATE_LIMIT_URL_INGEST_PER_MINUTE` | URL-ingest requests/min per client (default `10`) |
-   | `CACHE_DIR` | Override path for SQLite embedding + semantic JSON caches (default `apps/api/data/cache`) |
-
-### 2. Frontend Web Application (`apps/web`)
-
-Built with React 18 and Vite 6, compiling into high-performance static assets:
-
-1. **Build & Preview Commands**:
-   * **Build Command**: `npm --prefix apps/web run build`
-   * **Production Output**: `apps/web/dist` (optimized chunks with Brotli/gzip support)
-   * **Local Preview**: `npm --prefix apps/web run preview`
-   * **Defensive HTTP Headers**: Enforced via [`apps/web/public/_headers`](apps/web/public/_headers) (CSP, HSTS, X-Content-Type-Options).
-
-### 3. Database & Cluster Maintenance Utility
-
-A dedicated Python maintenance script is included in [`scripts/clear_qdrant.py`](scripts/clear_qdrant.py) for inspecting and purging Qdrant Cloud collections:
-
-```bash
-# List all active collections and point counts
-python scripts/clear_qdrant.py --list
-
-# Purge and delete all collections in the Qdrant Cloud cluster
-python scripts/clear_qdrant.py --purge
-```
-
----
-
-## 💡 Core Engineering Capabilities
-
-### 1. Multi-Tenant User Isolation & Anti-IDOR
-- **Strict Database Scoping**: Every record (`knowledge_bases`, `documents`, `document_chunks`, `analyses`, `claims`, `evidence`) explicitly indexes and enforces `user_id`.
-- **Physical Vector Separation**: Qdrant partitions vectors into dedicated per-KB collections (`kb_{kb_id}`). Points also record `user_id` in their metadata payloads.
-- **Server-Side Ownership Verification**: Every request cryptographically extracts `current_user` from the verified JWT. Cross-tenant access is blocked with `403 Forbidden` or `404 Not Found`.
-- **Complete Cascade Cleanup**: Deleting a Knowledge Base or document automatically cleans up all associated chunks from MongoDB and points from Qdrant, preventing storage leaks or cross-tenant ghost data.
-
-### 2. Rule-Based Stemming & Document Zoning
-- **Deterministic 5-Step Porter Stemmer**: Zero external black-box NLP runtime dependencies; implements morphological suffix stripping rules (e.g., `policies` → `polici`, `retrieval` → `retriev`).
-- **Zone Weighting**: Document parser identifies `Title` (2.0x weight), `Header` (1.5x weight), and `Body` (1.0x weight) to boost structural keyword matching during lexical search.
-- **Stopword & Contraction Normalization**: Cleans conversational noise words (`"tell"`, `"explain"`, `"what is"`) and expands standard English contractions (`"can't"` → `"cannot"`).
-
-### 3. Hybrid Retrieval with RRF
-- **Dense Vectors**: 384-dimensional semantic embeddings generated locally via `BAAI/bge-small-en-v1.5` (sentence-transformers, CPU), operating with **zero API cost** and **zero keys** — ingestion and retrieval work fully offline.
-- **Sparse BM25 Keyword Vectors**: Term-frequency sparse vectors with sublinear scaling ($1 + \ln(\text{tf})$) and zone multipliers.
-- **Reciprocal Rank Fusion (RRF)**: Combines dense and sparse candidates using reciprocal rank scoring:
-  $$\text{RRF Score}(d) = \sum_{m \in \{\text{dense}, \text{sparse}\}} \frac{1}{60 + \text{rank}_m(d)}$$
-
-### 4. Batch NLI Claim Verification
-- **Decomposition**: Parses responses into discrete, standalone factual claims.
-- **Batch Structured Verification**: Leverages Pydantic structured output in a single batch LLM invocation, preventing sequential 429 quota exhaustion.
-- **Strict Classification**: Claims are classified as `SUPPORTED`, `CONTRADICTED`, or `NEUTRAL` with citation evidence IDs attached.
-
-### 5. SHA-256 Provenance & Temporal Filtering
-- **Cryptographic Tamper Auditing**: Compares the SHA-256 hash of retrieved chunks against reference hashes in MongoDB `document_chunks` to verify content integrity.
-- **Temporal Validity**: Extracts ISO dates (`Effective from: YYYY-MM-DD` / `Effective until: YYYY-MM-DD`) and discards outdated or expired documentation.
-
-### 6. Adaptive LangGraph Recovery Loop
-When evidence coverage falls below `minimum_evidence_coverage` (0.60) or contradiction rates exceed `maximum_contradiction_rate` (0.15):
-- **Attempt 1**: Decomposes failure and rewrites the query targeting the missing concepts.
-- **Attempt 2**: Doubles candidate retrieval limits (`top_k = 40`) and repeats hybrid search.
-- **Bound Ceiling**: After 2 attempts (`max_recovery_attempts`), the system safely transitions to `ABSTAIN` rather than returning unverified hallucinations.
-
-### 7. Ultra-Low RAM & On-Disk Storage Architecture
-- **Embedded RocksDB Storage**: Qdrant runs embedded via native Rust engine (`./data/qdrant/`) with `on_disk=True` for raw dense vectors and sparse indices.
-- **INT8 Scalar Quantization**: Vector embeddings are quantized from float32 to int8 (`ScalarQuantizationConfig`), cutting vector RAM by **75%** with $<0.5\%$ recall loss.
-- **Query Embedding LRU Cache**: Thread-safe in-memory cache (1024 entries) provides instant $O(1)$ lookup for repeat questions and LangGraph recovery sub-queries, eliminating remote API latency.
-- **Unified Persistent Cache Directory**: The SQLite embedding cache (`embedding_cache.db`), semantic answer cache (`semantic_cache.json`), and model-discovery snapshot all coalesce under `apps/api/data/` (override with `CACHE_DIR` for the two caches). Embedding-cache keys are **provider-namespaced** (`provider::model:text`), so two providers serving the same model string can never cross-contaminate vectors.
-- **PyTorch Container Pruning**: Decoupled heavy PyTorch and `sentence-transformers` into optional dependencies, shrinking deployment container images from **~2.8 GB to ~350 MB**.
-
-### 8. Universal Model Context Protocol (MCP) Server
-- **Universal Agent Interoperability**: Native MCP server in [`apps/api/app/mcp/server.py`](apps/api/app/mcp/server.py) operating over standard input/output (stdio JSON-RPC 2.0).
-- **Tools Provided**:
-  * `trustrag_search`: Hybrid RRF search with temporal filtering and cryptographic SHA-256 provenance checks.
-  * `trustrag_verify_claim`: Standalone zero-temperature batch NLI claim verification.
-- **Client Support**: Direct one-click integration with Claude Desktop, Cursor, and Antigravity IDE.
-
-### 9. Multi-Provider AI (Gemini + NVIDIA NIM)
-- **LangChain Unified Client Interface**: Seamlessly switch between Google Gemini and enterprise NVIDIA NIM models via `AI_PROVIDER=gemini|nvidia`.
-- **Supported LLMs**:
-  * **Google Gemini**: `gemini-3.5-flash-lite` (default, sub-second latency), `gemini-2.5-flash`, `gemini-2.5-pro`.
-  * **NVIDIA NIM**: `meta/llama-3.3-70b-instruct` (via `langchain-nvidia-ai-endpoints`), `mistralai/mistral-large-2-instruct`, `nvidia/llama-3.1-nemotron-70b-instruct`.
-- **Deterministic Verification Protocol**: Claim verification runs on a dedicated temperature=0.0 model across all providers to eliminate variance and guarantee factual repeatability.
-
-### 10. Local SOTA Embeddings (`BAAI/bge-small-en-v1.5`)
-- **Top-Tier Open Benchmark Performance**: BGE-small achieves an MTEB retrieval score of **62.17**, outperforming many closed-source 1536d models while using only 384 dimensions.
-- **BGE Query Instruction Prefixing**: [`BGEAwareHuggingFaceEmbeddings`](apps/api/app/core/model_registry.py) prepends `"Represent this sentence for searching relevant passages: "` to queries while vectorizing documents raw.
-- **Zero API Cost & Offline Execution**: Runs entirely on local CPU with sub-35ms query latency and zero external network calls.
-- **Full Backward Compatibility**: Existing 384-dimensional collections keep working without database migrations (re-upload only when switching embedding models).
-
-### 11. Live Web Search Grounding via MCP (Tavily + DuckDuckGo)
-- **Native MCP Tools**:
-  * `tavily_search`: Curated AI search with high-density content snippets (requires `TAVILY_API_KEY`).
-  * `duckduckgo_search`: 100% free, zero-API-key search executed over `ddgs`.
-  * `hybrid_web_search`: Runs Tavily and DuckDuckGo in parallel, deduplicating findings by canonical URL.
-- **Interactive UI Toggle**: Select Tavily, DuckDuckGo, or Both directly from the Playground drawer to augment document evidence with live internet citations.
-- **Transparent Citations**: Web results are highlighted as `[Web Source ↗]` links with target/rel tabnabbing protections.
-
-### 12. Enterprise Security Hardening & SSRF Defense
-- **Strict RFC URL Sanitization**: [`sanitize_url()`](apps/api/app/services/search_service.py) parses and validates all citation URLs against strict `http://` and `https://` schemes, dropping malicious `javascript:`, `data:`, `file:`, and `vbscript:` vectors.
-- **SSRF Defense-in-Depth**: Automatically discards private IP ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), loopbacks (`127.0.0.1`, `localhost`), and cloud metadata IP addresses (`169.254.169.254`, `metadata.google.internal`).
-- **Tabnabbing & Reverse Window Protection**: Every external link enforces `target="_blank" rel="noopener noreferrer"`.
-- **Query Bounds**: 500-character ceiling prevents buffer overflow and DoS attacks.
-- **Timeout Protection**: Web search requests are bounded by `SEARCH_TIMEOUT_SECONDS = 8.0` with `asyncio.wait_for` to guarantee pipeline resilience.
-- **Zero Secret Leakage**: The health endpoint and telemetry snapshots only return boolean status flags (`gemini_configured`, `nvidia_configured`, `tavily_configured`), keeping credentials completely secure.
-
-### 13. 100% Private Local LLMs (Ollama & llama.cpp)
-- **Local-First Native Async Engines**: [`ChatOllamaClient`](apps/api/app/core/local_llm.py) and [`ChatLlamaCppClient`](apps/api/app/core/local_llm.py) conform to LangChain's `BaseChatModel` interface with native async non-blocking execution.
-- **Pre-Configured Models** (exactly what is installed — see `ollama list` / `llama-server --cache-list`):
- * **Ollama**: `gemma3:1b` (815MB default), or any installed generative LLM.
- * **llama.cpp**: `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M` (~800MB default) served over port `8080` (`http://127.0.0.1:8080/v1`), or any GGUF model.
-- **Structured Pydantic Output**: Native support for `with_structured_output(...)` enables reliable, schema-validated atomic claim decomposition and NLI verdict generation without cloud dependencies.
-- **Complete Zero-Key Operation**: TRUSTRAG boots and executes 100% offline without requiring any third-party cloud API keys.
-- **Hardware-aware model launch**: Run `./scripts/start_local_llm.sh` to boot `llama-server`. It auto-detects your accelerator (Metal on Apple Silicon, CUDA on NVIDIA) and passes `-ngl all --flash-attn on`, plus memory-tiered `-c` / `-np` budgets so the host stays responsive. No flags needed on your end.
-
-### 14. Native CLI Model Discovery (ollama list & llama-server)
-- **Real-Time Shell Introspection**:
-  * **`ollama list`**: Automatically introspects installed generative LLMs (`gemma3:1b`, etc.). Embedding models are excluded — ollama is LLM-only; embeddings always come from local BGE.
-  * **`llama-server --cache-list`**: Introspects cached generative GGUF blobs. Embedding GGUFs are excluded — llama.cpp is LLM-only.
-- **Pre-Backend Discovery Snapshot**: Run [`scripts/discover_local_models.py`](scripts/discover_local_models.py) *before* starting the API to persist a JSON snapshot (`apps/api/data/discovered_models.json`) so every locally installed model is selectable from the **very first** request — no need to trigger discovery first:
-  ```bash
-  apps/api/.venv/bin/python scripts/discover_local_models.py
-  ```
-  The API also re-seeds discovery in the background on startup, so the snapshot stays fresh across restarts and already-running processes.
-- **Validator-Allowlisted Selection**: Any model the discovery layer reports is accepted by the analysis request validator — the UI dropdown never offers a model that the API later rejects (fixes the old `Model is not enabled for provider 'llama_cpp'` failure when a just-installed model like `SmolLM3-3B` was selected before the static list knew it).
-- **Interactive UI Model Switcher**: The Playground workbench and Settings diagnostic page dynamically display detected models, active endpoints, and port telemetry. The Playground auto-refreshes the model list every 8s and exposes a manual **refresh** button beside the model selector; Settings re-checks every 15s.
-
-### 15. Multi-Dimensional Vector Embeddings & L2 Normalization
-- **Local-only Embedding Engines** (cloud embeddings removed — zero keys, offline ingestion):
-  * **HuggingFace BGE**: `BAAI/bge-small-en-v1.5` (384-dimensional dense vectors, zero API cost, sub-35ms CPU latency).
-  * **HuggingFace MiniLM**: `all-MiniLM-L6-v2` (384-dimensional dense vectors, fast alternative).
-  * **LLM servers are LLM-only**: ollama / llama.cpp never provide embeddings.
-- **Dimension-Safe Retrieval with L2 Normalization**: [`dense_search()`](apps/api/app/retrieval/retriever.py) ensures strict mathematical consistency for cosine similarity calculations via L2 normalization ($\|v\|_2 = 1.0$).
-
----
-
-## 🛠️ Technology Stack
-
-| Layer | Component | Version / Specification | Role in TRUSTRAG |
-|---|---|---|---|
-| **Frontend** | React + Vite | React 18, Vite 6, Tailwind CSS, Motion 13 | Ultra-premium dark theme UI, spring animations, Recharts |
-| **Telemetry** | Server-Sent Events (SSE) | EventSource protocol | Real-time agent execution graph streaming to the workbench UI |
-| **Backend** | FastAPI | Python 3.11, Pydantic v2 | High-throughput asynchronous REST API, custom middleware |
-| **Local LLMs** | Ollama & llama.cpp | Port 11434 & Port 8080 | 100% private, offline LLM synthesis and NLI verification |
-| **Cloud LLMs** | Google Gemini & NVIDIA NIM | Gemini 3.5 Flash Lite / Llama 3.3 70B | Cloud-native grounded reasoning and batch NLI claim verification |
-| **Dense Embeddings** | Local BGE (zero API cost) | 384d (BAAI/bge-small-en-v1.5) | Dense semantic vector representations with dimensional alignment |
-| **Agent Protocols** | Model Context Protocol (MCP) | JSON-RPC 2.0 (stdio) | Universal tool interface for external AI coding agents & local LLM chat |
-| **State Machine** | LangGraph | `StateGraph` | Multi-node deterministic agent state machine |
-| **Primary Database** | MongoDB Community | v7.0+ (Local Host / Atlas Cloud) | Permanent storage of metadata, chunks, claims, and execution traces |
-| **Vector Engine** | Qdrant | Embedded Local Rust Engine / Cloud | Hybrid dense & sparse vectors; on-disk storage with INT8 scalar quantization |
-| **Security Suite** | JWT + Bcrypt + SlowAPI | HS256, 12 Bcrypt rounds, IP rate limits | Authentication, timing-attack protection, defensive HTTP headers |
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** ≥ v4.x
-- **[Node.js](https://nodejs.org/)** ≥ 20.x (with npm)
-- **[MongoDB Community Edition](https://www.mongodb.com/try/download/community)** running locally on port `27017` (or a MongoDB Atlas connection string)
-- **[Google Gemini API Key](https://aistudio.google.com/app/apikey)** (optional — only if `models.yaml` selects a cloud provider)
-
----
-
-### 1. Environment Configuration
-
-**Ports (single source of truth):** [`config/ports.yaml`](config/ports.yaml) owns every
-port — backend `8000`, frontend `5173`, Ollama `11434`, llama-server `8080`, MongoDB
-`27017`, Qdrant `6335:6333`/`6336:6334`. Change a port there, then run
-`python3 scripts/apply_ports.py` to propagate it to docker-compose, Dockerfiles, Vite,
-env templates, Playwright/k6 defaults, CI, and models.yaml
-(`--check` fails CI on drift). Model IDs stay in `apps/api/config/models.yaml` + `.env`.
-
-Clone the repository and create your local environment file:
-
-```bash
-git clone https://github.com/MaithreshVaddi-27/TrustRAG.git
-cd TrustRAG
-cp .env.example .env
-./scripts/setup.sh   # verifies every local prerequisite (zero API keys needed)
-```
-
-Open `.env` in your editor and configure your variables. It holds **secrets and
-deployment endpoints only** — providers, model IDs, and ports live in
-`apps/api/config/models.yaml` and `config/ports.yaml` (checked into git):
-
-```ini
-# Security (generate with: python3 -c "import secrets; print(secrets.token_hex(64))")
-JWT_SECRET=replace_with_a_secure_random_64_character_hex_string
-
-# Frontend origin (production: https://your-frontend-domain.com)
-CORS_ORIGINS=http://localhost:5173
-
-# Optional: only these direct proxy peers may supply X-Forwarded-For / X-Real-IP.
-# Leave empty when clients connect straight to the API (rate-limit identity then
-# uses the direct remote address — prevents header spoofing).
-TRUSTED_PROXY_IPS=
-
-# Google Gemini API (only if models.yaml uses gemini)
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# NVIDIA NIM API (only if models.yaml uses nvidia)
-NVIDIA_API_KEY=nvapi-your_nvidia_api_key_here
-
-# Tavily AI Search (optional — DuckDuckGo runs free with zero keys)
-TAVILY_API_KEY=tvly-your_tavily_api_key_here
-
-# ── MongoDB Connection ────────────────────────────────────────────────────────
-# Option 1 (Recommended Local): Native MongoDB
-MONGODB_URI=mongodb://localhost:27017
-# Option 2: MongoDB Atlas Cloud:
-# MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/trustrag?retryWrites=true&w=majority
-
-# ── Qdrant Vector Store ───────────────────────────────────────────────────────
-# Option 1 (Recommended Local): Embedded in-process Rust engine (no Docker needed):
-QDRANT_URL=local
-# Option 2 (Docker / Server): http://localhost:6333
-# Option 3 (Qdrant Cloud):    https://<cluster-id>.<region>.aws.cloud.qdrant.io
-# (QDRANT_API_KEY only for Cloud.)
-```
-
-> 💡 **Optional rate-limit tuning** (defaults are local-friendly; override per deploy):
-> `RATE_LIMIT_ANALYSES_PER_MINUTE=10`, `RATE_LIMIT_AUTH_PER_MINUTE=20`,
-> `RATE_LIMIT_UPLOAD_PER_MINUTE=10`, `RATE_LIMIT_URL_INGEST_PER_MINUTE=10`.
-> Set `CACHE_DIR` to relocate the shared SQLite embedding + semantic JSON caches
-> (default `apps/api/data/cache`).
-
----
-
-### Zero-API-Key Local Mode (DuckDuckGo + Local BGE)
-
-Want to run TRUSTRAG with **zero external API calls for search and embeddings**?
-1. Keep the `huggingface` embedding default in `apps/api/config/models.yaml`.
-   - The system automatically loads `BAAI/bge-small-en-v1.5` locally in CPU memory.
-2. Toggle **DuckDuckGo** in the Playground Web Search drawer.
-   - Live internet grounding runs completely free without needing any Tavily API key!
-3. Use a local LLM (`llama_cpp` + `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`, or Ollama) for
-   reasoning — no `GEMINI_API_KEY` / `NVIDIA_API_KEY` needed. Cloud keys are
-   only required when `models.yaml` selects a cloud provider.
-
-### Platform Setup (run once before Option A/B)
+Pick your operating system and run the commands. This installs everything TrustRAG needs.
 
 <details>
-<summary><b>macOS (Apple Silicon)</b></summary>
+<summary><b>macOS (Apple Silicon or Intel)</b></summary>
 
 ```bash
-# Tooling
-brew update && brew install git node python llama.cpp ollama mongodb-community
+# 1. Xcode command line tools (if not already installed)
+xcode-select --install
+
+# 2. Homebrew (the macOS package manager)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# 3. Core tools
+brew install git python@3.11 node mongodb-community ollama
+
+# 4. Start MongoDB (runs in background on boot)
 brew services start mongodb-community
 
-# Models
-ollama pull gemma3:1b                  # 815MB — default local LLM
-# llama.cpp (GGUF cache): place LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M under ~/.cache/llama.cpp,
-# then launch: ./scripts/start_local_llm.sh  (auto Metal GPU offload)
+# 5. Start Ollama (runs in background)
+brew services start ollama
+
+# 6. Pull the default local LLM (~815MB)
+ollama pull gemma3:1b
+
+# 7. (Optional) llama.cpp — for GGUF models
+#    Option A: Install via Homebrew
+brew install llama.cpp
+
+#    Option B: Build from source for latest features
+git clone https://github.com/ggml-org/llama.cpp /tmp/llama.cpp
+cd /tmp/llama.cpp
+cmake -B build -DGGML_NATIVE=on
+cmake --build build -j$(sysctl -n hw.ncpu)
+# The binary is at build/bin/llama-server — add to PATH or use the full path
 ```
 
 </details>
@@ -508,374 +185,411 @@ ollama pull gemma3:1b                  # 815MB — default local LLM
 <summary><b>Linux (Ubuntu / Debian)</b></summary>
 
 ```bash
-# Tooling
-sudo apt update && sudo apt install -y git nodejs npm python3.12 python3.12-venv
-# MongoDB:
-sudo apt install -y mongodb-org && sudo systemctl enable --now mongod
+# 1. System packages
+sudo apt update && sudo apt install -y \
+  git python3.11 python3.11-venv python3-pip \
+  build-essential cmake curl jq
 
-# Ollama (daemon)
-curl -fsSL https://ollama.com/install.sh | sh && ollama serve &
-ollama pull gemma3:1b                  # 815MB — default local LLM
+# 2. Node.js 20+ (via NodeSource)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
 
-# llama.cpp — build (~2 min) or grab a release zip:
-sudo apt install -y build-essential curl unzip
-git clone https://github.com/ggml-org/llama.cpp && cd llama.cpp
-cmake -B build -DGGML_NATIVE=on && cmake --build build -j$(nproc)
-# binary at build/bin/llama-server. Back in repo root:
-./scripts/start_local_llm.sh   # auto-detects nvidia via nvidia-smi for CUDA
+# 3. MongoDB 7.0
+curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
+  sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
+echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] \
+  https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
+  sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+sudo apt update && sudo apt install -y mongodb-org
+sudo systemctl enable --now mongod
+
+# 4. Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+# Start the daemon in background
+ollama serve &
+sleep 2
+
+# 5. Pull the default local LLM (~815MB)
+ollama pull gemma3:1b
+
+# 6. (Optional) llama.cpp — build from source
+git clone https://github.com/ggml-org/llama.cpp /tmp/llama.cpp
+cd /tmp/llama.cpp
+cmake -B build -DGGML_NATIVE=on
+cmake --build build -j$(nproc)
+# Binary at build/bin/llama-server — add to PATH or use the full path
 ```
 
 </details>
 
 <details>
-<summary><b>Windows 11 (PowerShell, winget)</b></summary>
+<summary><b>Windows 11 (PowerShell + winget)</b></summary>
 
 ```powershell
-# Tooling
-winget install --id Git.Git OpenJS.NodeJS Python.Python.3.12 MongoDB.CommunityServer Ollama.Ollama
-Start-Service MongoDB
-ollama serve &
-ollama pull gemma3:1b                  # 815MB — default local LLM
+# 1. Install core tools via winget
+winget install --id Git.Git -e --source winget
+winget install --id OpenJS.NodeJS.LTS -e --source winget
+winget install --id Python.Python.3.12 -e --source winget
+winget install --id MongoDB.CommunityServer -e --source winget
+winget install --id Ollama.Ollama -e --source winget
 
-# llama.cpp GGUF: grab a prebuilt release zip containing llama-server.exe
-# (https://github.com/ggml-org/llama.cpp/releases) and add it to PATH.
-# Then run the project helper from Git Bash (bundled with Git for Windows):
-#   bash scripts/start_local_llm.sh
+# 2. Restart your terminal, then verify
+python --version
+node --version
+git --version
+
+# 3. Start MongoDB
+#    Open PowerShell as Administrator:
+Get-Service MongoDB | Start-Service
+
+# 4. Start Ollama (opens a background terminal)
+ollama serve
+
+# 5. In a NEW terminal, pull the default LLM (~815MB)
+ollama pull gemma3:1b
+
+# 6. (Optional) llama.cpp — download a prebuilt release
+#    Go to: https://github.com/ggml-org/llama.cpp/releases
+#    Download the latest Windows zip (e.g. llama-*-bin-win-x64.zip)
+#    Extract it and add the folder to your system PATH
+#    Verify: llama-server --help
 ```
+
+> **Note for Windows users:** TrustRAG uses bash scripts (`scripts/start_local_llm.sh`, `scripts/setup.sh`). Install **Git for Windows** (which includes Git Bash) and run those scripts from Git Bash, not PowerShell. The Python/Node commands work in both.
 
 </details>
 
-After the platform pass, continue with the **Environment Configuration** below — `cp .env.example .env`, fill `JWT_SECRET`, then `python3 scripts/apply_ports.py --check` to confirm nothing drifted.
+---
 
-### Embedding Weights (one-time, any OS)
+### Step 2 — Clone and configure
 
-The default local embedding model `BAAI/bge-small-en-v1.5` (~120MB) downloads once via HuggingFace Hub and is cached at `~/.cache/huggingface`. Nothing to run manually — the API warms it at first boot. Use `HF_TOKEN` only if you hit hub rate limits during that download.
+```bash
+# Clone the repo
+git clone https://github.com/MaithreshVaddi-27/TrustRAG.git
+cd TrustRAG
 
-### Option A: Running Locally with Native Resources (Recommended)
+# Create your local environment file
+cp .env.example .env
 
-This is the fastest, lightest method for development on macOS/Linux. It bypasses Docker Desktop's 4GB RAM overhead and boots in under 1 second.
+# Generate a JWT secret (required for authentication)
+python3 -c "import secrets; print(secrets.token_hex(64))"
 
-1. **Verify Local MongoDB**:
-   ```bash
-   # Ensure local MongoDB is running (e.g. via Homebrew on macOS)
-   brew services start mongodb-community
-   ```
+# Copy that output into your .env file as JWT_SECRET
+# Open .env in your editor and paste it:
+#   JWT_SECRET=<the output from above>
+```
 
-2. **Start the local LLM server (llama.cpp)** — required while `AI_PROVIDER=llama_cpp`:
-
-   ```bash
-   ./scripts/start_local_llm.sh
-   # Detects Metal (Apple Silicon) or CUDA automatically and applies
-   # GPU offload + memory-tiered context limits. Uses the model configured
-   # in apps/api/config/models.yaml (llm.model_llamacpp).
-   ```
-
-   (Or run `ollama serve` instead if `AI_PROVIDER=ollama`.)
-
-3. **Discover local models (optional but recommended)**:
-   ```bash
-   # Snapshot installed Ollama / llama.cpp models so every model is selectable
-   # in the UI from the very first request:
-   apps/api/.venv/bin/python scripts/discover_local_models.py
-   ```
-
-4. **Start Backend Service (Embedded Qdrant)**:
-   ```bash
-   cd apps/api
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -e ".[dev]"
-
-   # Launch FastAPI with hot-reload (automatically mounts embedded Qdrant in ./data/qdrant)
-   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-   ```
-
-5. **Verify Health Endpoint**:
-   ```bash
-   curl -s http://localhost:8000/api/v1/health | jq
-   ```
-   *Expected Response:*
-   ```json
-   {
-     "status": "ok",
-     "app": "TRUSTRAG",
-     "version": "0.1.0",
-     "services": {
-       "mongodb": "ok",
-       "qdrant": "ok"
-     }
-   }
-   ```
-
-6. **Start Frontend Workbench**:
-   ```bash
-   cd apps/web
-   npm install
-   npm run dev
-   ```
-
-   Open your browser at **http://localhost:5173**.
+> **Tip:** Run the setup checker to see if you missed anything:
+> ```bash
+> ./scripts/setup.sh
+> ```
+> It'll tell you exactly what's missing and how to fix it.
 
 ---
 
-### Option B: Running with Docker Compose
+### Step 3 — Start services
 
-For multi-container or staging testing:
+You have two options: **Native** (recommended for development — faster, lighter) or **Docker** (good for staging/production testing).
 
-1. **Start Backend, Vector Store & MongoDB Bridge**:
-   ```bash
-   docker compose up -d
-   ```
+#### Option A: Native (recommended)
 
-2. **Start Frontend**:
-   ```bash
-   cd apps/web
-   npm install
-   npm run dev
-   ```
+Open **three terminal tabs**:
+
+**Terminal 1 — Local LLM server (pick one):**
+
+```bash
+# Using Ollama (easiest — just make sure it's running)
+ollama serve    # if not already running via brew services / systemctl
+
+# OR using llama.cpp (auto-detects Metal on Mac, CUDA on Linux)
+./scripts/start_local_llm.sh
+```
+
+**Terminal 2 — Backend API:**
+
+```bash
+cd apps/api
+
+# Create virtual environment (first time only)
+python3 -m venv .venv
+source .venv/bin/activate        # Windows Git Bash: source .venv/Scripts/activate
+pip install -e ".[dev]"
+
+# Optional: discover installed models so they show up in the UI immediately
+python ../../scripts/discover_local_models.py
+
+# Start the server (hot-reload enabled)
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Terminal 3 — Frontend:**
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+#### Option B: Docker Compose
+
+```bash
+# Start backend + Qdrant + MongoDB
+docker compose up -d
+
+# Start frontend separately (not in docker-compose)
+cd apps/web
+npm install
+npm run dev
+```
 
 ---
 
-## 💻 End-to-End Walkthrough via CLI
+### Step 4 — Open the UI
 
-You can interact with TRUSTRAG directly using `curl`:
+Open **http://localhost:5173** in your browser. You'll see the TrustRAG workbench.
 
-### Step 1: Register & Authenticate
+1. **Register** a new account (first time only).
+2. **Create a Knowledge Base** and upload some documents (.pdf, .txt, .md, .docx, .csv, .json, .html).
+3. **Ask a question** — TrustRAG will retrieve evidence, generate an answer, verify every claim, and show you exactly what it found.
+
+The default local model is `gemma3:1b` via Ollama (or `LiquidAI/LFM2.5-1.2B-Instruct-GGUF` via llama.cpp). Both run on your CPU — no GPU required.
+
+---
+
+## Running with Docker
+
+If you prefer Docker for the backend services:
+
+```bash
+# Start backend (FastAPI + Qdrant + MongoDB)
+docker compose up -d
+
+# Check health
+curl -s http://localhost:8000/api/v1/health | jq
+
+# Stop everything
+docker compose down
+```
+
+The frontend always runs locally via `npm run dev` (it's not in docker-compose).
+
+---
+
+## Try it from the command line
+
+No UI needed — here's the full flow via `curl`:
 
 ```bash
 BASE=http://localhost:8000/api/v1
 
-# 1. Register account
+# 1. Register
 curl -s -X POST $BASE/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"engineer@company.com","password":"Password123!","full_name":"Lead Engineer"}' | jq
+  -d '{"email":"you@example.com","password":"Password123!","full_name":"Your Name"}'
 
-# 2. Authenticate and obtain JWT
+# 2. Login (grab the token)
 TOKEN=$(curl -s -X POST $BASE/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"engineer@company.com","password":"Password123!"}' \
+  -d '{"email":"you@example.com","password":"Password123!"}' \
   | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
 
-echo "Authenticated JWT: ${TOKEN:0:28}..."
-```
-
-### Step 2: Create a Knowledge Base
-
-```bash
-KB_RESPONSE=$(curl -s -X POST $BASE/knowledge-bases \
+# 3. Create a knowledge base
+KB_ID=$(curl -s -X POST $BASE/knowledge-bases \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name":"Service Policies","description":"Customer policy agreements"}')
+  -d '{"name":"My Documents","description":"Test KB"}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
 
-KB_ID=$(echo $KB_RESPONSE | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
-echo "Knowledge Base ID: $KB_ID"
-```
-
-### Step 3: Ingest a Document
-
-Create sample documentation with temporal validity metadata:
-
-```bash
-cat << 'EOF' > /tmp/sample_policy.txt
+# 4. Upload a document
+cat << 'EOF' > /tmp/sample.txt
 Effective from: 2026-01-01
 Effective until: 2026-12-31
 
-# Enterprise Refund Policy
-Customers on an Annual Contract are eligible for a full refund within 30 days of purchase.
-Monthly subscriptions can be canceled at any time with immediate effect.
-Data backups are retained for 90 days following account deactivation.
+# Refund Policy
+Annual contract customers can get a full refund within 30 days.
+Monthly subscriptions can be canceled anytime with immediate effect.
+Data backups are retained for 90 days after deactivation.
 EOF
 
-# Upload document
-DOC_RESPONSE=$(curl -s -X POST $BASE/knowledge-bases/$KB_ID/documents \
+curl -s -X POST $BASE/knowledge-bases/$KB_ID/documents \
   -H "Authorization: Bearer $TOKEN" \
-  -F "file=@/tmp/sample_policy.txt;type=text/plain")
+  -F "file=@/tmp/sample.txt;type=text/plain"
 
-DOC_ID=$(echo $DOC_RESPONSE | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
-echo "Document Uploaded. ID: $DOC_ID"
-```
-
-### Step 4: Execute Agentic Analysis
-
-#### Option 1: Standard Document Analysis
-```bash
-# Allow ~1-2s for indexing
-sleep 2
-
-# Submit query to the LangGraph reliability loop
-ANALYSIS=$(curl -s -X POST $BASE/analyses \
+# 5. Ask a question
+sleep 2  # let indexing finish
+ANALYSIS_ID=$(curl -s -X POST $BASE/analyses \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"What is the refund policy for annual contracts?\"}")
+  -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"What is the refund policy?\"}" \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
 
-ANALYSIS_ID=$(echo $ANALYSIS | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
-echo "Analysis Run Initiated. ID: $ANALYSIS_ID"
-```
-
-#### Option 2: Live Web Search Grounding (MCP)
-```bash
-# Submit query augmented with live internet citations (Tavily, DuckDuckGo, or Both)
-ANALYSIS_WEB=$(curl -s -X POST $BASE/analyses \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"knowledge_base_id\": \"$KB_ID\",
-    \"query\": \"What is the latest revenue for NVIDIA in 2025?\",
-    \"enable_web_search\": true,
-    \"web_search_provider\": \"both\"
-  }")
-
-ANALYSIS_ID=$(echo $ANALYSIS_WEB | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
-echo "Web-Grounded Analysis Run Initiated. ID: $ANALYSIS_ID"
-```
-
-### Step 5: Stream Live Execution Telemetry
-
-```bash
-# Connect to live Server-Sent Events stream
+# 6. Stream the live execution trace
 curl -N "$BASE/analyses/$ANALYSIS_ID/stream?token=$TOKEN"
-```
 
-### Step 6: Inspect Results & Provenance
-
-```bash
-# 1. Fetch grounded answer and reliability verdict
+# 7. Get the final answer
 curl -s $BASE/analyses/$ANALYSIS_ID -H "Authorization: Bearer $TOKEN" | jq
-
-# 2. Inspect verified claims
-curl -s $BASE/analyses/$ANALYSIS_ID/claims -H "Authorization: Bearer $TOKEN" | jq
-
-# 3. View retrieved evidence and SHA-256 integrity status
-curl -s $BASE/analyses/$ANALYSIS_ID/evidence -H "Authorization: Bearer $TOKEN" | jq
 ```
 
 ---
 
-## 📡 API Reference
+## Architecture
 
-All protected endpoints require `Authorization: Bearer <JWT>`.
-
-| Method | Path | Access | Description |
-|---|---|---|---|
-| `GET` | `/api/v1/health` | Public | Live readiness probe checking MongoDB and Qdrant vector store |
-| `POST` | `/api/v1/auth/register` | Public | User registration (rate-limited: 20/min) |
-| `POST` | `/api/v1/auth/login` | Public | Credential verification & JWT issuance |
-| `POST` | `/api/v1/auth/logout` | User | Revoke the current JWT server-side (deny-list + TTL expiry) — a signed-out token can never be reused |
-| `GET` | `/api/v1/auth/me` | User | Fetch authenticated user profile |
-| `GET` | `/api/v1/knowledge-bases` | User | List all Knowledge Bases owned by current user |
-| `POST` | `/api/v1/knowledge-bases` | User | Create a new Knowledge Base |
-| `DELETE` | `/api/v1/knowledge-bases/{id}` | User | Cascade-delete a Knowledge Base, all its documents, chunks, and vectors |
-| `POST` | `/api/v1/knowledge-bases/{id}/documents` | User | Upload document (`.pdf`, `.txt`, `.md`, `.docx`, `.csv`, `.json`, `.html`, ≤20MB) for chunking and vector indexing |
-| `GET` | `/api/v1/knowledge-bases/{id}/documents` | User | List documents in a Knowledge Base |
-| `GET` | `/api/v1/documents/{id}` | User | Fetch single document metadata |
-| `DELETE` | `/api/v1/documents/{id}` | User | Delete single document, associated MongoDB chunks, and Qdrant points |
-| `POST` | `/api/v1/analyses` | User | Trigger LangGraph agentic analysis pipeline (rate-limited: 10/min) |
-| `GET` | `/api/v1/analyses` | User | List analysis history for authenticated user |
-| `GET` | `/api/v1/analyses/{id}` | User | Fetch analysis details, answer, reliability score, and diagnosis |
-| `GET` | `/api/v1/analyses/{id}/detail` | User | Single-round-trip finalize payload (analysis + claims + evidence + trace) |
-| `GET` | `/api/v1/analyses/{id}/export` | User | Export complete verifiable JSON / JSON-LD audit dossier |
-| `POST` | `/api/v1/analyses/{id}/stream-ticket` | User | Issue 60s single-use SSE ticket (JWTs never go in stream URLs) |
-| `GET` | `/api/v1/analyses/{id}/stream` | User | Server-Sent Events (SSE) live telemetry stream (ticket required) |
-| `GET` | `/api/v1/models/providers` | User | Provider status, discovered models, hardware profile (preset sync) |
-| `GET` | `/api/v1/models/hardware` | User | Hardware acceleration and resource health profile |
-| `POST` | `/api/v1/models/memory/trim` | User | Trigger proactive heap compaction and GC |
-| `GET` | `/api/v1/analyses/{id}/claims` | User | Fetch decomposed claims and NLI verification states |
-| `GET` | `/api/v1/analyses/{id}/evidence` | User | Fetch retrieved evidence chunks with provenance and integrity status |
-| `GET` | `/api/v1/conflicts` | User | Fetch all claim contradictions and compromised evidence for the user |
-| `GET` | `/api/v1/experiments` | User | List objective RAG benchmark evaluation experiments |
-| `POST` | `/api/v1/experiments` | User | Record an evaluation experiment run |
-
-Interactive Swagger documentation is available at `http://localhost:8000/docs` in development mode.
+```
+TrustRAG/
+├── apps/
+│   ├── api/                        # FastAPI backend
+│   │   ├── app/
+│   │   │   ├── agent/              # LangGraph state machine & recovery loop
+│   │   │   ├── api/                # Routers, auth, Pydantic schemas
+│   │   │   ├── core/               # Config, logging, security, model registry
+│   │   │   ├── db/                 # MongoDB (async) & Qdrant clients
+│   │   │   ├── generation/         # LLM prompts and grounded generation
+│   │   │   ├── ingestion/          # PDF/DOCX/TXT/MD/CSV/JSON/HTML parsers, chunker
+│   │   │   ├── retrieval/          # Dense search, BM25, RRF fusion
+│   │   │   ├── services/           # Business logic: KB, analysis, auth
+│   │   │   └── verification/       # Batch NLI verifier & SHA-256 auditor
+│   │   ├── config/models.yaml      # Model IDs, thresholds, tuning
+│   │   └── tests/                  # 191 tests (all passing)
+│   │
+│   └── web/                        # React 18 + Vite 6 frontend
+│       ├── src/
+│       │   ├── components/         # ClaimInspector, EvidenceViewer, ExecutionTrace
+│       │   ├── layouts/            # AppLayout, Sidebar, AuthGuard
+│       │   ├── pages/              # 11 lazy-loaded pages
+│       │   └── lib/                # API client, auth store, SSE streaming
+│       └── package.json
+│
+├── scripts/
+│   ├── discover_local_models.py    # Pre-boot model discovery snapshot
+│   ├── start_local_llm.sh          # Hardware-aware llama-server launcher
+│   ├── apply_ports.py              # Propagate port changes everywhere
+│   ├── setup.sh                    # Prerequisite checker
+│   └── clear_qdrant.py             # Qdrant collection purge utility
+│
+├── config/ports.yaml               # Single source of truth for service ports
+├── docker-compose.yml              # Backend + Qdrant + MongoDB
+└── .env.example                    # Environment template
+```
 
 ---
 
-## 🧪 Testing & Quality Assurance
+## Technology stack
 
-TRUSTRAG enforces automated quality checks across both backend and frontend layers, all wired into GitHub Actions:
+| Layer | What | Details |
+|---|---|---|
+| **Frontend** | React 18 + Vite 6 | Tailwind CSS, Motion springs, dark glassmorphic theme |
+| **Backend** | FastAPI + Python 3.11 | Async REST API, Pydantic v2, SSE streaming |
+| **Local LLMs** | Ollama / llama.cpp | `gemma3:1b` (Ollama) or `LiquidAI/LFM2.5-1.2B` (llama.cpp) |
+| **Cloud LLMs** | Gemini / NVIDIA NIM | Optional — for when you want cloud-scale reasoning |
+| **Embeddings** | BAAI/bge-small-en-v1.5 | 384d local CPU vectors, zero API cost |
+| **Vector Store** | Qdrant | Embedded Rust engine, INT8 quantization, on-disk vectors |
+| **Database** | MongoDB 7.0 | Metadata, chunks, claims, execution traces |
+| **Agent Protocol** | MCP (JSON-RPC 2.0) | Universal tool interface for AI coding agents |
+| **State Machine** | LangGraph | Multi-node adaptive recovery loop |
+| **Auth** | JWT + Bcrypt | HS256 tokens, 12-round hashing, rate limiting |
 
-**Backend — 191 tests, ruff-clean (check + format):**
+---
+
+## Testing
+
+TrustRAG has 191 backend tests, 21 frontend tests, and 2 E2E tests — all passing.
+
+**Backend:**
 ```bash
 cd apps/api
-.venv/bin/python -m pytest tests/ -q --no-header --no-cov   # 191 passed
-.venv/bin/python -m ruff check app/ tests/                  # All checks passed!
-.venv/bin/python -m ruff format --check app/ tests/         # formatted
-```
-Includes **rate-limiter threshold tests** (`tests/test_rate_limit.py`) asserting `429 Too Many Requests` once the per-minute auth ceiling is exceeded, alongside **model-discovery regression tests** (`tests/test_local_llm.py`, `tests/test_config.py`) covering snapshot round-trips, live-merge cache seeding, and discovered-model validator acceptance.
+source .venv/bin/activate
 
-**Frontend — 23 tests (21 Vitest unit/component + 2 Playwright E2E), 0 lint errors:**
+# Run all tests
+pytest tests/ -q
+
+# Lint
+ruff check app/ tests/
+ruff format --check app/ tests/
+```
+
+**Frontend:**
 ```bash
 cd apps/web
-npm run test          # Vitest unit & component tests
-npm run test:e2e      # Playwright E2E smoke (requires backend on :8000 — starts Vite preview + Chromium for you)
+
+# Unit & component tests
+npm run test
+
+# E2E tests (starts backend + browser automatically)
+npm run test:e2e
+
+# Lint & type check
 npm run lint
+
+# Production build
 npm run build
 ```
-Frontend coverage includes the **SSE recovery contract** (`src/lib/api.test.js`): on stream-ticket failure the UI gets `onError` and falls back to polling, the JWT never appears in the stream URL, terminal events close the stream, keep-alive pings are ignored, and mid-flight stream errors are surfaced.
 
-**E2E coverage** (`apps/web/e2e/auth.spec.js`) verifies the critical user path against a live backend: unauthenticated route guard, API health, registration, UI login, session persistence, and **server-side JWT revocation** after `POST /auth/logout` (SEC-H1).
-
-**Load testing** (`load-test/smoke.js`) runs a k6 ramp (5→10 VUs, ~3,300 requests / 35s) against `health` + an authenticated knowledge-base read — matching the exact request pattern of live dashboard usage:
+**Load testing (requires k6):**
 ```bash
-k6 run load-test/smoke.js                     # default: http://localhost:8000
-API_BASE_URL=http://localhost:8000 k6 run load-test/smoke.js
+k6 run load-test/smoke.js
+# Thresholds: <1% failures, p95 < 300ms, p99 < 500ms
 ```
-Gated on exit code + thresholds: **<1% failed requests, p95 < 300ms, p99 < 500ms**. Locally verified: 0.00% failures, p95 ≈ 9ms.
 
-**CI pipeline** (`.github/workflows/ci.yml`):
-| Job | Checks |
+---
+
+## Troubleshooting
+
+**MongoDB won't connect:**
+```bash
+# macOS
+brew services start mongodb-community
+
+# Linux
+sudo systemctl enable --now mongod
+
+# Windows (PowerShell as Admin)
+Get-Service MongoDB | Start-Service
+
+# Verify it's running
+mongosh --eval "db.runCommand({ ping: 1 })"
+```
+
+**Ollama not responding:**
+```bash
+# Check if it's running
+curl http://localhost:11434/api/tags
+
+# If not, start it
+ollama serve    # or: brew services start ollama (macOS)
+```
+
+**Port already in use:**
+```bash
+# Find what's using the port
+lsof -i :8000     # macOS/Linux
+netstat -ano | findstr :8000    # Windows
+
+# Kill it or change the port in config/ports.yaml
+```
+
+**Qdrant port confusion:**
+When running via Docker, Qdrant maps host port `6335` to container port `6333`. From your host, use `http://localhost:6335`. Inside Docker, services talk directly to `http://qdrant:6333`.
+
+**Embedding model download on first boot:**
+The BGE embedding model (~120MB) downloads automatically from HuggingFace on the first API startup. It's cached at `~/.cache/huggingface` after that. If you hit rate limits, set `HF_TOKEN` in your `.env`.
+
+---
+
+## Documentation
+
+| Document | What's in it |
 |---|---|
-| `backend-lint` | `ruff check` + `ruff format --check` |
-| `backend-test` | Full 191-test pytest suite + `models.yaml` config validation |
-| `frontend-lint` | ESLint + 21 Vitest tests |
-| `frontend-build` | Production bundle compilation (artifact uploaded) |
-| `e2e` | MongoDB service + live API + Chromium Playwright smoke **+ k6 load smoke** (artifacts on failure) |
-| `docker-build` | Multi-stage image build **+ Trivy HIGH/CRITICAL vulnerability gate** |
+| [Architecture](docs/architecture/architecture.md) | Technical design of the LangGraph state machine, hybrid search, claim decomposition |
+| [Decision Log](docs/architecture/decision-log.md) | 20 ADRs explaining technology choices and tradeoffs |
+| [Security Controls](docs/security/security-controls.md) | JWT auth, anti-IDOR, SSRF defense, defensive headers |
+| [Threat Model](docs/security/threat-model.md) | STRIDE analysis, attack surface, countermeasures |
+| [Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md) | Production container setup, cloud hosting, env management |
+| [System Audit](docs/audits/comprehensive_system_audit.md) | Multi-disciplinary evaluation: systems, security, AI/ML, QA |
+| [Audit Report](docs/AUDIT_REPORT.md) | Engineering quality report — zero open defects |
+| [Roadmap](docs/ROADMAP.md) | Milestones, completed phases, upcoming work |
 
 ---
 
-## ❓ Troubleshooting & FAQ
+## License
 
-### 1. MongoDB connectivity errors
-- **Issue**: `ServerSelectionTimeoutError: host.docker.internal:27017`
-- **Solution**: Ensure local MongoDB community is running on macOS:
-  ```bash
-  brew services list
-  brew services start mongodb-community
-  ```
-  Check that MongoDB listens on `127.0.0.1:27017` in `/opt/homebrew/etc/mongod.conf`.
-
-### 2. Qdrant port mappings
-- **Issue**: Port `6333` conflict on host.
-- **Solution**: In `docker-compose.yml`, Qdrant exposes host port `6335:6333`. Connect from host tools at `http://localhost:6335`. Inside the Docker network, containers communicate directly via `http://qdrant:6333`.
-
-### 3. Gemini API 429 Quota Exhaustion
-- **Issue**: `RESOURCE_EXHAUSTED` error during high-frequency testing.
-- **Solution**: TRUSTRAG employs single-pass batch verification (`batch_verify_claims_nli`), reducing LLM calls from $O(N)$ claims to a single prompt. If running bulk experiments on the free tier, stay within Gemini's 15 RPM limit.
-
-### 4. Embedding model initial container startup
-- **Issue**: First container boot takes ~90 seconds.
-- **Solution**: On the first start, the API container downloads the local embedding model (`all-MiniLM-L6-v2`, ~90MB) and caches it in the `model_cache` volume. Subsequent container boots are instantaneous.
-
----
-
-## 📚 Documentation Index
-
-- 📊 [**Master Architecture & Systems Audit (`docs/audits/comprehensive_system_audit.md`)**](docs/audits/comprehensive_system_audit.md) — Multi-disciplinary evaluation across Systems, Security, AI/ML, and QA.
-- 📋 [**Senior Engineering Audit Report (`docs/AUDIT_REPORT.md`)**](docs/AUDIT_REPORT.md) — Comprehensive technical quality report with zero open defects across P0–P3.
-- 🔎 [**Model Discovery & Hardening Audit (`docs/audits/2026-09-08_model_discovery_and_hardening_audit.md`)**](docs/audits/2026-09-08_model_discovery_and_hardening_audit.md) — Local-model discovery pipeline, validator allowlist sync, and the cache/thread-safety hardening pass.
-- 🛡️ [**Security & DevSecOps Audit (`docs/ui-redesign-audit/SECURITY.md`)**](docs/ui-redesign-audit/SECURITY.md) — Physical collection isolation, anti-IDOR defense, SSRF protection, and cryptographic SHA-256 provenance.
-- 🧠 [**AI/ML Performance & Latency Audit (`docs/ui-redesign-audit/AI-ML.md`)**](docs/ui-redesign-audit/AI-ML.md) — Matryoshka 384d MRL embeddings, hybrid RRF search, and zero local GPU RAM operation.
-- 🧪 [**Quality Assurance Testing Report (`docs/ui-redesign-audit/QA.md`)**](docs/ui-redesign-audit/QA.md) — Automated tests across whitebox, blackbox, and E2E test suites.
-- 🏛️ [**System Architecture (`docs/architecture/architecture.md`)**](docs/architecture/architecture.md) — Comprehensive technical design of the LangGraph state machine, hybrid search, and claim decomposition.
-- 📐 [**Decision Log (`docs/architecture/decision-log.md`)**](docs/architecture/decision-log.md) — Architectural Decision Records (ADRs) explaining technology selections and tradeoffs.
-- 🛡️ [**Security Controls (`docs/security/security-controls.md`)**](docs/security/security-controls.md) — Deep dive into JWT authentication, anti-IDOR validation, and defensive headers.
-- 🔒 [**Threat Model (`docs/security/threat-model.md`)**](docs/security/threat-model.md) — STRIDE threat modeling, attack surface analysis, and countermeasure matrix.
-- 🚀 [**Deployment Guide (`docs/deployment/DEPLOYMENT_GUIDE.md`)**](docs/deployment/DEPLOYMENT_GUIDE.md) — Production container orchestration, cloud hosting, and environment management.
-- 📑 [**UI Redesign Audit Suite (`docs/ui-redesign-audit/INDEX.md`)**](docs/ui-redesign-audit/INDEX.md) — Complete audit suite index for the modern dark workbench frontend.
-- 🗺️ [**Product Roadmap (`docs/ROADMAP.md`)**](docs/ROADMAP.md) — Milestones, completed phases, and upcoming releases.
-
----
-
-## 📄 License
-
-This project is licensed under the terms of the [MIT License](LICENSE).
+MIT — see [LICENSE](LICENSE).
