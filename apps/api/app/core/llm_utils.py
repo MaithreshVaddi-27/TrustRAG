@@ -96,7 +96,6 @@ def build_structured_output_runnable(
             (temperature, max_tokens, etc.).
     """
     schema_dict = schema.model_json_schema()
-    schema_json = json.dumps(schema_dict, indent=2)
     props = schema_dict.get("properties", {})
     template = {k: f"<{v.get('type', 'value')}>" for k, v in props.items()}
     template_str = json.dumps(template)
@@ -109,11 +108,16 @@ def build_structured_output_runnable(
         else:
             msgs = list(input_messages)
 
+        # NOTE: only the key list + shape template are sent — never the full
+        # JSON-schema dump ($defs, titles, descriptions). The dump added KBs
+        # of schema jargon that sub-2B local models echoed back as prose or
+        # truncated mid-output, failing validation on every NLI call while
+        # simple schemas (decomposition) happened to survive. Keys + shape
+        # is sufficient for both local and cloud models.
         instruction = (
             f"\n\nYou MUST respond ONLY with valid JSON using the keys"
             f" {list(props.keys())}.\n"
             f"Required JSON structure:\n{template_str}\n"
-            f"Full schema reference:\n{schema_json}\n"
             "Return raw JSON only, without markdown fences, explanation, "
             "or meta-schema wrapper."
         )

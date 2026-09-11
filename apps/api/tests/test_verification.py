@@ -216,13 +216,19 @@ async def test_batch_verification_retried_once_before_individual_fallback(
 async def test_individual_nli_fallback_is_capped(
     mock_decompose, mock_batch_verify, mock_individual
 ):
-    """Persistent batch failure → bounded individual calls, rest NEUTRAL (never inflated)."""
+    """Persistent batch failure → every claim attempted individually, none auto-skipped.
+
+    Regression guard for production incident f407e23e: fallback budget (5) was
+    smaller than max_verification_claims (8), so trailing claims went NEUTRAL
+    without ever being tried. Budget must cover all claims.
+    """
     from bson import ObjectId
 
     from app.core.config import get_model_config
 
     cap = int(get_model_config().max_individual_nli_fallback)
-    assert cap > 0
+    max_claims = int(get_model_config().max_verification_claims)
+    assert cap >= max_claims, "fallback budget must cover every verifiable claim"
     sentences = [
         f"The policy term number {i} permits refunds within thirty days." for i in range(8)
     ]
@@ -247,11 +253,9 @@ async def test_individual_nli_fallback_is_capped(
         )
 
     assert len(claims) == 8
-    assert mock_individual.call_count == cap
-    assert [c["state"] for c in claims[:cap]] == ["SUPPORTED"] * cap
-    rest = claims[cap:]
-    assert rest and all(c["state"] == "NEUTRAL" for c in rest)
-    assert all("budget" in c["explanation"] for c in rest)
+    assert mock_individual.call_count == 8
+    assert [c["state"] for c in claims] == ["SUPPORTED"] * 8
+    assert all("budget" not in c["explanation"] for c in claims)
 
 
 def test_extract_claim_triple_heuristics():

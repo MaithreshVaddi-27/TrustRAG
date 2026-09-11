@@ -286,6 +286,27 @@ def test_sanitize_rewritten_query_strips_instruction_echo():
     assert _sanitize_rewritten_query("What are the steps of IRS?") == ("What are the steps of IRS?")
 
 
+def test_sanitize_rewritten_query_rejects_full_instruction_echo():
+    """A rewrite echoing the prompt body must collapse to empty (→ original query)."""
+    from app.agent.graph import _sanitize_rewritten_query
+
+    # Observed production echo from gemma3:1b (analysis f407e23e).
+    assert (
+        _sanitize_rewritten_query(
+            "Expand acronyms/abbreviations to full forms and add synonyms. "
+            "Summarize main findings and takeaways."
+        )
+        == ""
+    )
+    assert _sanitize_rewritten_query("Your task: rewrite the query to search") == ""
+    assert _sanitize_rewritten_query("Findings <ORIGINAL_QUERY> foo </ORIGINAL_QUERY>") == ""
+    # Genuine concise rewrites still pass through untouched.
+    assert (
+        _sanitize_rewritten_query("decision tree confidence measures tutorial")
+        == "decision tree confidence measures tutorial"
+    )
+
+
 def test_rewrite_prompts_have_no_tax_agency_example():
     """The acronym example must not bias IRS toward Internal Revenue Service."""
     source = inspect.getsource(recovery_node)

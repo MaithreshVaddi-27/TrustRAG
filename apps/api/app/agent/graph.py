@@ -813,7 +813,50 @@ def _sanitize_rewritten_query(raw: str | None) -> str:
         if lowered.startswith(prefix):
             text = text[len(prefix) :].strip().strip("\"'`")
             lowered = text.lower()
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    if _looks_like_instruction_echo(text):
+        return ""
+    return text
+
+
+# Small local models sometimes echo the rewrite *instructions* instead of a
+# query (observed: "Expand acronyms/abbreviations to full forms and add
+# synonyms. Summarize main findings..."). Searching that literally pollutes
+# retrieval with junk tokens, so detect the echo and return "" so the caller
+# falls back to the original query via its existing empty-rewrite path.
+_ECHO_MARKERS = (
+    "original_query",
+    "original query",
+    "missing_claims",
+    "missing claims",
+    "missing facts",
+    "output only",
+    "no markdown",
+    "never reply empty",
+    "<original",
+    "</",
+)
+_ECHO_PREFIXES = (
+    "expand acronyms",
+    "rewrite the query",
+    "your task",
+    "you are a",
+)
+
+
+def _looks_like_instruction_echo(text: str) -> bool:
+    """True when a rewrite looks like echoed prompt instructions, not a query."""
+    if not text:
+        return False
+    lowered = text.lower()
+    if any(m in lowered for m in _ECHO_MARKERS):
+        return True
+    if any(lowered.startswith(p) for p in _ECHO_PREFIXES):
+        return True
+    # Rewrites are 5-12 words; a 20+ word paragraph is echoed instructions.
+    if len(text.split()) > 20:
+        return True
+    return False
 
 
 async def recovery_node(state: AgentState) -> AgentState:

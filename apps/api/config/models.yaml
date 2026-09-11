@@ -16,7 +16,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 runtime:
-  config_version: "1.5"
+  config_version: "1.6"
 
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
@@ -133,8 +133,10 @@ recovery:
 cost_controls:
   max_input_tokens: 100000          # Hard limit per LLM call
   max_verification_claims: 8        # Small models choke on 20; 8 keeps NLI focused
-  max_individual_nli_fallback: 5    # Cap per-claim LLM verifications when batch NLI
-                                    # fails (each is a full call); remainder → NEUTRAL
+  max_individual_nli_fallback: 8    # Must cover max_verification_claims (8): when
+                                     # batch NLI fails, every claim is still attempted
+                                     # individually instead of auto-NEUTRAL trailing
+                                     # claims that were never even tried.
   enable_response_caching: true     # Semantic response caching enabled
 
 # ─── Inference Acceleration & KV Cache Optimization ───────────────────────────
