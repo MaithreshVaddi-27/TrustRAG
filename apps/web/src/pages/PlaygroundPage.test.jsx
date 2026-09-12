@@ -72,4 +72,16 @@ describe('PlaygroundPage engine selection', () => {
       screen.getAllByText((_, el) => el?.textContent?.includes('LFM2.5-1.2B-Instruct')).length
     ).toBeGreaterThan(0)
   })
+
+  it('shows the offline warning when the providers query fails', async () => {
+    // Regression: a failed /models/providers query left an empty model list
+    // with no explanation. The offline banner must render instead.
+    const { modelService } = await import('@/services/api')
+    vi.mocked(modelService.getProviders).mockRejectedValueOnce(new Error('backend down'))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Inference server offline')).toBeTruthy()
+    })
+  })
 })

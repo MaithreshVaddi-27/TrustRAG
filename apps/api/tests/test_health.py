@@ -77,6 +77,45 @@ def test_health_detailed_reports_rss_and_metrics():
         app.dependency_overrides.clear()
 
 
+def test_providers_endpoint_degrades_on_status_check_failure():
+    """A crashing status check must degrade to a stub, never a 500.
+
+    Otherwise the Playground renders an empty model list with no offline
+    warning (the exact reported regression).
+    """
+    from app.api.deps import get_current_user
+
+    app.dependency_overrides[get_current_user] = lambda: {"_id": "u1"}
+    try:
+        with (
+            patch(
+                "app.api.v1.models.check_ollama_status",
+                AsyncMock(
+                    return_value={
+                        "connected": False,
+                        "provider": "ollama",
+                        "models": [],
+                        "default_model": "",
+                    }
+                ),
+            ),
+            patch(
+                "app.api.v1.models.check_llamacpp_status",
+                AsyncMock(side_effect=RuntimeError("discovery exploded")),
+            ),
+        ):
+            response = client.get("/api/v1/models/providers")
+            assert response.status_code == 200
+            data = response.json()
+            llama = data["providers"]["llama_cpp"]
+            assert llama["connected"] is False
+            assert llama["models"] == []
+            assert llama["default_model"] == ""
+            assert "error" in llama
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_no_fastapi_deprecation_warning_on_requests():
     """Regression: custom default_response_class (ORJSONResponse) warned per request.
 

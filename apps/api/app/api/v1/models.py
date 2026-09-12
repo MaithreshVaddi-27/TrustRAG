@@ -15,8 +15,40 @@ from app.core.local_llm import (
     check_llamacpp_status,
     check_ollama_status,
 )
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/models", tags=["models"])
+
+
+async def _safe_provider_status(check_fn, base_url: str, provider: str) -> dict[str, Any]:
+    """Run a provider status check without ever raising.
+
+    The Playground renders its model dropdown AND the offline warning from
+    this endpoint: a 500 here means an empty list with no warning, which reads
+    as a broken UI. Degrade to an explicit disconnected stub instead.
+    """
+    try:
+        return await check_fn(base_url)
+    except Exception as exc:
+        logger.warning("Provider status check failed; degrading to stub", provider=provider)
+        return {
+            "connected": False,
+            "provider": provider,
+            "base_url": base_url,
+            "models": [],
+            "default_model": "",
+            "error": str(exc)[:200],
+        }
+
+
+def _safe_hardware_profile() -> dict[str, Any]:
+    try:
+        return get_cached_hardware_profile()
+    except Exception as exc:
+        logger.warning("Hardware profile failed; degrading to empty", error=str(exc))
+        return {}
 
 
 @router.get("/providers", summary="Get status of AI providers and available models")
@@ -33,13 +65,18 @@ async def get_providers_endpoint(
     settings = get_settings()
     cfg = get_model_config()
 
-    ollama_info = await check_ollama_status(settings.ollama_base_url)
-    llamacpp_info = await check_llamacpp_status(settings.llamacpp_base_url)
+    ollama_info = await _safe_provider_status(
+        check_ollama_status, settings.ollama_base_url, "ollama"
+    )
+    llamacpp_info = await _safe_provider_status(
+        check_llamacpp_status, settings.llamacpp_base_url, "llama_cpp"
+    )
 
     # Use only discovered models from the status checks — no hardcoded fallbacks.
-    # If a provider is disconnected, its model list will be empty.
-    # Embeddings are local-only (HuggingFace BGE) — cloud embedding providers
-    # were removed, so ingestion and retrieval work fully offline.
+    # Offline providers still list cached/installable models (with
+    # connected:false) so the UI can show the offline warning + refresh path
+    # instead of an empty dropdown. Embeddings are local-only — cloud
+    # embedding providers were removed, so ingestion works fully offline.
     embedding_providers = {
         "huggingface": {
             "name": "Local Hugging Face (PyTorch / BGE)",
@@ -116,7 +153,7 @@ async def get_providers_endpoint(
             },
         },
         "embedding_providers": embedding_providers,
-        "hardware": get_cached_hardware_profile(),
+        "hardware": _safe_hardware_profile(),
     }
 
 

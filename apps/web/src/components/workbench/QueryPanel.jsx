@@ -43,6 +43,7 @@ export function QueryPanel({
   availableModels,
   availableEmbeddingModels,
   refetchProviders,
+  providersUnresolved = false,
   selectedKb,
   knowledgeBases,
   kbEmbeddingPin,
@@ -167,7 +168,7 @@ export function QueryPanel({
             </div>
 
             <AnimatePresence>
-            {(selectedProvider === 'ollama' || selectedProvider === 'llama_cpp') && activeProviderInfo && !activeProviderInfo.connected && (
+            {(selectedProvider === 'ollama' || selectedProvider === 'llama_cpp') && (providersUnresolved || (activeProviderInfo && !activeProviderInfo.connected)) && (
               <motion.div
                 role="alert"
                 initial={{ opacity: 0, y: -6 }}

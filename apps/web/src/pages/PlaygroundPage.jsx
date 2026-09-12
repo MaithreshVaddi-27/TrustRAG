@@ -51,7 +51,12 @@ export default function PlaygroundPage() {
     }
   }, [knowledgeBases, kbId])
 
-  const { data: providersData, refetch: refetchProviders } = useQuery({
+  const {
+    data: providersData,
+    refetch: refetchProviders,
+    isLoading: providersLoading,
+    isError: providersError,
+  } = useQuery({
     queryKey: ['model-providers'],
     queryFn: modelService.getProviders,
     // Re-poll every 8s so a model installed while the page is open (e.g. after
@@ -59,6 +64,10 @@ export default function PlaygroundPage() {
     // in the dropdown without a page reload.
     refetchInterval: 8000,
   })
+  // Providers query failed (backend unreachable for /models/*): treat local
+  // providers as status-unknown so the offline warning still renders instead
+  // of an empty dropdown with no explanation. Suppressed while loading.
+  const providersUnresolved = !providersLoading && providersError && !providersData
 
   const [selectedProvider, setSelectedProvider] = useState('llama_cpp')
   const [selectedModel, setSelectedModel] = useState('LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M')
@@ -379,6 +388,7 @@ const activeProviderInfo = providersData?.providers?.[selectedProvider]
           availableModels={availableModels}
           availableEmbeddingModels={availableEmbeddingModels}
           refetchProviders={refetchProviders}
+          providersUnresolved={providersUnresolved}
           selectedKb={selectedKb}
           knowledgeBases={knowledgeBases}
           kbEmbeddingPin={kbEmbeddingPin}

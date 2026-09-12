@@ -1,7 +1,7 @@
 # TRUSTRAG — Project Roadmap & Remaining Steps
 
 > Last updated: 2026-09-12  
-> Current status: All 12 core phases complete + Post-Launch Quality & Audit Cycle complete (v1 → v4) + ultra-low RAM + ONNX + claims-hardening + fusion passes. **215 backend tests, 21 frontend Vitest, 2 Playwright E2E, k6 load smoke — 100% pass rate.** Active and upcoming work below.
+> Current status: All 12 core phases complete + Post-Launch Quality & Audit Cycle complete (v1 → v4) + ultra-low RAM + ONNX + claims-hardening + fusion passes. **216 backend tests, 22 frontend Vitest, 2 Playwright E2E, k6 load smoke — 100% pass rate.** Active and upcoming work below.
 
 ---
 

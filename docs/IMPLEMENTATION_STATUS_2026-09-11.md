@@ -3,7 +3,7 @@
 **Date:** 2026-09-11 → 2026-09-12  
 **Session:** Unified Senior Audit → Implementation Pass (≤2-day fixes from audit §11A) + **ONNX BGE Runtime** + **Claims verification hardening** + **Decompose+verify fusion** + **Push-readiness docs pass**  
 **Baseline Audit:** `docs/audits/2026-09-11_unified_senior_audit.md`  
-**Test State:** Backend 215/215 ✅ | Frontend 21/21 + lint + build ✅ | ruff check + format clean ✅ | Bandit 0 issues ✅ | k6 + Playwright green ✅ | Docker image boots ✅
+**Test State:** Backend 216/216 ✅ | Frontend 22/22 + lint + build ✅ | ruff check + format clean ✅ | Bandit 0 issues ✅ | k6 + Playwright green ✅ | Docker image boots ✅
 
 ---
 
@@ -202,6 +202,20 @@ Source: `docs/audits/2026-09-11_unified_senior_audit.md`. Already-fixed items re
 - Frontend #5 type scale was already complete (verified); #4 materials got the missing bright top-edge light + heavier nav shadow (stacking hierarchy was already correct).
 
 **Tests:** 204 → **215** (self-heal batching, branch-timeout pair, tier sizes, NLI metric delta, RSS/metrics health, 5 internal-schema contracts). Non-hermetic risk closed: verification suite proven with llama-server DOWN.
+
+### 11. Offline-warning regression hardening (2026-09-12)
+**Report:** with the local model server off, the amber "Inference server offline" warning stopped appearing and the model list was empty.
+
+**Investigation:** reproduced offline with both servers down — the backend contract was already correct (`connected:false` + cached models listed, verified live). The failure mode that produces exactly these symptoms is `/models/providers` itself failing (then `providersData` is undefined: empty dropdown AND the warning's `activeProviderInfo` guard hides the banner).
+
+| File | Change |
+|------|--------|
+| `app/api/v1/models.py` | `_safe_provider_status()` + `_safe_hardware_profile()`: the endpoint can never 500 on discovery — a crashing check degrades to an explicit disconnected stub. Stale comment corrected. |
+| `apps/web/.../PlaygroundPage.jsx` | `providersUnresolved` (query errored, not loading, no data) passed to QueryPanel. |
+| `apps/web/.../QueryPanel.jsx` | Offline banner also renders on `providersUnresolved`, not only on explicit `connected:false`. |
+| Tests | Backend endpoint-degradation test; frontend failed-query warning test. |
+
+**Result:** 216 backend + 22 frontend green. If the symptom persists on your machine after pulling, restart the backend (`uvicorn` without `--reload` serves stale code) and hard-refresh the frontend (stale bundle) — the served code paths are verified.
 
 ## NEXT SESSION START POINT
 
