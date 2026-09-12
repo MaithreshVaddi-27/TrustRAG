@@ -23,6 +23,11 @@ from app.ingestion.sparse_vector import generate_sparse_vector
 
 logger = get_logger(__name__)
 
+# Per-branch retrieval timeout (s): one hung branch (dense embeddings or sparse
+# search) degrades to the other branch's results instead of eating the whole
+# 60 s hybrid budget. Both branches timing out is a hard outage.
+RETRIEVAL_BRANCH_TIMEOUT = 45.0
+
 
 # ─── Query Ambiguity Detection ──────────────────────────────────────────────
 # Detects ambiguous queries using score entropy and adjusts retrieval depth.
@@ -451,17 +456,34 @@ async def retrieve_hybrid_chunks(
 
     # Run dense + sparse searches concurrently with a hard budget so a
     # hung embedding/Qdrant call cannot pin a worker (OPT: local-LLM load).
+    # Each branch ALSO has its own 45 s cap: without it, one hung branch eats
+    # the whole 60 s budget and discards the healthy branch's results. A lone
+    # timed-out branch degrades to the other branch's results; both timing
+    # out is still a hard outage (never silently "no evidence").
+    async def _branch(coro, name: str) -> tuple[list[dict[str, Any]], bool]:
+        try:
+            return await asyncio.wait_for(coro, timeout=RETRIEVAL_BRANCH_TIMEOUT), False
+        except TimeoutError:
+            logger.warning(
+                f"{name} retrieval branch timed out; degrading to other branch",
+                timeout_s=RETRIEVAL_BRANCH_TIMEOUT,
+            )
+            return [], True
+
     try:
-        dense_res, sparse_res = await asyncio.wait_for(
+        (dense_res, dense_timed_out), (sparse_res, sparse_timed_out) = await asyncio.wait_for(
             asyncio.gather(
-                dense_search(
-                    query,
-                    kb_id,
-                    top_k=dense_top,
-                    embedding_provider=embedding_provider,
-                    embedding_model=embedding_model,
+                _branch(
+                    dense_search(
+                        query,
+                        kb_id,
+                        top_k=dense_top,
+                        embedding_provider=embedding_provider,
+                        embedding_model=embedding_model,
+                    ),
+                    "dense",
                 ),
-                sparse_search(query, kb_id, top_k=sparse_top),
+                _branch(sparse_search(query, kb_id, top_k=sparse_top), "sparse"),
             ),
             timeout=60.0,
         )
@@ -471,6 +493,13 @@ async def retrieve_hybrid_chunks(
         raise RetrievalOutageError(
             "Hybrid retrieval timed out (dense+sparse budget 60s)", detail=str(exc)
         ) from exc
+    if dense_timed_out and sparse_timed_out:
+        from app.core.exceptions import RetrievalOutageError
+
+        raise RetrievalOutageError(
+            "Hybrid retrieval timed out (both dense+sparse branches, "
+            f"{RETRIEVAL_BRANCH_TIMEOUT:g}s each)"
+        )
 
     # Fuse ranks
     fused = reciprocal_rank_fusion(dense_res, sparse_res, k=cfg.rrf_k)

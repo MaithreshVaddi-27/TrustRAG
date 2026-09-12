@@ -4,6 +4,7 @@ Unit tests for the hybrid dense + sparse retriever.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -219,3 +220,47 @@ async def test_retrieve_hybrid_chunks_propagates_outage_not_empty():
     ):
         with pytest.raises(RetrievalOutageError):
             await retrieve_hybrid_chunks("outage probe query epsilon", "kb_outage_4")
+
+
+@pytest.mark.asyncio
+async def test_hybrid_degrades_to_healthy_branch_on_timeout(monkeypatch):
+    """One hung branch must not discard the healthy branch's results."""
+    from app.retrieval import retriever
+
+    monkeypatch.setattr(retriever, "RETRIEVAL_BRANCH_TIMEOUT", 0.05)
+
+    async def slow_dense(*args, **kwargs):
+        await asyncio.sleep(60)
+        return []
+
+    sparse_point = MagicMock()
+    sparse_point.id = "sparse-1"
+    sparse_point.score = 0.7
+    sparse_point.payload = {"text": "sparse hit"}
+    with (
+        patch("app.retrieval.retriever.dense_search", AsyncMock(side_effect=slow_dense)),
+        patch("app.retrieval.retriever.sparse_search", AsyncMock(return_value=[sparse_point])),
+    ):
+        res = await retrieve_hybrid_chunks("degraded branch probe", "kb_degraded_1")
+
+    assert len(res) == 1
+    assert res[0]["text"] == "sparse hit"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_both_branches_timeout_is_outage(monkeypatch):
+    """Both branches hung → hard outage, never silent 'no evidence'."""
+    from app.retrieval import retriever
+
+    monkeypatch.setattr(retriever, "RETRIEVAL_BRANCH_TIMEOUT", 0.05)
+
+    async def slow(*args, **kwargs):
+        await asyncio.sleep(60)
+        return []
+
+    with (
+        patch("app.retrieval.retriever.dense_search", AsyncMock(side_effect=slow)),
+        patch("app.retrieval.retriever.sparse_search", AsyncMock(side_effect=slow)),
+    ):
+        with pytest.raises(RetrievalOutageError, match="both"):
+            await retrieve_hybrid_chunks("outage probe query zeta", "kb_outage_5")

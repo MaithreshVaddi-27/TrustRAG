@@ -574,6 +574,35 @@ def test_batch_all_bare_ints_yields_empty_map():
     assert b.verdicts == []
 
 
+@pytest.mark.asyncio
+async def test_nli_batch_total_failures_metric_counts():
+    """Audit HIGH follow-up: total batch failures are counted, not just logged."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.verification.verifier import batch_verify_claims_nli, get_nli_metrics
+
+    before = get_nli_metrics()["batch_total_failures"]
+
+    mock_structured = MagicMock()
+    mock_structured.ainvoke = AsyncMock(side_effect=RuntimeError("model blew up"))
+    mock_model = MagicMock()
+    mock_model.with_structured_output = MagicMock(return_value=mock_structured)
+    with patch("app.verification.verifier.get_verification_model", return_value=mock_model):
+        for _ in range(2):
+            try:
+                await batch_verify_claims_nli(
+                    ["Claim one."],
+                    [{"text": "Segment one."}],
+                    provider="llama_cpp",
+                    context_str="Segment one.",
+                )
+            except RuntimeError:
+                pass
+
+    after = get_nli_metrics()["batch_total_failures"]
+    assert after - before == 2
+
+
 # ─── Fused decompose+verify (one call instead of decompose → batch) ──────────
 
 

@@ -92,3 +92,30 @@ def test_memory_utilities():
     guard = check_and_enforce_memory_guard(max_rss_mb=100000.0)
     assert "rss_mb" in guard
     assert guard["status"] == "healthy"
+
+
+def test_ingest_embed_batch_size_follows_tier():
+    """Audit MEDIUM backend-3: lean 32 / standard 64 / high 128, safe default."""
+    from unittest.mock import patch
+
+    from app.core.hardware import get_ingest_embed_batch_size
+
+    for tier, expected in [
+        ("lean_cpu", 32),
+        ("lean_accelerated", 32),
+        ("standard_cpu", 64),
+        ("standard_accelerated", 64),
+        ("high_performance", 128),
+        ("unknown-tier", 64),
+    ]:
+        with patch(
+            "app.core.hardware.get_cached_hardware_profile",
+            return_value={"tier": tier},
+        ):
+            assert get_ingest_embed_batch_size() == expected
+
+    with patch(
+        "app.core.hardware.get_cached_hardware_profile",
+        side_effect=RuntimeError("probe failed"),
+    ):
+        assert get_ingest_embed_batch_size() == 64

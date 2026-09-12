@@ -176,10 +176,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.warning("Hardware profile warmup deferred", error=str(hw_err))
 
     async def _async_warmup() -> None:
-        # Live-refresh discovery (fast CLI subprocesses) alongside the heavier
-        # embedding warmup and hardware probe; discovery re-persists the snapshot
-        # so already-running processes / future restarts stay in sync.
-        await asyncio.gather(_warmup_embeddings(), _warmup_hardware(), seed_local_model_discovery())
+        # Sequenced, not gathered: fast CLI discovery → hardware probe →
+        # embedding load (heaviest, ~1 GB torch). The old gather() let three
+        # heavy startups contend on first boot; RSS around each step turns the
+        # next OOM report into a breakdown instead of a guess. Discovery still
+        # re-persists the snapshot so already-running processes stay in sync.
+        from app.core.memory import get_memory_usage_mb
+
+        logger.info("Startup warmup: discovery", rss_mb=get_memory_usage_mb())
+        await seed_local_model_discovery()
+        logger.info("Startup warmup: hardware", rss_mb=get_memory_usage_mb())
+        await _warmup_hardware()
+        logger.info("Startup warmup: embeddings", rss_mb=get_memory_usage_mb())
+        await _warmup_embeddings()
+        logger.info("Startup warmup complete", rss_mb=get_memory_usage_mb())
 
     warmup_task = asyncio.create_task(_async_warmup())
 

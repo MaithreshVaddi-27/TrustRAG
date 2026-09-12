@@ -31,6 +31,10 @@ from app.verification.verifier import execute_claim_verification, is_refusal_ans
 
 logger = get_logger(__name__)
 
+# H-BE-5: self-heal re-index batch size. A 10 k-chunk heal embeds + upserts in
+# slices of this many chunks so peak RAM stays flat regardless of KB size.
+SELF_HEAL_BATCH_SIZE = 128
+
 
 # ─── LangGraph State Definition ──────────────────────────────────────────────
 
@@ -291,7 +295,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                     chunks = (
                         await chunks_coll.find({"knowledge_base_id": ObjectId(state["kb_id"])})
                         .sort("chunk_index", 1)
-                        .to_list(10_000)  # Support large KBs; pipeline.py batches upserts anyway
+                        .to_list(10_000)  # Support large KBs; embedded below in batches
                     )
 
                     doc_coll = get_collection(Collections.DOCUMENTS)
@@ -305,48 +309,68 @@ async def retrieval_node(state: AgentState) -> AgentState:
                         ):
                             doc_map[str(d_obj["_id"])] = d_obj.get("filename", "document")
 
-                    contextual_texts = [
-                        f"[{doc_map.get(str(c['document_id']), 'document')} | "
-                        f"{c.get('zone', 'body').upper()}] {c['text']}"
-                        for c in chunks
-                    ]
                     embed_model = get_embedding_model(
                         provider=state.get("embedding_provider"),
                         model=state.get("embedding_model"),
                     )
-                    dense_vectors = await asyncio.to_thread(
-                        embed_model.embed_documents, contextual_texts
-                    )
-
-                    sync_points = []
-                    for i, c in enumerate(chunks):
-                        doc_id_str = str(c["document_id"])
-                        chunk_zone = c.get("zone", "body")
-                        sparse_vec = generate_sparse_vector(contextual_texts[i], zone=chunk_zone)
-                        point_id = hashlib_qdrant_id(doc_id_str, c["chunk_index"])
-                        payload = {
-                            "document_id": doc_id_str,
-                            "knowledge_base_id": state["kb_id"],
-                            "user_id": str(c.get("user_id", "")),
-                            "chunk_index": c["chunk_index"],
-                            "page": c.get("page", 1),
-                            "character_offset": c.get("character_offset", 0),
-                            "zone": chunk_zone,
-                            "text": c["text"],
-                        }
-                        sync_points.append(
-                            models.PointStruct(
-                                id=point_id,
-                                vector={
-                                    "": dense_vectors[i],
-                                    "sparse-text": models.SparseVector(
-                                        indices=sparse_vec["indices"], values=sparse_vec["values"]
-                                    ),
-                                },
-                                payload=payload,
-                            )
+                    # H-BE-5: embed + upsert in bounded batches so a 10 k-chunk
+                    # self-heal never holds all vectors/points in RAM at once.
+                    # Progress events keep the trace UI honest on long heals
+                    # (the feed compacts consecutive same-type events).
+                    total_chunks = len(chunks)
+                    for batch_start in range(0, total_chunks, SELF_HEAL_BATCH_SIZE):
+                        batch = chunks[batch_start : batch_start + SELF_HEAL_BATCH_SIZE]
+                        batch_texts = [
+                            f"[{doc_map.get(str(c['document_id']), 'document')} | "
+                            f"{c.get('zone', 'body').upper()}] {c['text']}"
+                            for c in batch
+                        ]
+                        batch_vectors = await asyncio.to_thread(
+                            embed_model.embed_documents, batch_texts
                         )
-                    await q_client.upsert(collection_name=col_name, points=sync_points)
+                        sync_points = []
+                        for i, c in enumerate(batch):
+                            doc_id_str = str(c["document_id"])
+                            chunk_zone = c.get("zone", "body")
+                            sparse_vec = generate_sparse_vector(batch_texts[i], zone=chunk_zone)
+                            point_id = hashlib_qdrant_id(doc_id_str, c["chunk_index"])
+                            payload = {
+                                "document_id": doc_id_str,
+                                "knowledge_base_id": state["kb_id"],
+                                "user_id": str(c.get("user_id", "")),
+                                "chunk_index": c["chunk_index"],
+                                "page": c.get("page", 1),
+                                "character_offset": c.get("character_offset", 0),
+                                "zone": chunk_zone,
+                                "text": c["text"],
+                            }
+                            sync_points.append(
+                                models.PointStruct(
+                                    id=point_id,
+                                    vector={
+                                        "": batch_vectors[i],
+                                        "sparse-text": models.SparseVector(
+                                            indices=sparse_vec["indices"],
+                                            values=sparse_vec["values"],
+                                        ),
+                                    },
+                                    payload=payload,
+                                )
+                            )
+                        await q_client.upsert(collection_name=col_name, points=sync_points)
+                        await add_trace_event(
+                            state["analysis_id"],
+                            "retrieval.self_heal_batch",
+                            {
+                                "message": (
+                                    f"Self-heal re-indexed "
+                                    f"{min(batch_start + SELF_HEAL_BATCH_SIZE, total_chunks)}"
+                                    f"/{total_chunks} chunks"
+                                ),
+                                "completed": min(batch_start + SELF_HEAL_BATCH_SIZE, total_chunks),
+                                "total": total_chunks,
+                            },
+                        )
                     candidates = await retrieve_hybrid_chunks(**retrieve_kwargs)
                 elif points_count == 0 and mongo_chunks_count == 0:
                     logger.warning("Knowledge base collection is empty", kb_id=state["kb_id"])
@@ -661,6 +685,12 @@ async def verification_node(state: AgentState) -> AgentState:
     answer = state["answer"]
 
     if not answer or answer == "ABSTAIN" or is_refusal_answer(answer):
+        # Refusal-gate hit log (tuning signal: which answers skip NLI entirely).
+        logger.info(
+            "Refusal gate hit: skipping claim verification",
+            answer_len=len(answer) if answer else 0,
+            has_chunks=bool(state.get("chunks")),
+        )
         state["claims"] = []
         state["reliability_score"] = None
         state["diagnosis_type"] = "RETRIEVAL_FAILURE"

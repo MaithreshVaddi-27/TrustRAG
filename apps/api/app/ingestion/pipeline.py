@@ -126,7 +126,9 @@ async def _index_parsed_chunks(
 
         # Use async batch embedding (aembed_documents) for 2.87x speedup
         # The CachedEmbeddingsWrapper handles disk cache lookup and batching internally
-        embed_batch_size = 50  # Larger batches for async embedding
+        from app.core.hardware import get_ingest_embed_batch_size
+
+        embed_batch_size = get_ingest_embed_batch_size()
         dense_vectors = []
         for offset in range(0, len(contextual_texts), embed_batch_size):
             batch_slice = contextual_texts[offset : offset + embed_batch_size]

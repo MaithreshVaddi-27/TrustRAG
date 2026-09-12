@@ -8,15 +8,57 @@ intended for communication between TrustRAG microservices (workers, gateways, et
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
+from bson import ObjectId
 from fastapi import APIRouter, Depends, status
+from pydantic import BaseModel, field_validator
 
 from app.api.deps import require_service_permission
 from app.core.security import create_service_token
 from app.services.kb_service import add_document
 
 router = APIRouter(prefix="/internal", tags=["internal"])
+
+
+class InternalDocumentIngest(BaseModel):
+    """Strict body for service-triggered ingestion (422, never 500, on bad input)."""
+
+    filename: str
+    file_size: int
+    content_hash: str
+    user_id: str
+    effective_from: datetime | None = None
+    effective_until: datetime | None = None
+
+    @field_validator("user_id")
+    @classmethod
+    def _valid_user_id(cls, value: str) -> str:
+        if not ObjectId.is_valid(value):
+            raise ValueError("user_id must be a valid ObjectId")
+        return value
+
+    @field_validator("file_size")
+    @classmethod
+    def _non_negative_size(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("file_size must be non-negative")
+        return value
+
+
+class InternalUrlIngest(BaseModel):
+    """Strict body for service-triggered URL ingestion."""
+
+    url: str
+    user_id: str | None = None
+
+    @field_validator("user_id")
+    @classmethod
+    def _valid_user_id(cls, value: str | None) -> str | None:
+        if value is not None and not ObjectId.is_valid(value):
+            raise ValueError("user_id must be a valid ObjectId")
+        return value
 
 
 # ─── Service Token Management ─────────────────────────────────────────────────
@@ -55,25 +97,28 @@ async def generate_service_token_endpoint(
 )
 async def internal_ingest_document(
     kb_id: str,
-    document_data: dict[str, Any],
+    document_data: InternalDocumentIngest,
     current_service: Mapping[str, Any] = Depends(require_service_permission("ingest:write")),
 ) -> dict[str, Any]:
     """
     Trigger document ingestion from an internal service (e.g., worker, scheduler).
 
-    Requires ingest:write permission.
+    Requires ingest:write permission. Malformed bodies are rejected with 422
+    (the strict schema above); tenant binding of service tokens remains a
+    tracked hardening item (M-2) — the KB-ownership check inside add_document
+    is the current cross-tenant backstop.
     """
     service_name = current_service.get("sub")
 
     # Add document metadata
     doc = await add_document(
         kb_id_str=kb_id,
-        filename=document_data["filename"],
-        file_size=document_data["file_size"],
-        content_hash=document_data["content_hash"],
-        user_id_str=document_data["user_id"],
-        effective_from=document_data.get("effective_from"),
-        effective_until=document_data.get("effective_until"),
+        filename=document_data.filename,
+        file_size=document_data.file_size,
+        content_hash=document_data.content_hash,
+        user_id_str=document_data.user_id,
+        effective_from=document_data.effective_from,
+        effective_until=document_data.effective_until,
     )
 
     return {
@@ -90,7 +135,7 @@ async def internal_ingest_document(
 )
 async def internal_ingest_url(
     kb_id: str,
-    url_data: dict[str, Any],
+    url_data: InternalUrlIngest,
     current_service: Mapping[str, Any] = Depends(require_service_permission("ingest:write")),
 ) -> dict[str, Any]:
     """
@@ -103,7 +148,7 @@ async def internal_ingest_url(
     # This would call the URL ingestion logic
     return {
         "status": "queued",
-        "url": url_data["url"],
+        "url": url_data.url,
         "triggered_by": service_name,
     }
 

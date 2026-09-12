@@ -64,27 +64,28 @@ def export_bge_to_onnx() -> None:
     print(f"Exporting to {OUTPUT_PATH}...")
 
     # We need to export the full pipeline: tokenize -> transformer -> pooling -> normalize
-    # For simplicity, export the transformer + mean pooling, handle tokenization in Python
+    # For simplicity, export the transformer + pooling, handle tokenization in Python.
+    # CRITICAL: BAAI/bge-small-en-v1.5 uses CLS pooling (Pooling pooling_mode="cls"),
+    # NOT mean pooling. Exporting with mean pooling yields vectors at ~0.95 cosine
+    # to the true space — rankings mostly survive but absolute similarities shift,
+    # which corrupts thresholds and cross-provider cache keys. Match CLS exactly.
 
     class BGEOnnxWrapper(torch.nn.Module):
-        """Wrapper that includes transformer + mean pooling + normalization."""
+        """Wrapper that includes transformer + CLS pooling + normalization."""
 
-        def __init__(self, transformer, pooling_mode="mean"):
+        def __init__(self, transformer):
             super().__init__()
             self.transformer = transformer
-            self.pooling_mode = pooling_mode
 
         def forward(self, input_ids, attention_mask):
             outputs = self.transformer(input_ids=input_ids, attention_mask=attention_mask)
             token_embeddings = outputs.last_hidden_state  # (batch, seq_len, hidden)
 
-            # Mean pooling with attention mask
-            input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-            sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
-            sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
-            embeddings = sum_embeddings / sum_mask
+            # CLS pooling: first-token embedding (matches sentence-transformers
+            # Pooling with pooling_mode="cls" for BGE models)
+            embeddings = token_embeddings[:, 0]
 
-            # L2 normalize
+            # L2 normalize (matches Normalize module)
             embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
             return embeddings
 

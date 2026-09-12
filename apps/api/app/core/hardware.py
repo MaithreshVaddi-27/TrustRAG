@@ -168,6 +168,24 @@ def get_system_memory_info() -> dict[str, Any]:
     }
 
 
+# Audit MEDIUM backend-3: ingest embedding batch size follows the RAM tier so
+# lean hosts never hold a 50-vector torch batch while high-RAM hosts get
+# throughput (lean 32 / standard 64 / high 128).
+_INGEST_EMBED_BATCH_BY_TIER = (("lean", 32), ("standard", 64), ("high", 128))
+
+
+def get_ingest_embed_batch_size(default: int = 64) -> int:
+    """Return the tier-appropriate ingest embedding batch size."""
+    try:
+        tier = str(get_cached_hardware_profile().get("tier", ""))
+        for prefix, size in _INGEST_EMBED_BATCH_BY_TIER:
+            if tier.startswith(prefix):
+                return size
+    except Exception as exc:
+        logger.debug("Tier batch-size lookup failed; using default", error=str(exc))
+    return default
+
+
 def get_cached_hardware_profile() -> dict[str, Any]:
     """
     Get hardware profile with caching.

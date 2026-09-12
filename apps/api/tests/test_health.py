@@ -57,6 +57,26 @@ def test_health_detailed_requires_auth():
         assert response.status_code in (401, 403)
 
 
+def test_health_detailed_reports_rss_and_metrics():
+    """UL-8: authed detailed health carries current RSS + NLI metrics."""
+    from app.api.deps import get_current_user
+
+    app.dependency_overrides[get_current_user] = lambda: {"_id": "u1"}
+    try:
+        with (
+            patch("app.api.v1.health.mongo_health_check", AsyncMock(return_value=True)),
+            patch("app.api.v1.health.qdrant_health_check", return_value=True),
+        ):
+            response = client.get("/api/v1/health/detailed")
+            assert response.status_code == 200
+            data = response.json()
+            assert isinstance(data["rss_mb"], (int, float))
+            assert data["rss_mb"] >= 0
+            assert "batch_total_failures" in data["metrics"]["nli"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_no_fastapi_deprecation_warning_on_requests():
     """Regression: custom default_response_class (ORJSONResponse) warned per request.
 

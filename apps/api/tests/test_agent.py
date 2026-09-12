@@ -608,6 +608,135 @@ async def test_retrieval_node_self_heal_batches_doc_lookup(
     assert res["chunks"][0]["integrity_status"] == "VERIFIED"
 
 
+@patch("app.agent.graph.audit_evidence_integrity")
+@patch("app.agent.graph.rerank_candidate_chunks")
+@patch("app.agent.graph.retrieve_hybrid_chunks")
+@patch("app.agent.graph.get_collection")
+@pytest.mark.asyncio
+async def test_retrieval_node_self_heal_embeds_upserts_in_batches(
+    mock_collection, mock_retrieve, mock_rerank, mock_audit, monkeypatch
+):
+    """H-BE-5: 2 chunks with batch size 1 → 2 embed calls + 2 upserts + 2 progress events."""
+    from bson import ObjectId
+
+    monkeypatch.setattr("app.agent.graph.SELF_HEAL_BATCH_SIZE", 1)
+
+    doc_id_1 = ObjectId("64ee39d09c6292376e191981")
+    doc_id_2 = ObjectId("64ee39d09c6292376e191982")
+
+    mock_retrieve.side_effect = [
+        [],
+        [{"text": "reindexed segment", "document_id": str(doc_id_1)}],
+    ]
+    mock_rerank.side_effect = lambda _q, c, **kw: c
+    mock_audit.side_effect = lambda c: [{**seg, "integrity_status": "VERIFIED"} for seg in c]
+
+    stored_chunks = [
+        {
+            "document_id": doc_id_1,
+            "chunk_index": 0,
+            "text": "chunk one",
+            "zone": "body",
+            "user_id": "u1",
+            "page": 1,
+            "character_offset": 0,
+        },
+        {
+            "document_id": doc_id_2,
+            "chunk_index": 1,
+            "text": "chunk two",
+            "zone": "body",
+            "user_id": "u1",
+            "page": 1,
+            "character_offset": 0,
+        },
+    ]
+
+    class _FakeCursor:
+        def __init__(self, docs):
+            self._docs = docs
+
+        def __aiter__(self):
+            async def _gen():
+                for d in self._docs:
+                    yield d
+
+            return _gen()
+
+    chunks_coll = MagicMock()
+    chunks_coll.count_documents = AsyncMock(return_value=2)
+    chunks_coll.find.return_value.sort.return_value.to_list = AsyncMock(return_value=stored_chunks)
+    docs_coll = MagicMock()
+    docs_coll.find = MagicMock(
+        return_value=_FakeCursor(
+            [
+                {"_id": doc_id_1, "filename": "one.txt"},
+                {"_id": doc_id_2, "filename": "two.txt"},
+            ]
+        )
+    )
+    evidence_coll = MagicMock()
+    evidence_coll.insert_many = AsyncMock(
+        return_value=MagicMock(inserted_ids=[ObjectId("64ee39d09c6292376e191985")])
+    )
+
+    def fake_get_collection(name):
+        return {
+            "document_chunks": chunks_coll,
+            "documents": docs_coll,
+            "evidence": evidence_coll,
+        }[str(name).split(".")[-1]]
+
+    mock_collection.side_effect = fake_get_collection
+
+    mock_qdrant = MagicMock()
+    mock_qdrant.collection_exists = AsyncMock(return_value=True)
+    mock_qdrant.get_collection = AsyncMock(return_value=MagicMock(points_count=0))
+    mock_qdrant.upsert = AsyncMock()
+
+    mock_embed = MagicMock()
+    mock_embed.embed_documents = MagicMock(side_effect=[[[0.1] * 8], [[0.2] * 8]])
+
+    trace_mock = AsyncMock()
+    with (
+        patch("app.db.qdrant.get_qdrant_client", AsyncMock(return_value=mock_qdrant)),
+        patch("app.db.qdrant.init_kb_collection", AsyncMock()),
+        patch("app.core.model_registry.get_embedding_model", return_value=mock_embed),
+        patch(
+            "app.ingestion.sparse_vector.generate_sparse_vector",
+            return_value={"indices": [1], "values": [0.5]},
+        ),
+        patch("app.ingestion.pipeline.hashlib_qdrant_id", return_value="point-id"),
+        patch("app.agent.graph.add_trace_event", trace_mock),
+    ):
+        state = {
+            "analysis_id": "64ee39d09c6292376e191983",
+            "kb_id": "64ee39d09c6292376e191984",
+            "query": "original query",
+            "current_query": "original query",
+            "answer": None,
+            "chunks": [],
+            "evidence_ids": [],
+            "attempts": 0,
+            "verdict_status": "FAIL",
+            "recovery_strategy": None,
+        }
+        res = await retrieval_node(state)
+
+    # Two batches → two embed calls and two upserts (never one 10k shot).
+    assert mock_embed.embed_documents.call_count == 2
+    assert mock_qdrant.upsert.call_count == 2
+    progress = [
+        call for call in trace_mock.await_args_list if call.args[1] == "retrieval.self_heal_batch"
+    ]
+    assert len(progress) == 2
+    assert progress[0].args[2]["completed"] == 1
+    assert progress[0].args[2]["total"] == 2
+    assert progress[1].args[2]["completed"] == 2
+    assert progress[1].args[2]["total"] == 2
+    assert len(res["chunks"]) == 1
+
+
 @patch("app.agent.graph.add_trace_event", AsyncMock())
 @patch("app.agent.graph.generate_grounded_answer")
 @pytest.mark.asyncio

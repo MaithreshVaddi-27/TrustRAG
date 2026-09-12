@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -22,6 +23,24 @@ from app.core.model_registry import get_verification_model
 from app.db.mongodb import Collections, get_collection
 
 logger = get_logger(__name__)
+
+# ─── NLI batch-failure metric ────────────────────────────────────────────────
+# Counts batch-NLI calls that fail totally (raise → retry → individual
+# fallback). Exposed via /health/detailed for tuning the fused/two-step split.
+_NLI_METRICS_LOCK = threading.Lock()
+_NLI_BATCH_TOTAL_FAILURES = 0
+
+
+def _record_batch_total_failure() -> None:
+    global _NLI_BATCH_TOTAL_FAILURES
+    with _NLI_METRICS_LOCK:
+        _NLI_BATCH_TOTAL_FAILURES += 1
+
+
+def get_nli_metrics() -> dict[str, int]:
+    """Return NLI verification counters (batch_total_failures)."""
+    with _NLI_METRICS_LOCK:
+        return {"batch_total_failures": _NLI_BATCH_TOTAL_FAILURES}
 
 
 # ─── Meta-claim filter ─────────────────────────────────────────────────────────
@@ -683,6 +702,7 @@ async def batch_verify_claims_nli(
 
     except Exception as exc:
         logger.error("Batch NLI verification failed", error=str(exc))
+        _record_batch_total_failure()
         # Total batch failure raises (never poison rows): the caller's retry +
         # per-claim individual fallback is the designed recovery, and it only
         # runs when the map comes back empty. Returning all-NEUTRAL rows here

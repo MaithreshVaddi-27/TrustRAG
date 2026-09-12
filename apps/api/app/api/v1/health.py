@@ -73,6 +73,11 @@ async def health_detailed(current_user=Depends(get_current_user)) -> dict:
     cfg = get_model_config()
     settings = get_settings()
 
+    # Imported lazily: verifier pulls the LLM/model stack, which the public
+    # health path must never pay for.
+    from app.core.memory import get_memory_usage_mb
+    from app.verification.verifier import get_nli_metrics
+
     return {
         "status": overall_status,
         "timestamp": datetime.now(UTC).isoformat(),
@@ -83,4 +88,6 @@ async def health_detailed(current_user=Depends(get_current_user)) -> dict:
         "models": registry_status(),
         "hardware": get_cached_hardware_profile(),
         "supported_formats": cfg.supported_formats,
+        "rss_mb": get_memory_usage_mb(),
+        "metrics": {"nli": get_nli_metrics()},
     }

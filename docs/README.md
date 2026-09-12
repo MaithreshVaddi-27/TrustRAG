@@ -59,4 +59,4 @@ docs/
 - **Retrieval**: Qdrant (embedded local or cloud) + sparse BM25 + RRF; reranker runs on detected device (Metal/CUDA/CPU).
 - **Verification**: Batch NLI + per-claim fallback with tolerant parsing of small-model near-miss JSON (VERIFIED→SUPPORTED aliasing, segment coercion).
 - **Local LLM server**: start via `./scripts/start_local_llm.sh` (auto GPU offload + KV budget).
-- **Tests**: backend 204/204, frontend 21/21 + lint + build; ruff check + format clean.
+- **Tests**: backend 215/215, frontend 21/21 + lint + build; ruff check + format clean.

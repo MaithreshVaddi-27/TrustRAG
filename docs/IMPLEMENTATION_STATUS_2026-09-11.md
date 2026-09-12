@@ -3,7 +3,7 @@
 **Date:** 2026-09-11 → 2026-09-12  
 **Session:** Unified Senior Audit → Implementation Pass (≤2-day fixes from audit §11A) + **ONNX BGE Runtime** + **Claims verification hardening** + **Decompose+verify fusion** + **Push-readiness docs pass**  
 **Baseline Audit:** `docs/audits/2026-09-11_unified_senior_audit.md`  
-**Test State:** Backend 204/204 ✅ | Frontend 21/21 + lint + build ✅ | ruff check + format clean ✅ | Bandit 0 issues ✅ | k6 + Playwright green ✅ | Docker image boots ✅
+**Test State:** Backend 215/215 ✅ | Frontend 21/21 + lint + build ✅ | ruff check + format clean ✅ | Bandit 0 issues ✅ | k6 + Playwright green ✅ | Docker image boots ✅
 
 ---
 
@@ -181,6 +181,27 @@ print('ONNX embedding dims:', len(q))
 - `apps/api/tests/test_health.py` — Updated for public/detailed split (4 tests)
 
 ---
+
+### 10. Audit-driven bugfix pass — critical → high → medium (2026-09-12)
+Source: `docs/audits/2026-09-11_unified_senior_audit.md`. Already-fixed items re-verified against current code; only genuinely open findings changed.
+
+**CRITICAL remainder.**
+- CRIT-RAM-1 (torch floor): bounded registry, ONNX opt-in, batch writes, psutil guard all live. Remaining hard core (torch-by-default, embedded Qdrant) is architectural — tracked, not forced.
+- **Latent correctness bug found & fixed:** the ONNX export used **mean pooling while BGE-small uses CLS pooling** (`pooling_mode: cls` verified live). Old export sat at 0.947 cosine (rankings survived: 8/8 top-1, which is why it looked fine). Re-exported with CLS → **cosine 1.000000, max diff 0.000000, 8/8 top-1: PARITY OK**. (Also caught because the eval compared stale disk-cached vectors — `eval_embedding_parity.py` now purges `onnx::%` rows first.)
+
+**HIGH fixed.**
+- H-BE-5 self-heal one-shot → batches of 128 (`SELF_HEAL_BATCH_SIZE`) with `retrieval.self_heal_batch` progress trace events (feed compacts them).
+- Per-branch retrieval timeouts (45 s each, 60 s total backstop): one hung branch degrades to the other's results; both hung → `RetrievalOutageError` (never silent "no evidence").
+- `nli.batch_total_failures` counter + `get_nli_metrics()`, surfaced in `/health/detailed` alongside current `rss_mb` (UL-8).
+- Tier-tied ingest embed batches: lean 32 / standard 64 / high 128 via `get_ingest_embed_batch_size()` (safe 64 default).
+- SEC M-2 area: strict Pydantic bodies on both internal ingest endpoints (422 on bad `user_id`/missing keys instead of 500s). Full tenant-bound tokens stay tracked (>2-day B.4); MCP scoping assessed — needs identity plumbing, tracked.
+
+**MEDIUM fixed.**
+- Warmup sequenced (discovery → hardware → embeddings) with RSS breakdown logs.
+- Refusal-gate hit log in the verification node (tuning signal).
+- Frontend #5 type scale was already complete (verified); #4 materials got the missing bright top-edge light + heavier nav shadow (stacking hierarchy was already correct).
+
+**Tests:** 204 → **215** (self-heal batching, branch-timeout pair, tier sizes, NLI metric delta, RSS/metrics health, 5 internal-schema contracts). Non-hermetic risk closed: verification suite proven with llama-server DOWN.
 
 ## NEXT SESSION START POINT
 
