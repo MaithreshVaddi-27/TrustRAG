@@ -139,10 +139,10 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: apps/web/package.json
+          cache-dependency-path: apps/web/package-lock.json
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Lint
         run: npm run lint
@@ -164,7 +164,10 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: apps/web/package.json
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Build
         run: npm run build
@@ -205,7 +208,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: apps/web/package.json
+          cache-dependency-path: apps/web/package-lock.json
 
       - name: Install backend dependencies
         working-directory: apps/api
@@ -237,7 +240,7 @@ jobs:
       - name: Install frontend deps + Playwright browser
         working-directory: apps/web
         run: |
-          npm install
+          npm ci
           npx playwright install --with-deps chromium
 
       - name: Run E2E smoke tests
@@ -270,9 +273,6 @@ jobs:
   docker-build:
     name: Docker — Build API Image
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/api
 
     steps:
       - uses: actions/checkout@v4
@@ -281,10 +281,12 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image (runtime stage)
+        # NOTE: defaults.run.working-directory does NOT apply to `uses:` steps —
+        # context/file must be repo-root-relative.
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: Dockerfile
+          context: apps/api
+          file: apps/api/Dockerfile
           target: runtime
           load: true
           tags: trustrag-api:test

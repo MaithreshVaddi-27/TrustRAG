@@ -26,7 +26,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install uv for fast, reproducible dependency installation
 RUN pip install --no-cache-dir uv
 
-# Create isolated venv
+# Create isolated venv. UV_PROJECT_ENVIRONMENT must point at it BEFORE
+# `uv sync`, otherwise uv installs into a project-local ./.venv and /opt/venv
+# stays empty (the image then boots with "uvicorn: not found").
+ENV VIRTUAL_ENV=/opt/venv
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
@@ -54,6 +58,7 @@ RUN groupadd --gid 1001 trustrag && \
 
 # Copy venv from builder
 COPY --from=builder /opt/venv /opt/venv
+ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application source

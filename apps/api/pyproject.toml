@@ -63,6 +63,9 @@ dependencies = [
     # ── Utilities ────────────────────────────────────────────────────────────
     "python-dateutil>=2.9.0",
     "xxhash>=3.4.1",              # Fast hashing for content deduplication
+
+    # ── Local embeddings (ONNX Runtime, torch-free) ──────────────────────────
+    "onnxruntime>=1.20.0",        # BGE-small via ONNX (EMBEDDING_PROVIDER=onnx)
 ]
 
 [project.optional-dependencies]

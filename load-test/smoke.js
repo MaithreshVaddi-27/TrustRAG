@@ -2,7 +2,8 @@
  * TRUSTRAG — k6 API load smoke test (TEST-M2 / Phase 3 "Load testing in CI").
  *
  * Exercises the cheap, LLM-free hot paths so the gate stays deterministic in CI:
- *   - GET /api/v1/health            (public, liveness)
+ *   - GET /api/v1/health            (public liveness: {status} only)
+ *   - GET /api/v1/health/detailed   (authenticated: services + models)
  *   - GET /api/v1/knowledge-bases   (authenticated, MongoDB read path)
  *
  * Auth is minted once in setup() and shared across VUs to stay well under the
@@ -65,12 +66,26 @@ export default function (data) {
   const token = data?.token || ''
   const headers = { Authorization: `Bearer ${token}` }
 
+  // Public liveness carries {status} only — services live behind auth.
   const health = http.get(`${API_BASE}/api/v1/health`)
   check(health, {
     'health returns 200': (r) => r.status === 200,
     'health reports healthy': (r) => {
       const body = JSON.parse(r.body || '{}')
-      return body.status === 'ok' && body.services?.mongodb === 'ok' && body.services?.qdrant === 'ok'
+      return body.status === 'ok' && body.app === 'TRUSTRAG'
+    },
+  })
+
+  const detailed = http.get(`${API_BASE}/api/v1/health/detailed`, { headers })
+  check(detailed, {
+    'detailed health returns 200': (r) => r.status === 200,
+    'detailed health reports services': (r) => {
+      const body = JSON.parse(r.body || '{}')
+      return (
+        body.status === 'ok' &&
+        body.services?.mongodb === 'ok' &&
+        body.services?.qdrant === 'ok'
+      )
     },
   })
 
