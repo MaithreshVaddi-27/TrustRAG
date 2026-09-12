@@ -337,3 +337,68 @@ module and remove all dead code accumulated across rounds of rapid iteration.
 **Consequences:** All 191 tests pass. ruff check clean. New file is ~168 lines.
 The shared helper is the single source of truth for JSON extraction and structured
 output across all local LLM providers.
+
+---
+
+## D-21: ONNX Runtime BGE Embeddings — Torch-Free API Process (Extends D-19)
+
+**Date:** 2026-09-11
+**Status:** Accepted & Implemented
+**Phase:** 16
+
+**Decision:** Add an `onnx` embedding provider (`EMBEDDING_PROVIDER=onnx`) that runs
+`BAAI/bge-small-en-v1.5` via ONNX Runtime instead of PyTorch/sentence-transformers.
+The model is exported once (`scripts/export_bge_onnx.py`: transformer + mean pooling +
+L2 norm, dynamic batch/sequence axes, single 128 MB file) and served from
+`apps/api/.model_cache/bge-small-en-v1.5.onnx` with the same two-tier cache
+(memory LRU + SQLite disk) and BGE query prefixing as the torch path.
+
+**Rationale:**
+- The API process RSS floor was dominated by torch + tokenizer + weights
+  (~500–1000 MB) before any inference — the heat/hang root cause on 8 GB hosts.
+  ONNX Runtime (CPUExecutionProvider) removes that floor; numerical parity with
+  PyTorch verified (max diff 0.000000).
+- HuggingFace/torch path stays the default (zero setup); ONNX is opt-in so fresh
+  clones boot without an export step. Both share the KB pin + 422 mismatch guard,
+  so no new cross-space risk.
+
+**Files:**
+- `scripts/export_bge_onnx.py` (new), `apps/api/app/core/onnx_embeddings.py` (new)
+- `apps/api/app/core/model_registry.py` (`onnx` provider branch), `config.py`
+  (`embedding_max_seq_length`), `config/models.yaml` (`max_seq_length: 512`)
+
+**Consequences:** Backend 193 tests pass. `EMBEDDING_PROVIDER=onnx` verified live
+(384d query + document embeddings). Export requires torch locally once; serving
+requires only `onnxruntime` + `transformers` (tokenizer).
+
+---
+
+## D-22: Tolerant NLI Parsing — Verdict Aliases & Segment Coercion
+
+**Date:** 2026-09-12
+**Status:** Accepted & Implemented
+
+**Decision:** Make the NLI Pydantic schemas (`NLIVerdict`, `ClaimVerdict`,
+`BatchNLIVerdict`) tolerant of small-model near-miss JSON instead of strict
+Literals: verdict alias map (VERIFIED/TRUE→SUPPORTED, FALSE/REFUTED→CONTRADICTED,
+UNKNOWN/junk→NEUTRAL), segment coercion (ints pass, digit runs in prose
+extracted, pure prose dropped — out-of-range numbers filtered downstream by the
+existing bounds check), claim_id coercion, and a batch pre-validator that drops
+unrecoverable items so valid siblings count and missing ids use the per-claim
+fallback. NLI/batch prompts now pin the exact enum, int-only segments, and a
+JSON example.
+
+**Rationale:**
+- Live trace (llama.cpp LFM2.5-1.2B): good grounded answer + 16 evidence chunks
+  scored 0/7 SUPPORTED, all NEUTRAL → FAILED, purely because the model wrote
+  `"verdict": "VERIFIED"` and evidence prose in `supporting_segments`. Every
+  ValidationError degraded to NEUTRAL. Coercion preserves the model's actual
+  judgment; unknown strings still default to NEUTRAL (conservative), and batch
+  bare ints are dropped (never poisoned as NEUTRAL, so fallback still runs).
+
+**Files:**
+- `apps/api/app/verification/verifier.py` (normalizers + validators + prompts)
+- `apps/api/tests/test_verification.py` (6 new regression tests)
+
+**Consequences:** Backend 199 tests pass. Previously-NEUTRAL-but-correct
+judgments now count; genuine no-support cases still read NEUTRAL.

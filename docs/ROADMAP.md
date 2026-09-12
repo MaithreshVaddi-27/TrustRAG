@@ -1,7 +1,7 @@
 # TRUSTRAG — Project Roadmap & Remaining Steps
 
-> Last updated: 2026-09-05  
-> Current status: All 12 core phases complete + Post-Launch Quality & Audit Cycle complete (v1 → v4). **111 backend tests, 15 frontend Vitest, 2 Playwright E2E, k6 load smoke — 100% pass rate.** Active and upcoming work below.
+> Last updated: 2026-09-12  
+> Current status: All 12 core phases complete + Post-Launch Quality & Audit Cycle complete (v1 → v4) + ultra-low RAM + ONNX + claims-hardening passes. **199 backend tests, 21 frontend Vitest, 2 Playwright E2E, k6 load smoke — 100% pass rate.** Active and upcoming work below.
 
 ---
 
@@ -25,9 +25,12 @@
 | **P-L** | **Multi-Tenant User Data Isolation** | Scoped `user_id` on all records, compound indexes (`claim_user_time`, `evidence_user_time`), cascade deletions | ✅ COMPLETE |
 | **P-L** | **Open Knowledge & JSON-LD Export** | `(Subject, Predicate, Object)` claim triples, schema.org JSON-LD compliance export (`GET /analyses/{id}/export`) | ✅ COMPLETE |
 | **P-L** | **Observability & Health Telemetry** | Full health monitoring (`mongodb` + `qdrant`), interactive diagnostics panel in `SettingsPage.jsx` | ✅ COMPLETE |
-| **P-L** | **Master Quality Audit (52 Findings)** | 52 findings resolved across FE/BE/DB/SEC/PERF, documented in `docs/audits/final-audit-report.md` | ✅ COMPLETE |
+| **P-L** | **Master Quality Audit (52 Findings)** | 52 findings resolved across FE/BE/DB/SEC/PERF, documented in `docs/audits/2026-09-11_unified_senior_audit.md` (canonical; history in git) | ✅ COMPLETE |
 | **13** | **SOTA UI Overhaul & Low-RAM Architecture** | Ultra-premium landing page, 75% Qdrant RAM compression (INT8 on-disk), 0 MB GPU RAM via Gemini 384d MRL, LRU embedding cache, and universal Model Context Protocol (MCP) server | ✅ COMPLETE |
 | **14** | **Master SOTA Multi-Role Production Audit** | Deep Systems, Security, AI/ML, and QA audit suite (79/79 pytest, 0 lint warnings) documented in `docs/audits/` | ✅ COMPLETE |
+| **15** | **Ultra-Low RAM + Security Hardening (2026-09-11)** | psutil RSS guard, batched SQLite writes, bounded LLM registry (4 max), X-Request-ID validation, production CORS lock, split health endpoints, magic-bytes + zip-bomb upload defense, `MALLOC_ARENA_MAX`, Apple-design reduced-motion | ✅ COMPLETE |
+| **16** | **ONNX BGE Runtime — Torch-Free Embeddings (2026-09-11)** | `scripts/export_bge_onnx.py` + ONNX Runtime wrapper (`EMBEDDING_PROVIDER=onnx`), numerical parity verified, ~500–1000 MB RSS savings | ✅ COMPLETE |
+| **17** | **Claims Verification Hardening (2026-09-12)** | Tolerant NLI parsing (VERIFIED→SUPPORTED aliasing, segment coercion, batch bare-int drop) fixing 0/x-supported on good answers; 6 new regression tests; 38-error lint sweep | ✅ COMPLETE |
 
 ---
 

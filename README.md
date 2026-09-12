@@ -8,7 +8,7 @@
 [![Ollama](https://img.shields.io/badge/Ollama-Local_Offline-000000?logo=ollama&logoColor=white)](https://ollama.com)
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF_Server-orange)](https://github.com/ggerganov/llama.cpp)
 [![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-Embeddings-005CED?logo=onnx&logoColor=white)](https://onnxruntime.ai)
-[![Tests](https://img.shields.io/badge/Backend%20Tests-193%20Passing-brightgreen)](apps/api/tests)
+[![Tests](https://img.shields.io/badge/Backend%20Tests-199%20Passing-brightgreen)](apps/api/tests)
 [![Tests](https://img.shields.io/badge/Frontend%20Tests-21%20Passing-brightgreen)](apps/web)
 [![E2E](https://img.shields.io/badge/Playwright%20E2E-2%20Passing-brightgreen)](apps/web/e2e)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
@@ -37,7 +37,7 @@ Think of it as a fact-checking layer for RAG. It runs 100% locally on your machi
 | **Frontend Workbench** | [http://localhost:5173](http://localhost:5173) | The React UI — upload docs, ask questions, see verification results |
 | **Backend API** | [http://localhost:8000](http://localhost:8000) | FastAPI engine — all the RAG, NLI, and LangGraph magic |
 | **Interactive Docs** | [http://localhost:8000/docs](http://localhost:8000/docs) | Swagger UI — test every endpoint right in your browser |
-| **Health Check** | [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) | Live system status — MongoDB, Qdrant, hardware profile |
+| **Health Check** | [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) | Public status (detailed view at `/health/detailed` with auth) |
 
 ---
 
@@ -135,7 +135,7 @@ Each stage below names the code that runs it and the `config/models.yaml` knob t
 | # | Stage | What happens | Key knobs |
 |---|---|---|---|
 | 1 | **Normalize & zone** | Noise cleanup, hyphen repair, filler stripping; text split into ~512-char chunks (64-char overlap, word-boundary snapped) with zone tags — titles/headers score higher than body | `ingestion.chunk_size: 512`, `chunk_overlap: 64` |
-| 2 | **Hybrid retrieval** | Dense vectors (`BAAI/bge-small-en-v1.5`, 384d, local CPU) + BM25 sparse vectors fused with Reciprocal Rank Fusion; embedding model is **pinned per KB at ingest** | `retrieval.dense_top_k: 20`, `sparse_top_k: 20`, `rrf_k: 60`, `fusion_top_k: 20` |
+| 2 | **Hybrid retrieval** | Dense vectors (`BAAI/bge-small-en-v1.5`, 384d — HuggingFace/torch or torch-free ONNX Runtime via `EMBEDDING_PROVIDER=onnx`) + BM25 sparse vectors fused with Reciprocal Rank Fusion; embedding model is **pinned per KB at ingest** | `retrieval.dense_top_k: 20`, `sparse_top_k: 20`, `rrf_k: 60`, `fusion_top_k: 20` |
 | 3 | **Rerank (optional)** | Cross-encoder rescoring of fused candidates; **off by default** until you baseline retrieval quality | `reranker.enabled: false`, `model: cross-encoder/ms-marco-MiniLM-L-6-v2`, `top_k: 8` |
 | 4 | **Integrity audit** | SHA-256 tamper check per chunk + temporal validity windows (`effective_from`/`effective_until`); corrupted segments are excluded before generation | — (always on) |
 | 5 | **Grounded generation** | Answer strictly conditioned on ≤8 surviving chunks within a 3000-char context budget (fits small-model windows); empty/insufficient context → `ABSTAIN`, never a guess | `retrieval.max_context_chunks: 8`, `llm.temperature: 0.2` |
@@ -492,7 +492,7 @@ TrustRAG/
 │   │   ├── app/
 │   │   │   ├── agent/              # LangGraph state machine & recovery loop
 │   │   │   ├── api/                # Routers, auth, Pydantic schemas
-│   │   │   ├── core/               # Config, logging, security, model registry
+│   │   │   ├── core/               # Config, logging, security, model registry, ONNX embeddings, memory guard
 │   │   │   ├── db/                 # MongoDB (async) & Qdrant clients
 │   │   │   ├── generation/         # LLM prompts and grounded generation
 │   │   │   ├── ingestion/          # PDF/DOCX/TXT/MD/CSV/JSON/HTML parsers, chunker
@@ -500,7 +500,7 @@ TrustRAG/
 │   │   │   ├── services/           # Business logic: KB, analysis, auth
 │   │   │   └── verification/       # Batch NLI verifier & SHA-256 auditor
 │   │   ├── config/models.yaml      # Model IDs, thresholds, tuning
-│   │   └── tests/                  # 192 tests (all passing)
+│   │   └── tests/                  # 199 tests (all passing)
 │   │
 │   └── web/                        # React 18 + Vite 6 frontend
 │       ├── src/
@@ -513,13 +513,14 @@ TrustRAG/
 ├── docs/                           # Project documentation
 │   ├── TRUSTRAG_specs.md           # Full product specification
 │   ├── architecture/               # System design, ADRs
-│   ├── audits/                     # Dated audit trail
+│   ├── audits/                     # Unified senior audit (2026-09-11)
 │   ├── deployment/                 # Deployment guide
 │   ├── security/                   # Threat model, security controls
 │   └── evaluation/                 # Methodology
 │
 ├── scripts/
 │   ├── discover_local_models.py    # Pre-boot model discovery snapshot
+│   ├── export_bge_onnx.py          # Export BGE-small to ONNX (torch-free embeddings)
 │   ├── start_local_llm.sh          # Hardware-aware llama-server launcher
 │   ├── apply_ports.py              # Propagate port changes everywhere
 │   ├── setup.sh                    # Prerequisite checker
@@ -587,7 +588,8 @@ Base URL: `http://localhost:8000/api/v1`. Interactive docs at `/docs`. Auth is B
 | `GET /models/providers` | AI provider status + installed models |
 | `GET /models/hardware` | Hardware acceleration & resource profile |
 | `POST /models/memory/trim` | Heap compaction + GC |
-| `GET /health` | App health (MongoDB, Qdrant, hardware) |
+| `GET /health` | Public health (status, version — for load balancers) |
+| `GET /health/detailed` | Detailed health (services, models, hardware — requires auth) |
 | `/internal/*` (`tokens`, `ingest/*`, `search`, `verify/claims`, `health`, `status`) | Service-to-service diagnostics — not for UI use |
 
 ---
@@ -630,7 +632,7 @@ Change a port in `ports.yaml`, then run `python3 scripts/apply_ports.py` (CI enf
 
 ## Testing
 
-TrustRAG has 193 backend tests, 21 frontend tests, and 2 E2E tests — all passing.
+TrustRAG has 199 backend tests, 21 frontend tests, and 2 E2E tests — all passing.
 
 **Backend:**
 ```bash
@@ -779,7 +781,8 @@ Open the Claims tab and read the per-claim explanations: `NEUTRAL` with "Verific
 | [Security Controls](docs/security/security-controls.md) | JWT auth, anti-IDOR, SSRF defense, defensive headers |
 | [Threat Model](docs/security/threat-model.md) | STRIDE analysis, attack surface, countermeasures |
 | [Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md) | Production container setup, cloud hosting, env management |
-| [System Audit](docs/audits/comprehensive_system_audit.md) | Multi-disciplinary evaluation: systems, security, AI/ML, QA |
+| [System Audit](docs/audits/2026-09-11_unified_senior_audit.md) | Multi-role senior audit: frontend, backend, AI/ML, security, optimization, testing |
+| [Implementation Status](docs/IMPLEMENTATION_STATUS_2026-09-11.md) | What was fixed, test state, remaining work |
 | [Audit Report](docs/AUDIT_REPORT.md) | Engineering quality report — zero open defects |
 | [Roadmap](docs/ROADMAP.md) | Milestones, completed phases, upcoming work |
 

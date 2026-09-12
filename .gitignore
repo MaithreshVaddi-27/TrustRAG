@@ -181,6 +181,8 @@ models/
 *.ckpt
 *.safetensors
 *.gguf
+*.onnx
+*.onnx.data
 *.llamafile
 llama-server.log
 .huggingface/

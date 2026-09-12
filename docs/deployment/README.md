@@ -53,7 +53,9 @@ cp .env.example .env
 | `RATE_LIMIT_*_PER_MINUTE` | No | Per-client ceilings (analyses/auth/upload/url-ingest) |
 | `CACHE_DIR` | No | SQLite embedding + semantic-cache directory |
 | `LOCAL_LLM_MAX_CONCURRENCY` | No | Concurrent local generations, default 1 (raise only on parallel servers) |
-| `AI_PROVIDER`, `EMBEDDING_PROVIDER`, `SEARCH_PROVIDER`, `*_MODEL`, `*_BASE_URL`, `EMBEDDING_DIM` | No | Per-deploy overrides; env wins over models.yaml/ports.yaml (see `.env.example`) |
+| `AI_PROVIDER`, `EMBEDDING_PROVIDER` (`huggingface`\|`onnx`), `SEARCH_PROVIDER`, `*_MODEL`, `*_BASE_URL`, `EMBEDDING_DIM` | No | Per-deploy overrides; env wins over models.yaml/ports.yaml (see `.env.example`) |
+| `MALLOC_ARENA_MAX`, `TOKENIZERS_PARALLELISM` | No | Allocator tuning (`1`, `false`) to cut glibc/tokenizer RAM overhead |
+| `OLLAMA_KV_CACHE_TYPE`, `OLLAMA_FLASH_ATTENTION`, `OLLAMA_MAX_LOADED_MODELS`, `OLLAMA_NUM_PARALLEL` | No | Ollama **server** memory tuning — set in the shell before `ollama serve`, not read by the backend |
 
 Generate a strong JWT secret:
 ```bash
@@ -250,27 +252,20 @@ CORS_ORIGINS=https://trustrag.netlify.app,https://trustrag.vercel.app
 ## Health Checks
 
 ```bash
-# Application health + service status + active model config
+# Public health (load balancers, Docker HEALTHCHECK) — minimal, no auth
 GET /api/v1/health
 
 # Expected response
 {
   "status": "ok",
-  "timestamp": "2026-09-08T10:00:00Z",
+  "timestamp": "2026-09-12T10:00:00Z",
   "app": "TRUSTRAG",
-  "version": "0.1.0",
-  "services": {
-    "mongodb": "ok",
-    "qdrant": "ok"
-  },
-  "models": {
-    "config_version": "1.5",
-    "llm_provider": "llama_cpp",
-    "llm_model": "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
-    "embedding_model": "BAAI/bge-small-en-v1.5",
-    "embedding_provider": "huggingface"
-  }
+  "version": "0.1.0"
 }
+
+# Detailed health (services, models, hardware) — requires Bearer JWT
+GET /api/v1/health/detailed
+# curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/health/detailed
 ```
 
 ---
@@ -291,9 +286,9 @@ When you change the embedding model in `models.yaml`:
 
 ### API returns 503 on startup
 
-Check MongoDB connectivity:
+Check MongoDB connectivity (detailed endpoint needs auth):
 ```bash
-curl http://localhost:8000/api/v1/health
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/health/detailed | jq .services
 # Look for "mongodb": "degraded"
 ```
 
@@ -303,7 +298,18 @@ Verify `MONGODB_URI` is correct and Atlas IP whitelist includes your server IP.
 
 By default TRUSTRAG uses local HuggingFace BGE (`BAAI/bge-small-en-v1.5`, 384d) via PyTorch — zero cloud cost and zero required credentials. On Apple Silicon it rides the Metal (MPS) device; on NVIDIA it picks CUDA; CPU hosts fall back cleanly. An in-memory thread-safe LRU cache serves repeat queries instantly.
 
-For sub-16GB hosts or when you want zero local ML runtime at all, switch `EMBEDDING_PROVIDER=google_genai` (cloud Gemini) or `nvidia` (NVIDIA NIM) in `.env` — no local weights needed.
+For sub-16GB hosts or to remove PyTorch from the API process entirely (~500–1000 MB RSS savings), switch to torch-free ONNX Runtime embeddings:
+
+```bash
+# One-time export (needs torch + sentence-transformers locally)
+python scripts/export_bge_onnx.py
+cp apps/api/data/models/bge-small-en-v1.5.onnx apps/api/.model_cache/
+
+# Enable in .env
+EMBEDDING_PROVIDER=onnx
+```
+
+Cloud embeddings (Gemini/NVIDIA) were removed — embeddings are local-only. Knowledge bases indexed with a retired provider must be re-uploaded.
 
 ### Local model server offline
 
