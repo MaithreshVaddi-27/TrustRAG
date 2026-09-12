@@ -59,6 +59,11 @@ services:
       - ./apps/api/app:/app/app:ro
       - ./apps/api/config:/app/config:ro
       - ./apps/api/tests:/app/tests:ro
+      # Named volume persists the HF/tokenizer cache + SQLite embedding cache.
+      # For EMBEDDING_PROVIDER=onnx in Docker, copy the exported model in once:
+      #   docker cp apps/api/.model_cache/bge-small-en-v1.5.onnx trustrag_api:/app/.model_cache/
+      # (torch/sentence-transformers are NOT in the image by design; the
+      # huggingface provider cannot load there — use onnx instead.)
       - model_cache:/app/.model_cache
     env_file:
       - .env
@@ -90,7 +95,7 @@ services:
     volumes:
       - ./apps/web:/app
       - /app/node_modules
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     environment:
       # API ORIGIN only — the frontend appends /api/v1/... itself. Including the
       # prefix here would double it (baseURL + service path -> 2x /api/v1).

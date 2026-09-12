@@ -783,7 +783,6 @@ Open the Claims tab and read the per-claim explanations: `NEUTRAL` with "Verific
 | [Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md) | Production container setup, cloud hosting, env management |
 | [System Audit](docs/audits/2026-09-11_unified_senior_audit.md) | Multi-role senior audit: frontend, backend, AI/ML, security, optimization, testing |
 | [Implementation Status](docs/IMPLEMENTATION_STATUS_2026-09-11.md) | What was fixed, test state, remaining work |
-| [Audit Report](docs/AUDIT_REPORT.md) | Engineering quality report — zero open defects |
 | [Roadmap](docs/ROADMAP.md) | Milestones, completed phases, upcoming work |
 
 ---

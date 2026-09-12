@@ -311,6 +311,12 @@ EMBEDDING_PROVIDER=onnx
 
 Cloud embeddings (Gemini/NVIDIA) were removed — embeddings are local-only. Knowledge bases indexed with a retired provider must be re-uploaded.
 
+> **Docker note:** the API image ships `onnxruntime` but neither PyTorch nor model
+> weights, so `EMBEDDING_PROVIDER=huggingface` cannot load inside the container —
+> use `EMBEDDING_PROVIDER=onnx` and copy the exported model into the running
+> container once (see the `model_cache` volume comment in `docker-compose.yml`).
+> The tokenizer still downloads from the Hub on first boot (pinned revision).
+
 ### Local model server offline
 
 - Start llama.cpp: `./scripts/start_local_llm.sh` (auto-detects Metal/CUDA)

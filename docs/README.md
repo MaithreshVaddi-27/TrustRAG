@@ -11,7 +11,6 @@ docs/
 ├── README.md                  # Master index (this file)
 ├── TRUSTRAG_specs.md          # Full product specification
 ├── ROADMAP.md                 # Product vision, milestones, phase tracking
-├── AUDIT_REPORT.md            # Aggregated audit report
 ├── IMPLEMENTATION_STATUS_2026-09-11.md  # Current implementation status & progress
 ├── architecture/
 │   ├── architecture.md        # End-to-end system design, MCP tools, LangGraph loop, data flow
@@ -26,7 +25,6 @@ docs/
 ├── deployment/
 │   ├── DEPLOYMENT_GUIDE.md    # Cloudflare Pages + Google Cloud Run + MongoDB Atlas
 │   └── README.md              # Docker Compose / local deployment runbook
-└── ui-redesign-audit/         # Historical frontend audit notes (archived reference)
 ```
 
 ---

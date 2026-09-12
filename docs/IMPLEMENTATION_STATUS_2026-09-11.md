@@ -1,9 +1,9 @@
 # TrustRAG — Implementation Status (2026-09-11)
 
 **Date:** 2026-09-11 → 2026-09-12  
-**Session:** Unified Senior Audit → Implementation Pass (≤2-day fixes from audit §11A) + **ONNX BGE Runtime** + **Claims verification hardening** + **Decompose+verify fusion**  
+**Session:** Unified Senior Audit → Implementation Pass (≤2-day fixes from audit §11A) + **ONNX BGE Runtime** + **Claims verification hardening** + **Decompose+verify fusion** + **Push-readiness docs pass**  
 **Baseline Audit:** `docs/audits/2026-09-11_unified_senior_audit.md`  
-**Test State:** Backend 204/204 ✅ | Frontend 21/21 + lint + build ✅ | ruff check + format clean ✅
+**Test State:** Backend 204/204 ✅ | Frontend 21/21 + lint + build ✅ | ruff check + format clean ✅ | Bandit 0 issues ✅ | k6 + Playwright green ✅ | Docker image boots ✅
 
 ---
 
@@ -184,23 +184,27 @@ print('ONNX embedding dims:', len(q))
 
 ## NEXT SESSION START POINT
 
-**Immediate fix needed (5 min):**
-1. Fix `load_discovery_snapshot()` in `local_llm.py` — `_is_embedding_model_name` called at module import but defined later. Move function definition before `load_discovery_snapshot()` call, or defer loading until first use.
-
-**Then complete full pipeline test:**
-2. Run `scripts/discover_local_models.py` (works)
-3. Start llama.cpp server: `./scripts/start_local_llm.sh &`
-4. Run full KB → ingest → analysis → claims test (code ready in previous session)
-
-**All ≤2-day fixes complete** including the **ONNX BGE Runtime** (UL-1, largest RAM win). 
+All **≤2-day fixes complete** including the **ONNX BGE Runtime** (UL-1), **fused decompose+verify** (primary, live-evaled), **CI repairs** (frontend install, Docker context + venv, k6 contract, onnxruntime in image, Bandit B615, Trivy SARIF), and this **push-readiness docs pass**.
 
 Pick next from **>2-Day Items** (recommended order by impact):
 
-1. **Decompose+verify fusion** — quality/latency on 3B models
-2. **Tenant-bound tokens + httpOnly cookies** — prerequisite for internet exposure  
+1. **ONNX-as-default** — flip `EMBEDDING_PROVIDER` default after recall-parity eval on a real KB
+2. **Tenant-bound tokens + httpOnly cookies** — prerequisite for internet exposure
 3. **Output-policy filter** — prompt-injection depth
 4. **Redis SSE bus + multi-worker** — only if scaling beyond single worker
 5. **mimalloc/Alpine/FastAPI 0.140** — platform hardening with load tests
 6. **Automated red-team suite** — CI security
 
-The codebase is in a **clean, test-passing state** with **torch-free embeddings available** via `EMBEDDING_PROVIDER=onnx`.
+The codebase is **push-ready**: clean tree, 204/204 + 21/21 green, secrets clean, docs current. Push with `git push origin ui-redesign` and open the PR against `main`.
+
+### 9. Push-readiness docs pass (2026-09-12)
+| Area | Change |
+|------|--------|
+| Root `README.md` | 204-test counts, ONNX setup notes, split-health API rows, implementation-status link; deleted `AUDIT_REPORT.md` row |
+| `docs/README.md` | Audits tree/index show only the canonical unified audit + status doc; stack line current |
+| `docs/ROADMAP.md` | 2026-09-12 header + 204 counts; phases 15–17 (RAM, ONNX, claims, fusion); fixed deleted-audit link |
+| `docs/deployment/README.md` | Split-health docs, ONNX setup + Docker embeddings note (torch absent by design — use onnx + copy `.onnx` in), new env-var rows |
+| `docs/architecture/decision-log.md` | D-21 (ONNX), D-22 (tolerant NLI) — added in prior pass |
+| `.env.example` | Fixed stale `google_genai/nvidia` embedding comment → `huggingface/onnx`; added `HF_TOKENIZER_REVISION`, `FUSED_DECOMPOSE_VERIFY` |
+| `docker-compose.yml` | `web`: `npm install` → `npm ci`; `model_cache` volume comment documents the ONNX copy-in step + torch-absent rationale |
+| Deleted | `docs/AUDIT_REPORT.md` (2026-09-05, superseded) + `docs/ui-redesign-audit/` (11 archived files); zero dangling references repo-wide |
