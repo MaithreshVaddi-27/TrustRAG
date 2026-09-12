@@ -93,16 +93,18 @@ curl http://localhost:8000/api/v1/health
 cd apps/api
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+# local-models = torch for default HuggingFace embeddings (also needed once
+# for the optional ONNX export below).
+pip install -e ".[dev,local-models]"
 uvicorn app.main:app --reload --port 8000
 
 # Frontend (separate terminal)
 cd apps/web
-npm install
+npm ci
 npm run dev
 ```
 
-> **Embeddings:** TRUSTRAG runs local HuggingFace BGE (384d) embeddings via PyTorch — zero cloud cost, zero keys. Cloud embeddings were removed; only `huggingface` is accepted (`EMBEDDING_PROVIDER`/`EMBEDDING_MODEL` select between BGE and MiniLM).
+> **Embeddings:** TRUSTRAG runs local BGE (384d) embeddings — zero cloud cost, zero keys. `EMBEDDING_PROVIDER=huggingface` (PyTorch, via the `local-models` extra) or `onnx` (torch-free ONNX Runtime; one-time export with `python scripts/export_bge_onnx.py`, then `EMBEDDING_PROVIDER=onnx`). Cloud embeddings were removed. (`EMBEDDING_MODEL` selects between BGE and MiniLM.)
 
 ---
 

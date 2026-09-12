@@ -21,8 +21,8 @@ echo
 
 echo "─ Toolchain ─"
 if command -v python3 >/dev/null 2>&1; then ok "python3 $(python3 --version 2>&1 | cut -d' ' -f2)"; else warn "python3 not found" "Install Python 3.11+ (https://python.org)"; fi
-if command -v node >/dev/null 2>&1; then ok "node $(node --version)"; else warn "node not found" "Install Node.js 20+ (https://nodejs.org)"; fi
-if command -v npm >/dev/null 2>&1; then ok "npm $(npm --version)"; else warn "npm not found" "Ships with Node.js 20+"; fi
+if command -v node >/dev/null 2>&1; then ok "node $(node --version)"; else warn "node not found" "Install Node.js 22+ (https://nodejs.org)"; fi
+if command -v npm >/dev/null 2>&1; then ok "npm $(npm --version)"; else warn "npm not found" "Ships with Node.js 22+"; fi
 
 echo "─ Environment file ─"
 if [ -f "$ROOT_DIR/.env" ]; then
@@ -40,7 +40,16 @@ echo "─ Backend venv ─"
 if [ -x "$ROOT_DIR/apps/api/.venv/bin/python" ]; then
   ok "apps/api/.venv present"
 else
-  warn "apps/api/.venv missing" "Run: cd apps/api && python3 -m venv .venv && source .venv/bin/activate && pip install -e \".[dev]\""
+  warn "apps/api/.venv missing" "Run: cd apps/api && python3 -m venv .venv && source .venv/bin/activate && pip install -e \".[dev,local-models]\""
+fi
+
+echo "─ Embeddings ─"
+if "$ROOT_DIR/apps/api/.venv/bin/python" -c "import sentence_transformers" 2>/dev/null; then
+  ok "torch embedding stack present (huggingface provider ready)"
+elif [ -f "$ROOT_DIR/apps/api/.model_cache/bge-small-en-v1.5.onnx" ]; then
+  ok "ONNX embedding model present (onnx provider ready, torch-free)"
+else
+  warn "no embedding stack" "Run: cd apps/api && source .venv/bin/activate && pip install -e \".[dev,local-models]\" (torch, ~2GB; also needed once for the optional ONNX export)"
 fi
 
 echo "─ Frontend deps ─"

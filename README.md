@@ -375,7 +375,9 @@ cd apps/api
 # Create virtual environment (first time only)
 python3 -m venv .venv
 source .venv/bin/activate        # Windows Git Bash: source .venv/Scripts/activate
-pip install -e ".[dev]"
+# local-models = torch + sentence-transformers for the default HuggingFace
+# embeddings (also needed once for the optional ONNX export below).
+pip install -e ".[dev,local-models]"
 
 # Optional: discover installed models so they show up in the UI immediately
 python ../../scripts/discover_local_models.py
@@ -754,6 +756,13 @@ netstat -ano | findstr :8000    # Windows
 
 # Kill it or change the port in config/ports.yaml
 ```
+
+**After `git pull` (existing users):**
+```bash
+cd apps/api && source .venv/bin/activate && pip install -e ".[dev,local-models]"  # picks up new deps (e.g. onnxruntime)
+cd ../web && npm ci
+```
+No database migration is needed (Mongo/Qdrant schemas unchanged; new `models.yaml` keys have safe defaults). If you modified `models.yaml` locally, `git` may ask you to resolve the conflict — keep your values and copy any new keys (e.g. `fused_decompose_verify`, `max_seq_length`) from `models.yaml` in the pull.
 
 **Qdrant port confusion:**
 When running via Docker, Qdrant maps host port `6335` to container port `6333`. From your host, use `http://localhost:6335`. Inside Docker, services talk directly to `http://qdrant:6333`.

@@ -198,6 +198,13 @@ Pick next from **>2-Day Items** (recommended order by impact):
 The codebase is **push-ready**: clean tree, 204/204 + 21/21 green, secrets clean, docs current. Push with `git push origin ui-redesign` and open the PR against `main`.
 
 ### 9. Push-readiness docs pass (2026-09-12)
+(Extended same day — new/existing-user readiness.)
+
+| Area | Change |
+|------|--------|
+| New-user install gap (real bug) | `pip install -e ".[dev]"` never installed torch, so default HuggingFace embeddings failed on fresh clones. README + deployment guide + `setup.sh` now install `.[dev,local-models]`; `setup.sh` gained an **Embeddings** check (torch stack → ok, else `.onnx` file → ok, else actionable warn); Node message aligned to 22+. Verified: `setup.sh` 11/11 green, warn branch proven against a torch-less python. |
+| Existing-user pull path | Verified safe: no DB migration (schemas unchanged), new `models.yaml` keys default safely (`fused_decompose_verify`→True, `max_seq_length`→512), disk/Qdrant caches compatible, no removed APIs. Only action: re-sync deps (`pip install -e ".[dev,local-models]"` for onnxruntime) + `npm ci` — documented in a new README Troubleshooting entry ("After `git pull`"). |
+| (Previous §9 content) Root `README.md` | 204-test counts, ONNX setup notes, split-health API rows, implementation-status link; deleted `AUDIT_REPORT.md` row |
 | Area | Change |
 |------|--------|
 | Root `README.md` | 204-test counts, ONNX setup notes, split-health API rows, implementation-status link; deleted `AUDIT_REPORT.md` row |
