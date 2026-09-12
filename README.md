@@ -9,7 +9,7 @@
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF_Server-orange)](https://github.com/ggerganov/llama.cpp)
 [![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-Embeddings-005CED?logo=onnx&logoColor=white)](https://onnxruntime.ai)
 [![Tests](https://img.shields.io/badge/Backend%20Tests-219%20Passing-brightgreen)](apps/api/tests)
-[![Tests](https://img.shields.io/badge/Frontend%20Tests-21%20Passing-brightgreen)](apps/web)
+[![Tests](https://img.shields.io/badge/Frontend%20Tests-22%20Passing-brightgreen)](apps/web)
 [![E2E](https://img.shields.io/badge/Playwright%20E2E-2%20Passing-brightgreen)](apps/web/e2e)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
@@ -21,12 +21,12 @@ Standard RAG systems fail silently. They grab some context, generate an answer, 
 
 TrustRAG fixes that. It's a full reliability pipeline that:
 
-1. **Decomposes** responses into individual factual claims.
-2. **Validates** each claim against your documents using batch NLI (Natural Language Inference).
+1. **Decomposes** responses into individual factual claims — and verifies each one against your documents in the same step (fused NLI, so small local models answer in one call instead of two).
+2. **Validates** every claim against retrieved evidence, tolerating the quirky JSON small models emit, and falling back gracefully instead of failing silently.
 3. **Audits** source integrity with SHA-256 hashes and temporal validity windows.
 4. **Self-heals** when confidence is low — rewriting queries and expanding search via a LangGraph state machine, then either returning a grounded answer or safely abstaining.
 
-Think of it as a fact-checking layer for RAG. It runs 100% locally on your machine with Ollama or llama.cpp — no cloud API keys needed unless you want them.
+Think of it as a fact-checking layer for RAG. It runs 100% locally on your machine with Ollama or llama.cpp — your documents never leave your laptop, there are no per-query bills, and no API keys are needed unless you want cloud models for the heavy lifting.
 
 ---
 
@@ -183,6 +183,8 @@ Configure via `recovery.strategy_priority`. The rewrite is sanitized — instruc
 
 ## Getting Started
 
+Plan on about 15 minutes end to end: install the platform tools once, configure one file, start three terminals, and you'll be asking questions of your own documents. If anything misbehaves, `./scripts/setup.sh` diagnoses your machine and tells you the exact fix.
+
 ### What you need
 
 | Tool | Version | Why |
@@ -252,9 +254,10 @@ sudo apt update && sudo apt install -y \
   git python3.11 python3.11-venv python3-pip \
   build-essential cmake curl jq
 
-# 2. Node.js 20+ (via NodeSource)
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+# 2. Node.js 22+ (via NodeSource — the frontend requires Node >= 22)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
+node --version    # must print v22.x or newer
 
 # 3. MongoDB 7.0
 curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
@@ -296,8 +299,8 @@ winget install --id MongoDB.CommunityServer -e --source winget
 winget install --id Ollama.Ollama -e --source winget
 
 # 2. Restart your terminal, then verify
-python --version
-node --version
+python --version    # 3.11 or newer
+node --version      # v22 or newer (if winget gave you an older LTS, grab "Node.js 22" from nodejs.org)
 git --version
 
 # 3. Start MongoDB
@@ -317,7 +320,7 @@ ollama pull gemma3:1b
 #    Verify: llama-server --help
 ```
 
-> **Note for Windows users:** TrustRAG uses bash scripts (`scripts/start_local_llm.sh`, `scripts/setup.sh`). Install **Git for Windows** (which includes Git Bash) and run those scripts from Git Bash, not PowerShell. The Python/Node commands work in both.
+> **Note for Windows users:** TrustRAG uses bash scripts (`scripts/start_local_llm.sh`, `scripts/setup.sh`). Install **Git for Windows** (which includes Git Bash) and run those scripts — plus every `curl` example in this guide — from **Git Bash, not PowerShell**. (PowerShell has its own `curl` alias that speaks a different dialect and will mangle the commands below; if you must stay in PowerShell, use `curl.exe`.) Python/Node/`winget` commands work in both shells.
 
 </details>
 
@@ -335,6 +338,7 @@ cp .env.example .env
 
 # Generate a JWT secret (required for authentication)
 python3 -c "import secrets; print(secrets.token_hex(64))"
+# Windows (no python3 alias): py -c "import secrets; print(secrets.token_hex(64))"
 
 # Copy that output into your .env file as JWT_SECRET
 # Open .env in your editor and paste it:
@@ -363,9 +367,12 @@ Open **three terminal tabs**:
 # Using Ollama (easiest — just make sure it's running)
 ollama serve    # if not already running via brew services / systemctl
 
-# OR using llama.cpp (auto-detects Metal on Mac, CUDA on Linux)
+# OR using llama.cpp (auto-detects Metal on Mac, CUDA on Linux;
+# on Windows, run this from Git Bash)
 ./scripts/start_local_llm.sh
 ```
+
+> **Which one?** Ollama is the smoothest start on all three OSes. Pick llama.cpp when you want explicit control over quantized GGUF models and KV-cache budgets on tight hardware (e.g. 8 GB unified memory). On Linux you can keep Ollama alive across reboots with `sudo systemctl enable --now ollama`.
 
 **Terminal 2 — Backend API:**
 
@@ -373,7 +380,7 @@ ollama serve    # if not already running via brew services / systemctl
 cd apps/api
 
 # Create virtual environment (first time only)
-python3 -m venv .venv
+python3 -m venv .venv            # Windows: py -3.11 -m venv .venv  (or: python -m venv .venv)
 source .venv/bin/activate        # Windows Git Bash: source .venv/Scripts/activate
 # local-models = torch + sentence-transformers for the default HuggingFace
 # embeddings (also needed once for the optional ONNX export below).
@@ -390,29 +397,29 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ```bash
 cd apps/web
-npm install
-npm run dev
+npm ci          # clean, reproducible install from package-lock.json
+npm run dev     # open http://localhost:5173
 ```
 
 #### Option B: Docker Compose
 
 ```bash
-# Start backend (FastAPI + Qdrant + MongoDB)
-docker compose up -d
+# Starts three containers: Qdrant (vector store), the FastAPI backend,
+# and the React frontend. MongoDB is NOT containerized — it must already
+# be running on your host (see Step 1), reached via host.docker.internal.
+docker compose up -d --build
 
-# Check health
+# Check health (public endpoint, no auth needed)
 curl -s http://localhost:8000/api/v1/health | jq
 
-# Start frontend separately (not in docker-compose)
-cd apps/web
-npm install
-npm run dev
+# Follow the backend logs if something looks off
+docker compose logs -f api
 
 # Stop everything
 docker compose down
 ```
 
-The frontend always runs locally via `npm run dev` (it's not in docker-compose).
+> Prefer running the frontend locally (`npm run dev` in `apps/web`) while developing — hot-reload is instant and you can keep the backend in Docker. Just point it at the same API with `VITE_API_URL=http://localhost:8000`.
 
 ---
 
@@ -420,9 +427,9 @@ The frontend always runs locally via `npm run dev` (it's not in docker-compose).
 
 Open **http://localhost:5173** in your browser. You'll see the TrustRAG workbench.
 
-1. **Register** a new account (first time only).
-2. **Create a Knowledge Base** and upload some documents (.pdf, .txt, .md, .docx, .csv, .json, .html).
-3. **Ask a question** — TrustRAG will retrieve evidence, generate an answer, verify every claim, and show you exactly what it found.
+1. **Register** a new account (first time only — your credentials never leave `localhost`).
+2. **Create a Knowledge Base** and upload some documents (.pdf, .txt, .md, .docx, .csv, .json, .html). Watch the trace stream while it ingests.
+3. **Ask a question** — TrustRAG retrieves evidence, drafts a grounded answer, splits it into atomic claims, and checks every single one against your documents. Open the **Claims** tab to see each verdict with its citations, and **Trace** to watch the self-healing loop think.
 
 The default local model is `gemma3:1b` via Ollama (or `LiquidAI/LFM2.5-1.2B-Instruct-GGUF` via llama.cpp). Both run on your CPU — no GPU required.
 
@@ -430,7 +437,7 @@ The default local model is `gemma3:1b` via Ollama (or `LiquidAI/LFM2.5-1.2B-Inst
 
 ## Try it from the command line
 
-No UI needed — here's the full flow via `curl`:
+No UI needed — here's the full flow via `curl`. (On Windows, run these from **Git Bash** — PowerShell's built-in `curl` alias will mangle the quoting. On all three OSes, `/tmp/sample.txt` can be any scratch path with write access.)
 
 ```bash
 BASE=http://localhost:8000/api/v1
@@ -476,8 +483,12 @@ ANALYSIS_ID=$(curl -s -X POST $BASE/analyses \
   -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"What is the refund policy?\"}" \
   | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
 
-# 6. Stream the live execution trace
-curl -N "$BASE/analyses/$ANALYSIS_ID/stream?token=$TOKEN"
+# 6. Stream the live execution trace. The JWT never goes in the URL —
+# mint a short-lived single-use ticket first, then stream with it.
+TICKET=$(curl -s -X POST $BASE/analyses/$ANALYSIS_ID/stream-ticket \
+  -H "Authorization: Bearer $TOKEN" \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['ticket'])")
+curl -N "$BASE/analyses/$ANALYSIS_ID/stream?ticket=$TICKET"
 
 # 7. Get the final answer
 curl -s $BASE/analyses/$ANALYSIS_ID -H "Authorization: Bearer $TOKEN" | jq
@@ -523,6 +534,7 @@ TrustRAG/
 ├── scripts/
 │   ├── discover_local_models.py    # Pre-boot model discovery snapshot
 │   ├── export_bge_onnx.py          # Export BGE-small to ONNX (torch-free embeddings)
+│   ├── eval_embedding_parity.py    # Prove torch-vs-ONNX vector parity before switching
 │   ├── start_local_llm.sh          # Hardware-aware llama-server launcher
 │   ├── apply_ports.py              # Propagate port changes everywhere
 │   ├── setup.sh                    # Prerequisite checker
@@ -532,7 +544,7 @@ TrustRAG/
 │   └── smoke.js                    # k6 smoke test
 │
 ├── config/ports.yaml               # Single source of truth for service ports
-├── docker-compose.yml              # Backend + Qdrant + MongoDB
+├── docker-compose.yml              # Qdrant + FastAPI backend + React frontend (MongoDB stays on the host)
 └── .env.example                    # Environment template
 ```
 
@@ -636,15 +648,15 @@ Change a port in `ports.yaml`, then run `python3 scripts/apply_ports.py` (CI enf
 
 TrustRAG has 219 backend tests, 22 frontend tests, and 2 E2E tests — all passing.
 
-**Backend:**
+**Backend (same on all three OSes — run from Git Bash on Windows):**
 ```bash
 cd apps/api
-source .venv/bin/activate
+source .venv/bin/activate      # Windows Git Bash: source .venv/Scripts/activate
 
-# Run all tests
+# Run all tests (mocked — no MongoDB, LLM, or Qdrant needed)
 pytest tests/ -q
 
-# Lint
+# Lint + format check (CI enforces both)
 ruff check app/ tests/
 ruff format --check app/ tests/
 ```
@@ -666,8 +678,22 @@ npm run lint
 npm run build
 ```
 
-**Load testing (requires k6):**
+**Load testing (requires k6 — install it first):**
 ```bash
+# macOS:
+brew install k6
+
+# Linux (Ubuntu/Debian):
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/k6-archive-keyring.gpg
+echo "deb [signed-by=/etc/apt/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+sudo apt update && sudo apt install k6
+
+# Windows: choco install k6   (or grab the installer from the link below)
+# Full instructions for every platform: https://grafana.com/docs/k6/set-up/install-k6/
+```
+```bash
+# Backend must be running first (Terminal 2), then:
 k6 run load-test/smoke.js
 # Thresholds: <1% failures, p95 < 300ms, p99 < 500ms
 ```
@@ -681,13 +707,14 @@ k6 run load-test/smoke.js
 | `test_config.py` | `models.yaml`/`ports.yaml` loading, validation, snapshots |
 | `test_ports.py` | Port-registry drift (`apply_ports.py --check` equivalent) |
 | `test_generation.py` | Grounded answer generation, ABSTAIN rules, scaffold stripping |
-| `test_verification.py` | Claim decomposition, batch/individual NLI, fallback budget, verdict math |
+| `test_verification.py` | Claim decomposition, fused + batch/individual NLI, tolerant near-miss parsing, fallback budget, verdict math |
 | `test_integrity.py` | SHA-256 evidence audit, temporal windows |
 | `test_retrieval.py` / `test_preprocessor.py` / `test_ingestion.py` | Hybrid retrieval, text normalization, chunking, ingestion pipeline |
 | `test_local_llm.py` / `test_hardware.py` | Ollama/llama.cpp clients, model registry, hardware profiles |
 | `test_disk_cache.py` / `test_semantic_cache.py` | Embedding disk cache, semantic answer cache |
 | `test_rate_limit.py` | Per-route rate limiting |
 | `test_search_mcp.py` | MCP web-search tools (Tavily/DuckDuckGo/hybrid) |
+| `test_internal.py` | Internal service endpoint input contracts (422s, not 500s) |
 
 ---
 
@@ -769,6 +796,15 @@ netstat -ano | findstr :8000    # Windows
 
 # Kill it or change the port in config/ports.yaml
 ```
+
+**Firewall blocks localhost (per OS):**
+The first launch often triggers a firewall prompt — that's expected, not an error. Allow private-network access and reload the page:
+- **macOS:** System Settings → Network → Firewall → allow incoming connections for `Python` / `node` when prompted.
+- **Linux:** `sudo ufw allow 8000/tcp && sudo ufw allow 5173/tcp` — but only if `ufw` is active (check with `sudo ufw status` first).
+- **Windows:** Windows Defender Firewall will prompt for Python and Node.js — tick **Private networks** (leave Public unchecked) and continue.
+
+**Windows: `python3` not recognized / venv won't activate:**
+Windows installs the launcher as `py`, not `python3`. Create the environment with `py -3.11 -m venv .venv`, then activate with `source .venv/Scripts/activate` (Git Bash) or `.venv\Scripts\Activate.ps1` (PowerShell). If PowerShell refuses the script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once — or simply do everything in Git Bash.
 
 **After `git pull` (existing users):**
 ```bash
