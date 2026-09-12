@@ -270,9 +270,15 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
         prov = arguments.get("provider", "both")
         status_res: dict[str, Any] = {}
         if prov in ("ollama", "both"):
-            status_res["ollama"] = await check_ollama_status(settings.ollama_base_url)
+            try:
+                status_res["ollama"] = await check_ollama_status(settings.ollama_base_url)
+            except Exception as exc:
+                status_res["ollama"] = {"connected": False, "error": str(exc)[:200]}
         if prov in ("llama_cpp", "both"):
-            status_res["llama_cpp"] = await check_llamacpp_status(settings.llamacpp_base_url)
+            try:
+                status_res["llama_cpp"] = await check_llamacpp_status(settings.llamacpp_base_url)
+            except Exception as exc:
+                status_res["llama_cpp"] = {"connected": False, "error": str(exc)[:200]}
         return {"content": [{"type": "text", "text": json.dumps(status_res, indent=2)}]}
 
     raise ValueError(f"Unknown MCP tool: {tool_name}")

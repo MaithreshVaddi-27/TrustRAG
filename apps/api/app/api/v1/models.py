@@ -4,6 +4,7 @@ TRUSTRAG API — Model discovery & local provider status endpoints.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -65,11 +66,11 @@ async def get_providers_endpoint(
     settings = get_settings()
     cfg = get_model_config()
 
-    ollama_info = await _safe_provider_status(
-        check_ollama_status, settings.ollama_base_url, "ollama"
-    )
-    llamacpp_info = await _safe_provider_status(
-        check_llamacpp_status, settings.llamacpp_base_url, "llama_cpp"
+    # Concurrent: each check retries once internally, so sequential awaits
+    # would double the worst-case latency of this 8 s-polled endpoint.
+    ollama_info, llamacpp_info = await asyncio.gather(
+        _safe_provider_status(check_ollama_status, settings.ollama_base_url, "ollama"),
+        _safe_provider_status(check_llamacpp_status, settings.llamacpp_base_url, "llama_cpp"),
     )
 
     # Use only discovered models from the status checks — no hardcoded fallbacks.

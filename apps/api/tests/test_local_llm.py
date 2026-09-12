@@ -298,6 +298,78 @@ async def test_probe_down_server_raises_actionable_error(monkeypatch):
         assert "start_local_llm.sh" in exc.message
 
 
+@pytest.mark.asyncio
+async def test_probe_retries_slow_server_then_succeeds(monkeypatch):
+    """One slow accept must not 503 the run — retry, then pass."""
+    import httpx
+
+    from app.core.local_llm import probe_local_llm_server
+
+    calls = []
+
+    class _Flaky(_FakeHTTPClient):
+        async def get(self, url):
+            calls.append(url)
+            if len(calls) == 1:
+                raise httpx.TimeoutException("slow first accept")
+            return _FakeHTTPResponse(200, {"models": []})
+
+    monkeypatch.setattr(_llm_mod.httpx, "AsyncClient", _Flaky)
+    await probe_local_llm_server("llama_cpp", "http://127.0.0.1:8080/v1")  # must not raise
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_probe_timeout_reports_overloaded_not_down(monkeypatch):
+    """Persistent timeouts mean slow/overloaded — never 'not reachable'."""
+    import httpx
+
+    from app.core.exceptions import LLMUnavailableError
+    from app.core.local_llm import probe_local_llm_server
+
+    class _Slow(_FakeHTTPClient):
+        async def get(self, url):
+            raise httpx.TimeoutException("accept backlog full")
+
+    monkeypatch.setattr(_llm_mod.httpx, "AsyncClient", _Slow)
+    with pytest.raises(LLMUnavailableError, match="not answering"):
+        await probe_local_llm_server("llama_cpp", "http://127.0.0.1:8080/v1")
+
+
+@pytest.mark.asyncio
+async def test_ollama_status_retries_transient_timeout(monkeypatch):
+    """A single blip must not flap the UI connected pill to Standby."""
+    import httpx
+
+    calls = []
+
+    class _Flaky(_FakeHTTPClient):
+        async def get(self, url):
+            calls.append(url)
+            if len(calls) == 1:
+                raise httpx.TimeoutException("blip")
+            return _FakeHTTPResponse(200, {"models": [{"name": "gemma3:1b"}]})
+
+    async def _no_cli():
+        return []
+
+    monkeypatch.setattr(_llm_mod.httpx, "AsyncClient", _Flaky)
+    monkeypatch.setattr(_llm_mod, "discover_ollama_cli_models", _no_cli)
+    with _llm_mod._DISCOVERED_LLMS_LOCK:
+        saved = {k: set(v) for k, v in _llm_mod._DISCOVERED_LLMS.items()}
+        _llm_mod._DISCOVERED_LLMS.clear()
+    try:
+        status = await _llm_mod.check_ollama_status("http://localhost:11434")
+        assert status["connected"] is True
+        assert status["models"] == ["gemma3:1b"]
+        assert len(calls) == 2
+    finally:
+        with _llm_mod._DISCOVERED_LLMS_LOCK:
+            _llm_mod._DISCOVERED_LLMS.clear()
+            for k, v in saved.items():
+                _llm_mod._DISCOVERED_LLMS[k] = set(v)
+
+
 @_snapshot_save_restore
 def test_merge_discovered_llms_replace_drops_uninstalled():
     _llm_mod.merge_discovered_llms("llama_cpp", ["a/Model-GGUF:Q4_K_M", "b/Old-GGUF:Q4_K_M"])

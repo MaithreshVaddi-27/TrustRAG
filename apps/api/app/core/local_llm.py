@@ -396,12 +396,42 @@ def merge_discovered_llms(provider: str, models: list[str], replace: bool = Fals
             bucket.update(clean)
 
 
+# ─── Resilient local-server HTTP ──────────────────────────────────────────────
+# A single 3 s sample on a busy 8 GB host is a coin flip: the server can be
+# alive yet miss one probe (cold model, full accept backlog), which used to
+# 503 the whole analysis and flap the UI's connected pill on every 8 s poll.
+# Every probe/status GET below retries once, and connection-refused (server
+# down) stays distinct from timeout (server slow) so each gets the right
+# message and the right recovery.
+PROBE_TIMEOUT_SECONDS = 3.0
+PROBE_ATTEMPTS = 2
+
+
+async def _fetch_json_with_retry(
+    url: str, timeout: float = PROBE_TIMEOUT_SECONDS, attempts: int = PROBE_ATTEMPTS
+) -> httpx.Response:
+    """GET with one retry. Only connection/timeout errors retry — HTTP errors
+    (e.g. 500s) return normally for the caller to interpret."""
+    last_exc: Exception | None = None
+    for _ in range(max(1, attempts)):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                return await client.get(url)
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            last_exc = exc
+            logger.debug("Local-server HTTP attempt failed, retrying", url=url)
+    assert last_exc is not None
+    raise last_exc
+
+
 async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 3.0) -> None:
     """Fail fast when a local inference server is not running.
 
     Raises LLMUnavailableError with copy-paste start instructions instead of
     letting an analysis burn minutes of timeouts before abstaining. Only the
     configured base URL is echoed (no secrets); transport details stay in logs.
+    Connection-refused means down (start it); timeout means slow/overloaded
+    (wait and retry) — conflating them sent users restarting a live server.
     """
     norm = (provider or "").strip().lower()
     base = (base_url or "").rstrip("/")
@@ -412,14 +442,25 @@ async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 
         probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
         start_hint = "Start it with './scripts/start_local_llm.sh' (llama-server on :8080)."
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            res = await client.get(probe_url)
+        res = await _fetch_json_with_retry(probe_url, timeout=timeout)
         if res.status_code >= 500:
             raise LLMUnavailableError(
                 f"Local LLM server '{norm}' at {base} returned HTTP {res.status_code}. {start_hint}"
             )
     except LLMUnavailableError:
         raise
+    except httpx.ConnectError as exc:
+        logger.warning("Local LLM server probe failed", provider=norm, base_url=base)
+        raise LLMUnavailableError(
+            f"Local LLM server '{norm}' is not reachable at {base}. {start_hint}"
+        ) from exc
+    except httpx.TimeoutException as exc:
+        logger.warning("Local LLM server probe timed out", provider=norm, base_url=base)
+        raise LLMUnavailableError(
+            f"Local LLM server '{norm}' at {base} is not answering "
+            f"(timed out after {PROBE_ATTEMPTS} attempts). It may be starting "
+            f"up or overloaded — wait a few seconds and retry. {start_hint}"
+        ) from exc
     except Exception as exc:
         logger.warning("Local LLM server probe failed", provider=norm, base_url=base)
         raise LLMUnavailableError(
@@ -611,13 +652,12 @@ async def check_ollama_status(base_url: str = "http://localhost:11434") -> dict[
     api_models: list[str] = []
     connected = False
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            res = await client.get(endpoint)
-            if res.status_code == 200:
-                connected = True
-                data = res.json()
-                api_models = [m.get("name") for m in data.get("models", []) if m.get("name")]
-    except Exception as exc:
+        res = await _fetch_json_with_retry(endpoint)
+        if res.status_code == 200:
+            connected = True
+            data = res.json()
+            api_models = [m.get("name") for m in data.get("models", []) if m.get("name")]
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
         logger.debug("Ollama HTTP check failed", error=str(exc))
 
     # Only use models actually discovered via CLI or API.
@@ -657,13 +697,12 @@ async def check_llamacpp_status(base_url: str = "http://127.0.0.1:8080/v1") -> d
     api_models: list[str] = []
     connected = False
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            res = await client.get(endpoint)
-            if res.status_code == 200:
-                connected = True
-                data = res.json()
-                api_models = [m.get("id") for m in data.get("data", []) if m.get("id")]
-    except Exception as exc:
+        res = await _fetch_json_with_retry(endpoint)
+        if res.status_code == 200:
+            connected = True
+            data = res.json()
+            api_models = [m.get("id") for m in data.get("data", []) if m.get("id")]
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
         logger.debug("llama.cpp HTTP check failed", error=str(exc))
 
     # llama-server serves ONLY the model(s) passed via --model (reported by

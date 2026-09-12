@@ -3,7 +3,7 @@
 **Date:** 2026-09-11 → 2026-09-12  
 **Session:** Unified Senior Audit → Implementation Pass (≤2-day fixes from audit §11A) + **ONNX BGE Runtime** + **Claims verification hardening** + **Decompose+verify fusion** + **Push-readiness docs pass**  
 **Baseline Audit:** `docs/audits/2026-09-11_unified_senior_audit.md`  
-**Test State:** Backend 216/216 ✅ | Frontend 22/22 + lint + build ✅ | ruff check + format clean ✅ | Bandit 0 issues ✅ | k6 + Playwright green ✅ | Docker image boots ✅
+**Test State:** Backend 219/219 ✅ | Frontend 22/22 + lint + build ✅ | ruff check + format clean ✅ | Bandit 0 issues ✅ | k6 + Playwright green ✅ | Docker image boots ✅
 
 ---
 
@@ -216,6 +216,20 @@ Source: `docs/audits/2026-09-11_unified_senior_audit.md`. Already-fixed items re
 | Tests | Backend endpoint-degradation test; frontend failed-query warning test. |
 
 **Result:** 216 backend + 22 frontend green. If the symptom persists on your machine after pulling, restart the backend (`uvicorn` without `--reload` serves stale code) and hard-refresh the frontend (stale bundle) — the served code paths are verified.
+
+### 12. Local-server flakiness hardening — probe retry + refused/timeout split (2026-09-12)
+**Report:** llama-server running, but the system wouldn't identify it and analyses failed to run.
+
+**Investigation:** reproduced a subtler cousin live — a lone 3 s probe sample failing against a live-but-slow server (cold model / full accept backlog on a busy 8 GB host), which 503s the whole analysis and flaps the UI pill on every 8 s poll. Connection-refused (down) and timeout (slow) were conflated into one "not reachable" message, sending users to restart a live server.
+
+| File | Change |
+|------|--------|
+| `app/core/local_llm.py` | `_fetch_json_with_retry()` (2 attempts, connect/timeout only); probe distinguishes refused ("not reachable — start it") from timeout ("not answering — may be starting/overloaded, wait and retry"); `check_ollama_status` / `check_llamacpp_status` use the same retry. |
+| `app/api/v1/models.py` | Provider status checks run concurrently (`asyncio.gather`) to absorb retry latency on the 8 s-polled endpoint; stale comment corrected. |
+| `app/mcp/server.py` | `local_llm_status` tool degrades per-provider instead of erroring the whole tool. |
+| Tests | Probe retry-then-success, timeout-message split, status retry (3 new). |
+
+**Result:** 219 backend green. To tell the cases apart on your machine: `curl -m 5 http://127.0.0.1:8080/v1/models` failing instantly = server down (start it); hanging = overloaded (wait); instant 200 yet UI red = stale frontend/backend processes.
 
 ## NEXT SESSION START POINT
 
