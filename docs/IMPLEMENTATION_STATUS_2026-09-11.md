@@ -1,9 +1,9 @@
 # TrustRAG — Implementation Status (2026-09-11)
 
 **Date:** 2026-09-11 → 2026-09-12  
-**Session:** Unified Senior Audit → Implementation Pass (≤2-day fixes from audit §11A) + **ONNX BGE Runtime** + **Claims verification hardening**  
+**Session:** Unified Senior Audit → Implementation Pass (≤2-day fixes from audit §11A) + **ONNX BGE Runtime** + **Claims verification hardening** + **Decompose+verify fusion**  
 **Baseline Audit:** `docs/audits/2026-09-11_unified_senior_audit.md`  
-**Test State:** Backend 199/199 ✅ | Frontend 21/21 + lint + build ✅ | ruff check + format clean ✅
+**Test State:** Backend 204/204 ✅ | Frontend 21/21 + lint + build ✅ | ruff check + format clean ✅
 
 ---
 
@@ -56,8 +56,19 @@
 **Result:** Embeddings now run via ONNX Runtime (no PyTorch in API process). Numerical parity verified (max diff 0.000000 vs PyTorch). **~500-1000 MB RSS savings** — largest single RAM win. Set `EMBEDDING_PROVIDER=onnx` to enable.
 
 ### 5. Tests — All green
-- Backend: `pytest tests/ -q` → **193 passed** (was 191; added 2 health tests for public/detailed split).
+- Backend: `pytest tests/ -q` → **204 passed** (was 191; +2 health split, +6 NLI tolerance, +5 fused fusion).
 - Frontend: `npm run lint` (0 errors), `npm run test` (21 passed), `npm run build` (success, 2.7s).
+
+### 8. Decompose+verify fusion — one call instead of two (2026-09-12)
+**Motivation:** verification cost 2 LLM calls in the typical case (decompose 512 + batch 768) and up to 11 on failure cascades — the dominant analysis-latency term on throttled 1.2–3B local models.
+
+| File | Change |
+|------|--------|
+| `app/verification/verifier.py` | `FusedClaimVerdict` / `FusedDecomposeVerify` schemas (same tolerant validators), `FUSED_DECOMPOSE_VERIFY_PROMPT_TEMPLATE` (enum + int-only segments + JSON example), `fused_decompose_verify()` (1024-token cap, returns `None` on total failure). `execute_claim_verification` tries fused first (meta-filter + max-cap apply); `None`/empty falls through to the untouched two-step path (existing backstops, retry, budgeted fallback all preserved). Kill-switch: `verification.fused_decompose_verify` / `FUSED_DECOMPOSE_VERIFY=0`. |
+| `app/core/config.py`, `config/models.yaml` | `fused_decompose_verify` property + `fused_decompose_verify: true`; `config_version` 1.6 → 1.7. |
+| `apps/api/tests/test_verification.py` | 5 new tests: fused-skips-two-step (two-step seams assert never called), fused-failure fallback (+1 call worst case), kill-switch, fused meta-filter, fused-None unit. 6 pre-existing two-step tests pinned with `fused_decompose_verify=None` mock for hermeticity (they previously passed only because no live server was up — a running llama-server made fused succeed and skipped the asserted two-step calls). Suite proven hermetic: 26/26 with server DOWN. |
+
+**Live eval (llama.cpp LFM2.5-1.2B, refund-policy answer, 2 chunks):** fused 3 judged claims in **2.0s / 1 call** vs two-step 3 claims in **3.4s / 2 calls** — ~40% wall-time saved, one fewer round trip, comparable quality. Fused kept as primary; worst case costs exactly one extra call.
 
 ### 6. Claims verification hardening — tolerant NLI parsing (2026-09-12)
 **Symptom (Playground screenshot):** "Explain the key concepts" → 0/7 claims supported, all NEUTRAL, FAILED — on a good grounded answer with 16 evidence chunks. Same class as earlier "0/5 for Describe the knowledge base".

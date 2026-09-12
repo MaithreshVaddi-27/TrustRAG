@@ -94,11 +94,11 @@ async def test_verify_claim_contradicted(mock_get_model):
     assert res["supporting_segments"] == [1]
 
 
+@patch("app.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.verification.verifier.batch_verify_claims_nli")
 @patch("app.verification.verifier.decompose_answer_to_claims")
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
-@pytest.mark.asyncio
 async def test_execute_claim_verification(
     mock_create_indexes, mock_connect, mock_decompose, mock_batch_verify
 ):
@@ -131,9 +131,9 @@ async def test_execute_claim_verification(
         assert claims[1]["evidence_ids"] == []
 
 
+@patch("app.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.verification.verifier.batch_verify_claims_nli")
 @patch("app.verification.verifier.decompose_answer_to_claims")
-@pytest.mark.asyncio
 async def test_execute_claim_verification_maps_sorted_segments_to_original_evidence(
     mock_decompose, mock_batch_verify
 ):
@@ -178,10 +178,10 @@ async def test_execute_claim_verification_maps_sorted_segments_to_original_evide
     assert claims[0]["evidence_ids"] == [evidence_ids[2]]
 
 
+@patch("app.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.verification.verifier.verify_claim_nli")
 @patch("app.verification.verifier.batch_verify_claims_nli")
 @patch("app.verification.verifier.decompose_answer_to_claims")
-@pytest.mark.asyncio
 async def test_batch_verification_retried_once_before_individual_fallback(
     mock_decompose, mock_batch_verify, mock_individual
 ):
@@ -211,10 +211,10 @@ async def test_batch_verification_retried_once_before_individual_fallback(
     assert claims[0]["state"] == "SUPPORTED"
 
 
+@patch("app.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.verification.verifier.verify_claim_nli")
 @patch("app.verification.verifier.batch_verify_claims_nli")
 @patch("app.verification.verifier.decompose_answer_to_claims")
-@pytest.mark.asyncio
 async def test_individual_nli_fallback_is_capped(
     mock_decompose, mock_batch_verify, mock_individual
 ):
@@ -402,10 +402,10 @@ async def test_batch_total_failure_raises_instead_of_poisoning(mock_get_model):
         )
 
 
+@patch("app.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.verification.verifier.verify_claim_nli")
 @patch("app.verification.verifier.batch_verify_claims_nli")
 @patch("app.verification.verifier.decompose_answer_to_claims")
-@pytest.mark.asyncio
 async def test_total_batch_failure_recovers_via_individual_calls(
     mock_decompose, mock_batch_verify, mock_individual
 ):
@@ -437,6 +437,7 @@ async def test_total_batch_failure_recovers_via_individual_calls(
     assert all(c["state"] == "SUPPORTED" for c in claims)
 
 
+@patch("app.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.verification.verifier.get_verification_model")
 @pytest.mark.asyncio
 async def test_empty_structured_decomposition_falls_back_to_sentences(mock_get_model):
@@ -571,3 +572,249 @@ def test_batch_drops_bare_int_items_keeps_valid_siblings():
 def test_batch_all_bare_ints_yields_empty_map():
     b = BatchNLIVerdict(verdicts=[1])
     assert b.verdicts == []
+
+
+# ─── Fused decompose+verify (one call instead of decompose → batch) ──────────
+
+
+def _fused_items():
+    from app.verification.verifier import FusedClaimVerdict
+
+    return [
+        FusedClaimVerdict(
+            claim="Refunds are available within 30 days.",
+            verdict="SUPPORTED",
+            supporting_segments=[1],
+            explanation="States the 30-day window.",
+        ),
+        FusedClaimVerdict(
+            claim="Backups are kept for 90 days.",
+            verdict="SUPPORTED",
+            supporting_segments=[1],
+            explanation="States 90-day retention.",
+        ),
+    ]
+
+
+@patch("app.verification.verifier.get_verification_model")
+@pytest.mark.asyncio
+async def test_fused_path_skips_two_step_calls(mock_get_model):
+    """Fused success must not invoke decompose or batch at all (1 call total)."""
+    from app.verification.verifier import execute_claim_verification
+
+    mock_structured = MagicMock()
+    mock_structured.ainvoke = AsyncMock(return_value=MagicMock(items=_fused_items()))
+    mock_model = MagicMock()
+    mock_model.with_structured_output = MagicMock(return_value=mock_structured)
+    mock_get_model.return_value = mock_model
+
+    mock_collection = MagicMock()
+    mock_collection.insert_many = AsyncMock(return_value=MagicMock(inserted_ids=[ObjectId()] * 2))
+    with (
+        patch("app.verification.verifier.get_collection", return_value=mock_collection),
+        patch(
+            "app.verification.verifier.decompose_answer_to_claims",
+            side_effect=AssertionError("two-step decompose must not run"),
+        ),
+        patch(
+            "app.verification.verifier.batch_verify_claims_nli",
+            side_effect=AssertionError("two-step batch must not run"),
+        ),
+    ):
+        claims = await execute_claim_verification(
+            analysis_id_str="64ee39d09c6292376e191983",
+            answer="Refunds are available within 30 days. Backups are kept for 90 days.",
+            chunks=[{"text": "Refunds within 30 days. Backups kept 90 days."}],
+            evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
+        )
+
+    assert len(claims) == 2
+    assert all(c["state"] == "SUPPORTED" for c in claims)
+    assert len(claims[0]["evidence_ids"]) == 1
+    mock_structured.ainvoke.assert_awaited_once()
+
+
+@patch("app.verification.verifier.get_verification_model")
+@pytest.mark.asyncio
+async def test_fused_failure_falls_back_to_two_step(mock_get_model):
+    """Fused total failure must run the classic path (worst case: +1 call)."""
+    from app.verification.verifier import (
+        BatchNLIVerdict,
+        ClaimDecomposition,
+        ClaimVerdict,
+        execute_claim_verification,
+    )
+
+    calls = {"fused": 0, "decompose": 0, "batch": 0}
+
+    def _structured(schema, **kwargs):
+        inner = MagicMock()
+        if schema.__name__ == "FusedDecomposeVerify":
+            calls["fused"] += 1
+            inner.ainvoke = AsyncMock(side_effect=RuntimeError("fused blew up"))
+        elif schema.__name__ == "ClaimDecomposition":
+            calls["decompose"] += 1
+            inner.ainvoke = AsyncMock(
+                return_value=ClaimDecomposition(claims=["Refunds within 30 days."])
+            )
+        elif schema.__name__ == "BatchNLIVerdict":
+            calls["batch"] += 1
+            inner.ainvoke = AsyncMock(
+                return_value=BatchNLIVerdict(
+                    verdicts=[
+                        ClaimVerdict(
+                            claim_id=1,
+                            verdict="SUPPORTED",
+                            supporting_segments=[1],
+                            explanation="Ok",
+                        )
+                    ]
+                )
+            )
+        else:
+            inner.ainvoke = AsyncMock(
+                return_value=NLIVerdict(
+                    verdict="SUPPORTED",
+                    supporting_segments=[1],
+                    explanation="Ok",
+                )
+            )
+        return inner
+
+    mock_model = MagicMock()
+    mock_model.with_structured_output = MagicMock(side_effect=_structured)
+    mock_get_model.return_value = mock_model
+
+    mock_collection = MagicMock()
+    mock_collection.insert_many = AsyncMock(return_value=MagicMock(inserted_ids=[ObjectId()]))
+    with patch("app.verification.verifier.get_collection", return_value=mock_collection):
+        claims = await execute_claim_verification(
+            analysis_id_str="64ee39d09c6292376e191983",
+            answer="Refunds are available within 30 days.",
+            chunks=[{"text": "Refunds within 30 days."}],
+            evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
+        )
+
+    assert len(claims) == 1
+    assert claims[0]["state"] == "SUPPORTED"
+    assert calls == {"fused": 1, "decompose": 1, "batch": 1}
+
+
+@patch("app.verification.verifier.get_verification_model")
+@pytest.mark.asyncio
+async def test_fused_kill_switch_restores_two_step(mock_get_model, monkeypatch):
+    """FUSED_DECOMPOSE_VERIFY=0 must never invoke the fused call."""
+    from app.verification.verifier import (
+        BatchNLIVerdict,
+        ClaimDecomposition,
+        ClaimVerdict,
+        execute_claim_verification,
+    )
+
+    monkeypatch.setenv("FUSED_DECOMPOSE_VERIFY", "0")
+
+    def _structured(schema, **kwargs):
+        inner = MagicMock()
+        if schema.__name__ == "FusedDecomposeVerify":
+            inner.ainvoke = AsyncMock(
+                side_effect=AssertionError("fused must not run when disabled")
+            )
+        elif schema.__name__ == "ClaimDecomposition":
+            inner.ainvoke = AsyncMock(
+                return_value=ClaimDecomposition(claims=["Refunds within 30 days."])
+            )
+        elif schema.__name__ == "BatchNLIVerdict":
+            inner.ainvoke = AsyncMock(
+                return_value=BatchNLIVerdict(
+                    verdicts=[
+                        ClaimVerdict(
+                            claim_id=1,
+                            verdict="SUPPORTED",
+                            supporting_segments=[1],
+                            explanation="Ok",
+                        )
+                    ]
+                )
+            )
+        else:
+            inner.ainvoke = AsyncMock(
+                return_value=NLIVerdict(
+                    verdict="SUPPORTED",
+                    supporting_segments=[1],
+                    explanation="Ok",
+                )
+            )
+        return inner
+
+    mock_model = MagicMock()
+    mock_model.with_structured_output = MagicMock(side_effect=_structured)
+    mock_get_model.return_value = mock_model
+
+    mock_collection = MagicMock()
+    mock_collection.insert_many = AsyncMock(return_value=MagicMock(inserted_ids=[ObjectId()]))
+    with patch("app.verification.verifier.get_collection", return_value=mock_collection):
+        claims = await execute_claim_verification(
+            analysis_id_str="64ee39d09c6292376e191983",
+            answer="Refunds are available within 30 days.",
+            chunks=[{"text": "Refunds within 30 days."}],
+            evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
+        )
+
+    assert len(claims) == 1
+    assert claims[0]["state"] == "SUPPORTED"
+
+
+@patch("app.verification.verifier.get_verification_model")
+@pytest.mark.asyncio
+async def test_fused_meta_claims_filtered(mock_get_model):
+    """Prompt-echo claims in fused output must not launder into verdicts."""
+    from app.verification.verifier import FusedClaimVerdict, execute_claim_verification
+
+    items = [
+        *_fused_items(),
+        FusedClaimVerdict(
+            claim="The user asks for the key concepts.",
+            verdict="SUPPORTED",
+            supporting_segments=[1],
+            explanation="Echo.",
+        ),
+    ]
+    mock_structured = MagicMock()
+    mock_structured.ainvoke = AsyncMock(return_value=MagicMock(items=items))
+    mock_model = MagicMock()
+    mock_model.with_structured_output = MagicMock(return_value=mock_structured)
+    mock_get_model.return_value = mock_model
+
+    mock_collection = MagicMock()
+    mock_collection.insert_many = AsyncMock(return_value=MagicMock(inserted_ids=[ObjectId()] * 2))
+    with patch("app.verification.verifier.get_collection", return_value=mock_collection):
+        claims = await execute_claim_verification(
+            analysis_id_str="64ee39d09c6292376e191983",
+            answer="Refunds are available within 30 days. Backups are kept for 90 days.",
+            chunks=[{"text": "Refunds within 30 days. Backups kept 90 days."}],
+            evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
+        )
+
+    assert len(claims) == 2
+    assert all("user asks" not in c["text"].lower() for c in claims)
+
+
+@patch("app.verification.verifier.get_verification_model")
+@pytest.mark.asyncio
+async def test_fused_decompose_verify_returns_none_on_failure(mock_get_model):
+    """Unit: total fused failure returns None (caller falls back)."""
+    from app.verification.verifier import fused_decompose_verify
+
+    mock_structured = MagicMock()
+    mock_structured.ainvoke = AsyncMock(side_effect=RuntimeError("boom"))
+    mock_model = MagicMock()
+    mock_model.with_structured_output = MagicMock(return_value=mock_structured)
+    mock_get_model.return_value = mock_model
+
+    res = await fused_decompose_verify(
+        "Some answer text.",
+        [{"text": "Some context segment."}],
+        provider="llama_cpp",
+        context_str="Segment 1 [Source, Page]\nSome context segment.",
+    )
+    assert res is None

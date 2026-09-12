@@ -458,6 +458,18 @@ class ModelConfig:
         return int(self._get("verification", "timeout_seconds"))
 
     @property
+    def fused_decompose_verify(self) -> bool:
+        val = self._get("verification", "fused_decompose_verify", required=False)
+        env_val = os.environ.get("FUSED_DECOMPOSE_VERIFY")
+        if env_val is not None:
+            return env_val.strip().lower() in ("1", "true", "yes", "on")
+        if val is None:
+            return True
+        if isinstance(val, bool):
+            return val
+        return str(val).strip().lower() in ("1", "true", "yes", "on")
+
+    @property
     def max_verification_time_seconds(self) -> int:
         return int(self._get("verification", "max_verification_time_seconds"))
 

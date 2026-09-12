@@ -16,7 +16,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 runtime:
-  config_version: "1.6"
+  config_version: "1.7"
 
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
@@ -76,6 +76,10 @@ verification:
   max_retries: 1
   # Circuit breaker: maximum time allowed for verification node execution
   max_verification_time_seconds: 120
+  # Fused decompose+verify: one structured call instead of decompose → batch.
+  # Falls back to two-step automatically on total failure. Disable with
+  # FUSED_DECOMPOSE_VERIFY=0 to restore the classic path unconditionally.
+  fused_decompose_verify: true
 
 # ─── Reranker ─────────────────────────────────────────────────────────────────
 reranker:

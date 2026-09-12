@@ -8,7 +8,7 @@
 [![Ollama](https://img.shields.io/badge/Ollama-Local_Offline-000000?logo=ollama&logoColor=white)](https://ollama.com)
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF_Server-orange)](https://github.com/ggerganov/llama.cpp)
 [![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-Embeddings-005CED?logo=onnx&logoColor=white)](https://onnxruntime.ai)
-[![Tests](https://img.shields.io/badge/Backend%20Tests-199%20Passing-brightgreen)](apps/api/tests)
+[![Tests](https://img.shields.io/badge/Backend%20Tests-204%20Passing-brightgreen)](apps/api/tests)
 [![Tests](https://img.shields.io/badge/Frontend%20Tests-21%20Passing-brightgreen)](apps/web)
 [![E2E](https://img.shields.io/badge/Playwright%20E2E-2%20Passing-brightgreen)](apps/web/e2e)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
@@ -500,7 +500,7 @@ TrustRAG/
 │   │   │   ├── services/           # Business logic: KB, analysis, auth
 │   │   │   └── verification/       # Batch NLI verifier & SHA-256 auditor
 │   │   ├── config/models.yaml      # Model IDs, thresholds, tuning
-│   │   └── tests/                  # 199 tests (all passing)
+│   │   └── tests/                  # 204 tests (all passing)
 │   │
 │   └── web/                        # React 18 + Vite 6 frontend
 │       ├── src/
@@ -632,7 +632,7 @@ Change a port in `ports.yaml`, then run `python3 scripts/apply_ports.py` (CI enf
 
 ## Testing
 
-TrustRAG has 199 backend tests, 21 frontend tests, and 2 E2E tests — all passing.
+TrustRAG has 204 backend tests, 21 frontend tests, and 2 E2E tests — all passing.
 
 **Backend:**
 ```bash
