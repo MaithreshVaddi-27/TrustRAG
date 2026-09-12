@@ -58,8 +58,8 @@ def get_memory_usage_mb() -> float:
             process = psutil.Process()
             rss_bytes = process.memory_info().rss
             return round(rss_bytes / (1024 * 1024), 2)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("psutil RSS read failed; falling back to resource", error=str(exc))
 
     # Fallback: resource.ru_maxrss (PEAK RSS, not current)
     try:

@@ -10,7 +10,9 @@ import pytest
 from bson import ObjectId
 
 from app.verification.verifier import (
+    BatchNLIVerdict,
     ClaimDecomposition,
+    ClaimVerdict,
     NLIVerdict,
     decompose_answer_to_claims,
     execute_claim_verification,
@@ -490,3 +492,82 @@ async def test_empty_decomposition_of_refusal_stays_empty(mock_get_model):
             evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
         )
     assert claims == []
+
+
+# ─── Tolerant NLI parsing (small-model near-miss JSON) ────────────────────────
+# Live trace (llama.cpp LFM2.5-1.2B): verdict "VERIFIED" instead of SUPPORTED,
+# supporting_segments as evidence prose instead of ints, batch {"verdicts": [1]}.
+# All three previously raised ValidationError → NEUTRAL → 0/x claims supported.
+
+
+def test_nli_verdict_alias_verified_maps_to_supported():
+    v = NLIVerdict(
+        verdict="VERIFIED",
+        supporting_segments=[2],
+        explanation="The context states it.",
+    )
+    assert v.verdict == "SUPPORTED"
+    assert v.supporting_segments == [2]
+
+
+def _verdict_of(raw: str) -> str:
+    return str(NLIVerdict(verdict=raw, supporting_segments=[], explanation="").verdict)
+
+
+def test_nli_verdict_alias_matrix():
+    assert _verdict_of("TRUE") == "SUPPORTED"
+    assert _verdict_of("FALSE") == "CONTRADICTED"
+    assert _verdict_of("REFUTED") == "CONTRADICTED"
+    assert _verdict_of("UNKNOWN") == "NEUTRAL"
+    assert _verdict_of("garbage-wobble") == "NEUTRAL"
+
+
+def test_nli_verdict_text_segments_coerced_or_dropped():
+    # "Segment 2 states…" recovers index 2; pure prose yields [] but keeps verdict.
+    v = NLIVerdict(
+        verdict="SUPPORTED",
+        supporting_segments=["Segment 2 states the refund window"],
+        explanation="Ok",
+    )
+    assert v.verdict == "SUPPORTED"
+    assert v.supporting_segments == [2]
+
+    v2 = NLIVerdict(
+        verdict="SUPPORTED",
+        supporting_segments=[
+            "effective from: 2026-01-01 effective until: 2026-12-31",
+            "refund policy annual contract customers can get a full refund within 30 days",
+        ],
+        explanation="Ok",
+    )
+    assert v2.verdict == "SUPPORTED"
+    # Year/date digits are out of range and dropped downstream; only ints survive here.
+    assert all(isinstance(n, int) for n in v2.supporting_segments)
+
+
+def test_claim_verdict_string_claim_id_coerced():
+    v = ClaimVerdict(claim_id="2", verdict="SUPPORTED", supporting_segments=[1], explanation="Ok")
+    assert v.claim_id == 2
+    assert v.verdict == "SUPPORTED"
+
+
+def test_batch_drops_bare_int_items_keeps_valid_siblings():
+    b = BatchNLIVerdict(
+        verdicts=[
+            1,
+            {
+                "claim_id": 2,
+                "verdict": "SUPPORTED",
+                "supporting_segments": [1],
+                "explanation": "Ok",
+            },
+        ]
+    )
+    assert len(b.verdicts) == 1
+    assert b.verdicts[0].claim_id == 2
+    assert b.verdicts[0].verdict == "SUPPORTED"
+
+
+def test_batch_all_bare_ints_yields_empty_map():
+    b = BatchNLIVerdict(verdicts=[1])
+    assert b.verdicts == []

@@ -80,7 +80,10 @@ def validate_magic_bytes(filename: str, stream: BinaryIO) -> None:
                 return  # Valid signature
         raise IngestionError(
             "File signature mismatch",
-            detail=f"File '{filename}' has extension '{ext}' but content does not match expected format",
+            detail=(
+                f"File '{filename}' has extension '{ext}' but content "
+                "does not match expected format"
+            ),
         )
     finally:
         stream.seek(pos)
@@ -160,7 +163,7 @@ def parse_docx(stream: BinaryIO) -> list[dict[str, Any]]:
             # Check for zip bomb
             total_uncompressed = sum(info.file_size for info in docx_zip.infolist())
             check_decompression_bomb("document.docx", compressed_size, total_uncompressed)
-            
+
             xml_content = docx_zip.read("word/document.xml")
             tree = ET.fromstring(xml_content)
             namespaces = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}

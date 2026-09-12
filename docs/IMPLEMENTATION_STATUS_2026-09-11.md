@@ -1,9 +1,9 @@
 # TrustRAG — Implementation Status (2026-09-11)
 
-**Date:** 2026-09-11  
-**Session:** Unified Senior Audit → Implementation Pass (≤2-day fixes from audit §11A) + **ONNX BGE Runtime**  
+**Date:** 2026-09-11 → 2026-09-12  
+**Session:** Unified Senior Audit → Implementation Pass (≤2-day fixes from audit §11A) + **ONNX BGE Runtime** + **Claims verification hardening**  
 **Baseline Audit:** `docs/audits/2026-09-11_unified_senior_audit.md`  
-**Test State:** Backend 193/193 ✅ | Frontend 21/21 + lint + build ✅
+**Test State:** Backend 199/199 ✅ | Frontend 21/21 + lint + build ✅ | ruff check + format clean ✅
 
 ---
 
@@ -58,6 +58,29 @@
 ### 5. Tests — All green
 - Backend: `pytest tests/ -q` → **193 passed** (was 191; added 2 health tests for public/detailed split).
 - Frontend: `npm run lint` (0 errors), `npm run test` (21 passed), `npm run build` (success, 2.7s).
+
+### 6. Claims verification hardening — tolerant NLI parsing (2026-09-12)
+**Symptom (Playground screenshot):** "Explain the key concepts" → 0/7 claims supported, all NEUTRAL, FAILED — on a good grounded answer with 16 evidence chunks. Same class as earlier "0/5 for Describe the knowledge base".
+
+**Root cause (`app/verification/verifier.py`):** strict Pydantic Literals vs small-model near-miss JSON:
+- verdict `"VERIFIED"` instead of `SUPPORTED` → ValidationError → NEUTRAL;
+- `supporting_segments` as evidence prose instead of `list[int]` → ValidationError → NEUTRAL;
+- batch `{"verdicts": [1]}` (bare ints) → whole batch raises → retry → individual fallback fails the same way.
+
+| File | Change |
+|------|--------|
+| `app/verification/verifier.py` | `_normalize_verdict_value` alias map (VERIFIED/TRUE→SUPPORTED, FALSE/REFUTED→CONTRADICTED, UNKNOWN→NEUTRAL, junk→NEUTRAL); `_coerce_segment_list` (ints pass, digit runs in prose extracted, prose dropped); `_coerce_claim_id`; `field_validator(mode="before")` on `NLIVerdict`/`ClaimVerdict`; `model_validator` on `BatchNLIVerdict` drops unrecoverable items so valid siblings count and missing ids use per-claim fallback; NLI + batch prompts now pin the exact enum, int-only segments, and a JSON example. |
+| `apps/api/tests/test_verification.py` | 6 new regression tests: VERIFIED→SUPPORTED, alias matrix, text-segment coercion, string claim_id, batch bare-int drop, all-bare-int empty map. |
+
+**Result:** backend **199 passed** (was 193), ruff check + format clean. Malformed-but-correct NLI judgments now count instead of collapsing to 0/x.
+
+### 7. Lint sweep — 38 session-introduced ruff errors fixed
+- `onnx_embeddings.py` (28): `List`→`list`, unused `os`/`Path`, import sort, line lengths, EOF newline.
+- `model_registry.py` (5): unquoted `BaseChatModel` annotations, long ONNX line (also dropped obsolete `hasattr` guard).
+- `disk_cache.py` (2): batch signature wrap, `zip(..., strict=True)`.
+- `memory.py` (1): psutil fallback now logs instead of bare pass.
+- `parser.py` (2): long line wrap, trailing whitespace.
+- `ruff format` applied repo-wide (2 files reflowed); full suite re-run green.
 
 ### 6. Full Pipeline Integration Test (IN PROGRESS)
 - Model discovery snapshot loading fixed (`load_discovery_snapshot()` at module import in `local_llm.py`)

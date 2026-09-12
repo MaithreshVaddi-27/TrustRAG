@@ -36,7 +36,7 @@ logger = get_logger(__name__)
 # ─── Bounded LLM Registry (replaces lru_cache on get_llm/get_verification_model) ────
 # Limits concurrent model instances to prevent RAM/GPU leak from user-controlled keys.
 _MAX_LLM_INSTANCES = 4
-_LLM_REGISTRY: OrderedDict[str, "BaseChatModel"] = OrderedDict()
+_LLM_REGISTRY: OrderedDict[str, BaseChatModel] = OrderedDict()
 _LLM_REGISTRY_LOCK = threading.RLock()
 _LLM_REGISTRY_CLOSED = False
 
@@ -45,7 +45,7 @@ def _llm_registry_key(provider: str, model: str | None) -> str:
     return f"{provider}:{model or 'default'}"
 
 
-def _close_llm_instance(llm: "BaseChatModel") -> None:
+def _close_llm_instance(llm: BaseChatModel) -> None:
     """Best-effort close for LLM instances that support it."""
     try:
         # ChatOllamaClient and ChatLlamaCppClient may have close methods
@@ -58,7 +58,7 @@ def _close_llm_instance(llm: "BaseChatModel") -> None:
         logger.debug("Error closing LLM instance", error=str(exc))
 
 
-def get_llm_instance(provider: str, model: str | None) -> "BaseChatModel | None":
+def get_llm_instance(provider: str, model: str | None) -> BaseChatModel | None:
     """Get existing LLM instance from registry (no creation)."""
     key = _llm_registry_key(provider, model)
     with _LLM_REGISTRY_LOCK:
@@ -69,7 +69,7 @@ def get_llm_instance(provider: str, model: str | None) -> "BaseChatModel | None"
     return None
 
 
-def put_llm_instance(provider: str, model: str | None, llm: "BaseChatModel") -> None:
+def put_llm_instance(provider: str, model: str | None, llm: BaseChatModel) -> None:
     """Put LLM instance into bounded registry with LRU eviction."""
     global _LLM_REGISTRY_CLOSED
     if _LLM_REGISTRY_CLOSED:
@@ -111,6 +111,7 @@ _GEN_CACHE_TTL_SECONDS = 300  # 5 minutes
 
 def _gen_cache_key(query: str, chunk_hash: str) -> str:
     import hashlib
+
     return hashlib.sha256(f"{query}:{chunk_hash}".encode()).hexdigest()[:32]
 
 
@@ -656,7 +657,7 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
         base_emb = ONNXBGEEmbeddings(
             model_path=str(onnx_model_path),
             tokenizer_name=active_model,
-            max_seq_length=cfg.embedding_max_seq_length if hasattr(cfg, 'embedding_max_seq_length') else 512,
+            max_seq_length=cfg.embedding_max_seq_length,
         )
         return ONNXBGEEmbeddingsWrapper(base_emb, model_name=f"onnx::{active_model}")
 

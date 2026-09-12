@@ -137,7 +137,9 @@ def get_cached_embeddings_batch(
     return cached, missing_indices
 
 
-def set_cached_embeddings_batch(texts: Sequence[str], model: str, vectors: Sequence[Sequence[float]]) -> None:
+def set_cached_embeddings_batch(
+    texts: Sequence[str], model: str, vectors: Sequence[Sequence[float]]
+) -> None:
     """
     Batch store embedding vectors in a single transaction.
     Replaces N+1 single-row writes with one executemany call.
@@ -152,7 +154,7 @@ def set_cached_embeddings_batch(texts: Sequence[str], model: str, vectors: Seque
         conn = _get_connection()
         # Prepare batch data
         batch_data = []
-        for text, vector in zip(texts, vectors):
+        for text, vector in zip(texts, vectors, strict=True):
             if not vector:
                 continue
             key = _make_key(text, model)
