@@ -12,10 +12,12 @@ docs/
 ├── TRUSTRAG_specs.md          # Full product specification
 ├── ROADMAP.md                 # Product vision, milestones, phase tracking
 ├── AUDIT_REPORT.md            # Aggregated audit report
+├── IMPLEMENTATION_STATUS_2026-09-11.md  # Current implementation status & progress
 ├── architecture/
 │   ├── architecture.md        # End-to-end system design, MCP tools, LangGraph loop, data flow
 │   └── decision-log.md        # ADRs D-01 through D-20
 ├── audits/
+│   ├── 2026-09-11_unified_senior_audit.md  # Latest: multi-role senior audit (frontend/backend/AI/security/opt/test)
 │   ├── 2026-09-10_senior_backend_ai_security_optimization_audit.md
 │   ├── 2026-09-08_model_discovery_and_hardening_audit.md
 │   ├── 2026-09-07_embedding_removal_fix_audit.md
@@ -46,6 +48,7 @@ docs/
 - [**Decision Log (`architecture/decision-log.md`)**](architecture/decision-log.md): Architectural Decision Records covering technology choices, storage layers, and code quality decisions.
 
 ### 2. Audits (most current on top)
+- [**2026-09-11 — Unified Senior Audit**](audits/2026-09-11_unified_senior_audit.md): **Latest** — Multi-role senior audit (Senior Frontend/Backend/AI-ML/Security/Optimization/Testing) with Apple-design frontend compliance, ultra-low RAM backend optimization, ONNX BGE embeddings, security hardening. Supersedes all prior audits.
 - [**2026-09-10 — Senior Backend AI Security & Optimization Audit**](audits/2026-09-10_senior_backend_ai_security_optimization_audit.md): Production-readiness pass — chunk quality, RAM/LLM tuning, security hardening, dead code removal.
 - [**2026-09-08 — Model Discovery & Hardening Audit**](audits/2026-09-08_model_discovery_and_hardening_audit.md): Auto model discovery, registry hardening, provider-default fallback.
 - [**2026-09-07 — Embedding Removal & Fix Pass**](audits/2026-09-07_embedding_removal_fix_audit.md): Ollama/llama.cpp embeddings removed (LLM-only), OCC-RAG model cutover, degenerate-output guards, timeout + recovery-loop fixes, hardware-aware launcher.
@@ -70,9 +73,9 @@ docs/
 
 ---
 
-## Current Stack (2026-09-10)
+## Current Stack (2026-09-11)
 
 - **LLM**: llama.cpp (local, default: `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`), Ollama (default: `gemma3:1b`), Gemini, NVIDIA NIM — selectable per request.
-- **Embeddings**: HuggingFace BGE (local, 384d) by default; Gemini/NVIDIA available via env.
+- **Embeddings**: HuggingFace BGE (local, 384d) by default; **ONNX Runtime** (`EMBEDDING_PROVIDER=onnx`) for torch-free ultra-low RAM; Gemini/NVIDIA available via env.
 - **Retrieval**: Qdrant (embedded local or cloud) + sparse BM25 + RRF; reranker runs on detected device (Metal/CUDA/CPU).
 - **Local LLM server**: start via `./scripts/start_local_llm.sh` (auto GPU offload + KV budget).

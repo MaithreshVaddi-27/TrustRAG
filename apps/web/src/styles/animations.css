@@ -285,7 +285,14 @@
 /* ── Action Button Feedback ────────────────────────────────────────────────── */
 /* Apple Design: respond on pointer-down, not release                          */
 
-.action-feedback:active {
+.action-feedback:active,
+button:active:not(:disabled),
+a[href]:active,
+[role="button"]:active,
+input[type="button"]:active,
+input[type="submit"]:active,
+input[type="reset"]:active,
+select:active {
   transform: scale(0.97);
   transition: transform 80ms ease-out;
 }
@@ -322,15 +329,18 @@
 }
 
 /* ── Reduced Motion ────────────────────────────────────────────────────────── */
+/* Apple Design §14: prefers-reduced-motion means cross-fade/static, no springs */
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
+    /* Disable decorative/continuous animations but PRESERVE functional transitions */
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    /* Keep transition-duration for button presses (functional feedback) */
     scroll-behavior: auto !important;
   }
 
+  /* Disable spring transitions on decorative elements */
   .spring-interactive,
   .spring-scale,
   .spring-fast {
@@ -349,8 +359,39 @@
     background-clip: unset;
   }
 
-  [data-reduced-motion] {
+  /* Status dot pulse is decorative */
+  .status-dot--running { animation: none !important; }
+
+  /* Cursor glow is decorative */
+  .cursor-glow { display: none !important; }
+
+  /* Floating/ambient animations */
+  .animate-float,
+  .animate-pulse-slow,
+  .animate-spin-slow,
+  .animate-glow,
+  .animate-scan,
+  .animate-shimmer,
+  .animate-radar-sweep,
+  .animate-halo-pulse,
+  .animate-border-glow,
+  .laser-scanline,
+  .cyber-radar-sweep {
     animation: none !important;
-    transition: none !important;
+  }
+
+  /* Preserve button press feedback (functional) */
+  .action-feedback:active,
+  button:active:not(:disabled),
+  a[href]:active,
+  [role="button"]:active,
+  input[type="button"]:active,
+  input[type="submit"]:active,
+  input[type="reset"]:active,
+  select:active,
+  .btn-primary:active,
+  .btn-secondary:active {
+    transform: scale(0.97) !important;
+    transition: transform 80ms ease-out !important;
   }
 }

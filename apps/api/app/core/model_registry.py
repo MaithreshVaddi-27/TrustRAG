@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 from collections import OrderedDict
 from functools import lru_cache
 from pathlib import Path
@@ -32,14 +33,130 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# ─── LLM Response Cache ────────────────────────────────────────────────────────
-# Enable LangChain's in-memory LLM cache to avoid redundant calls for identical prompts.
-# This reduces load on both local and cloud LLMs for repeated/similar queries.
+# ─── Bounded LLM Registry (replaces lru_cache on get_llm/get_verification_model) ────
+# Limits concurrent model instances to prevent RAM/GPU leak from user-controlled keys.
+_MAX_LLM_INSTANCES = 4
+_LLM_REGISTRY: OrderedDict[str, "BaseChatModel"] = OrderedDict()
+_LLM_REGISTRY_LOCK = threading.RLock()
+_LLM_REGISTRY_CLOSED = False
+
+
+def _llm_registry_key(provider: str, model: str | None) -> str:
+    return f"{provider}:{model or 'default'}"
+
+
+def _close_llm_instance(llm: "BaseChatModel") -> None:
+    """Best-effort close for LLM instances that support it."""
+    try:
+        # ChatOllamaClient and ChatLlamaCppClient may have close methods
+        if hasattr(llm, "close"):
+            llm.close()
+        elif hasattr(llm, "aclose"):
+            # Can't await in sync context; log and skip
+            logger.debug("LLM instance has async close; skipping sync close")
+    except Exception as exc:
+        logger.debug("Error closing LLM instance", error=str(exc))
+
+
+def get_llm_instance(provider: str, model: str | None) -> "BaseChatModel | None":
+    """Get existing LLM instance from registry (no creation)."""
+    key = _llm_registry_key(provider, model)
+    with _LLM_REGISTRY_LOCK:
+        if key in _LLM_REGISTRY:
+            # LRU: move to end
+            _LLM_REGISTRY.move_to_end(key)
+            return _LLM_REGISTRY[key]
+    return None
+
+
+def put_llm_instance(provider: str, model: str | None, llm: "BaseChatModel") -> None:
+    """Put LLM instance into bounded registry with LRU eviction."""
+    global _LLM_REGISTRY_CLOSED
+    if _LLM_REGISTRY_CLOSED:
+        # If registry is closed, close the new instance immediately
+        _close_llm_instance(llm)
+        return
+
+    key = _llm_registry_key(provider, model)
+    with _LLM_REGISTRY_LOCK:
+        # Evict LRU if at capacity
+        if len(_LLM_REGISTRY) >= _MAX_LLM_INSTANCES and key not in _LLM_REGISTRY:
+            evicted_key, evicted_llm = _LLM_REGISTRY.popitem(last=False)
+            _close_llm_instance(evicted_llm)
+            logger.debug("Evicted LLM from registry", evicted=evicted_key)
+
+        _LLM_REGISTRY[key] = llm
+        _LLM_REGISTRY.move_to_end(key)
+
+
+def close_all_llm_instances() -> None:
+    """Close all LLM instances and prevent new registrations."""
+    global _LLM_REGISTRY_CLOSED
+    with _LLM_REGISTRY_LOCK:
+        _LLM_REGISTRY_CLOSED = True
+        for llm in _LLM_REGISTRY.values():
+            _close_llm_instance(llm)
+        _LLM_REGISTRY.clear()
+        logger.info("Closed all LLM instances and sealed registry")
+
+
+# ─── Generation-scoped LLM Response Cache (TTL + bounded) ───────────────────────────
+# Replaces global unbounded InMemoryCache. Scoped to generation calls only,
+# keyed on (query_hash, chunk_hash) with TTL to prevent NLI-prompt bloat.
+_GEN_CACHE: OrderedDict[str, tuple[float, Any]] = OrderedDict()  # key -> (expires_at, value)
+_GEN_CACHE_LOCK = threading.RLock()
+_GEN_CACHE_MAX_SIZE = 256
+_GEN_CACHE_TTL_SECONDS = 300  # 5 minutes
+
+
+def _gen_cache_key(query: str, chunk_hash: str) -> str:
+    import hashlib
+    return hashlib.sha256(f"{query}:{chunk_hash}".encode()).hexdigest()[:32]
+
+
+def gen_cache_get(query: str, chunk_hash: str) -> Any | None:
+    """Get cached generation result if not expired."""
+    key = _gen_cache_key(query, chunk_hash)
+    now = time.time()
+    with _GEN_CACHE_LOCK:
+        entry = _GEN_CACHE.get(key)
+        if entry is None:
+            return None
+        expires_at, value = entry
+        if now > expires_at:
+            _GEN_CACHE.pop(key, None)
+            return None
+        _GEN_CACHE.move_to_end(key)
+        return value
+
+
+def gen_cache_set(query: str, chunk_hash: str, value: Any) -> None:
+    """Set generation result in cache with TTL."""
+    key = _gen_cache_key(query, chunk_hash)
+    now = time.time()
+    with _GEN_CACHE_LOCK:
+        # Evict LRU if at capacity
+        if len(_GEN_CACHE) >= _GEN_CACHE_MAX_SIZE and key not in _GEN_CACHE:
+            _GEN_CACHE.popitem(last=False)
+        _GEN_CACHE[key] = (now + _GEN_CACHE_TTL_SECONDS, value)
+        _GEN_CACHE.move_to_end(key)
+
+
+def gen_cache_clear() -> None:
+    """Clear generation cache."""
+    with _GEN_CACHE_LOCK:
+        _GEN_CACHE.clear()
+
+
+# ─── LLM Response Cache (legacy global — kept for backward compat, but gen-only now) ───
 _llm_cache_enabled = False
 
 
 def _enable_llm_cache() -> None:
-    """Set up LangChain in-memory cache for LLM responses (idempotent)."""
+    """Set up LangChain in-memory cache for LLM responses (idempotent).
+    NOTE: This global cache is now deprecated in favor of gen_cache_get/set
+    which scopes to generation calls only. Kept for any legacy callers.
+    """
     global _llm_cache_enabled
     if _llm_cache_enabled:
         return
@@ -47,9 +164,28 @@ def _enable_llm_cache() -> None:
         import langchain
         from langchain_core.caches import InMemoryCache
 
-        langchain.llm_cache = InMemoryCache()
+        # Use a bounded wrapper instead of raw InMemoryCache
+        class BoundedCache(InMemoryCache):
+            def __init__(self):
+                super().__init__()
+                self._cache = OrderedDict()
+                self._max_size = 512
+
+            def update(self, prompt: str, llm_string: str, return_val: list) -> None:
+                key = f"{prompt}:{llm_string}"
+                with _GEN_CACHE_LOCK:  # Reuse the same lock
+                    if len(self._cache) >= self._max_size:
+                        self._cache.popitem(last=False)
+                    self._cache[key] = return_val
+                    self._cache.move_to_end(key)
+
+            def lookup(self, prompt: str, llm_string: str) -> list | None:
+                key = f"{prompt}:{llm_string}"
+                return self._cache.get(key)
+
+        langchain.llm_cache = BoundedCache()
         _llm_cache_enabled = True
-        logger.info("LLM response cache enabled (InMemoryCache)")
+        logger.info("LLM response cache enabled (BoundedCache, generation-scoped)")
     except Exception as exc:
         logger.debug("Could not enable LLM cache", error=str(exc))
 
@@ -57,10 +193,6 @@ def _enable_llm_cache() -> None:
 # ─── LLM ─────────────────────────────────────────────────────────────────────
 
 
-# ─── LLM ─────────────────────────────────────────────────────────────────────
-
-
-@lru_cache(maxsize=16)
 def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatModel:
     """
     Return the primary LLM for answer generation.
@@ -70,6 +202,9 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
       - llama_cpp / llamacpp: ChatLlamaCppClient (local, OpenAI-compatible server)
       - gemini: ChatGoogleGenerativeAI via langchain-google-genai
       - nvidia: ChatNVIDIA via langchain-nvidia-ai-endpoints
+
+    Uses bounded registry (max 4 instances) with LRU eviction to prevent
+    RAM/GPU leak from user-controlled model strings.
     """
     settings = get_settings()
     cfg: ModelConfig = get_model_config()
@@ -84,6 +219,12 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
         active_model = model or settings.llamacpp_model or cfg.llm_model_for("llama_cpp")
     else:
         active_model = model or cfg.llm_model
+
+    # Check registry first
+    cached = get_llm_instance(active_provider, active_model)
+    if cached is not None:
+        logger.debug("LLM cache hit", provider=active_provider, model=active_model)
+        return cached
 
     logger.info(
         "Initializing LLM",
@@ -104,7 +245,7 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
                 top_p=cfg.llm_top_p,
                 timeout=float(cfg.llm_timeout_seconds),
             )
-            _enable_llm_cache()
+            put_llm_instance(active_provider, active_model, llm)
             return llm
 
         if active_provider in ("llama_cpp", "llamacpp"):
@@ -118,7 +259,7 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
                 max_tokens=cfg.llm_max_output_tokens,
                 timeout=float(cfg.llm_timeout_seconds),
             )
-            _enable_llm_cache()
+            put_llm_instance(active_provider, active_model, llm)
             return llm
 
         if active_provider in ("nvidia", "nim"):
@@ -134,7 +275,7 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
                 max_tokens=cfg.llm_max_output_tokens,
                 timeout=cfg.llm_timeout_seconds,
             )
-            _enable_llm_cache()
+            put_llm_instance(active_provider, active_model, llm)
             return llm
 
         from langchain_google_genai import ChatGoogleGenerativeAI
@@ -154,7 +295,7 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
             timeout=cfg.llm_timeout_seconds,
             max_retries=cfg.llm_max_retries,
         )
-        _enable_llm_cache()
+        put_llm_instance(active_provider, active_model, llm)
         return llm
     except Exception as exc:
         raise ConfigurationError(
@@ -166,13 +307,14 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
 # ─── Verification LLM ─────────────────────────────────────────────────────────
 
 
-@lru_cache(maxsize=16)
 def get_verification_model(provider: str | None = None, model: str | None = None) -> BaseChatModel:
     """
     Return the verification LLM for claim-level structured verification.
 
     Separate from the primary LLM to allow independent cost/quality tuning.
     Temperature is forced to 0.0 for deterministic verification.
+
+    Uses bounded registry (max 4 instances) with LRU eviction.
     """
     settings = get_settings()
     cfg: ModelConfig = get_model_config()
@@ -186,6 +328,12 @@ def get_verification_model(provider: str | None = None, model: str | None = None
     else:
         active_model = model or cfg.verification_model
 
+    # Check registry first (use distinct key prefix for verification models)
+    cached = get_llm_instance(f"verify:{active_provider}", active_model)
+    if cached is not None:
+        logger.debug("Verification LLM cache hit", provider=active_provider, model=active_model)
+        return cached
+
     logger.info(
         "Initializing verification model",
         provider=active_provider,
@@ -197,23 +345,27 @@ def get_verification_model(provider: str | None = None, model: str | None = None
         if active_provider == "ollama":
             from app.core.local_llm import ChatOllamaClient
 
-            return ChatOllamaClient(
+            llm = ChatOllamaClient(
                 base_url=settings.ollama_base_url,
                 model=active_model or "granite4.2:3b-q4_K_M",
                 temperature=0.0,
                 timeout=float(cfg.verification_timeout_seconds),
             )
+            put_llm_instance(f"verify:{active_provider}", active_model, llm)
+            return llm
 
         if active_provider in ("llama_cpp", "llamacpp"):
             from app.core.local_llm import ChatLlamaCppClient
 
-            return ChatLlamaCppClient(
+            llm = ChatLlamaCppClient(
                 base_url=settings.llamacpp_base_url,
                 model=active_model or "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
                 temperature=0.0,
                 max_tokens=cfg.verification_max_output_tokens,
                 timeout=float(cfg.verification_timeout_seconds),
             )
+            put_llm_instance(f"verify:{active_provider}", active_model, llm)
+            return llm
 
         if active_provider in ("nvidia", "nim"):
             from langchain_nvidia_ai_endpoints import ChatNVIDIA
@@ -221,13 +373,15 @@ def get_verification_model(provider: str | None = None, model: str | None = None
             if not settings.nvidia_api_key:
                 raise ConfigurationError("NVIDIA_API_KEY must be set when AI_PROVIDER is 'nvidia'")
 
-            return ChatNVIDIA(
+            llm = ChatNVIDIA(
                 model=active_model,
                 api_key=settings.nvidia_api_key,
                 temperature=0.0,
                 max_tokens=cfg.verification_max_output_tokens,
                 timeout=cfg.verification_timeout_seconds,
             )
+            put_llm_instance(f"verify:{active_provider}", active_model, llm)
+            return llm
 
         from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -237,7 +391,7 @@ def get_verification_model(provider: str | None = None, model: str | None = None
                 "Switch to 'ollama' or 'llama_cpp' to run completely locally without an API key."
             )
 
-        return ChatGoogleGenerativeAI(
+        llm = ChatGoogleGenerativeAI(
             model=active_model,
             google_api_key=settings.gemini_api_key,
             temperature=cfg.verification_temperature,
@@ -245,6 +399,8 @@ def get_verification_model(provider: str | None = None, model: str | None = None
             timeout=cfg.verification_timeout_seconds,
             max_retries=cfg.llm_max_retries,
         )
+        put_llm_instance(f"verify:{active_provider}", active_model, llm)
+        return llm
     except Exception as exc:
         msg = (
             f"Failed to initialize verification model '{active_model}' "
@@ -359,7 +515,7 @@ class CachedEmbeddingsWrapper(Embeddings):
         if not texts:
             return []
 
-        from app.core.disk_cache import get_cached_embeddings_batch, set_cached_embedding
+        from app.core.disk_cache import get_cached_embeddings_batch, set_cached_embeddings_batch
 
         cached_map, missing_indices = get_cached_embeddings_batch(texts, self._model_name)
         if not missing_indices:
@@ -368,11 +524,13 @@ class CachedEmbeddingsWrapper(Embeddings):
         missing_texts = [texts[i] for i in missing_indices]
         computed_vectors = self._base.embed_documents(missing_texts)
 
+        # Batch write computed vectors to disk cache
+        set_cached_embeddings_batch(missing_texts, self._model_name, computed_vectors)
+
         for i, idx in enumerate(missing_indices):
             vec = computed_vectors[i]
             cached_map[idx] = vec
             self._store_mem(texts[idx], vec)
-            set_cached_embedding(texts[idx], self._model_name, vec)
 
         return [cached_map[i] for i in range(len(texts))]
 
@@ -380,7 +538,7 @@ class CachedEmbeddingsWrapper(Embeddings):
         if not texts:
             return []
 
-        from app.core.disk_cache import get_cached_embeddings_batch, set_cached_embedding
+        from app.core.disk_cache import get_cached_embeddings_batch, set_cached_embeddings_batch
 
         cached_map, missing_indices = await asyncio.to_thread(
             get_cached_embeddings_batch, texts, self._model_name
@@ -391,11 +549,15 @@ class CachedEmbeddingsWrapper(Embeddings):
         missing_texts = [texts[i] for i in missing_indices]
         computed_vectors = await self._base.aembed_documents(missing_texts)
 
+        # Batch write computed vectors to disk cache
+        await asyncio.to_thread(
+            set_cached_embeddings_batch, missing_texts, self._model_name, computed_vectors
+        )
+
         for i, idx in enumerate(missing_indices):
             vec = computed_vectors[i]
             cached_map[idx] = vec
             self._store_mem(texts[idx], vec)
-            await asyncio.to_thread(set_cached_embedding, texts[idx], self._model_name, vec)
 
         return [cached_map[i] for i in range(len(texts))]
 
@@ -424,6 +586,7 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
 
     Supported:
       - huggingface / local: Local BGE (BAAI/bge-small-en-v1.5, 0 API cost)
+      - onnx: ONNX Runtime BGE (no PyTorch in API process, ~500-1000 MB RSS savings)
 
     Cloud embeddings (google_genai, nvidia) were removed: embeddings are a
     local-only concern now, so ingestion and retrieval work fully offline.
@@ -459,16 +622,43 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
     # pipeline. Knowledge bases indexed with a retired provider must be
     # re-uploaded to re-index with local BGE.
     _emb_model_lower = active_model.lower() if isinstance(active_model, str) else ""
-    if active_provider not in ("huggingface", "local", "splade") or any(
+    if active_provider not in ("huggingface", "local", "splade", "onnx") or any(
         k in _emb_model_lower for k in ("embeddinggemma", "nomic-embed")
     ):
         raise ConfigurationError(
-            "Only local HuggingFace embeddings are supported "
-            "(EMBEDDING_PROVIDER=huggingface, e.g. BAAI/bge-small-en-v1.5, 384d). "
+            "Only local HuggingFace or ONNX embeddings are supported "
+            "(EMBEDDING_PROVIDER=huggingface|onnx, e.g. BAAI/bge-small-en-v1.5, 384d). "
             "Re-upload documents to re-index knowledge bases built with a "
             "retired provider.",
             detail=f"requested provider={active_provider} model={active_model}",
         )
+
+    # ── ONNX Runtime Embeddings (torch-free, ultra-low RAM) ────────────────────
+    if active_provider == "onnx":
+        from app.core.onnx_embeddings import ONNXBGEEmbeddings, ONNXBGEEmbeddingsWrapper
+
+        # Use the API directory as base for relative cache_dir to ensure consistency
+        api_base = Path(__file__).parent.parent.parent
+        cache_dir = (api_base / cfg.embedding_cache_dir).resolve()
+        onnx_model_path = cache_dir / "bge-small-en-v1.5.onnx"
+        if not onnx_model_path.exists():
+            raise ConfigurationError(
+                f"ONNX model not found at {onnx_model_path}. "
+                "Run 'python scripts/export_bge_onnx.py' to export the model.",
+            )
+
+        logger.info(
+            "Initializing ONNX Runtime BGE embedding model",
+            model=active_model,
+            onnx_path=str(onnx_model_path),
+        )
+
+        base_emb = ONNXBGEEmbeddings(
+            model_path=str(onnx_model_path),
+            tokenizer_name=active_model,
+            max_seq_length=cfg.embedding_max_seq_length if hasattr(cfg, 'embedding_max_seq_length') else 512,
+        )
+        return ONNXBGEEmbeddingsWrapper(base_emb, model_name=f"onnx::{active_model}")
 
     # ── Local Hugging Face Embeddings (Sentence-Transformers / BGE) ────
     from langchain_huggingface import HuggingFaceEmbeddings
@@ -638,8 +828,9 @@ def registry_status() -> dict[str, Any]:
 
 def clear_model_caches() -> None:
     """Clear cached model singletons so updated API keys or model configs take effect."""
-    get_llm.cache_clear()
-    get_verification_model.cache_clear()
     get_embedding_model.cache_clear()
     get_reranker.cache_clear()
+    # Clear new bounded registry and generation cache
+    close_all_llm_instances()
+    gen_cache_clear()
     logger.info("Cleared all model registry caches")

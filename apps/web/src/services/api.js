@@ -62,7 +62,8 @@ export const conflictService = {
 
 // ── Health & Diagnostics ──────────────────────────────────────────────────
 export const healthService = {
-  get: () => api.get('/api/v1/health').then(r => r.data),
+  get: () => api.get('/api/v1/health/detailed').then(r => r.data),
+  getPublic: () => api.get('/api/v1/health').then(r => r.data),
 }
 
 // ── Models & AI Providers ──────────────────────────────────────────────────

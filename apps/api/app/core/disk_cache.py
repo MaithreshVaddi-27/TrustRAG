@@ -135,3 +135,40 @@ def get_cached_embeddings_batch(
             conn.close()
 
     return cached, missing_indices
+
+
+def set_cached_embeddings_batch(texts: Sequence[str], model: str, vectors: Sequence[Sequence[float]]) -> None:
+    """
+    Batch store embedding vectors in a single transaction.
+    Replaces N+1 single-row writes with one executemany call.
+    """
+    if not texts or not vectors:
+        return
+    if len(texts) != len(vectors):
+        raise ValueError("texts and vectors must have same length")
+
+    conn = None
+    try:
+        conn = _get_connection()
+        # Prepare batch data
+        batch_data = []
+        for text, vector in zip(texts, vectors):
+            if not vector:
+                continue
+            key = _make_key(text, model)
+            dim = len(vector)
+            blob = struct.pack(f"{dim}f", *vector)
+            batch_data.append((key, model, blob, dim, time.time()))
+
+        if batch_data:
+            conn.executemany(
+                "INSERT OR REPLACE INTO embedding_cache "
+                "(key, model, vector, dim, created_at) VALUES (?, ?, ?, ?, ?)",
+                batch_data,
+            )
+            conn.commit()
+    except Exception as exc:
+        logger.debug("Batch disk cache store error", error=str(exc))
+    finally:
+        if conn:
+            conn.close()

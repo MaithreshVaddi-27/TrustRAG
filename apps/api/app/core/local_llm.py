@@ -439,6 +439,24 @@ def get_discovered_llms(provider: str) -> frozenset[str]:
 # JSON snapshot so a pre-run discovery script actually warms the server.
 _DISCOVERY_SNAPSHOT_PATH = Path(__file__).resolve().parents[2] / "data" / "discovered_models.json"
 
+_EMBEDDING_NAME_KEYWORDS = (
+    "embed",
+    "bge",
+    "nomic",
+    "minilm",
+    "gte",
+    "mxbai",
+    "snowflake",
+    "arctic-embed",
+    "e5-",
+    "e5_",
+    "/e5",
+)
+
+
+def _is_embedding_model_name(name: str) -> bool:
+    return any(kw in name.lower() for kw in _EMBEDDING_NAME_KEYWORDS)
+
 
 def save_discovery_snapshot() -> None:
     """Persist the current discovered-model cache for later processes."""
@@ -471,6 +489,10 @@ def load_discovery_snapshot() -> None:
             merge_discovered_llms(str(provider), [str(m) for m in models])
 
 
+# Load snapshot at module import so any process gets cached models
+load_discovery_snapshot()
+
+
 async def seed_local_model_discovery() -> dict[str, list[str]]:
     """
     Discover locally-installed GENERATIVE models and warm the shared cache.
@@ -497,25 +519,6 @@ async def seed_local_model_discovery() -> dict[str, list[str]]:
     save_discovery_snapshot()
 
     return {"ollama": ollama_models, "llama_cpp": llamacpp_models}
-
-
-_EMBEDDING_NAME_KEYWORDS = (
-    "embed",
-    "bge",
-    "nomic",
-    "minilm",
-    "gte",
-    "mxbai",
-    "snowflake",
-    "arctic-embed",
-    "e5-",
-    "e5_",
-    "/e5",
-)
-
-
-def _is_embedding_model_name(name: str) -> bool:
-    return any(kw in name.lower() for kw in _EMBEDDING_NAME_KEYWORDS)
 
 
 async def discover_ollama_cli_models() -> list[str]:

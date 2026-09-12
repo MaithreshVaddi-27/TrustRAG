@@ -7,7 +7,8 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![Ollama](https://img.shields.io/badge/Ollama-Local_Offline-000000?logo=ollama&logoColor=white)](https://ollama.com)
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF_Server-orange)](https://github.com/ggerganov/llama.cpp)
-[![Tests](https://img.shields.io/badge/Backend%20Tests-192%20Passing-brightgreen)](apps/api/tests)
+[![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-Embeddings-005CED?logo=onnx&logoColor=white)](https://onnxruntime.ai)
+[![Tests](https://img.shields.io/badge/Backend%20Tests-193%20Passing-brightgreen)](apps/api/tests)
 [![Tests](https://img.shields.io/badge/Frontend%20Tests-21%20Passing-brightgreen)](apps/web)
 [![E2E](https://img.shields.io/badge/Playwright%20E2E-2%20Passing-brightgreen)](apps/web/e2e)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
@@ -196,6 +197,9 @@ Optional (only if you want cloud features):
 - Google Gemini API key — for cloud LLM reasoning
 - NVIDIA NIM API key — for enterprise NIM models
 - Tavily API key — for AI-powered web search (DuckDuckGo is free and works without a key)
+
+**Optional (ultra-low RAM embeddings):**
+- ONNX Runtime BGE-small — set `EMBEDDING_PROVIDER=onnx` in `.env` (no PyTorch in API process, ~500-1000 MB RSS savings). Requires one-time export: `python scripts/export_bge_onnx.py` and model at `apps/api/.model_cache/bge-small-en-v1.5.onnx`.
 
 ---
 
@@ -601,6 +605,8 @@ Change a port in `ports.yaml`, then run `python3 scripts/apply_ports.py` (CI enf
 
 **`.env` holds secrets + deploy overrides only** (see `.env.example`): `JWT_SECRET` (required, ≥32 chars), `MONGODB_URI`, `QDRANT_URL` (`local` = embedded, no server), `CORS_ORIGINS`, plus optional `AI_PROVIDER` / `EMBEDDING_PROVIDER` / model overrides and cloud keys (`GEMINI_API_KEY`, `NVIDIA_API_KEY`, `TAVILY_API_KEY`). Accepted aliases (e.g. `OLLAMA_HOST` for `OLLAMA_BASE_URL`) are listed in `.env.example` — note a globally-exported `OLLAMA_HOST` is picked up automatically.
 
+**Embedding providers:** `EMBEDDING_PROVIDER=huggingface` (default, PyTorch) or `EMBEDDING_PROVIDER=onnx` (ONNX Runtime, torch-free, ultra-low RAM). `EMBEDDING_MODEL` must match KB pin.
+
 > **Embedding pin:** the embedding model is pinned per knowledge base at ingest time. Switching `EMBEDDING_MODEL` afterwards requires re-creating the KB — old vectors won't match the new dimensionality.
 
 ---
@@ -613,7 +619,7 @@ Change a port in `ports.yaml`, then run `python3 scripts/apply_ports.py` (CI enf
 | **Backend** | FastAPI + Python 3.11 | Async REST API, Pydantic v2, SSE streaming |
 | **Local LLMs** | Ollama / llama.cpp | `gemma3:1b` (Ollama) or `LiquidAI/LFM2.5-1.2B` (llama.cpp) |
 | **Cloud LLMs** | Gemini / NVIDIA NIM | Optional — for when you want cloud-scale reasoning |
-| **Embeddings** | BAAI/bge-small-en-v1.5 | 384d local CPU vectors, zero API cost |
+| **Embeddings** | BAAI/bge-small-en-v1.5 | 384d local vectors, zero API cost; **ONNX Runtime** or HuggingFace (PyTorch) |
 | **Vector Store** | Qdrant | Embedded Rust engine, INT8 quantization, on-disk vectors |
 | **Database** | MongoDB 7.0 | Metadata, chunks, claims, execution traces |
 | **Agent Protocol** | MCP (JSON-RPC 2.0) | Universal tool interface for AI coding agents |
@@ -624,7 +630,7 @@ Change a port in `ports.yaml`, then run `python3 scripts/apply_ports.py` (CI enf
 
 ## Testing
 
-TrustRAG has 192 backend tests, 21 frontend tests, and 2 E2E tests — all passing.
+TrustRAG has 193 backend tests, 21 frontend tests, and 2 E2E tests — all passing.
 
 **Backend:**
 ```bash

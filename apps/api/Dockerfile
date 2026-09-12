@@ -69,6 +69,9 @@ ENV HOME=/app
 # capped to 1 at embedding init (see model_registry).
 ENV TOKENIZERS_PARALLELISM=false
 
+# glibc arena limit reduces fragmentation on async FastAPI workloads
+ENV MALLOC_ARENA_MAX=1
+
 # Drop to non-root
 USER trustrag
 

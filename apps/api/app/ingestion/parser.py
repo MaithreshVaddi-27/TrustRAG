@@ -29,6 +29,81 @@ logger = get_logger(__name__)
 DATE_PATTERN_FROM = re.compile(r"effective\s+from:\s*(\d{4}-\d{2}-\d{2})", re.IGNORECASE)
 DATE_PATTERN_UNTIL = re.compile(r"effective\s+until:\s*(\d{4}-\d{2}-\d{2})", re.IGNORECASE)
 
+# Magic bytes (file signatures) for format validation
+# Maps extension -> list of valid magic byte prefixes
+MAGIC_BYTES = {
+    ".pdf": [b"%PDF"],
+    ".docx": [b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"],  # ZIP-based (docx, xlsx, pptx)
+    ".zip": [b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"],
+    ".png": [b"\x89PNG\r\n\x1a\n"],
+    ".jpg": [b"\xff\xd8\xff"],
+    ".jpeg": [b"\xff\xd8\xff"],
+    ".gif": [b"GIF87a", b"GIF89a"],
+    ".bmp": [b"BM"],
+    ".tiff": [b"II\x2a\x00", b"MM\x00\x2a"],
+}
+
+# Per-format max decompression ratio (compressed_size / decompressed_size) to prevent zip bombs
+# PDF: ~10x typical; ZIP-based: ~100x max; images: minimal compression
+MAX_DECOMPRESSION_RATIO = {
+    ".pdf": 50,
+    ".docx": 100,
+    ".zip": 100,
+    ".png": 10,
+    ".jpg": 10,
+    ".jpeg": 10,
+    ".gif": 10,
+    ".bmp": 2,
+    ".tiff": 10,
+}
+
+DEFAULT_MAX_RATIO = 100
+
+
+def validate_magic_bytes(filename: str, stream: BinaryIO) -> None:
+    """
+    Validate file signature (magic bytes) matches the declared extension.
+    Reads minimal bytes from stream start; stream position is preserved.
+    """
+    ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
+    if ext not in MAGIC_BYTES:
+        return  # No signature check for this format
+
+    expected_signatures = MAGIC_BYTES[ext]
+    pos = stream.tell()
+    try:
+        header = stream.read(16)
+        if not header:
+            raise IngestionError("Empty file", detail=f"File '{filename}' has no content")
+        for sig in expected_signatures:
+            if header.startswith(sig):
+                return  # Valid signature
+        raise IngestionError(
+            "File signature mismatch",
+            detail=f"File '{filename}' has extension '{ext}' but content does not match expected format",
+        )
+    finally:
+        stream.seek(pos)
+
+
+def check_decompression_bomb(filename: str, compressed_size: int, decompressed_size: int) -> None:
+    """
+    Check if decompression ratio exceeds safe threshold (zip bomb protection).
+    """
+    if compressed_size <= 0:
+        return
+    ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
+    max_ratio = MAX_DECOMPRESSION_RATIO.get(ext, DEFAULT_MAX_RATIO)
+    actual_ratio = decompressed_size / compressed_size
+    if actual_ratio > max_ratio:
+        raise IngestionError(
+            "Decompression bomb detected",
+            detail=(
+                f"File '{filename}' decompression ratio {actual_ratio:.1f}x exceeds "
+                f"maximum {max_ratio}x for format '{ext}'"
+            ),
+        )
+
 
 def extract_dates(text: str) -> tuple[datetime | None, datetime | None]:
     """
@@ -60,13 +135,13 @@ def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
     Parse a PDF file page-by-page.
     Returns a list of dicts: [{"page": page_num, "text": page_text}].
     """
-    pages = []
     try:
         with fitz.open(stream=stream.read(), filetype="pdf") as doc:
+            pages = []
             for i, page in enumerate(doc):
                 text = page.get_text()
                 pages.append({"page": i + 1, "text": text.strip()})
-        return pages
+            return pages
     except Exception as exc:
         raise IngestionError("Failed to parse PDF document", detail=str(exc)) from exc
 
@@ -76,8 +151,16 @@ def parse_docx(stream: BinaryIO) -> list[dict[str, Any]]:
     Parse a Microsoft Word (.docx) file extracting paragraph text.
     Extracts XML from the ZIP container without requiring external C libraries.
     """
+    # Check for zip bomb before parsing
+    stream.seek(0, 2)
+    compressed_size = stream.tell()
+    stream.seek(0)
     try:
         with zipfile.ZipFile(stream) as docx_zip:
+            # Check for zip bomb
+            total_uncompressed = sum(info.file_size for info in docx_zip.infolist())
+            check_decompression_bomb("document.docx", compressed_size, total_uncompressed)
+            
             xml_content = docx_zip.read("word/document.xml")
             tree = ET.fromstring(xml_content)
             namespaces = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
@@ -220,6 +303,9 @@ def parse_document(
     Determine format and parse document bytes across all supported extensions.
     Extracts temporal validity metadata if present.
     """
+    # Validate magic bytes before parsing
+    validate_magic_bytes(filename, stream)
+
     ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
 
     if ext == ".pdf":

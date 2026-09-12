@@ -16,6 +16,7 @@ Security notes:
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -189,8 +190,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         warmup_task.cancel()
     logger.info("TRUSTRAG API shutting down")
     from app.core.local_llm import close_local_llm_clients
+    from app.core.model_registry import close_all_llm_instances
 
     await close_local_llm_clients()
+    close_all_llm_instances()
     await disconnect_db()
 
 
@@ -326,17 +329,24 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
 
 # ─── Request ID middleware ─────────────────────────────────────────────────────
+# SEC: validate/truncate client-supplied X-Request-ID to prevent log forgery/trace confusion
+_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9\-]{1,64}$")
 
 
 async def request_id_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
     """
     Attach a unique request ID to every request.
     Binds the ID to structlog context so all log lines include it.
+    Validates and truncates client-supplied X-Request-ID.
     """
     from structlog.contextvars import bind_contextvars, clear_contextvars
 
     clear_contextvars()
-    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    client_id = request.headers.get("X-Request-ID")
+    if client_id and _REQUEST_ID_PATTERN.fullmatch(client_id):
+        request_id = client_id
+    else:
+        request_id = str(uuid.uuid4())
     bind_contextvars(request_id=request_id)
 
     response = await call_next(request)
@@ -370,15 +380,20 @@ def create_app() -> FastAPI:
     app.add_middleware(SlowAPIMiddleware)
 
     # ── CORS ───────────────────────────────────────────────────────────────
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins_list,
-        allow_origin_regex=r"^https:\/\/([a-zA-Z0-9_\-]+\.)*(pages\.dev|vercel\.app|netlify\.app)$",
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=["X-Request-ID", "Content-Type", "Content-Disposition"],
-    )
+    # SEC-H-A: In production, only explicit CORS_ORIGINS allowed.
+    # Wildcard platform regex (vercel.app, netlify.app, pages.dev) only for dev/staging.
+    cors_kwargs = {
+        "allow_origins": settings.cors_origins_list,
+        "allow_credentials": True,
+        "allow_methods": ["*"],
+        "allow_headers": ["*"],
+        "expose_headers": ["X-Request-ID", "Content-Type", "Content-Disposition"],
+    }
+    if not settings.is_production():
+        cors_kwargs["allow_origin_regex"] = (
+            r"^https:\/\/([a-zA-Z0-9_\-]+\.)*(pages\.dev|vercel\.app|netlify\.app)$"
+        )
+    app.add_middleware(CORSMiddleware, **cors_kwargs)
 
     # ── GZip compression (threshold 1KB, skips small responses) ──────────────
     app.add_middleware(GZipMiddleware, minimum_size=1000)

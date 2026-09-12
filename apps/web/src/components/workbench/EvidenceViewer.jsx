@@ -1,8 +1,9 @@
 import { memo, useState, useMemo } from 'react'
 import { clsx } from 'clsx'
 import { BookOpen, Calendar, ExternalLink, Hash, Shield, ShieldAlert, Search, Globe, Database, Copy, Check } from 'lucide-react'
-import { motion, useReducedMotion } from 'motion/react'
+import { motion } from 'motion/react'
 import { copyToClipboard } from '@/lib/clipboard'
+import { SPRING_SNAPPY } from '@/lib/motionConfig'
 
 /**
  * EvidenceViewer — Ultra-refined retrieved evidence viewer with live keyword filter,
@@ -11,7 +12,6 @@ import { copyToClipboard } from '@/lib/clipboard'
  * Memoized (FE-M3): re-renders only when the chunks array reference changes.
  */
 export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
-  const reducedMotion = useReducedMotion()
   const [searchTerm, setSearchTerm] = useState('')
   const [sourceFilter, setSourceFilter] = useState('ALL') // 'ALL' | 'KB' | 'WEB'
   const [copiedIndex, setCopiedIndex] = useState(null)
@@ -122,22 +122,21 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
 
       {/* Chunks List */}
       <div className="space-y-3">
-        {filteredChunks.map((chunk, i) => (
-          <EvidenceChunk
-            key={chunk.chunk_id ?? chunk.id ?? i}
-            chunk={chunk}
-            rank={i + 1}
-            onCopy={() => handleCopy(chunk.text, i + 1)}
-            isCopied={copiedIndex === i + 1}
-            reducedMotion={reducedMotion}
-          />
-        ))}
+{filteredChunks.map((chunk, i) => (
+            <EvidenceChunk
+              key={chunk.chunk_id ?? chunk.id ?? i}
+              chunk={chunk}
+              rank={i + 1}
+              onCopy={() => handleCopy(chunk.text, i + 1)}
+              isCopied={copiedIndex === i + 1}
+            />
+          ))}
       </div>
     </div>
   )
 })
 
-function EvidenceChunk({ chunk, rank, onCopy, isCopied, reducedMotion }) {
+function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
   const [expanded, setExpanded] = useState(false)
   const integrityOk = chunk.integrity_status === 'VERIFIED' || !chunk.integrity_status
   const isWeb = Boolean(chunk.url || chunk.method?.includes('web') || chunk.method?.includes('mcp') || chunk.chunk_id?.startsWith('web_'))
@@ -147,7 +146,7 @@ function EvidenceChunk({ chunk, rank, onCopy, isCopied, reducedMotion }) {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={reducedMotion ? { duration: 0 } : { type: 'spring', damping: 15, stiffness: 150 }}
+      transition={SPRING_SNAPPY}
       className="glass-card p-5 space-y-3 hover:border-cyan-500/40 hover:shadow-lg transition-all duration-200"
     >
       {/* Header */}
@@ -197,7 +196,7 @@ function EvidenceChunk({ chunk, rank, onCopy, isCopied, reducedMotion }) {
           )}
           initial={!expanded && isLong ? { maxHeight: 120 } : { maxHeight: 'none' }}
           animate={expanded || !isLong ? { maxHeight: 'none' } : { maxHeight: 120 }}
-          transition={reducedMotion ? { duration: 0 } : { type: 'spring', damping: 15, stiffness: 150 }}
+          transition={SPRING_SNAPPY}
           style={{ overflow: 'hidden' }}
         >
           {chunk.text}
@@ -211,7 +210,7 @@ function EvidenceChunk({ chunk, rank, onCopy, isCopied, reducedMotion }) {
           >
             <motion.span
               animate={{ rotate: expanded ? 180 : 0 }}
-              transition={reducedMotion ? { duration: 0 } : { type: 'spring', damping: 15, stiffness: 150 }}
+              transition={SPRING_SNAPPY}
               className="inline-block"
             >
               {expanded ? '▲' : '▼'}

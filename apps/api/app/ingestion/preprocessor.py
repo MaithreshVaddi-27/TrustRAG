@@ -631,7 +631,8 @@ def _get_stemmer() -> PorterStemmer:
     return _local.stemmer
 
 
-@functools.lru_cache(maxsize=32768)
+# Bound LRU to 8k to prevent idle RSS creep (was 32768 — English vocab is smaller)
+@functools.lru_cache(maxsize=8192)
 def stem_word(word: str) -> str:
     """Convenience helper to stem a single word using thread-local PorterStemmer with LRU cache."""
     return _get_stemmer().stem(word)

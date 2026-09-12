@@ -4,7 +4,7 @@ TRUSTRAG — High-Efficiency Memory Management Utility.
 Provides:
   - Explicit garbage collection and heap compaction
   - glibc malloc_trim for Linux containers (Render, Docker)
-  - Memory usage telemetry and leak prevention
+  - Memory usage telemetry and leak prevention (current RSS via psutil)
 """
 
 from __future__ import annotations
@@ -16,6 +16,15 @@ from typing import Any
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Optional psutil for accurate current RSS; falls back to resource.ru_maxrss (peak)
+try:
+    import psutil
+
+    _PSUTIL_AVAILABLE = True
+except ImportError:
+    _PSUTIL_AVAILABLE = False
+    import resource
 
 
 def trim_memory() -> None:
@@ -39,10 +48,21 @@ def trim_memory() -> None:
 
 
 def get_memory_usage_mb() -> float:
-    """Return the current resident set size (RSS) memory in megabytes."""
-    try:
-        import resource
+    """Return the CURRENT resident set size (RSS) memory in megabytes.
 
+    Uses psutil when available (accurate current RSS). Falls back to resource.ru_maxrss
+    which reports PEAK RSS, not current — less accurate for guard decisions.
+    """
+    if _PSUTIL_AVAILABLE:
+        try:
+            process = psutil.Process()
+            rss_bytes = process.memory_info().rss
+            return round(rss_bytes / (1024 * 1024), 2)
+        except Exception:
+            pass
+
+    # Fallback: resource.ru_maxrss (PEAK RSS, not current)
+    try:
         usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         # On macOS ru_maxrss is in bytes, on Linux it is in kilobytes
         if sys.platform == "darwin":
@@ -50,6 +70,14 @@ def get_memory_usage_mb() -> float:
         return round(usage / 1024, 2)
     except Exception:
         return 0.0
+
+
+def idle_trim_memory() -> None:
+    """
+    Proactive idle-time memory trim: GC + malloc_trim.
+    Call after ingestion batches, analysis completion, or on a periodic timer.
+    """
+    trim_memory()
 
 
 def check_and_enforce_memory_guard(max_rss_mb: float = 3000.0) -> dict[str, Any]:

@@ -396,6 +396,13 @@ class ModelConfig:
     def embedding_cache_dir(self) -> str:
         return str(self._get("embedding", "cache_dir", required=False) or ".model_cache")
 
+    @property
+    def embedding_max_seq_length(self) -> int:
+        val = self._get("embedding", "max_seq_length", required=False)
+        if val is not None:
+            return int(val)
+        return 512  # Default for BGE-small
+
     # ── Verification ──────────────────────────────────────────────────────────
     @property
     def verification_provider(self) -> str:
