@@ -748,6 +748,19 @@ curl http://localhost:11434/api/tags
 ollama serve    # or: brew services start ollama (macOS)
 ```
 
+**No offline warning / empty model list:**
+The Playground reads `/models/providers` — if that request fails you get an empty dropdown with no explanation. First check the backend is running **current** code (`uvicorn` without `--reload` serves stale code after `git pull`), then hard-refresh the browser (stale bundle). The endpoint degrades instead of 500ing, so a persistent empty list means the API itself is unreachable — see `useBackendHealth` / the API Online pill.
+
+**llama-server running but analyses fail (503):**
+Distinguish the two cases before restarting anything:
+```bash
+curl -m 5 http://127.0.0.1:8080/v1/models
+```
+- Fails instantly → server is down: `./scripts/start_local_llm.sh`
+- Hangs → server is overloaded/starting: wait, then retry (the preflight probe retries once; a cold model on a busy host can miss the first sample)
+- Instant 200 but UI still red → stale backend/frontend processes; restart them
+- 503 says "not answering" (not "not reachable") → slow server, not a dead one — do not reinstall models for this
+
 **Port already in use:**
 ```bash
 # Find what's using the port
@@ -786,7 +799,7 @@ Open the Claims tab and read the per-claim explanations: `NEUTRAL` with "Verific
 | Document | What's in it |
 |---|---|
 | [Architecture](docs/architecture/architecture.md) | Technical design of the LangGraph state machine, hybrid search, claim decomposition |
-| [Decision Log](docs/architecture/decision-log.md) | 20 ADRs explaining technology choices and tradeoffs |
+| [Decision Log](docs/architecture/decision-log.md) | 22 ADRs explaining technology choices and tradeoffs |
 | [Security Controls](docs/security/security-controls.md) | JWT auth, anti-IDOR, SSRF defense, defensive headers |
 | [Threat Model](docs/security/threat-model.md) | STRIDE analysis, attack surface, countermeasures |
 | [Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md) | Production container setup, cloud hosting, env management |

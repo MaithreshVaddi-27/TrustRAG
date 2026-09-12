@@ -31,6 +31,8 @@
 | **15** | **Ultra-Low RAM + Security Hardening (2026-09-11)** | psutil RSS guard, batched SQLite writes, bounded LLM registry (4 max), X-Request-ID validation, production CORS lock, split health endpoints, magic-bytes + zip-bomb upload defense, `MALLOC_ARENA_MAX`, Apple-design reduced-motion | ✅ COMPLETE |
 | **16** | **ONNX BGE Runtime — Torch-Free Embeddings (2026-09-11)** | `scripts/export_bge_onnx.py` + ONNX Runtime wrapper (`EMBEDDING_PROVIDER=onnx`), numerical parity verified, ~500–1000 MB RSS savings | ✅ COMPLETE |
 | **17** | **Claims Verification Hardening (2026-09-12)** | Tolerant NLI parsing (VERIFIED→SUPPORTED aliasing, segment coercion, batch bare-int drop) fixing 0/x-supported on good answers; 6 new regression tests; 38-error lint sweep | ✅ COMPLETE |
+| **18** | **Fused Decompose+Verify + CI Repairs (2026-09-12)** | Single-call fused NLI path with two-step fallback (live-evaled 2.0s vs 3.4s); fixed frontend-build (missing install), Docker context + empty-venv boot bug, stale k6 health contract; onnxruntime shipped in image; Bandit B615 revision pin; Trivy SARIF advisory | ✅ COMPLETE |
+| **19** | **Offline-Warning + Probe Hardening (2026-09-12)** | `/models/providers` degrades instead of 500ing; UI warns on failed providers query too; probe retries once and splits refused (down) vs timeout (slow); concurrent provider checks; hermetic verification suite | ✅ COMPLETE |
 
 ---
 

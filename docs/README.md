@@ -37,7 +37,7 @@ docs/
 
 ### 2. Audits & Implementation Status
 - [**2026-09-11 — Unified Senior Audit**](audits/2026-09-11_unified_senior_audit.md): **Canonical audit** — multi-role review (frontend, backend, AI/ML, security, optimization, testing) with Apple-design compliance, ultra-low RAM plan, and 2-day vs >2-day upgrade split. Supersedes all prior audits (history preserved in git).
-- [**Implementation Status (`IMPLEMENTATION_STATUS_2026-09-11.md`)**](IMPLEMENTATION_STATUS_2026-09-11.md): What was fixed, current test state (backend 199/199, frontend 21/21), and remaining work. Includes the 2026-09-12 claims-verification hardening (tolerant NLI parsing) and lint sweep.
+- [**Implementation Status (`IMPLEMENTATION_STATUS_2026-09-11.md`)**](IMPLEMENTATION_STATUS_2026-09-11.md): What was fixed, current test state (backend 219/219, frontend 22/22), and remaining work. Covers the ≤2-day fixes, ONNX runtime, tolerant-NLI + fusion hardening, CI repairs, offline-warning and probe hardening, and the push-readiness passes.
 
 ### 3. Security
 - [**Security Controls (`security/security-controls.md`)**](security/security-controls.md): JWT, bcrypt, anti-IDOR, SSRF guards, rate limiting, defensive headers.

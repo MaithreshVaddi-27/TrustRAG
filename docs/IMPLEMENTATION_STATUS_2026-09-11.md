@@ -244,7 +244,7 @@ Pick next from **>2-Day Items** (recommended order by impact):
 5. **mimalloc/Alpine/FastAPI 0.140** — platform hardening with load tests
 6. **Automated red-team suite** — CI security
 
-The codebase is **push-ready**: clean tree, 204/204 + 21/21 green, secrets clean, docs current. Push with `git push origin ui-redesign` and open the PR against `main`.
+The codebase is **push-ready**: clean tree, 219/219 + 22/22 green, secrets clean, docs current (this pass). Push with `git push origin ui-redesign` and open the PR against `main`.
 
 ### 9. Push-readiness docs pass (2026-09-12)
 (Extended same day — new/existing-user readiness.)
