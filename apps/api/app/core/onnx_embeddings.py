@@ -8,6 +8,7 @@ Eliminates PyTorch/sentence-transformers from the API process (~500-1000 MB RSS 
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any
 
 import numpy as np
@@ -21,6 +22,14 @@ except ImportError:
     ort = None  # type: ignore
 
 from langchain_core.embeddings import Embeddings
+
+# Pinned tokenizer revision (commit SHA of BAAI/bge-small-en-v1.5 on the Hub).
+# Bandit B615 requires revision pinning to block supply-chain substitution of
+# tokenizer files; override via HF_TOKENIZER_REVISION only to move forward
+# deliberately (e.g. after re-exporting the ONNX model against the new vocab).
+_HF_TOKENIZER_REVISION = os.environ.get(
+    "HF_TOKENIZER_REVISION", "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
+)
 
 
 class ONNXBGEEmbeddings(Embeddings):
@@ -49,10 +58,14 @@ class ONNXBGEEmbeddings(Embeddings):
         self.model_path = model_path
         self.max_seq_length = max_seq_length
 
-        # Load tokenizer (lightweight, no torch)
+        # Load tokenizer (lightweight, no torch) at the pinned revision.
         from transformers import AutoTokenizer
 
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            tokenizer_name,
+            revision=_HF_TOKENIZER_REVISION,
+            trust_remote_code=False,
+        )
 
         # Load ONNX model
         if providers is None:

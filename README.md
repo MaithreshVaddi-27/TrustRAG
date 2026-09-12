@@ -693,7 +693,7 @@ k6 run load-test/smoke.js
 
 Every push/PR to `main`, `develop`, or `ui-redesign` runs two workflows (least-privilege tokens, concurrency-cancelled):
 
-**CI (`.github/workflows/ci.yml`)** — `backend-lint` (ruff + format + ports drift) → `backend-test` (pytest) → `backend-config-validate` (`models.yaml` schema + secret scan) → `frontend-lint` (eslint + vitest) → `frontend-build` → `e2e` (Playwright + k6 against MongoDB service + live backend) → `docker-build` (API image + Trivy HIGH/CRITICAL scan) → `ci-gate` (fails on any failure/cancel/skip).
+**CI (`.github/workflows/ci.yml`)** — `backend-lint` (ruff + format + ports drift) → `backend-test` (pytest) → `backend-config-validate` (`models.yaml` schema + secret scan) → `frontend-lint` (eslint + vitest) → `frontend-build` → `e2e` (Playwright + k6 against MongoDB service + live backend) → `docker-build` (API image + advisory Trivy HIGH/CRITICAL SARIF to code scanning) → `ci-gate` (fails on any failure/cancel/skip).
 
 **Security (`.github/workflows/security.yml`)** — weekly Monday scan plus every push: `python-audit` (`pip-audit`, strict), `npm-audit` (high+), `secret-scan` (rejects committed `.env`, scans `models.yaml`), `sast` (Bandit on `app/`).
 

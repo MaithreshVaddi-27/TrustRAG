@@ -191,6 +191,7 @@ llama-server.log
 bandit-report.json
 safety-report.json
 trivy-report.json
+trivy-results.sarif
 semgrep-report.json
 pip-audit-report.json
 
