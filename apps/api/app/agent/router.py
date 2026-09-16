@@ -105,7 +105,9 @@ def _split_questions(query: str, max_sub_queries: int) -> list[str] | None:
     parts = [p for p in parts if len(p) >= _MIN_SUB_QUERY_CHARS]
     if len(parts) < 2:
         return None
-    return parts[:max_sub_queries]
+    capped = parts[:max_sub_queries]
+    # Same floor as comparisons: a ceiling below 2 means no fan-out.
+    return capped if len(capped) >= 2 else None
 
 
 def _reference_time_for_query(query: str) -> datetime | None:
@@ -128,7 +130,12 @@ def route_query(query: str, max_sub_queries: int = 3) -> RoutedQuery:
     if _COMPARISON_INTENT_RE.search(cleaned_query):
         split = _split_comparison(cleaned_query)
         if split is not None:
-            return RoutedQuery(route=QueryRoute.COMPARISON, sub_queries=split[:max_sub_queries])
+            capped = split[:max_sub_queries]
+            # A fan-out ceiling below 2 is meaningless for a two-sided
+            # comparison — run the full query instead of half of it.
+            if len(capped) < 2:
+                return RoutedQuery(route=QueryRoute.SIMPLE, sub_queries=[query])
+            return RoutedQuery(route=QueryRoute.COMPARISON, sub_queries=capped)
         return RoutedQuery(route=QueryRoute.SIMPLE, sub_queries=[query])
 
     if _YEAR_RE.search(cleaned_query) or _TEMPORAL_WORDS_RE.search(cleaned_query):
