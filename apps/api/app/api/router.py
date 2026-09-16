@@ -28,13 +28,22 @@ from app.api.v1 import (
     evidence as evidence_module,
 )
 from app.api.v1 import (
+    experimentation as experimentation_module,
+)
+from app.api.v1 import (
     experiments as experiment_module,
 )
 from app.api.v1 import (
     health as health_module,
 )
 from app.api.v1 import (
+    internal as internal_module,
+)
+from app.api.v1 import (
     knowledge_bases as kb_module,
+)
+from app.api.v1 import (
+    models as model_module,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -54,6 +63,9 @@ api_router.include_router(doc_module.router)
 # ── Analyses ───────────────────────────────────────────────────────────────
 api_router.include_router(analysis_module.router)
 
+# ── Models & Providers ────────────────────────────────────────────────────
+api_router.include_router(model_module.router)
+
 # ── Evidence ───────────────────────────────────────────────────────────────
 api_router.include_router(evidence_module.router)
 
@@ -65,3 +77,9 @@ api_router.include_router(conflict_module.router)
 
 # ── Experiments ────────────────────────────────────────────────────────────
 api_router.include_router(experiment_module.router)
+
+# ── Experimentation (A/B Testing & Feature Flags) ─────────────────────────
+api_router.include_router(experimentation_module.router)
+
+# ── Internal Service Endpoints ─────────────────────────────────────────────
+api_router.include_router(internal_module.router)

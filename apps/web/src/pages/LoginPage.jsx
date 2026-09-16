@@ -50,12 +50,12 @@ export default function LoginPage() {
         )}
 
         {loading && loadingTime >= 5 && (
-          <div className="rounded-lg border border-amber-800/50 bg-amber-950/30 px-3 py-2.5 text-xs text-amber-300 animate-pulse space-y-1">
+          <div className="rounded-lg border border-cyan-800/50 bg-cyan-950/30 px-3 py-2.5 text-xs text-cyan-300 animate-pulse space-y-1">
             <p className="font-semibold flex items-center gap-1.5">
-              ⚡ Server is starting up ({loadingTime}s elapsed)
+              ⚡ Connecting to TrustRAG API ({loadingTime}s elapsed)
             </p>
-            <p className="text-amber-400/90 text-[11px] leading-relaxed">
-              Render free tier services sleep after inactivity and take ~30–60 seconds to cold boot. Please leave this page open while it connects.
+            <p className="text-slate-400 text-[11px] leading-relaxed">
+              Verifying credentials against local authentication database. Please wait while the secure session initializes.
             </p>
           </div>
         )}

@@ -1,7 +1,12 @@
 """
-TRUSTRAG — character-based text chunker.
+TRUSTRAG — character-based text chunker with word-boundary windows.
 
 Chunks document pages using sliding windows with configured size and overlap.
+Window edges snap to whitespace so chunks never start/end mid-word (mid-word
+cuts pollute BM25 sparse vectors and read as broken fragments in evidence).
+Snapping is coverage-safe: the end snaps back at most `overlap` characters
+(the next window still overlaps) and the start only advances over characters
+the previous window already covered — no silent text loss.
 """
 
 from __future__ import annotations
@@ -11,6 +16,9 @@ from typing import Any
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Max characters to scan back for a word boundary when snapping a window edge.
+_WORD_BOUNDARY_LOOKBACK = 64
 
 
 def chunk_text(
@@ -51,10 +59,33 @@ def chunk_text(
 
         length = len(text)
         start = 0
+        prev_end: int | None = None
 
         # Slide character window
         while start < length:
+            # Snap start forward past a leading word fragment, but only over
+            # characters the previous window already covered (no silent loss).
+            if start > 0 and prev_end is not None and not text[start].isspace():
+                frag_end = start
+                while frag_end < prev_end and not text[frag_end].isspace():
+                    frag_end += 1
+                if frag_end <= prev_end and frag_end < length and text[frag_end].isspace():
+                    start = frag_end + 1
+            if start >= length:
+                break
+
             end = min(start + chunk_size, length)
+            # Snap end back to a word boundary so chunks never cut mid-word.
+            # Bounded by the overlap so the next window still overlaps (no gaps);
+            # overlong tokens (URLs, hashes) keep the hard cut as fallback.
+            if end < length and not text[end].isspace():
+                max_snap = min(_WORD_BOUNDARY_LOOKBACK, chunk_overlap)
+                low = max(start, end - max_snap)
+                for i in range(end - 1, low - 1, -1):
+                    if text[i].isspace():
+                        end = i
+                        break
+
             chunk_content = text[start:end].strip()
 
             if chunk_content:
@@ -75,6 +106,7 @@ def chunk_text(
                 break
 
             # Slide by step size (size - overlap)
+            prev_end = end
             start += step
 
     return chunks

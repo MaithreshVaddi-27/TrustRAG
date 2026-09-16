@@ -21,24 +21,106 @@ from app.api.v1.schemas.analysis import (
     ReliabilitySummary,
     TraceEventResponse,
 )
-from app.core.config import get_model_config
-from app.core.exceptions import AuthorizationError, NotFoundError
+from app.core.config import get_model_config, get_settings
+from app.core.exceptions import AuthorizationError, InputValidationError, NotFoundError
 from app.core.logging import get_logger
 from app.db.mongodb import Collections, get_collection
 from app.services.kb_service import get_kb
+from app.verification.verdict import (
+    ReliabilityStatus,
+    Thresholds,
+    verdict_from_state,
+)
 
 logger = get_logger(__name__)
+
+# ─── Degenerate-output detection ─────────────────────────────────────────────
+# Small local models sometimes echo the prompt scaffolding (<CONTEXT>,
+# ANSWERING_CRITERIA, FINAL_SECTION, ...) or loop one block until max tokens
+# instead of answering. Such text must never be stored as a synthesis.
+
+_SCAFFOLD_MARKERS = (
+    "<context>",
+    "<relevance>",
+    "answering_criteria",
+    "final_section",
+    "final_answer",
+    "final_output",
+)
+
+
+def _looks_like_scaffold_echo(answer: str | None) -> bool:
+    """Detect prompt-echo / repetition-loop generations."""
+    if not answer:
+        return False
+    lowered = answer.lower()
+    if any(m in lowered for m in _SCAFFOLD_MARKERS):
+        return True
+    # Same substantive sentence 3+ times = repetition loop.
+    seen: dict[str, int] = {}
+    for sentence in lowered.replace("\n", " ").split(". "):
+        s = sentence.strip()
+        if len(s) < 40:
+            continue
+        seen[s] = seen.get(s, 0) + 1
+        if seen[s] >= 3:
+            return True
+    return False
+
+
+# ─── In-process SSE Pub/Sub ──────────────────────────────────────────────────
+# Maps analysis_id -> set of asyncio.Queue subscribers
+_analysis_subscribers: dict[str, set[asyncio.Queue]] = {}
+_subscribers_lock = asyncio.Lock()
+
+
+async def _subscribe_to_analysis(analysis_id: str) -> asyncio.Queue:
+    """Subscribe to real-time events for an analysis."""
+    queue: asyncio.Queue = asyncio.Queue()
+    async with _subscribers_lock:
+        if analysis_id not in _analysis_subscribers:
+            _analysis_subscribers[analysis_id] = set()
+        _analysis_subscribers[analysis_id].add(queue)
+    return queue
+
+
+async def _unsubscribe_from_analysis(analysis_id: str, queue: asyncio.Queue) -> None:
+    """Unsubscribe from analysis events."""
+    async with _subscribers_lock:
+        if analysis_id in _analysis_subscribers:
+            _analysis_subscribers[analysis_id].discard(queue)
+            if not _analysis_subscribers[analysis_id]:
+                del _analysis_subscribers[analysis_id]
+
+
+async def _publish_analysis_event(analysis_id: str, event: str, data: dict[str, Any]) -> None:
+    """Publish an event to all subscribers of an analysis."""
+    async with _subscribers_lock:
+        if analysis_id in _analysis_subscribers:
+            event_data = {
+                "event": event,
+                "timestamp": datetime.now(UTC).isoformat(),
+                "data": data,
+            }
+            for queue in _analysis_subscribers[analysis_id]:
+                try:
+                    queue.put_nowait(event_data)
+                except asyncio.QueueFull:
+                    logger.warning(
+                        "SSE subscriber queue full, dropping event", analysis_id=analysis_id
+                    )
 
 
 def serialize_analysis(doc: Mapping[str, Any]) -> AnalysisResponse:
     """Helper to convert MongoDB Analysis document to Pydantic AnalysisResponse."""
     rel = doc.get("reliability", {})
     diag = doc.get("diagnosis", {})
+    created_at = doc.get("created_at") or doc.get("started_at") or datetime.now(UTC)
     return AnalysisResponse(
         id=str(doc["_id"]),
         user_id=str(doc["user_id"]),
         knowledge_base_id=str(doc["knowledge_base_id"]),
-        query=doc["query"],
+        query=doc.get("query", ""),
         status=doc.get("status", "pending"),
         answer=doc.get("answer"),
         reliability=ReliabilitySummary(
@@ -49,35 +131,44 @@ def serialize_analysis(doc: Mapping[str, Any]) -> AnalysisResponse:
             type=diag.get("type"),
             failures=diag.get("failures", []),
         ),
-        created_at=doc["created_at"],
+        created_at=created_at,
         config_snapshot=doc.get("config_snapshot"),
+        web_search_enabled=bool(doc.get("web_search_enabled", False)),
+        web_search_provider=doc.get("web_search_provider"),
+        llm_provider=doc.get("llm_provider"),
+        llm_model=doc.get("llm_model"),
+        embedding_provider=doc.get("embedding_provider"),
+        embedding_model=doc.get("embedding_model"),
     )
 
 
 def serialize_claim(doc: Mapping[str, Any]) -> ClaimResponse:
     """Helper to convert MongoDB Claim document to Pydantic ClaimResponse."""
+    created_at = doc.get("created_at") or datetime.now(UTC)
     return ClaimResponse(
         id=str(doc["_id"]),
         analysis_id=str(doc["analysis_id"]),
-        text=doc["text"],
+        text=doc.get("text", ""),
         subject=doc.get("subject"),
         predicate=doc.get("predicate"),
         object=doc.get("object"),
         state=doc.get("state", "UNKNOWN"),
         explanation=doc.get("explanation"),
         evidence_ids=[str(eid) for eid in doc.get("evidence_ids", [])],
-        created_at=doc["created_at"],
+        created_at=created_at,
     )
 
 
 def serialize_evidence(doc: Mapping[str, Any]) -> EvidenceResponse:
     """Helper to convert MongoDB Evidence document to Pydantic EvidenceResponse."""
+    created_at = doc.get("created_at") or datetime.now(UTC)
     return EvidenceResponse(
         id=str(doc["_id"]),
         analysis_id=str(doc["analysis_id"]),
-        text=doc["text"],
+        text=doc.get("text", ""),
         document_id=str(doc["document_id"]) if doc.get("document_id") else "",
         filename=doc.get("filename"),
+        url=doc.get("url"),
         retrieval_score=doc.get("retrieval_score"),
         fusion_score=doc.get("fusion_score"),
         rerank_score=doc.get("rerank_score"),
@@ -85,15 +176,16 @@ def serialize_evidence(doc: Mapping[str, Any]) -> EvidenceResponse:
         integrity_status=doc.get("integrity_status"),
         effective_from=doc.get("effective_from"),
         effective_until=doc.get("effective_until"),
-        created_at=doc["created_at"],
+        created_at=created_at,
     )
 
 
 def serialize_trace(doc: Mapping[str, Any]) -> TraceEventResponse:
     """Helper to convert MongoDB TraceEvent document to Pydantic TraceEventResponse."""
+    timestamp = doc.get("timestamp") or datetime.now(UTC)
     return TraceEventResponse(
-        event=doc["event"],
-        timestamp=doc["timestamp"],
+        event=doc.get("event", ""),
+        timestamp=timestamp,
         data=doc.get("data", {}),
     )
 
@@ -106,9 +198,77 @@ async def create_analysis(
     Verifies that target KB exists and is owned by the user.
     """
     # Verify owner & existence of KB
-    await get_kb(schema.knowledge_base_id, user_id_str)
+    kb = await get_kb(schema.knowledge_base_id, user_id_str)
 
     cfg = get_model_config()
+
+    # Fail fast on retired embedding providers: ollama/llama.cpp are LLM-only
+    # (model_registry raises ConfigurationError → 503 deep in the background
+    # pipeline). Rejecting here returns an actionable 422 synchronously.
+    # The server default is checked too — a retired EMBEDDING_PROVIDER with no
+    # per-request override would otherwise slip past and fail in background.
+    effective_provider = (schema.embedding_provider or cfg.embedding_provider).lower()
+    if effective_provider in ("ollama", "llamacpp", "llama_cpp"):
+        raise InputValidationError(
+            f"Embedding provider '{effective_provider}' is LLM-only and was removed. "
+            "Use 'huggingface' (local BGE).",
+            detail=f"requested_embedding_provider={schema.embedding_provider} "
+            f"server_default={cfg.embedding_provider}",
+        )
+
+    # EMBEDDING-SPACE GUARD 2026-09-06: a KB's vectors live in exactly one
+    # embedding space (pinned at first ingest). Querying with another model
+    # returns plausible-looking garbage → verification fails → recovery spiral
+    # (heat + minutes of wasted local inference). Fail fast with a message
+    # that tells the user exactly how to fix it.
+    if kb.embedding_model:
+        effective_model = schema.embedding_model or cfg.embedding_model
+        # Model ids are case-sensitive upstream, but a casing/whitespace-only
+        # difference is never a different embedding space — normalize the compare.
+        if effective_model.strip().lower() != kb.embedding_model.strip().lower():
+            raise InputValidationError(
+                f"Embedding mismatch: knowledge base '{kb.name}' was indexed "
+                f"with '{kb.embedding_model}' ({kb.embedding_dim or '?'}d), "
+                f"but this analysis requests '{effective_model}'. "
+                f"Switch the Playground embedding selector to '{kb.embedding_model}' "
+                f"or re-upload the documents to re-index with the new model.",
+                detail=f"kb_pin={kb.embedding_model} requested={effective_model}",
+            )
+        # Dimension pin: same model name at a different output width (e.g. a
+        # changed EMBEDDING_DIM Matryoshka override) is a different space.
+        if kb.embedding_dim and cfg.embedding_dimensionality != kb.embedding_dim:
+            raise InputValidationError(
+                f"Embedding dimension mismatch: knowledge base '{kb.name}' was indexed "
+                f"at {kb.embedding_dim}d, but the server is configured for "
+                f"{cfg.embedding_dimensionality}d. Re-upload the documents to re-index.",
+                detail=f"kb_dim={kb.embedding_dim} server_dim={cfg.embedding_dimensionality}",
+            )
+
+    # Resolve EFFECTIVE engine now: the persisted doc (and every downstream
+    # consumer: HUD chips, trace, export dossier) must name what will actually
+    # run — not the raw nullable request fields (previously stored "" → the UI
+    # rendered "DEFAULT" and audits couldn't tell granite from EXAONE).
+    effective_llm_provider = (schema.llm_provider or cfg.llm_provider or "").strip().lower()
+    effective_llm_model = schema.llm_model or cfg.llm_model_for(effective_llm_provider)
+    effective_embedding_provider = schema.embedding_provider or cfg.embedding_provider
+    effective_embedding_model = schema.embedding_model or cfg.embedding_model
+
+    # LOCAL-LLM PREFLIGHT: when the effective provider is a local inference
+    # server, verify it answers in ~3s. Without this, a stopped ollama /
+    # llama-server burns minutes of 120s timeouts across ~9 sequential calls
+    # before the pipeline abstains or fails. Raises LLMUnavailableError → 503
+    # with the exact start command so the UI can alert instead of hanging.
+    if effective_llm_provider in ("ollama", "llama_cpp", "llamacpp"):
+        from app.core.local_llm import probe_local_llm_server
+
+        settings = get_settings()
+        if effective_llm_provider == "ollama":
+            llm_base_url = settings.ollama_base_url
+            probe_provider = "ollama"
+        else:
+            llm_base_url = settings.llamacpp_base_url
+            probe_provider = "llama_cpp"
+        await probe_local_llm_server(probe_provider, llm_base_url)
     analysis_doc = {
         "user_id": ObjectId(user_id_str),
         "knowledge_base_id": ObjectId(schema.knowledge_base_id),
@@ -119,6 +279,12 @@ async def create_analysis(
         "diagnosis": {"type": None, "failures": []},
         "created_at": datetime.now(UTC),
         "config_snapshot": cfg.as_snapshot(),
+        "web_search_enabled": schema.enable_web_search,
+        "web_search_provider": schema.web_search_provider,
+        "llm_provider": effective_llm_provider,
+        "llm_model": effective_llm_model,
+        "embedding_provider": effective_embedding_provider,
+        "embedding_model": effective_embedding_model,
     }
 
     result = await get_collection(Collections.ANALYSES).insert_one(analysis_doc)
@@ -128,7 +294,13 @@ async def create_analysis(
     await add_trace_event(
         analysis_id_str=str(result.inserted_id),
         event="analysis.started",
-        data={"message": "Analysis run initiated"},
+        data={
+            "message": "Analysis run initiated",
+            "provider": effective_llm_provider,
+            "model": effective_llm_model,
+            "embedding_provider": effective_embedding_provider,
+            "embedding_model": effective_embedding_model,
+        },
     )
 
     # Queue background RAG execution pipeline
@@ -138,6 +310,12 @@ async def create_analysis(
         kb_id_str=schema.knowledge_base_id,
         query=schema.query.strip(),
         user_id_str=user_id_str,
+        web_search_enabled=schema.enable_web_search,
+        web_search_provider=schema.web_search_provider,
+        llm_provider=effective_llm_provider,
+        llm_model=effective_llm_model,
+        embedding_provider=effective_embedding_provider,
+        embedding_model=effective_embedding_model,
     )
 
     return serialize_analysis(analysis_doc)
@@ -175,23 +353,33 @@ async def list_analyses(user_id_str: str, limit: int = 50, skip: int = 0) -> lis
     return results
 
 
-async def get_analysis_claims(analysis_id_str: str, user_id_str: str) -> list[ClaimResponse]:
-    """Fetch verified claims generated for an analysis."""
-    await get_analysis(analysis_id_str, user_id_str)
+async def _fetch_claims(analysis_id_str: str) -> list[ClaimResponse]:
+    """Fetch claims without ownership check (caller must have verified access).
 
+    Returns the latest recovery round only — earlier rounds verified superseded
+    answers, and mixing them misrepresents the stored verdict. Docs predating
+    the attempt tag (legacy) are returned as-is.
+    """
     claims_coll = get_collection(Collections.CLAIMS)
-    results = []
+    docs = []
     async for c in claims_coll.find({"analysis_id": ObjectId(analysis_id_str)}).sort(
         "created_at", 1
     ):
-        results.append(serialize_claim(c))
-    return results
+        docs.append(c)
+    if any("attempt" in d for d in docs):
+        latest = max(d.get("attempt", 0) for d in docs)
+        docs = [d for d in docs if d.get("attempt", 0) == latest]
+    return [serialize_claim(c) for c in docs]
 
 
-async def get_analysis_evidence(analysis_id_str: str, user_id_str: str) -> list[EvidenceResponse]:
-    """Fetch evidence chunks associated with an analysis."""
+async def get_analysis_claims(analysis_id_str: str, user_id_str: str) -> list[ClaimResponse]:
+    """Fetch verified claims generated for an analysis."""
     await get_analysis(analysis_id_str, user_id_str)
+    return await _fetch_claims(analysis_id_str)
 
+
+async def _fetch_evidence(analysis_id_str: str) -> list[EvidenceResponse]:
+    """Fetch evidence without ownership check (caller must have verified access)."""
     evidence_coll = get_collection(Collections.EVIDENCE)
     results = []
     async for e in evidence_coll.find({"analysis_id": ObjectId(analysis_id_str)}).sort(
@@ -201,10 +389,14 @@ async def get_analysis_evidence(analysis_id_str: str, user_id_str: str) -> list[
     return results
 
 
-async def get_analysis_trace(analysis_id_str: str, user_id_str: str) -> list[TraceEventResponse]:
-    """Fetch execution trace events for audit/recovery inspection."""
+async def get_analysis_evidence(analysis_id_str: str, user_id_str: str) -> list[EvidenceResponse]:
+    """Fetch evidence chunks associated with an analysis."""
     await get_analysis(analysis_id_str, user_id_str)
+    return await _fetch_evidence(analysis_id_str)
 
+
+async def _fetch_trace(analysis_id_str: str) -> list[TraceEventResponse]:
+    """Fetch trace events without ownership check (caller must have verified access)."""
     trace_coll = get_collection(Collections.TRACE_EVENTS)
     results = []
     async for t in trace_coll.find({"analysis_id": ObjectId(analysis_id_str)}).sort("timestamp", 1):
@@ -212,10 +404,36 @@ async def get_analysis_trace(analysis_id_str: str, user_id_str: str) -> list[Tra
     return results
 
 
+async def get_analysis_trace(analysis_id_str: str, user_id_str: str) -> list[TraceEventResponse]:
+    """Fetch execution trace events for audit/recovery inspection."""
+    await get_analysis(analysis_id_str, user_id_str)
+    return await _fetch_trace(analysis_id_str)
+
+
+async def get_analysis_detail(analysis_id_str: str, user_id_str: str) -> dict[str, Any]:
+    """Fetch analysis + claims + evidence + trace in one round trip.
+
+    Single ownership check, then the three collections fan out concurrently.
+    Replaces four sequential HTTP calls from the workbench finalize path.
+    """
+    analysis = await get_analysis(analysis_id_str, user_id_str)
+    claims, evidence, trace = await asyncio.gather(
+        _fetch_claims(analysis_id_str),
+        _fetch_evidence(analysis_id_str),
+        _fetch_trace(analysis_id_str),
+    )
+    return {
+        "analysis": analysis,
+        "claims": claims,
+        "evidence": evidence,
+        "trace": trace,
+    }
+
+
 async def add_trace_event(
     analysis_id_str: str, event: str, data: dict[str, Any] | None = None
 ) -> TraceEventResponse:
-    """Insert a new trace event into MongoDB."""
+    """Insert a new trace event into MongoDB and publish to SSE subscribers."""
     if data is None:
         data = {}
     trace_coll = get_collection(Collections.TRACE_EVENTS)
@@ -226,6 +444,10 @@ async def add_trace_event(
         "data": data,
     }
     await trace_coll.insert_one(evt_doc)
+
+    # Publish to in-process SSE subscribers (replaces MongoDB polling)
+    await _publish_analysis_event(analysis_id_str, event, data)
+
     return serialize_trace(evt_doc)
 
 
@@ -233,130 +455,278 @@ async def sse_event_generator(
     analysis_id_str: str, user_id_str: str
 ) -> AsyncGenerator[dict[str, Any], None]:
     """
-    Generator yielding trace events as Server-Sent Events (SSE).
-    Frontend relies on this for real-time trace logging.
+    Generator yielding trace events as Server-Sent Events (SSE) via in-process pub/sub.
 
+    Frontend relies on this for real-time trace logging.
     If the connection drops, trace history is fully stored in MongoDB
     and retrieved via the get_analysis_trace function.
     """
     # Verify access permission first
     await get_analysis(analysis_id_str, user_id_str)
 
-    last_seen_id = None
-    trace_coll = get_collection(Collections.TRACE_EVENTS)
+    # Subscribe to real-time events
+    queue = await _subscribe_to_analysis(analysis_id_str)
 
-    # Loop until terminal event or 120 seconds of no new trace events
-    no_event_ticks = 0
-    while no_event_ticks < 120:
-        query = {"analysis_id": ObjectId(analysis_id_str)}
-        if last_seen_id:
-            query["_id"] = {"$gt": last_seen_id}
+    try:
+        no_event_ticks = 0
+        terminal_events = {
+            "analysis.completed",
+            "analysis.abstained",
+            "analysis.failed",
+        }
+        # Local 3B pipelines can run 3-5 min with recovery; keep the stream
+        # open past the worst case (frontend also runs fallback polling).
+        while no_event_ticks < 360:
+            try:
+                # Wait for event with timeout (1 second)
+                event_data = await asyncio.wait_for(queue.get(), timeout=1.0)
+                no_event_ticks = 0
+                yield event_data
 
-        cursor = trace_coll.find(query).sort("timestamp", 1)
-        has_new = False
-        async for doc in cursor:
-            has_new = True
-            no_event_ticks = 0
-            last_seen_id = doc["_id"]
-            yield {
-                "event": doc["event"],
-                "timestamp": doc["timestamp"].isoformat(),
-                "data": doc.get("data", {}),
-            }
+                # Terminal event checks
+                if event_data["event"] in terminal_events:
+                    return
+            except TimeoutError:
+                no_event_ticks += 1
+                # Periodic heartbeat ping keeps reverse proxies (Render/Cloudflare) alive
+                if no_event_ticks % 3 == 0:
+                    yield {
+                        "event": "ping",
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "data": {},
+                    }
+    finally:
+        await _unsubscribe_from_analysis(analysis_id_str, queue)
 
-            # Terminal event checks
-            if doc["event"] in ["analysis.completed", "analysis.abstained", "analysis.failed"]:
-                return
 
-        if not has_new:
-            no_event_ticks += 1
-            # Periodic heartbeat ping keeps reverse proxies (Render/Cloudflare) alive
-            if no_event_ticks % 3 == 0:
-                yield {
-                    "event": "ping",
-                    "timestamp": datetime.now(UTC).isoformat(),
-                    "data": {},
-                }
+# Hardware-aware global concurrency limiter to protect system resources
+_analysis_semaphore: asyncio.Semaphore | None = None
+_semaphore_init_lock: asyncio.Lock | None = None
 
-        await asyncio.sleep(1.0)
+
+def _get_semaphore_init_lock() -> asyncio.Lock:
+    """Return the module-level asyncio lock for semaphore initialization (lazy, event-loop-safe)."""
+    global _semaphore_init_lock
+    if _semaphore_init_lock is None:
+        _semaphore_init_lock = asyncio.Lock()
+    return _semaphore_init_lock
+
+
+async def _get_concurrency_semaphore() -> asyncio.Semaphore:
+    """Return the global analysis semaphore, initializing it exactly once under a lock."""
+    global _analysis_semaphore
+    if _analysis_semaphore is not None:
+        return _analysis_semaphore
+    async with _get_semaphore_init_lock():
+        # Double-check after acquiring lock to handle concurrent waiters
+        if _analysis_semaphore is None:
+            try:
+                from app.core.hardware import detect_hardware_profile
+
+                profile = detect_hardware_profile()
+                max_conc = profile.get("recommendations", {}).get("max_concurrency", 2)
+            except Exception:
+                max_conc = 2
+            _analysis_semaphore = asyncio.Semaphore(max_conc)
+    return _analysis_semaphore
 
 
 async def run_analysis_pipeline(
-    analysis_id_str: str, kb_id_str: str, query: str, user_id_str: str | None = None
+    analysis_id_str: str,
+    kb_id_str: str,
+    query: str,
+    user_id_str: str | None = None,
+    web_search_enabled: bool = False,
+    web_search_provider: str = "both",
+    llm_provider: str | None = None,
+    llm_model: str | None = None,
+    embedding_provider: str | None = None,
+    embedding_model: str | None = None,
 ) -> None:
     """
     Execute RAG retrieval and generation pipeline in the background.
 
     Phases:
       1. Retrieve segments using hybrid (dense + sparse) matching
-      2. Apply temporal filters using parent document dates
-      3. Rerank top matches using CrossEncoder
-      4. Persist segments as Evidence models in MongoDB
-      5. Generate answer using Gemini, grounded in retrieved context
-      6. Update status and save answer in MongoDB
+      2. Ground with live MCP web search (Tavily / DuckDuckGo) if enabled
+      3. Apply temporal filters using parent document dates
+      4. Rerank top matches using CrossEncoder
+      5. Persist segments as Evidence models in MongoDB
+      6. Generate answer using active LLM, grounded in retrieved context
+      7. Decompose claims & verify through NLI
+      8. Update status and save answer in MongoDB
     """
     analysis_id = ObjectId(analysis_id_str)
     analyses_coll = get_collection(Collections.ANALYSES)
+    sem = await _get_concurrency_semaphore()
 
     try:
-        # Mark status as processing
-        await analyses_coll.update_one(
-            {"_id": analysis_id},
-            {"$set": {"status": "processing", "updated_at": datetime.now(UTC)}},
-        )
+        async with sem:
+            # Mark status as processing
+            await analyses_coll.update_one(
+                {"_id": analysis_id},
+                {"$set": {"status": "processing", "updated_at": datetime.now(UTC)}},
+            )
 
-        # 1. Execute Agentic LangGraph workflow (retrieval, NLI verify, and recovery loop)
-        from app.agent.graph import execute_agentic_rag_flow
+            # 1. Execute Agentic LangGraph workflow (retrieval, NLI verify, and recovery loop)
+            from app.agent.graph import execute_agentic_rag_flow
 
-        final_state = await execute_agentic_rag_flow(
-            analysis_id_str=analysis_id_str,
-            kb_id_str=kb_id_str,
-            query=query,
-            user_id_str=user_id_str,
-        )
+            final_state = await execute_agentic_rag_flow(
+                analysis_id_str=analysis_id_str,
+                kb_id_str=kb_id_str,
+                query=query,
+                user_id_str=user_id_str,
+                web_search_enabled=web_search_enabled,
+                web_search_provider=web_search_provider,
+                llm_provider=llm_provider,
+                llm_model=llm_model,
+                embedding_provider=embedding_provider,
+                embedding_model=embedding_model,
+            )
+
+        if final_state.get("diagnosis_type") == "RETRIEVAL_OUTAGE":
+            # Retrieval infrastructure outage — never present this as
+            # "no evidence found" / abstention. Store as failed with the
+            # outage detail so operators and users can tell it apart.
+            outage_failures = final_state.get("diagnosis_failures") or [
+                "Retrieval service unavailable"
+            ]
+            outage_answer = final_state.get("answer") or (
+                "The knowledge base search service is temporarily unavailable, "
+                "so I could not search for evidence. Please wait a few minutes "
+                "and try again — this is not a finding of 'no evidence'."
+            )
+            await analyses_coll.update_one(
+                {"_id": analysis_id},
+                {
+                    "$set": {
+                        "status": "failed",
+                        "answer": outage_answer,
+                        "error_message": outage_failures[0],
+                        "reliability": {"score": 0.0, "status": "FAILED"},
+                        "diagnosis": {
+                            "type": "RETRIEVAL_OUTAGE",
+                            "failures": outage_failures,
+                        },
+                        "updated_at": datetime.now(UTC),
+                    }
+                },
+            )
+            await add_trace_event(
+                analysis_id_str,
+                "analysis.outage",
+                {"message": outage_failures[0]},
+            )
+            return
 
         answer = final_state["answer"]
-        score = final_state.get("reliability_score")
         cfg = get_model_config()
 
-        if answer == "ABSTAIN":
+        thresholds = Thresholds(
+            minimum_evidence_coverage=cfg.minimum_evidence_coverage,
+            maximum_contradiction_rate=cfg.maximum_contradiction_rate,
+            abstain_below=cfg.abstain_below,
+        )
+
+        verdict = verdict_from_state(final_state, thresholds)
+
+        if verdict.reliability_status == ReliabilityStatus.ABSTAINED:
+            # Never store the bare "ABSTAIN" token as the user-facing answer.
+            stored_abstain = (
+                answer
+                if answer and answer.strip() != "ABSTAIN"
+                else (
+                    "I couldn't verify an answer from this knowledge base: the "
+                    "retrieved evidence did not support a grounded response, so "
+                    "I am abstaining rather than guessing. Try a more specific "
+                    "query or add documents covering this topic."
+                )
+            )
+            # Update database first, then publish trace event
+            await analyses_coll.update_one(
+                {"_id": analysis_id},
+                {
+                    "$set": {
+                        "status": "abstained",
+                        "answer": stored_abstain,
+                        "reliability": {
+                            "score": verdict.reliability_score,
+                            "status": verdict.reliability_status.value,
+                        },
+                        "diagnosis": {
+                            "type": verdict.diagnosis_type.value,
+                            "failures": verdict.diagnosis_failures,
+                        },
+                        "updated_at": datetime.now(UTC),
+                    }
+                },
+            )
             await add_trace_event(
                 analysis_id_str,
                 "analysis.abstained",
                 {"message": "Agent reasoning resulted in abstention"},
             )
-            status_value = "abstained"
-            reliability_status = "ABSTAINED"
         else:
+            # DEGENERATE-STUB GUARD 2026-09-06: when verification fails with zero
+            # claims, the stored "answer" can be a context-overflow stub (e.g. the
+            # single word "The"). Presenting that as a synthesis is dishonest —
+            # store a clean abstention sentence instead (score/diagnosis kept).
+            # Extended: small local models may echo prompt scaffolding or loop a
+            # block until max tokens — also never a synthesis, whatever claims say.
+            stored_answer = answer
+            stored_status = "completed"
+            scaffold_echo = _looks_like_scaffold_echo(answer)
+            if scaffold_echo:
+                logger.warning(
+                    "Degenerate prompt-echo generation detected, abstaining",
+                    analysis_id=analysis_id_str,
+                )
+                await add_trace_event(
+                    analysis_id_str,
+                    "generation.degenerate",
+                    {"message": "Model echoed prompt scaffolding; answer discarded"},
+                )
+            if scaffold_echo or (
+                verdict.reliability_status == ReliabilityStatus.FAILED
+                and not (final_state.get("claims") or [])
+                and (answer or "").strip() != "ABSTAIN"
+                and len((answer or "").split()) < 5
+            ):
+                stored_answer = (
+                    "I couldn't verify an answer from this knowledge base: the "
+                    "retrieved evidence did not support a grounded response, so "
+                    "I am abstaining rather than guessing. Try a more specific "
+                    "query or add documents covering this topic."
+                )
+                stored_status = "abstained"
+            # Update database first, then publish trace event with answer
+            await analyses_coll.update_one(
+                {"_id": analysis_id},
+                {
+                    "$set": {
+                        "status": stored_status,
+                        "answer": stored_answer,
+                        "reliability": {
+                            "score": verdict.reliability_score,
+                            "status": verdict.reliability_status.value,
+                        },
+                        "diagnosis": {
+                            "type": verdict.diagnosis_type.value,
+                            "failures": verdict.diagnosis_failures,
+                        },
+                        "updated_at": datetime.now(UTC),
+                    }
+                },
+            )
             await add_trace_event(
                 analysis_id_str,
-                "analysis.completed",
-                {"message": "Answer generation completed successfully"},
+                "analysis.abstained" if stored_status == "abstained" else "analysis.completed",
+                {
+                    "message": "Answer generation completed successfully",
+                    "answer": stored_answer,
+                    "verdict": verdict.diagnosis_type.value,
+                },
             )
-            status_value = "completed"
-            if final_state["verdict_status"] == "PASS":
-                reliability_status = "TRUSTED"
-            elif score is not None and score >= cfg.abstain_below:
-                reliability_status = "UNCERTAIN"
-            else:
-                reliability_status = "FAILED"
-
-        # Update final state in database
-        await analyses_coll.update_one(
-            {"_id": analysis_id},
-            {
-                "$set": {
-                    "status": status_value,
-                    "answer": answer,
-                    "reliability": {"score": score, "status": reliability_status},
-                    "diagnosis": {
-                        "type": final_state.get("diagnosis_type"),
-                        "failures": final_state.get("diagnosis_failures", []),
-                    },
-                    "updated_at": datetime.now(UTC),
-                }
-            },
-        )
 
     except Exception as exc:
         logger.error(
@@ -365,25 +735,50 @@ async def run_analysis_pipeline(
             error=str(exc),
         )
 
+        err_str = str(exc).lower()
+        if "connect" in err_str or "connection" in err_str or "refused" in err_str:
+            client_msg = (
+                f"Inference server connection error. Ensure {llm_provider or 'local'} "
+                "server is running and accessible."
+            )
+        elif "not found" in err_str:
+            client_msg = (
+                f"Model '{llm_model}' not found on {llm_provider or 'local'} server. "
+                "Please ensure the model is pulled or loaded."
+            )
+        elif "timeout" in err_str or "timed out" in err_str:
+            client_msg = (
+                "Inference timed out. The local model may still be loading "
+                "or system is under heavy load."
+            )
+        else:
+            client_msg = f"Pipeline execution error ({type(exc).__name__}). Check server logs."
+
         await add_trace_event(
             analysis_id_str,
             "analysis.failed",
-            # Do NOT expose raw exception details to users — log internally only
-            {"message": "Analysis execution failed. Check server logs for details."},
+            {"message": client_msg},
         )
 
-        # Store generic error type — NOT str(exc) which leaks internal details
-        error_type = type(exc).__name__
         await analyses_coll.update_one(
             {"_id": analysis_id},
             {
                 "$set": {
                     "status": "failed",
-                    "error_message": f"Pipeline error ({error_type}). See server logs.",
+                    "error_message": client_msg,
                     "updated_at": datetime.now(UTC),
                 }
             },
         )
+    finally:
+        try:
+            import asyncio
+
+            from app.core.memory import trim_memory
+
+            await asyncio.to_thread(trim_memory)
+        except Exception as trim_exc:
+            logger.debug("Post-analysis memory compaction skipped", error=str(trim_exc))
 
 
 async def list_all_user_evidence(
@@ -506,6 +901,131 @@ async def list_all_user_conflicts(
         )
 
     return conflicts
+
+
+# ─── Analytics Dashboard ──────────────────────────────────────────────────────
+# Provides aggregated analytics for monitoring and optimization.
+
+
+async def get_analytics_dashboard(user_id_str: str) -> dict[str, Any]:
+    """Generate a comprehensive analytics dashboard for a user.
+
+    Includes:
+    - Analysis summary (counts, status distribution)
+    - Retrieval effectiveness metrics
+    - Verification patterns
+    - Conflict and integrity statistics
+    - Cost and performance indicators
+    """
+    from app.core.config import get_model_config
+
+    uid = ObjectId(user_id_str)
+    analyses_coll = get_collection(Collections.ANALYSES)
+    claims_coll = get_collection(Collections.CLAIMS)
+    evidence_coll = get_collection(Collections.EVIDENCE)
+
+    # Fetch user's analyses
+    user_analyses = await analyses_coll.find({"user_id": uid}).to_list(500)
+    a_ids = [a["_id"] for a in user_analyses]
+
+    if not a_ids:
+        return {
+            "total_analyses": 0,
+            "analyses_by_status": {},
+            "total_claims": 0,
+            "claims_by_state": {},
+            "total_evidence": 0,
+            "evidence_integrity": {},
+            "conflict_count": 0,
+            "average_reliability": 0.0,
+            "cost_indicators": {
+                "total_llm_calls": 0,
+                "total_embedding_calls": 0,
+            },
+        }
+
+    # 1. Analyses by status
+    status_pipeline = [
+        {"$match": {"_id": {"$in": a_ids}}},
+        {
+            "$group": {
+                "_id": "$status",
+                "count": {"$sum": 1},
+                "average_reliability": {"$avg": "$reliability.score"},
+            }
+        },
+    ]
+    analyses_by_status = {}
+    avg_reliability_sum = 0
+    analyses_with_reliability = 0
+    async for row in analyses_coll.aggregate(status_pipeline):
+        analyses_by_status[row["_id"]] = {
+            "count": row["count"],
+            "average_reliability": round(row["average_reliability"], 2)
+            if row["average_reliability"]
+            else 0.0,
+        }
+        avg_reliability_sum += row.get("average_reliability", 0) or 0
+        analyses_with_reliability += 1
+
+    if analyses_with_reliability > 0:
+        average_reliability = round(avg_reliability_sum / analyses_with_reliability, 2)
+    else:
+        average_reliability = 0.0
+
+    # 2. Claims by state
+    if a_ids:
+        claims_pipeline = [
+            {"$match": {"analysis_id": {"$in": a_ids}}},
+            {"$group": {"_id": "$state", "count": {"$sum": 1}}},
+        ]
+        claims_by_state = {}
+        total_claims = 0
+        async for row in claims_coll.aggregate(claims_pipeline):
+            claims_by_state[row["_id"]] = row["count"]
+            total_claims += row["count"]
+    else:
+        claims_by_state = {}
+        total_claims = 0
+
+    # 3. Evidence count and integrity
+    if a_ids:
+        evidence_count = await evidence_coll.count_documents({"analysis_id": {"$in": a_ids}})
+
+        # Evidence integrity breakdown
+        integrity_pipeline = [
+            {"$match": {"analysis_id": {"$in": a_ids}}},
+            {"$group": {"_id": "$integrity_status", "count": {"$sum": 1}}},
+        ]
+        evidence_integrity = {}
+        async for row in evidence_coll.aggregate(integrity_pipeline):
+            evidence_integrity[row["_id"]] = row["count"]
+    else:
+        evidence_count = 0
+        evidence_integrity = {}
+
+    # 4. Conflicts
+    conflict_count = len(await list_all_user_conflicts(user_id_str))
+
+    # 5. Cost indicators (from config and trace events)
+    cfg = get_model_config()
+    cost_indicators = {
+        "config_version": cfg.config_version,
+        "embedding_provider": cfg.embedding_provider,
+        "llm_provider": cfg.llm_provider,
+    }
+
+    return {
+        "total_analyses": len(user_analyses),
+        "analyses_by_status": analyses_by_status,
+        "total_claims": total_claims,
+        "claims_by_state": claims_by_state,
+        "total_evidence": evidence_count,
+        "evidence_integrity": evidence_integrity,
+        "conflict_count": conflict_count,
+        "average_reliability": average_reliability,
+        "cost_indicators": cost_indicators,
+    }
 
 
 async def export_analysis_dossier(

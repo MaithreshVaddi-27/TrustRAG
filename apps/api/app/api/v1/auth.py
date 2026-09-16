@@ -9,9 +9,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request, status
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, oauth2_scheme
 from app.api.v1.schemas.auth import TokenResponse, UserLogin, UserRegister, UserResponse
 from app.core.config import get_settings
+from app.core.exceptions import AuthenticationError
 from app.core.rate_limiter import limiter
 from app.services import auth_service
 
@@ -42,3 +43,21 @@ async def login(request: Request, schema: UserLogin) -> TokenResponse:
 async def me(current_user: Mapping[str, Any] = Depends(get_current_user)) -> UserResponse:
     """Fetch detail profile of the currently logged-in user."""
     return auth_service.serialize_user(current_user)
+
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke the current access token",
+)
+@limiter.limit(lambda: f"{get_settings().rate_limit_auth_per_minute}/minute")
+async def logout(request: Request, token: str | None = Depends(oauth2_scheme)) -> None:
+    """
+    Revoke the presented access token (SEC-H1).
+
+    The token is added to the denylist until its ``exp`` claim passes, so a
+    stolen token can no longer authenticate after a logout. Idempotent.
+    """
+    if not token:
+        raise AuthenticationError("Not authenticated", detail="Missing Authorization header")
+    await auth_service.revoke_token(token)

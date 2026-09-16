@@ -66,8 +66,30 @@ def setup_dependency_override(mock_user_doc):
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
 def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
-    # Mock kb ownership check inside analysis_service
-    with patch("app.services.analysis_service.get_kb", return_value=mock_kb_doc):
+    # Mock kb ownership check inside analysis_service (real get_kb returns KBResponse)
+    # Patch discovered models so the default model is allowed
+    import app.core.local_llm as _llm_mod
+    from app.api.v1.schemas.kb import KBResponse
+
+    _orig_get_discovered = _llm_mod.get_discovered_llms
+    _llm_mod.get_discovered_llms = lambda provider: frozenset(
+        ["granite4.2:3b-q4_K_M", "gemma3:1b"]
+        if provider == "ollama"
+        else [
+            "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+            "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
+            "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
+        ]
+    )
+
+    mock_kb = KBResponse(
+        id=str(mock_kb_doc["_id"]),
+        name=mock_kb_doc["name"],
+        description=mock_kb_doc["description"],
+        user_id=str(mock_kb_doc["user_id"]),
+        created_at="2026-08-27T10:00:00Z",
+    )
+    with patch("app.services.analysis_service.get_kb", return_value=mock_kb):
         mock_collection = MagicMock()
         mock_collection.insert_one = AsyncMock(
             return_value=MagicMock(inserted_id=ObjectId("64ee39d09c6292376e191983"))
@@ -76,6 +98,11 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
         with (
             patch("app.services.analysis_service.get_collection", return_value=mock_collection),
             patch("app.services.analysis_service.add_trace_event", AsyncMock()) as mock_add_trace,
+            # Local-LLM preflight probe (no inference server in CI)
+            patch(
+                "app.core.local_llm.probe_local_llm_server",
+                AsyncMock(return_value=None),
+            ),
         ):
             payload = {
                 "knowledge_base_id": "64ee39d09c6292376e191982",
@@ -88,34 +115,278 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
             assert data["query"] == "Is there a 45 days policy?"
             assert data["status"] == "pending"
             assert data["reliability"]["status"] == "PENDING"
-            mock_add_trace.assert_called_once_with(
-                analysis_id_str="64ee39d09c6292376e191983",
-                event="analysis.started",
-                data={"message": "Analysis run initiated"},
-            )
+            # Provenance: doc records the effective engine, never blanks.
+            assert data["llm_provider"] == "llama_cpp"
+            assert data["llm_model"] == "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
+            call_kwargs = mock_add_trace.call_args.kwargs
+            assert call_kwargs["analysis_id_str"] == "64ee39d09c6292376e191983"
+            assert call_kwargs["event"] == "analysis.started"
+            assert call_kwargs["data"]["message"] == "Analysis run initiated"
+
+    # Restore original
+    _llm_mod.get_discovered_llms = _orig_get_discovered
 
 
-@patch("app.api.v1.analyses.get_current_user")
+@patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
-def test_stream_trace_endpoint(mock_create_indexes, mock_connect, mock_get_current_user):
-    mock_get_current_user.return_value = {"_id": ObjectId("64ee39d09c6292376e191981")}
+def test_create_analysis_rejects_retired_cloud_embedding(
+    mock_create_indexes, mock_connect, mock_kb_doc, mock_user_doc
+):
+    """Cloud embeddings are gone: requesting one fails closed with guidance."""
+    import app.core.local_llm as _llm_mod
+    from app.api.v1.schemas.kb import KBResponse
 
+    _orig_get_discovered = _llm_mod.get_discovered_llms
+    _llm_mod.get_discovered_llms = lambda provider: frozenset(
+        ["granite4.2:3b-q4_K_M", "gemma3:1b"]
+        if provider == "ollama"
+        else [
+            "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+            "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
+            "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
+        ]
+    )
+
+    mock_kb = KBResponse(
+        id=str(mock_kb_doc["_id"]),
+        name=mock_kb_doc["name"],
+        description=mock_kb_doc["description"],
+        user_id=str(mock_kb_doc["user_id"]),
+        created_at="2026-08-27T10:00:00Z",
+        embedding_model="BAAI/bge-small-en-v1.5",
+        embedding_provider="huggingface",
+        embedding_dim=384,
+    )
+    with patch("app.services.analysis_service.get_kb", return_value=mock_kb):
+        payload = {
+            "knowledge_base_id": "64ee39d09c6292376e191982",
+            "query": "Is there a 45 days policy?",
+            "embedding_provider": "google_genai",
+            "embedding_model": "models/gemini-embedding-001",
+        }
+        response = client.post("/api/v1/analyses", json=payload)
+        _llm_mod.get_discovered_llms = _orig_get_discovered
+        assert response.status_code == 422
+
+
+@patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_create_analysis_fails_fast_when_local_llm_down(
+    mock_create_indexes, mock_connect, mock_kb_doc
+):
+    """Stopped ollama/llama-server → synchronous 503 alert, not a silent burn."""
+    import app.core.local_llm as _llm_mod
+    from app.api.v1.schemas.kb import KBResponse
+    from app.core.exceptions import LLMUnavailableError
+
+    _orig_get_discovered = _llm_mod.get_discovered_llms
+    _llm_mod.get_discovered_llms = lambda provider: frozenset(
+        ["LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M", "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"]
+        if provider == "llama_cpp"
+        else frozenset()
+    )
+
+    mock_kb = KBResponse(
+        id=str(mock_kb_doc["_id"]),
+        name=mock_kb_doc["name"],
+        description=mock_kb_doc["description"],
+        user_id=str(mock_kb_doc["user_id"]),
+        created_at="2026-08-27T10:00:00Z",
+    )
+    with (
+        patch("app.services.analysis_service.get_kb", return_value=mock_kb),
+        patch(
+            "app.core.local_llm.probe_local_llm_server",
+            AsyncMock(
+                side_effect=LLMUnavailableError(
+                    "Local LLM server 'llama_cpp' is not reachable at "
+                    "http://127.0.0.1:8080/v1. Start it with "
+                    "'./scripts/start_local_llm.sh' (llama-server on :8080)."
+                )
+            ),
+        ),
+    ):
+        payload = {
+            "knowledge_base_id": "64ee39d09c6292376e191982",
+            "query": "Is there a 45 days policy?",
+            "llm_provider": "llama_cpp",
+        }
+        response = client.post("/api/v1/analyses", json=payload)
+        _llm_mod.get_discovered_llms = _orig_get_discovered
+        assert response.status_code == 503
+        body = response.json()
+        assert body["error"]["code"] == "LLM_UNAVAILABLE"
+        assert "start_local_llm.sh" in body["error"]["message"]
+
+
+@patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_create_analysis_rejects_embedding_mismatch(
+    mock_create_indexes, mock_connect, mock_kb_doc, mock_user_doc
+):
+    """A KB pinned to one embedding space must reject analyses requesting another."""
+    import app.core.local_llm as _llm_mod
+    from app.api.v1.schemas.kb import KBResponse
+
+    _orig_get_discovered = _llm_mod.get_discovered_llms
+    _llm_mod.get_discovered_llms = lambda provider: frozenset(
+        ["granite4.2:3b-q4_K_M", "gemma3:1b"]
+        if provider == "ollama"
+        else [
+            "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+            "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
+            "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
+        ]
+    )
+
+    app.dependency_overrides[get_current_user] = lambda: mock_user_doc
+
+    mock_kb = KBResponse(
+        id=str(mock_kb_doc["_id"]),
+        name=mock_kb_doc["name"],
+        description=mock_kb_doc["description"],
+        user_id=str(mock_kb_doc["user_id"]),
+        created_at="2026-08-27T10:00:00Z",
+        embedding_model="BAAI/bge-small-en-v1.5",
+        embedding_provider="huggingface",
+        embedding_dim=384,
+    )
+    with patch("app.services.analysis_service.get_kb", return_value=mock_kb):
+        payload = {
+            "knowledge_base_id": "64ee39d09c6292376e191982",
+            "query": "Is there a 45 days policy?",
+            "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        }
+        response = client.post("/api/v1/analyses", json=payload)
+
+        assert response.status_code == 422
+        resp = response.json()
+        if "error" in resp:
+            assert "Embedding mismatch" in str(resp["error"].get("message", ""))
+        elif isinstance(resp.get("detail"), list):
+            assert any("Embedding mismatch" in str(d.get("msg", "")) for d in resp["detail"])
+        else:
+            assert "Embedding mismatch" in str(resp.get("detail", resp.get("message", "")))
+    _llm_mod.get_discovered_llms = _orig_get_discovered
+    app.dependency_overrides.clear()
+
+
+def _ticket_collection():
+    """Dict-backed fake for the Mongo stream_tickets collection."""
+    store = {}
+    coll = MagicMock()
+
+    async def _insert(doc):
+        store[doc["_id"]] = doc
+        return MagicMock()
+
+    async def _consume(query):
+        return store.pop(query.get("_id"), None)
+
+    coll.insert_one = AsyncMock(side_effect=_insert)
+    coll.find_one_and_delete = AsyncMock(side_effect=_consume)
+    return coll
+
+
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_stream_trace_endpoint(mock_create_indexes, mock_connect):
     # Mock sse_event_generator
     async def mock_generator(analysis_id, user_id_str):
         yield {"event": "retrieval.started", "timestamp": "2026-08-27T10:00:00Z", "data": {}}
         yield {"event": "analysis.completed", "timestamp": "2026-08-27T10:00:05Z", "data": {}}
 
-    with patch("app.services.analysis_service.sse_event_generator", side_effect=mock_generator):
-        response = client.get(
-            "/api/v1/analyses/64ee39d09c6292376e191983/stream?token=test-mock-token-minimum-32-chars-long"
+    # Mint a short-lived stream ticket (JWT is never passed in the URL).
+    # Same fake store must span mint + consume (separate HTTP requests).
+    # Ownership is verified via analysis_service.get_analysis before issuance.
+    fake_tickets = _ticket_collection()
+    with (
+        patch("app.api.v1.analyses.get_collection", return_value=fake_tickets),
+        patch(
+            "app.services.analysis_service.get_analysis",
+            AsyncMock(return_value={"id": "64ee39d09c6292376e191983"}),
+        ),
+    ):
+        ticket_response = client.post("/api/v1/analyses/64ee39d09c6292376e191983/stream-ticket")
+        assert ticket_response.status_code == 201
+        ticket = ticket_response.json()["ticket"]
+
+        with patch("app.services.analysis_service.sse_event_generator", side_effect=mock_generator):
+            response = client.get(
+                f"/api/v1/analyses/64ee39d09c6292376e191983/stream?ticket={ticket}"
+            )
+            assert response.status_code == 200
+            assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+            lines = response.content.decode("utf-8").split("\n\n")
+            assert len(lines) >= 2
+            assert "retrieval.started" in lines[0]
+            assert "analysis.completed" in lines[1]
+
+
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_stream_trace_rejects_invalid_and_reused_ticket(mock_create_indexes, mock_connect):
+    analysis_id = "64ee39d09c6292376e191983"
+    fake_tickets = _ticket_collection()
+
+    with (
+        patch("app.api.v1.analyses.get_collection", return_value=fake_tickets),
+        patch(
+            "app.services.analysis_service.get_analysis",
+            AsyncMock(return_value={"id": analysis_id}),
+        ),
+    ):
+        # No ticket at all → 401
+        assert client.get(f"/api/v1/analyses/{analysis_id}/stream").status_code in (401, 422)
+
+        # Bogus ticket → 401
+        assert client.get(f"/api/v1/analyses/{analysis_id}/stream?ticket=bogus").status_code == 401
+
+        # Raw JWT in query string is no longer accepted (ticket is now required)
+        assert client.get(f"/api/v1/analyses/{analysis_id}/stream?token=any-jwt").status_code in (
+            401,
+            422,
         )
-        assert response.status_code == 200
-        assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
-        lines = response.content.decode("utf-8").split("\n\n")
-        assert len(lines) >= 2
-        assert "retrieval.started" in lines[0]
-        assert "analysis.completed" in lines[1]
+
+        # Valid ticket for a different analysis → 401
+        ticket = client.post(f"/api/v1/analyses/{analysis_id}/stream-ticket").json()["ticket"]
+        assert (
+            client.get(
+                f"/api/v1/analyses/64ee39d09c6292376e199999/stream?ticket={ticket}"
+            ).status_code
+            == 401
+        )
+
+        # Valid ticket is single-use: first use succeeds, replay fails
+        async def mock_generator(aid, uid):
+            yield {"event": "analysis.completed", "timestamp": "2026-08-27T10:00:05Z", "data": {}}
+
+        ticket = client.post(f"/api/v1/analyses/{analysis_id}/stream-ticket").json()["ticket"]
+        stream_url = f"/api/v1/analyses/{analysis_id}/stream?ticket={ticket}"
+        with patch("app.services.analysis_service.sse_event_generator", side_effect=mock_generator):
+            assert client.get(stream_url).status_code == 200
+            assert client.get(stream_url).status_code == 401
+
+
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_stream_ticket_requires_ownership(mock_create_indexes, mock_connect):
+    """Ticket issuance for a foreign/missing analysis must not succeed (IDOR guard)."""
+    from app.core.exceptions import NotFoundError
+
+    fake_tickets = _ticket_collection()
+    with (
+        patch("app.api.v1.analyses.get_collection", return_value=fake_tickets),
+        patch(
+            "app.services.analysis_service.get_analysis",
+            AsyncMock(side_effect=NotFoundError("Analysis not found")),
+        ),
+    ):
+        resp = client.post("/api/v1/analyses/64ee39d09c6292376e199999/stream-ticket")
+        assert resp.status_code == 404
 
 
 @patch("app.db.mongodb.connect_db")
@@ -163,3 +434,24 @@ def test_list_analyses_with_pagination(mock_create_indexes, mock_connect, mock_a
         assert data[0]["id"] == "64ee39d09c6292376e191983"
         mock_cursor.skip.assert_called_once_with(5)
         mock_cursor.limit.assert_called_once_with(10)
+
+
+@patch("app.db.mongodb.connect_db")
+@patch("app.db.mongodb.create_indexes")
+def test_create_analysis_guides_new_user_without_models(mock_create_indexes, mock_connect):
+    """Empty discovery → 422 with install instructions, not a bare rejection."""
+    import app.core.local_llm as _llm_mod
+
+    _orig_get_discovered = _llm_mod.get_discovered_llms
+    _llm_mod.get_discovered_llms = lambda provider: frozenset()
+    try:
+        payload = {
+            "knowledge_base_id": "64ee39d09c6292376e191982",
+            "query": "Is there a 45 days policy?",
+            "llm_provider": "llama_cpp",
+        }
+        response = client.post("/api/v1/analyses", json=payload)
+        assert response.status_code == 422
+        assert "No llama_cpp models discovered" in response.text
+    finally:
+        _llm_mod.get_discovered_llms = _orig_get_discovered

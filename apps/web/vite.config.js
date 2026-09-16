@@ -14,17 +14,11 @@ export default defineConfig({
 
   server: {
     port: 5173,
-    // Proxy API calls to the FastAPI backend during development.
-    // This avoids CORS issues and mirrors the production path structure.
+    // Proxy API calls (incl. SSE streams, same /api prefix) to FastAPI.
+    // Configurable via VITE_BACKEND_PORT (default: 8000)
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        secure: false,
-      },
-      // Proxy SSE streams
-      '/api/v1/analyses': {
-        target: 'http://localhost:8000',
+        target: `http://localhost:${process.env.VITE_BACKEND_PORT || process.env.BACKEND_PORT || '8000'}`,
         changeOrigin: true,
         secure: false,
       },
@@ -41,6 +35,8 @@ export default defineConfig({
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'query-vendor': ['@tanstack/react-query'],
           'chart-vendor': ['recharts'],
+          'motion-vendor': ['motion/react'],
+          'ui-vendor': ['lucide-react', 'clsx', 'date-fns', 'axios'],
         },
       },
     },

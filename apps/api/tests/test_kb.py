@@ -70,17 +70,18 @@ def test_create_kb(mock_create_indexes, mock_connect):
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
 def test_list_kbs(mock_create_indexes, mock_connect, mock_kb_doc):
-    # Mock async iterator for cursor.find()
+    # Mock async cursor for find().sort().to_list()
     mock_cursor = MagicMock()
     mock_cursor.sort = MagicMock(return_value=mock_cursor)
+    mock_cursor.to_list = AsyncMock(return_value=[mock_kb_doc])
 
-    async def mock_async_gen():
-        yield mock_kb_doc
-
-    mock_cursor.__aiter__ = MagicMock(side_effect=mock_async_gen)
+    # Mock aggregation pipeline yielding per-KB document counts
+    async def mock_aggregate(*args, **kwargs):
+        yield {"_id": ObjectId("64ee39d09c6292376e191982"), "count": 2}
 
     mock_collection = MagicMock()
     mock_collection.find = MagicMock(return_value=mock_cursor)
+    mock_collection.aggregate = mock_aggregate
     mock_collection.count_documents = AsyncMock(return_value=2)  # document_count
 
     with patch("app.services.kb_service.get_collection", return_value=mock_collection):

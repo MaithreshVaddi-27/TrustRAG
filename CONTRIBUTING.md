@@ -10,7 +10,7 @@ Never continue with known failures. Do not generate the whole project blindly.
 
 ## Before Contributing
 
-1. Read `TRUSTRAG_specs.md` — it is the source of truth
+1. Read `docs/TRUSTRAG_specs.md` — it is the source of truth
 2. Review open ADRs in `docs/architecture/decision-log.md`
 3. Check the threat model before touching security-sensitive code
 
@@ -38,12 +38,13 @@ npm install
 ## Running Tests
 
 ```bash
-# Backend unit tests (no live services required)
+# Backend unit tests (141 tests across 20 test files, no live services required)
 cd apps/api
-pytest tests/test_config.py -v
+pytest -v
 
-# Frontend build check
+# Frontend lint and build check
 cd apps/web
+npm run lint
 npm run build
 ```
 

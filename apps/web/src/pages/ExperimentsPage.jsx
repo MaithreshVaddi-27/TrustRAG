@@ -6,11 +6,11 @@ import { FlaskConical, Plus, Loader2, X, Play } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 const EXPERIMENT_CONFIGS = [
-  { name: 'baseline_rag',      label: 'Baseline RAG',      metrics: { evidence_coverage: 0.45, claim_support: 0.60, citation_correctness: 0.50 } },
-  { name: 'hybrid_rag',        label: 'Hybrid RAG',        metrics: { evidence_coverage: 0.70, claim_support: 0.75, citation_correctness: 0.80 } },
-  { name: 'hybrid_rerank',     label: 'Hybrid + Rerank',   metrics: { evidence_coverage: 0.82, claim_support: 0.85, citation_correctness: 0.88 } },
-  { name: 'verified_rag',      label: 'Verified RAG',      metrics: { evidence_coverage: 0.88, claim_support: 0.92, citation_correctness: 0.94 } },
-  { name: 'trustrag_full',     label: 'TRUSTRAG Full',     metrics: { evidence_coverage: 0.95, claim_support: 0.98, citation_correctness: 0.99 } },
+  { name: 'baseline_rag',      label: 'Baseline RAG' },
+  { name: 'hybrid_rag',        label: 'Hybrid RAG' },
+  { name: 'hybrid_rerank',     label: 'Hybrid + Rerank' },
+  { name: 'verified_rag',      label: 'Verified RAG' },
+  { name: 'trustrag_full',     label: 'TrustRAG Full' },
 ]
 
 export default function ExperimentsPage() {
@@ -44,7 +44,6 @@ export default function ExperimentsPage() {
     createMutation.mutate({
       config_name: configObj.label,
       description: description || `Benchmark evaluation for ${configObj.label}`,
-      metrics: configObj.metrics,
     })
   }
 
@@ -55,16 +54,11 @@ export default function ExperimentsPage() {
         claim_support: Number(e.metrics?.claim_support || 0),
         citation_correctness: Number(e.metrics?.citation_correctness || 0),
       }))
-    : EXPERIMENT_CONFIGS.map(c => ({
-        config: c.label,
-        evidence_coverage: c.metrics.evidence_coverage,
-        claim_support: c.metrics.claim_support,
-        citation_correctness: c.metrics.citation_correctness,
-      }))
+    : []
 
   return (
     <AppLayout>
-      <div className="p-6 max-w-5xl mx-auto space-y-6 animate-fade-in">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6 animate-fade-in stagger-children">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-white tracking-tight">Experiments</h1>
@@ -84,7 +78,7 @@ export default function ExperimentsPage() {
           <p className="section-heading">Available Configurations</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {EXPERIMENT_CONFIGS.map(({ name, label }) => (
-              <div key={name} className="glass-card p-3 flex items-center gap-3">
+              <div key={name} className="glass-card p-3.5 flex items-center gap-3">
                 <FlaskConical size={14} className="text-primary-400 shrink-0" />
                 <div>
                   <p className="text-sm font-medium text-slate-200">{label}</p>
@@ -107,7 +101,7 @@ export default function ExperimentsPage() {
             <div className="flex items-center justify-center p-12">
               <Loader2 className="animate-spin text-primary-400" size={24} />
             </div>
-          ) : (
+          ) : chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={chartData} margin={{ top: 10, right: 20, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
@@ -124,6 +118,14 @@ export default function ExperimentsPage() {
                 <Bar dataKey="citation_correctness" name="Citation Correctness" fill="#f59e0b" radius={[4,4,0,0]} />
               </BarChart>
             </ResponsiveContainer>
+          ) : (
+            <div className="flex flex-col items-center justify-center p-12 text-center">
+              <FlaskConical size={32} className="text-slate-600 mb-3" />
+              <p className="text-slate-400 mb-2">No experiment runs recorded yet</p>
+              <p className="text-xs text-slate-500 max-w-xs">
+                Run your first benchmark to see objective reliability metrics here.
+              </p>
+            </div>
           )}
           <p className="text-xs text-slate-500 mt-3 italic">
             Objective evaluation metrics measuring claim entailment, citation correctness, and context retrieval coverage.
@@ -141,6 +143,7 @@ export default function ExperimentsPage() {
                 <button 
                   onClick={() => setIsModalOpen(false)}
                   className="text-slate-500 hover:text-slate-300"
+                  aria-label="Close modal"
                 >
                   <X size={18} />
                 </button>

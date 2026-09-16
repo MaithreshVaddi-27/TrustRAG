@@ -1,0 +1,77 @@
+/* ── Typography Scale ──────────────────────────────────────────────────────── */
+/* Apple Design: size-specific tracking, inverse leading, optical sizing        */
+/* Large display → negative tracking; small caption → slight positive tracking   */
+
+.text-display {
+  font-size: clamp(2.5rem, 5vw, 4.5rem);
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  font-weight: 800;
+  font-optical-sizing: auto;
+}
+
+.text-display-sm {
+  font-size: clamp(1.75rem, 3.5vw, 3rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+.text-heading-1 {
+  font-size: clamp(1.875rem, 3vw, 2.5rem);
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+  font-weight: 700;
+}
+
+.text-heading-2 {
+  font-size: clamp(1.5rem, 2.5vw, 2rem);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
+.text-heading-3 {
+  font-size: clamp(1.125rem, 2vw, 1.5rem);
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  font-weight: 600;
+}
+
+.text-body-lg {
+  font-size: 1.125rem;
+  line-height: 1.65;
+  letter-spacing: 0;
+}
+
+.text-body {
+  font-size: 1rem;
+  line-height: 1.65;
+  letter-spacing: 0;
+}
+
+.text-body-sm {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  letter-spacing: 0;
+}
+
+.text-caption {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+}
+
+.text-micro {
+  font-size: 0.625rem;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.text-code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  letter-spacing: 0;
+}

@@ -1,0 +1,93 @@
+/* ── ExperimentsPage Cards ────────────────────────────────────────────────── */
+
+.experiment-config-card {
+  padding: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.experiment-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 1rem;
+  animation: fadeIn 0.2s ease;
+}
+
+.experiment-modal-panel {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 1rem;
+  width: 100%;
+  max-width: 28rem;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.6);
+}
+
+.experiment-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+  padding-bottom: 0.75rem;
+}
+
+.experiment-select {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: #e2e8f0;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.experiment-select:focus {
+  border-color: var(--primary-500, #0ea5e9);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+}
+
+.experiment-textarea {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: #e2e8f0;
+  resize: none;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.experiment-textarea:focus {
+  border-color: var(--primary-500, #0ea5e9);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+}
+
+.experiment-cancel-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  color: #94a3b8;
+  transition: color 0.15s ease;
+}
+
+.experiment-cancel-btn:hover {
+  color: white;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .experiment-modal-overlay { animation: none; }
+}

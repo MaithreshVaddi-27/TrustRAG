@@ -15,15 +15,18 @@
 | IDOR prevention | Every DB query includes `user_id` ownership filter | Phase 4 |
 | Cross-user KB isolation | Authorization in knowledge base service | Phase 4 |
 
-## Input Security
+## Input & MCP Search Security
 
 | Control | Implementation | Status |
 |---------|---------------|--------|
-| File size limit | Enforced in upload handler before parsing | Phase 5 |
-| Format allowlist | Only PDF/TXT/MD accepted | Phase 5 |
-| Prompt architecture | SYSTEM / QUERY / UNTRUSTED_EVIDENCE separation | Phase 6 |
-| Max input tokens | Hard limit before LLM call | Phase 6 |
-| Suspicious content detection | Evidence integrity analysis | Phase 8 |
+| File size limit | Enforced in upload handler before parsing | Phase 5 ✓ |
+| Format allowlist | PDF, TXT, MD, DOCX, CSV, JSON, HTML, XLSX | Phase 5 ✓ |
+| Query length boundary | Hard cap at 500 chars (`MAX_QUERY_LENGTH`) in search service | Phase 14 ✓ |
+| SSRF URL sanitization | `sanitize_url` restricts to HTTP/HTTPS, blocks private IP ranges | Phase 14 ✓ |
+| MCP tool validation | Schema validation + tool name allowlist before execution | Phase 14 ✓ |
+| Prompt architecture | SYSTEM / QUERY / UNTRUSTED_EVIDENCE separation | Phase 6 ✓ |
+| Max input tokens | Hard limit before LLM invocation | Phase 6 ✓ |
+| Suspicious content detection | Evidence integrity analysis & temporal verification | Phase 8 ✓ |
 
 ## Infrastructure Security
 

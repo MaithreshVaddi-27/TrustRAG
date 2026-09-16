@@ -5,10 +5,12 @@ TRUSTRAG API — Analysis routes.
 from __future__ import annotations
 
 import json
+import secrets
 from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_user
@@ -20,11 +22,46 @@ from app.api.v1.schemas.analysis import (
     TraceEventResponse,
 )
 from app.core.config import get_settings
-from app.core.exceptions import AuthenticationError
 from app.core.rate_limiter import limiter
+from app.db.mongodb import Collections, get_collection
 from app.services import analysis_service
 
 router = APIRouter(prefix="/analyses", tags=["analyses"])
+
+# Rate limit string evaluated once at module load (SlowAPI expects a string, not a callable)
+_ANALYSIS_RATE_LIMIT = f"{get_settings().rate_limit_analyses_per_minute}/minute"
+
+# SSE stream tickets live in MongoDB (stream_tickets, TTL janitor), NOT in
+# process memory — ticket issuance and stream consumption can land on different
+# uvicorn workers. Single-use (atomic find-and-delete) with 60s validity.
+_STREAM_TICKET_TTL_SECONDS = 60
+
+
+async def _issue_stream_ticket(user_id: str, analysis_id: str) -> str:
+    ticket = secrets.token_urlsafe(32)
+    await get_collection(Collections.STREAM_TICKETS).insert_one(
+        {
+            "_id": ticket,
+            "user_id": user_id,
+            "analysis_id": analysis_id,
+            "expires_at": datetime.now(UTC) + timedelta(seconds=_STREAM_TICKET_TTL_SECONDS),
+        }
+    )
+    return ticket
+
+
+async def _consume_stream_ticket(ticket: str, analysis_id: str) -> str | None:
+    """Atomically consume a ticket. Returns user_id, or None if invalid/expired."""
+    doc = await get_collection(Collections.STREAM_TICKETS).find_one_and_delete({"_id": ticket})
+    if not doc or doc.get("analysis_id") != analysis_id:
+        return None
+    expires_at = doc.get("expires_at")
+    if expires_at is not None:
+        if getattr(expires_at, "tzinfo", None) is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at < datetime.now(UTC):
+            return None
+    return doc.get("user_id")
 
 
 @router.post(
@@ -33,7 +70,7 @@ router = APIRouter(prefix="/analyses", tags=["analyses"])
     status_code=status.HTTP_201_CREATED,
     summary="Initiate analysis run",
 )
-@limiter.limit(lambda: f"{get_settings().rate_limit_analyses_per_minute}/minute")
+@limiter.limit(_ANALYSIS_RATE_LIMIT)
 async def create_analysis_endpoint(
     request: Request,
     schema: AnalysisCreate,
@@ -114,26 +151,62 @@ async def get_trace_endpoint(
     return await analysis_service.get_analysis_trace(analysis_id, str(current_user["_id"]))
 
 
+@router.get(
+    "/{analysis_id}/detail",
+    summary="Get analysis with claims, evidence, and trace in one call",
+)
+async def get_analysis_detail_endpoint(
+    analysis_id: str, current_user: Mapping[str, Any] = Depends(get_current_user)
+) -> dict[str, Any]:
+    """Single-round-trip finalize payload (1 ownership check, 3 parallel queries)."""
+    return await analysis_service.get_analysis_detail(analysis_id, str(current_user["_id"]))
+
+
+@router.post(
+    "/{analysis_id}/stream-ticket",
+    summary="Issue short-lived SSE stream ticket",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_stream_ticket_endpoint(
+    analysis_id: str,
+    current_user: Mapping[str, Any] = Depends(get_current_user),
+) -> dict[str, str]:
+    """
+    Issue a 60-second single-use ticket for the SSE stream endpoint.
+
+    Use this instead of passing the full JWT in the query string,
+    which would expose it in server logs and browser history.
+    The ticket is cryptographically random, single-use, and Mongo-backed so
+    any uvicorn worker can consume it.
+    """
+    # SEC: verify ownership before issuing a ticket so ticket/Mongo cannot be
+    # spammed for foreign analysis IDs (previously unchecked).
+    await analysis_service.get_analysis(analysis_id, str(current_user["_id"]))
+    ticket = await _issue_stream_ticket(str(current_user["_id"]), analysis_id)
+    return {"ticket": ticket}
+
+
 @router.get("/{analysis_id}/stream", summary="Stream live execution trace")
 async def stream_trace_endpoint(
     analysis_id: str,
-    token: str | None = Query(
-        None, description="Auth token (required since EventSource doesn't support headers)"
+    ticket: str = Query(
+        ..., description="Short-lived single-use stream ticket (from POST /stream-ticket)"
     ),
 ) -> StreamingResponse:
     """
     Establish Server-Sent Events (SSE) stream for live trace updates.
 
-    Validates token from query parameters.
+    Requires a short-lived (60s), single-use `ticket` issued by POST /stream-ticket.
+    Raw JWTs are NOT accepted in the query string — they would leak into access logs,
+    proxy logs, and browser history.
     """
-    if not token:
-        raise AuthenticationError(
-            "Not authenticated", detail="Token must be passed as query parameter"
+    # Validate and consume the ticket (atomic single-use)
+    user_id_str = await _consume_stream_ticket(ticket, analysis_id)
+    if not user_id_str:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired stream ticket",
         )
-
-    # Reuse get_current_user logic manually
-    user = await get_current_user(token)
-    user_id_str = str(user["_id"])
 
     async def event_publisher():
         async for event_data in analysis_service.sse_event_generator(analysis_id, user_id_str):

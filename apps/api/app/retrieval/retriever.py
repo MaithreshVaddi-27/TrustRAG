@@ -6,12 +6,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import threading
+from collections import OrderedDict
 from datetime import UTC, datetime
 from typing import Any
 
 from qdrant_client.http import models
 
 from app.core.config import get_model_config
+from app.core.exceptions import RetrievalOutageError
 from app.core.logging import get_logger
 from app.core.model_registry import get_embedding_model
 from app.db.mongodb import Collections, get_collection
@@ -20,72 +23,272 @@ from app.ingestion.sparse_vector import generate_sparse_vector
 
 logger = get_logger(__name__)
 
+# Per-branch retrieval timeout (s): one hung branch (dense embeddings or sparse
+# search) degrades to the other branch's results instead of eating the whole
+# 60 s hybrid budget. Both branches timing out is a hard outage.
+RETRIEVAL_BRANCH_TIMEOUT = 45.0
 
-async def dense_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
-    """Retrieve top_k chunks using dense vector embeddings (sentence-transformers)."""
-    try:
-        client = get_qdrant_client()
-        collection_name = get_collection_name(kb_id)
-        embed_model = get_embedding_model()
 
-        # Embed query text in background thread to avoid freezing asyncio event loop
-        query_vector = await asyncio.to_thread(embed_model.embed_query, query)
+# ─── Query Ambiguity Detection ──────────────────────────────────────────────
+# Detects ambiguous queries using score entropy and adjusts retrieval depth.
 
-        if hasattr(client, "query_points"):
-            response = client.query_points(
-                collection_name=collection_name,
-                query=query_vector,
-                limit=top_k,
-                with_payload=True,
-            )
-            return response.points
+
+class AmbiguityDetector:
+    """Detects query ambiguity based on retrieval score distribution."""
+
+    def __init__(self, entropy_threshold: float = 1.5, low_score_threshold: float = 0.5):
+        self.entropy_threshold = entropy_threshold
+        self.low_score_threshold = low_score_threshold
+
+    def detect(self, scores: list[float]) -> dict[str, Any]:
+        """
+        Detect ambiguity in retrieval scores.
+
+        Args:
+            scores: List of retrieval scores from initial fetch
+
+        Returns:
+            dict with 'is_ambiguous', 'entropy', 'avg_score', 'recommendation'
+        """
+        if not scores:
+            return {
+                "is_ambiguous": False,
+                "entropy": 0.0,
+                "avg_score": 0.0,
+                "recommendation": "none",
+            }
+
+        import math
+
+        # Calculate Shannon entropy of score distribution
+        positive_scores = [max(0, s) for s in scores]
+        min_score = min(positive_scores) if positive_scores else 0
+        adjusted_scores = [s - min_score + 0.001 for s in positive_scores]
+
+        total = sum(adjusted_scores)
+        if total == 0:
+            probabilities = [1.0 / len(adjusted_scores)] * len(adjusted_scores)
         else:
-            return client.search(
-                collection_name=collection_name,
-                query_vector=query_vector,
-                limit=top_k,
-                with_payload=True,
-            )
+            probabilities = [s / total for s in adjusted_scores]
+
+        entropy = -sum(p * math.log2(p) for p in probabilities if p > 0)
+        avg_score = sum(scores) / len(scores)
+
+        is_ambiguous = entropy > self.entropy_threshold or avg_score < self.low_score_threshold
+
+        if is_ambiguous and avg_score < self.low_score_threshold:
+            recommendation = "increase_k"
+        elif is_ambiguous and entropy > self.entropy_threshold:
+            recommendation = "diversify"
+        else:
+            recommendation = "none"
+
+        return {
+            "is_ambiguous": is_ambiguous,
+            "entropy": round(entropy, 2),
+            "avg_score": round(avg_score, 3),
+            "recommendation": recommendation,
+        }
+
+
+def detect_query_ambiguity(scores: list[float]) -> dict[str, Any]:
+    """Detect ambiguity in query retrieval scores.
+
+    Convenience function for external use.
+    """
+    detector = AmbiguityDetector()
+    return detector.detect(scores)
+
+
+class QueryEmbeddingLRUCache:
+    """Thread-safe LRU cache for query vector embeddings to prevent redundant API calls."""
+
+    def __init__(self, capacity: int = 1024):
+        self._capacity = capacity
+        self._cache: OrderedDict[str, list[float]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, query: str) -> list[float] | None:
+        with self._lock:
+            if query in self._cache:
+                self._cache.move_to_end(query)
+                return self._cache[query]
+            return None
+
+    def set(self, query: str, vector: list[float]) -> None:
+        with self._lock:
+            if query in self._cache:
+                self._cache.move_to_end(query)
+            else:
+                if len(self._cache) >= self._capacity:
+                    self._cache.popitem(last=False)
+            self._cache[query] = vector
+
+
+_query_cache = QueryEmbeddingLRUCache(capacity=1024)
+_collection_dimension_cache: OrderedDict[str, int] = OrderedDict()
+_collection_dimension_lock = threading.Lock()
+
+
+async def _get_collection_dimension(client: Any, collection_name: str) -> int | None:
+    """Return cached Qdrant vector dimensions, avoiding a metadata call per query."""
+    with _collection_dimension_lock:
+        cached = _collection_dimension_cache.get(collection_name)
+        if cached is not None:
+            _collection_dimension_cache.move_to_end(collection_name)
+            return cached
+
+    col_info = await client.get_collection(collection_name)
+    target_dim = getattr(col_info.config.params.vectors, "size", None)
+    if isinstance(target_dim, int):
+        with _collection_dimension_lock:
+            _collection_dimension_cache[collection_name] = target_dim
+            _collection_dimension_cache.move_to_end(collection_name)
+            while len(_collection_dimension_cache) > 512:
+                _collection_dimension_cache.popitem(last=False)
+    return target_dim
+
+
+async def dense_search(
+    query: str,
+    kb_id: str,
+    top_k: int = 20,
+    embedding_provider: str | None = None,
+    embedding_model: str | None = None,
+) -> list[Any]:
+    """Retrieve top_k chunks using dense vector embeddings with LRU cache.
+
+    Raises:
+        RetrievalOutageError: When the retrieval infrastructure (Qdrant or the
+            embedding service) is unavailable. This is an outage, NOT evidence
+            that the knowledge base lacks matching content — callers must
+            distinguish it from an empty result list.
+    """
+    try:
+        client = await get_qdrant_client()
+    except Exception as exc:
+        logger.error("Qdrant client unavailable for dense search", error=str(exc))
+        raise RetrievalOutageError(
+            f"Vector store unavailable during dense retrieval: {exc}", detail=str(exc)
+        ) from exc
+    collection_name = get_collection_name(kb_id)
+
+    try:
+        # Check LRU cache first to eliminate redundant computation.
+        # Normalized key avoids repeat embeddings for case/whitespace variants.
+        cache_key = (
+            f"{(embedding_provider or '').strip().lower()}:"
+            f"{(embedding_model or '').strip().lower()}:{query.strip().lower()}"
+        )
+        cached_vec = _query_cache.get(cache_key)
+        if cached_vec is not None:
+            query_vector = cached_vec
+        else:
+            try:
+                embed_model = get_embedding_model(embedding_provider, embedding_model)
+                # Embed query text in background thread to avoid freezing asyncio event loop
+                query_vector = await asyncio.to_thread(embed_model.embed_query, query)
+                _query_cache.set(cache_key, query_vector)
+            except Exception as exc:
+                logger.error("Embedding service unavailable for dense search", error=str(exc))
+                raise RetrievalOutageError(
+                    f"Embedding service unavailable during dense retrieval: {exc}",
+                    detail=str(exc),
+                ) from exc
+
+        # Safely align query vector dimension to collection's expected dimension.
+        # NOTE: truncate/pad across embedding spaces returns plausible-looking
+        # garbage — the create-analysis pin guard (422) is the real defense;
+        # this alignment is a last resort, so any mismatch is logged loudly.
+        try:
+            target_dim = await _get_collection_dimension(client, collection_name)
+            if target_dim:
+                if len(query_vector) > target_dim:
+                    logger.warning(
+                        "Query/collection dimension mismatch — truncating",
+                        query_dim=len(query_vector),
+                        collection_dim=target_dim,
+                        kb_id=kb_id,
+                    )
+                    query_vector = query_vector[:target_dim]
+                    # Re-normalize truncated vector to unit length
+                    # for accurate cosine similarity
+                    import math
+
+                    norm = math.sqrt(sum(x * x for x in query_vector))
+                    if norm > 0:
+                        query_vector = [x / norm for x in query_vector]
+                elif len(query_vector) < target_dim:
+                    logger.warning(
+                        "Query/collection dimension mismatch — zero-padding",
+                        query_dim=len(query_vector),
+                        collection_dim=target_dim,
+                        kb_id=kb_id,
+                    )
+                    query_vector = query_vector + [0.0] * (target_dim - len(query_vector))
+        except Exception as col_err:
+            logger.debug("Could not inspect collection dimensions", error=str(col_err))
+
+        response = await client.query_points(
+            collection_name=collection_name,
+            query=query_vector,
+            limit=top_k,
+            with_payload=True,
+        )
+        # A successful, empty response is genuine "no evidence" — NOT an outage.
+        return list(getattr(response, "points", []) or [])
+    except RetrievalOutageError:
+        raise
     except Exception as exc:
         logger.error("Dense search failed", kb_id=kb_id, error=str(exc))
-        return []
+        raise RetrievalOutageError(
+            f"Vector store query failed during dense retrieval: {exc}", detail=str(exc)
+        ) from exc
 
 
 async def sparse_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
-    """Retrieve top_k chunks using token-frequency sparse representations."""
-    try:
-        client = get_qdrant_client()
-        collection_name = get_collection_name(kb_id)
+    """Retrieve top_k chunks using token-frequency sparse representations.
 
+    Raises:
+        RetrievalOutageError: When the vector store is unavailable. An empty
+            sparse representation (query with no indexable tokens) is genuine
+            "no evidence" and returns [] instead.
+    """
+    try:
+        client = await get_qdrant_client()
+    except Exception as exc:
+        logger.error("Qdrant client unavailable for sparse search", error=str(exc))
+        raise RetrievalOutageError(
+            f"Vector store unavailable during sparse retrieval: {exc}", detail=str(exc)
+        ) from exc
+    collection_name = get_collection_name(kb_id)
+
+    try:
         # Generate token weights with query-noise stopword filtering
         sparse_rep = generate_sparse_vector(query, is_query=True)
-        if not sparse_rep["indices"]:
-            return []
+    except Exception as exc:
+        logger.error("Sparse vector generation failed", kb_id=kb_id, error=str(exc))
+        return []
+    if not sparse_rep["indices"]:
+        return []
 
-        sparse_vec = models.SparseVector(indices=sparse_rep["indices"], values=sparse_rep["values"])
+    sparse_vec = models.SparseVector(indices=sparse_rep["indices"], values=sparse_rep["values"])
 
-        if hasattr(client, "query_points"):
-            response = client.query_points(
-                collection_name=collection_name,
-                query=sparse_vec,
-                using="sparse-text",
-                limit=top_k,
-                with_payload=True,
-            )
-            return response.points
-        else:
-            return client.search(
-                collection_name=collection_name,
-                query_vector=models.NamedSparseVector(
-                    name="sparse-text",
-                    vector=sparse_vec,
-                ),
-                limit=top_k,
-                with_payload=True,
-            )
+    try:
+        response = await client.query_points(
+            collection_name=collection_name,
+            query=sparse_vec,
+            using="sparse-text",
+            limit=top_k,
+            with_payload=True,
+        )
+        # A successful, empty response is genuine "no evidence" — NOT an outage.
+        return list(getattr(response, "points", []) or [])
     except Exception as exc:
         logger.error("Sparse search failed", kb_id=kb_id, error=str(exc))
-        return []
+        raise RetrievalOutageError(
+            f"Vector store query failed during sparse retrieval: {exc}", detail=str(exc)
+        ) from exc
 
 
 def reciprocal_rank_fusion(
@@ -209,7 +412,12 @@ async def apply_temporal_filtering(
         r["effective_from"] = eff_from
         r["effective_until"] = eff_until
 
-        # Apply boundary checks
+        # Apply boundary checks (normalize naive datetimes to UTC-aware
+        # so legacy Mongo records never raise TypeError on comparison).
+        if eff_from and getattr(eff_from, "tzinfo", None) is None:
+            eff_from = eff_from.replace(tzinfo=UTC)
+        if eff_until and getattr(eff_until, "tzinfo", None) is None:
+            eff_until = eff_until.replace(tzinfo=UTC)
         if eff_from and ref_time < eff_from:
             logger.debug("Filtered chunk due to effective_from window limit", doc_id=doc_id_str)
             continue
@@ -227,23 +435,71 @@ async def retrieve_hybrid_chunks(
     kb_id: str,
     reference_time: datetime | None = None,
     top_k_override: int | None = None,
+    embedding_provider: str | None = None,
+    embedding_model: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Primary hybrid dense + sparse retrieval coordinator.
 
     Performs dual-retrieval, fuses using RRF, and applies temporal validity filters.
     Returns results ready for reranking or direct model generation context.
+
+    An empty return means the search executed successfully but found no
+    matching evidence. A RetrievalOutageError means the retrieval
+    infrastructure (Qdrant / embedding service) was unreachable — callers
+    must surface that as an outage, never as "no evidence found".
     """
     cfg = get_model_config()
 
     dense_top = top_k_override if top_k_override is not None else cfg.dense_top_k
     sparse_top = top_k_override if top_k_override is not None else cfg.sparse_top_k
 
-    # Run dense + sparse searches concurrently
-    dense_res, sparse_res = await asyncio.gather(
-        dense_search(query, kb_id, top_k=dense_top),
-        sparse_search(query, kb_id, top_k=sparse_top),
-    )
+    # Run dense + sparse searches concurrently with a hard budget so a
+    # hung embedding/Qdrant call cannot pin a worker (OPT: local-LLM load).
+    # Each branch ALSO has its own 45 s cap: without it, one hung branch eats
+    # the whole 60 s budget and discards the healthy branch's results. A lone
+    # timed-out branch degrades to the other branch's results; both timing
+    # out is still a hard outage (never silently "no evidence").
+    async def _branch(coro, name: str) -> tuple[list[dict[str, Any]], bool]:
+        try:
+            return await asyncio.wait_for(coro, timeout=RETRIEVAL_BRANCH_TIMEOUT), False
+        except TimeoutError:
+            logger.warning(
+                f"{name} retrieval branch timed out; degrading to other branch",
+                timeout_s=RETRIEVAL_BRANCH_TIMEOUT,
+            )
+            return [], True
+
+    try:
+        (dense_res, dense_timed_out), (sparse_res, sparse_timed_out) = await asyncio.wait_for(
+            asyncio.gather(
+                _branch(
+                    dense_search(
+                        query,
+                        kb_id,
+                        top_k=dense_top,
+                        embedding_provider=embedding_provider,
+                        embedding_model=embedding_model,
+                    ),
+                    "dense",
+                ),
+                _branch(sparse_search(query, kb_id, top_k=sparse_top), "sparse"),
+            ),
+            timeout=60.0,
+        )
+    except TimeoutError as exc:
+        from app.core.exceptions import RetrievalOutageError
+
+        raise RetrievalOutageError(
+            "Hybrid retrieval timed out (dense+sparse budget 60s)", detail=str(exc)
+        ) from exc
+    if dense_timed_out and sparse_timed_out:
+        from app.core.exceptions import RetrievalOutageError
+
+        raise RetrievalOutageError(
+            "Hybrid retrieval timed out (both dense+sparse branches, "
+            f"{RETRIEVAL_BRANCH_TIMEOUT:g}s each)"
+        )
 
     # Fuse ranks
     fused = reciprocal_rank_fusion(dense_res, sparse_res, k=cfg.rrf_k)

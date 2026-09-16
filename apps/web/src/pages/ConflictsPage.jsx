@@ -11,7 +11,7 @@ export default function ConflictsPage() {
 
   return (
     <AppLayout>
-      <div className="p-6 max-w-5xl mx-auto space-y-6 animate-fade-in">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6 animate-fade-in stagger-children">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -32,13 +32,13 @@ export default function ConflictsPage() {
         </div>
 
         {/* Informational Banner */}
-        <div className="glass-card p-4 flex items-start gap-3.5 border-amber-800/40 bg-amber-950/15">
+        <div className="glass-card p-5 flex items-start gap-3.5 border-amber-800/40 bg-amber-950/15">
           <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <p className="text-sm font-semibold text-amber-300">Deterministic Conflict Detection</p>
             <p className="text-xs text-slate-300 leading-relaxed">
               When documents contain opposing assertions or when NLI verification detects a direct contradiction
-              against source evidence, TRUSTRAG isolates and surfaces the conflict rather than making an arbitrary or hallucinated choice.
+              against source evidence, TrustRAG isolates and surfaces the conflict rather than making an arbitrary or hallucinated choice.
             </p>
           </div>
         </div>
@@ -68,7 +68,7 @@ export default function ConflictsPage() {
             {conflicts.map((conflict) => (
               <div
                 key={conflict.id}
-                className="glass-card p-4 space-y-3 border-amber-900/40 hover:border-amber-700/60 transition-colors"
+                className="glass-card p-5 space-y-3 border-amber-900/40 hover:border-amber-700/60 transition-colors"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">

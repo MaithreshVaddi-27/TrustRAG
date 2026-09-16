@@ -71,19 +71,33 @@ export default api
 /**
  * Open a Server-Sent Events stream for live analysis trace updates.
  *
- * Backend route: GET /api/v1/analyses/{analysisId}/stream?token=<jwt>
- * (token must be a query param — EventSource cannot send Authorization headers)
+ * Uses a short-lived, single-use stream ticket (POST /stream-ticket) — the JWT
+ * is NEVER placed in the URL, where it would leak into server logs, proxy logs,
+ * and browser history. If ticket issuance fails, onError is invoked so callers
+ * can fall back to polling (no stream is opened).
+ *
+ * Backend route: GET /api/v1/analyses/{analysisId}/stream?ticket=<ticket>
  *
  * @param {string} analysisId
- * @param {{ onEvent?: (data: any) => void, onError?: (err: Event) => void, onComplete?: () => void }} handlers
- * @returns {EventSource}
+ * @param {{ onEvent?: (data: any) => void, onError?: (err: Event|Error) => void, onComplete?: () => void }} handlers
+ * @returns {Promise<EventSource|null>}
  */
-export function openAnalysisStream(analysisId, { onEvent, onError, onComplete } = {}) {
-  const { token } = authStore.getState()
-  const url = `${API_BASE_URL}/api/v1/analyses/${analysisId}/stream?token=${encodeURIComponent(token || '')}`
-  const source = new EventSource(url)
-
+export async function openAnalysisStream(analysisId, { onEvent, onError, onComplete } = {}) {
   const TERMINAL_EVENTS = new Set(['analysis.completed', 'analysis.abstained', 'analysis.failed'])
+
+  // Mint a short-lived ticket — keeps the JWT out of the URL entirely.
+  let streamUrl
+  try {
+    const ticketRes = await api.post(`/api/v1/analyses/${analysisId}/stream-ticket`)
+    const ticket = ticketRes.data?.ticket
+    if (!ticket) throw new Error('Stream ticket endpoint returned no ticket')
+    streamUrl = `${API_BASE_URL}/api/v1/analyses/${analysisId}/stream?ticket=${encodeURIComponent(ticket)}`
+  } catch (err) {
+    onError?.(err)
+    return null
+  }
+
+  const source = new EventSource(streamUrl)
 
   source.onmessage = (evt) => {
     let payload

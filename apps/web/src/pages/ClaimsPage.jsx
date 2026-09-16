@@ -16,8 +16,11 @@ export default function ClaimsPage() {
 
   const states = ['ALL', 'SUPPORTED', 'CONTRADICTED', 'NEUTRAL']
 
+  const getClaimState = (c) => (c.state || c.status || c.verification_status || 'NEUTRAL').toUpperCase()
+
   const stateCounts = claims.reduce((acc, c) => {
-    acc[c.state] = (acc[c.state] || 0) + 1
+    const st = getClaimState(c)
+    acc[st] = (acc[st] || 0) + 1
     return acc
   }, {})
 
@@ -26,13 +29,13 @@ export default function ClaimsPage() {
       !search.trim() ||
       claim.text?.toLowerCase().includes(search.toLowerCase()) ||
       claim.explanation?.toLowerCase().includes(search.toLowerCase())
-    const matchesState = selectedState === 'ALL' || claim.state === selectedState
+    const matchesState = selectedState === 'ALL' || getClaimState(claim) === selectedState
     return matchesSearch && matchesState
   })
 
   return (
     <AppLayout>
-      <div className="p-6 max-w-5xl mx-auto space-y-6 animate-fade-in">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6 animate-fade-in stagger-children">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -65,7 +68,7 @@ export default function ClaimsPage() {
               >
                 <span>{st}</span>
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  className={`text-[10px] px-1.5 py-[2px] rounded-full font-mono ${
                     active ? 'bg-primary-700/80 text-white' : 'bg-surface-800 text-slate-400'
                   }`}
                 >
@@ -77,7 +80,7 @@ export default function ClaimsPage() {
         </div>
 
         {/* Search bar */}
-        <div className="glass-card p-3 flex items-center gap-3">
+        <div className="glass-card p-3.5 flex items-center gap-3">
           <Search size={16} className="text-slate-500 shrink-0 ml-1" />
           <input
             type="text"
@@ -117,7 +120,7 @@ export default function ClaimsPage() {
             </p>
           </div>
         ) : (
-          <div className="glass-card p-4 space-y-3">
+          <div className="glass-card p-5 space-y-3">
             <ClaimInspector claims={filteredClaims} />
           </div>
         )}

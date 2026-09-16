@@ -23,6 +23,17 @@ class KBResponse(BaseModel):
     user_id: str
     document_count: int = 0
     created_at: datetime
+    # P0 FIX 2026-09-06: serialize_kb() already passes these, but the schema
+    # silently dropped them (extra='ignore'), so delete_kb()'s kb.is_snapshot
+    # raised AttributeError → DELETE /knowledge-bases/{id} always 500'd.
+    version: str = "1.0"
+    parent_kb_id: str | None = None
+    is_snapshot: bool = False
+    # Embedding space pin (set on first ingest). Analyses MUST query with this
+    # model — cross-space queries return silent garbage. None = legacy KB.
+    embedding_model: str | None = None
+    embedding_provider: str | None = None
+    embedding_dim: int | None = None
 
 
 class DocResponse(BaseModel):

@@ -2,13 +2,6 @@
 .env
 .env.*
 !.env.example
-.env.local
-.env.production
-.env.staging
-.env.development.local
-.env.test.local
-.env.production.local
-.env.staging.local
 *.pem
 *.key
 *.p12
@@ -23,8 +16,8 @@ __pycache__/
 *.so
 .Python
 build/
-develop-eggs/
 dist/
+develop-eggs/
 downloads/
 eggs/
 .eggs/
@@ -39,24 +32,16 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.whl
 MANIFEST
 *.manifest
 *.spec
 pip-log.txt
 pip-delete-this-directory.txt
-htmlcov/
 .tox/
 .nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
 .hypothesis/
 .pytest_cache/
-cover/
 instance/
 .webassets-cache
 .scrapy
@@ -72,8 +57,10 @@ __pypackages__/
 celerybeat-schedule
 celerybeat.pid
 *.sage.py
-.env.local
+/app
 .venv
+.venv*
+apps/api/.venv/
 env/
 venv/
 ENV/
@@ -89,7 +76,24 @@ dmypy.json
 .pyre/
 .pytype/
 cython_debug/
-poetry.lock
+
+# ─── Coverage / test output ──────────────────────────────────────────────────
+.coverage
+.coverage.*
+coverage.xml
+coverage/
+htmlcov/
+apps/web/coverage/
+apps/api/coverage/
+*.cover
+*.py,cover
+nosetests.xml
+test-results/
+junit.xml
+playwright-report/
+blob-report/
+playwright/.cache/
+test-results/.last-run.json
 
 # ─── Ruff cache ───────────────────────────────────────────────────────────────
 .ruff_cache/
@@ -104,6 +108,8 @@ lerna-debug.log*
 apps/web/dist/
 apps/web/dist-ssr/
 apps/web/*.local
+.vite/
+.vitest/
 .npm
 .eslintcache
 .stylelintcache
@@ -114,13 +120,16 @@ apps/web/*.local
 .yarn/install-state.gz
 .pnp.*
 
-# ─── Build / dist ─────────────────────────────────────────────────────────────
-dist/
-build/
+# ─── Root package lock (accidental installs) ──────────────────────────────────
+# Root-level package.json/lock are ignored — deps live in apps/web and apps/api
+/package.json
+/package-lock.json
 
 # ─── IDE ──────────────────────────────────────────────────────────────────────
 .idea/
 .vscode/
+.history/
+*.code-workspace
 *.swp
 *.swo
 *~
@@ -131,6 +140,7 @@ build/
 *.sublime-workspace
 .cursor/
 .windsurf/
+.claude/
 
 # ─── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
@@ -152,12 +162,15 @@ logs/
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
 .docker/
+# Local compose overrides (personal ports/volumes) must never be committed.
+docker-compose.override.yml
+docker-compose.override.yaml
 
-# ─── Qdrant local data ────────────────────────────────────────────────────────
-qdrant_storage/
-qdrant_data/
+# ─── Runtime data (Qdrant collections, caches, model snapshots) ────────────────
+data/
+apps/api/data/
 
-# ─── ML / Model cache (sentence-transformers, HuggingFace Hub) ────────────────
+# ─── ML / Model cache (sentence-transformers, HuggingFace Hub, GGUF) ──────────
 .cache/
 .cache/huggingface/
 .model_cache/
@@ -167,41 +180,29 @@ models/
 *.pt
 *.ckpt
 *.safetensors
+*.gguf
+*.onnx
+*.onnx.data
+*.llamafile
+llama-server.log
 .huggingface/
-
-# ─── Test output ──────────────────────────────────────────────────────────────
-.pytest_cache/
-htmlcov/
-.coverage
-.coverage.*
-coverage.xml
-test-results/
-junit.xml
-
-# ─── Temporary / scratch ──────────────────────────────────────────────────────
-tmp/
-temp/
-scratch/
-*.tmp
-*.bak
-*.orig
 
 # ─── Security scan output ─────────────────────────────────────────────────────
 bandit-report.json
 safety-report.json
 trivy-report.json
+trivy-results.sarif
 semgrep-report.json
+pip-audit-report.json
 
-# ─── Package manager lockfiles (keep one, ignore others) ──────────────────────
-# Uncomment the lockfile your project does NOT use to avoid conflicting locks:
-# package-lock.json
-# yarn.lock
-# pnpm-lock.yaml
+# ─── Package manager lockfiles ────────────────────────────────────────────────
+# apps/web uses npm (package-lock.json is committed)
+# apps/api uses uv — uv.lock IS committed (the API Dockerfile does `uv sync --locked`)
 bun.lockb
 uv.lock
+!apps/api/uv.lock
 
 # ─── AI / Agentic tool directories ────────────────────────────────────────────
-# IDE AI assistants and agent runtimes may write local config here
 .agents/
 .aider*
 .continue/
@@ -216,3 +217,29 @@ uv.lock
 *.seed
 *.pid.lock
 .python-version
+.tool-versions
+
+# ─── Temporary / Scratch files ────────────────────────────────────────────────
+*.tmp
+*.bak
+*.orig
+test.txt
+test_*.txt
+.superpowers/
+
+# ─── Agent memory & machine-local dirs ────────────────────────────────────────
+.remember/
+
+# ─── Env-tool locals ─────────────────────────────────────────────────────────
+.envrc
+
+# ─── SQLite runtime caches (embedding disk cache, etc.) ───────────────────────
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+
+# ─── k6 / load-test raw output ────────────────────────────────────────────────
+load-test/*.har
+load-test/results/
+

@@ -2,14 +2,18 @@ name: Security
 
 on:
   push:
-    branches: [main]
+    branches: [main, ui-redesign]
   pull_request:
-    branches: [main]
+    branches: [main, ui-redesign]
   # Weekly scan for new CVEs even without code changes
   schedule:
     - cron: "0 6 * * 1"
   # Enable manual runs of this workflow
   workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
 
 jobs:
   # ── Python dependency audit ────────────────────────────────────────────────
@@ -63,7 +67,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install dependencies
         run: npm install

@@ -1,7 +1,7 @@
 # TRUSTRAG — Project Roadmap & Remaining Steps
 
-> Last updated: 2026-08-29  
-> Current status: All 12 core phases complete + Post-Launch Quality & Audit Cycle complete (v1 → v4). 79 automated test suites passing (100% pass rate). Active and upcoming work below.
+> Last updated: 2026-09-12  
+> Current status: All 12 core phases complete + Post-Launch Quality & Audit Cycle complete (v1 → v4) + ultra-low RAM + ONNX + claims-hardening + fusion passes. **219 backend tests, 22 frontend Vitest, 2 Playwright E2E, k6 load smoke — 100% pass rate.** Active and upcoming work below.
 
 ---
 
@@ -25,8 +25,14 @@
 | **P-L** | **Multi-Tenant User Data Isolation** | Scoped `user_id` on all records, compound indexes (`claim_user_time`, `evidence_user_time`), cascade deletions | ✅ COMPLETE |
 | **P-L** | **Open Knowledge & JSON-LD Export** | `(Subject, Predicate, Object)` claim triples, schema.org JSON-LD compliance export (`GET /analyses/{id}/export`) | ✅ COMPLETE |
 | **P-L** | **Observability & Health Telemetry** | Full health monitoring (`mongodb` + `qdrant`), interactive diagnostics panel in `SettingsPage.jsx` | ✅ COMPLETE |
-| **P-L** | **Master Quality Audit (35 Findings)** | 35 findings resolved across FE/BE/DB/SEC/A11Y/PERF, documented in `docs/audits/final-audit-report.md` | ✅ COMPLETE |
-| **P-L** | **Automated Test Suite Expansion** | 79 unit and integration test suites passing in 3.15s (100% pass rate) | ✅ COMPLETE |
+| **P-L** | **Master Quality Audit (52 Findings)** | 52 findings resolved across FE/BE/DB/SEC/PERF, documented in `docs/audits/2026-09-11_unified_senior_audit.md` (canonical; history in git) | ✅ COMPLETE |
+| **13** | **SOTA UI Overhaul & Low-RAM Architecture** | Ultra-premium landing page, 75% Qdrant RAM compression (INT8 on-disk), 0 MB GPU RAM via Gemini 384d MRL, LRU embedding cache, and universal Model Context Protocol (MCP) server | ✅ COMPLETE |
+| **14** | **Master SOTA Multi-Role Production Audit** | Deep Systems, Security, AI/ML, and QA audit suite (79/79 pytest, 0 lint warnings) documented in `docs/audits/` | ✅ COMPLETE |
+| **15** | **Ultra-Low RAM + Security Hardening (2026-09-11)** | psutil RSS guard, batched SQLite writes, bounded LLM registry (4 max), X-Request-ID validation, production CORS lock, split health endpoints, magic-bytes + zip-bomb upload defense, `MALLOC_ARENA_MAX`, Apple-design reduced-motion | ✅ COMPLETE |
+| **16** | **ONNX BGE Runtime — Torch-Free Embeddings (2026-09-11)** | `scripts/export_bge_onnx.py` + ONNX Runtime wrapper (`EMBEDDING_PROVIDER=onnx`), numerical parity verified, ~500–1000 MB RSS savings | ✅ COMPLETE |
+| **17** | **Claims Verification Hardening (2026-09-12)** | Tolerant NLI parsing (VERIFIED→SUPPORTED aliasing, segment coercion, batch bare-int drop) fixing 0/x-supported on good answers; 6 new regression tests; 38-error lint sweep | ✅ COMPLETE |
+| **18** | **Fused Decompose+Verify + CI Repairs (2026-09-12)** | Single-call fused NLI path with two-step fallback (live-evaled 2.0s vs 3.4s); fixed frontend-build (missing install), Docker context + empty-venv boot bug, stale k6 health contract; onnxruntime shipped in image; Bandit B615 revision pin; Trivy SARIF advisory | ✅ COMPLETE |
+| **19** | **Offline-Warning + Probe Hardening (2026-09-12)** | `/models/providers` degrades instead of 500ing; UI warns on failed providers query too; probe retries once and splits refused (down) vs timeout (slow); concurrent provider checks; hermetic verification suite | ✅ COMPLETE |
 
 ---
 
@@ -52,9 +58,10 @@
 - [ ] **Managed Qdrant Cloud** — Provision cluster at https://cloud.qdrant.io; set `QDRANT_URL` and `QDRANT_API_KEY`.
 
 ### Testing & Verification Expansion
-- [ ] **End-to-End Browser Automation** — Playwright / Cypress suite covering Playground query submission, KB upload, Evidence inspection, and Claim review flows.
-- [ ] **Live Integration Tests** — Automated test suite executed against live MongoDB and Qdrant instances without mocks.
-- [ ] **Rate Limiter Threshold Tests** — Integration test asserting 429 response when hitting `@limiter.limit()` ceilings.
+- [x] **End-to-End Browser Automation** — Playwright suite in `apps/web/e2e/auth.spec.js`: route guard, register, UI login, dashboard, **JWT revocation after logout**; CI job with live Mongo + API + Chromium
+- [x] **Live Integration Tests** — E2E suite runs against live MongoDB and the real FastAPI app (no mocks); k6 smoke also hits live Mongo/Qdrant reads
+- [x] **Rate Limiter Threshold Tests** — `apps/api/tests/test_rate_limit.py` asserts 429 when the per-minute auth ceiling is exceeded
+- [x] **Load Testing in CI** — k6 smoke (`load-test/smoke.js`) runs in the `e2e` CI job: health + authenticated reads, ~3.3k requests/35s, p95<300ms gate
 
 ---
 
@@ -103,5 +110,6 @@
 | **Audit v2** | 2026-08-29 | Static type checks, defensive headers, MongoDB index performance | ✅ Resolved |
 | **Audit v3** | 2026-08-29 | Global route aggregation, frontend page connections, LLM model upgrade | ✅ Resolved |
 | **Audit v4 (Master)** | 2026-08-29 | Multi-tenant isolation, cascade deletion, 8 document formats, XXE defense, live telemetry, 79 automated tests | ✅ **100% VERIFIED** |
+| **Audit v5 (SOTA)** | 2026-08-31 | Port 8080 default, Model Context Protocol (MCP) live grounding, LangGraph self-healing loop fixes, dual-channel SSE fallback polling, GFM tables via remark-gfm, 86 automated tests | ✅ **100% VERIFIED** |
 
-> All historical audit passes have been verified and consolidated into [`docs/audits/final-audit-report.md`](file:///Users/maithresh/Documents/TechCode/Projects/TrustRAG-latest/docs/audits/final-audit-report.md) and [`docs/audits/multi-tenant-isolation-audit.md`](file:///Users/maithresh/Documents/TechCode/Projects/TrustRAG-latest/docs/audits/multi-tenant-isolation-audit.md).
+> All historical audit passes have been verified and consolidated into the audit files under [`docs/audits/`](docs/audits/).

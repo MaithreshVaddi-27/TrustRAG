@@ -15,13 +15,16 @@ export const kbService = {
   uploadDocument: (kbId, file) => {
     const form = new FormData()
     form.append('file', file)
-    return api.post(`/api/v1/knowledge-bases/${kbId}/documents`, form, {
-      headers: { 'Content-Type': undefined },
-    }).then(r => r.data)
+    // Content-Type is automatically removed for FormData by the Axios request
+    // interceptor in lib/api.js — no need to override it here.
+    return api.post(`/api/v1/knowledge-bases/${kbId}/documents`, form).then(r => r.data)
   },
 
   listDocuments: (kbId) =>
     api.get(`/api/v1/knowledge-bases/${kbId}/documents`).then(r => r.data),
+
+  deleteDocument: (docId) =>
+    api.delete(`/api/v1/documents/${docId}`).then(r => r.data),
 }
 
 // ── Analyses ──────────────────────────────────────────────────────────────
@@ -32,6 +35,7 @@ export const analysisService = {
   claims:   (id) => api.get(`/api/v1/analyses/${id}/claims`).then(r => r.data),
   evidence: (id) => api.get(`/api/v1/analyses/${id}/evidence`).then(r => r.data),
   trace:    (id) => api.get(`/api/v1/analyses/${id}/trace`).then(r => r.data),
+  detail:   (id) => api.get(`/api/v1/analyses/${id}/detail`).then(r => r.data),
 }
 
 // ── Experiments ───────────────────────────────────────────────────────────
@@ -58,5 +62,13 @@ export const conflictService = {
 
 // ── Health & Diagnostics ──────────────────────────────────────────────────
 export const healthService = {
-  get: () => api.get('/api/v1/health').then(r => r.data),
+  get: () => api.get('/api/v1/health/detailed').then(r => r.data),
+  getPublic: () => api.get('/api/v1/health').then(r => r.data),
+}
+
+// ── Models & AI Providers ──────────────────────────────────────────────────
+export const modelService = {
+  getProviders: () => api.get('/api/v1/models/providers').then(r => r.data),
+  getHardware:  () => api.get('/api/v1/models/hardware').then(r => r.data),
+  trimMemory:   () => api.post('/api/v1/models/memory/trim').then(r => r.data),
 }

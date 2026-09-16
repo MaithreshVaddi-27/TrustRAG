@@ -1,0 +1,56 @@
+/* ── ConflictsPage Resolution UI ─────────────────────────────────────────── */
+
+.conflicts-info-banner {
+  padding: 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  border: 1px solid rgba(180, 83, 9, 0.25);
+  background: rgba(120, 53, 15, 0.1);
+}
+
+.conflict-card {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border: 1px solid rgba(185, 28, 28, 0.25);
+  transition: border-color 0.15s ease;
+}
+
+.conflict-card:hover {
+  border-color: rgba(220, 38, 38, 0.35);
+}
+
+.conflict-blockquote {
+  border-left: 2px solid rgba(251, 191, 36, 0.4);
+  padding-left: 0.75rem;
+  font-size: 0.875rem;
+  color: #cbd5e1;
+  line-height: 1.625;
+  font-family: 'Inter', sans-serif;
+}
+
+.conflict-explanation {
+  background: rgba(15, 23, 42, 0.3);
+  border-radius: 0.5rem;
+  padding: 0.625rem;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.conflicts-empty-icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  background: rgba(6, 95, 70, 0.25);
+  border: 1px solid rgba(22, 163, 74, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  color: #4ade80;
+}

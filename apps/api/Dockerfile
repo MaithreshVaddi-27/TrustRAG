@@ -1,13 +1,14 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # TRUSTRAG API — Multi-stage Dockerfile
 # ─────────────────────────────────────────────────────────────────────────────
-# Stage 1 (builder): install dependencies in a venv
+# Stage 1 (builder): install dependencies in a venv using uv for reproducible builds
 # Stage 2 (runtime): copy only the venv + source, no build tools
 #
 # Security:
 #   - Runs as non-root user (trustrag)
 #   - No dev tools in the runtime image
 #   - Secrets injected via environment at runtime — never baked into image
+#   - Dependencies locked via uv.lock for reproducible builds
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Builder ──────────────────────────────────────────────────────────────────
@@ -22,17 +23,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Create isolated venv
+# Install uv for fast, reproducible dependency installation
+RUN pip install --no-cache-dir uv
+
+# Create isolated venv. UV_PROJECT_ENVIRONMENT must point at it BEFORE
+# `uv sync`, otherwise uv installs into a project-local ./.venv and /opt/venv
+# stays empty (the image then boots with "uvicorn: not found").
+ENV VIRTUAL_ENV=/opt/venv
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy dependency spec and install
-COPY pyproject.toml .
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir .
+# Copy dependency spec and lockfile, then install with uv for reproducibility
+COPY pyproject.toml uv.lock .
+RUN uv sync --locked --no-dev --python /opt/venv/bin/python
 
-
-# ── Runtime ───────────────────────────────────────────────────────────────────
+# ─── Runtime ───────────────────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
 
 WORKDIR /app
@@ -52,14 +58,24 @@ RUN groupadd --gid 1001 trustrag && \
 
 # Copy venv from builder
 COPY --from=builder /opt/venv /opt/venv
+ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application source
 COPY --chown=trustrag:trustrag app/ ./app/
 COPY --chown=trustrag:trustrag config/ ./config/
 
-ARG HF_TOKEN=""
-ENV HF_TOKEN=${HF_TOKEN}
+# Give the non-root user a writable HOME and model cache dir so HF/sentence-transformers
+# caches and the named model_cache volume (docker-compose) are writable without root.
+RUN mkdir -p /app/.model_cache && chown -R trustrag:trustrag /app
+ENV HOME=/app
+# Lean-RAM: tokenizers must not spawn its own thread pool after fork (it would
+# duplicate memory pressure next to torch + Qdrant); torch threads are already
+# capped to 1 at embedding init (see model_registry).
+ENV TOKENIZERS_PARALLELISM=false
+
+# glibc arena limit reduces fragmentation on async FastAPI workloads
+ENV MALLOC_ARENA_MAX=1
 
 # Drop to non-root
 USER trustrag
@@ -76,4 +92,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
     CMD sh -c 'wget -qO- "http://localhost:${PORT:-8000}/api/v1/health" || exit 1'
 
 # Use exec in shell form so $PORT provided by Render/Cloud Run is dynamically respected
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --log-level info"]
+# Use uvloop + httptools for 10-15% latency improvement (requires uvicorn[standard])
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --log-level info --loop uvloop --http httptools"]
