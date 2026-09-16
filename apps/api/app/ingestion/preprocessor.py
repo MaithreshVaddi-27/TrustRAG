@@ -343,8 +343,13 @@ def normalize_text(text: str) -> str:
     for contraction, expansion in CONTRACTIONS.items():
         text_lower = text_lower.replace(contraction, expansion)
 
-    # 5. Collapse excessive whitespace
-    cleaned = re.sub(r"\s+", " ", text_lower).strip()
+    # 5. Collapse excessive horizontal whitespace, but PRESERVE line breaks.
+    # Load-bearing: section/table heuristics (chunking strategies) and header
+    # detection (detect_chunk_zone) split on "\n". Collapsing newlines to
+    # spaces silently disables all of them — and token output is identical
+    # either way since the lexer treats every whitespace run as a separator.
+    cleaned = re.sub(r"[ \t\r\f\v]+", " ", text_lower)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
     return cleaned
 
 

@@ -27,7 +27,7 @@ from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
 from app.core.config import get_model_config, get_settings
 from app.core.exceptions import FileTooLargeError, UnsupportedFormatError
 from app.core.rate_limiter import limiter
-from app.ingestion.chunker import chunk_text
+from app.ingestion.chunking_strategies import get_chunking_strategy
 from app.ingestion.parser import parse_document
 from app.ingestion.pipeline import index_parsed_chunks
 from app.services import kb_service
@@ -165,7 +165,10 @@ async def upload_document_endpoint(
     pages, eff_from, eff_until = await asyncio.to_thread(parse_document, filename, stream)
 
     chunks = await asyncio.to_thread(
-        chunk_text, pages, chunk_size=cfg.chunk_size, chunk_overlap=cfg.chunk_overlap
+        get_chunking_strategy().chunk,
+        pages,
+        chunk_size=cfg.chunk_size,
+        chunk_overlap=cfg.chunk_overlap,
     )
 
     # Save metadata record in MongoDB
@@ -291,7 +294,10 @@ async def ingest_document_from_url_endpoint(
     pages, eff_from, eff_until = await asyncio.to_thread(parse_document, filename, stream)
 
     chunks = await asyncio.to_thread(
-        chunk_text, pages, chunk_size=cfg.chunk_size, chunk_overlap=cfg.chunk_overlap
+        get_chunking_strategy().chunk,
+        pages,
+        chunk_size=cfg.chunk_size,
+        chunk_overlap=cfg.chunk_overlap,
     )
 
     # Save metadata record in MongoDB
