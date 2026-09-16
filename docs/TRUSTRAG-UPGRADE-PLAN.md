@@ -16,6 +16,11 @@ Upgrade the current TRUSTRAG into a **production-quality RAG** with:
 
 **Rule:** Implement one phase at a time. Test it. Then move to the next phase.
 
+> **Status 2026-09-16 (implementation tracker — the plan text below is frozen):**
+> ✅ Done: 0, 1, 2, 3, 4, 6, 11 · ⚠️ Partial: 5, 7 · ❌ Open: 8, 9, 10, 12, 13.
+> Details per phase inline + `docs/IMPLEMENTATION_STATUS_2026-09-11.md` §13–§18.
+> Legend: ✅ done · ⚠️ partial (shipped subset noted) · ❌ open.
+
 ---
 
 # Current Pipeline
@@ -43,6 +48,10 @@ Recovery / Abstention
 ---
 
 # Phase 0 — Baseline
+
+> **Status: ✅ Done.** Eval harness (`tests/eval/metrics.py`), frozen 25-query dataset
+> (`baseline_v1.jsonl` + 6-file fixture corpus), live runner (`scripts/run_baseline_eval.py`),
+> methodology run procedure. Live numbers PENDING operator run — no fabricated rows.
 
 ### Goal
 Know how good the current system actually is.
@@ -72,6 +81,10 @@ baseline_results
 ---
 
 # Phase 1 — Production Ingestion + OCR
+
+> **Status: ✅ Done.** Per-page native/OCR routing (RapidOCR-ONNX, <50 native chars,
+> 300 dpi, sub-0.5-confidence dropped, fail-open); `ocr_used`/`ocr_confidence` ride
+> page → chunk → Mongo + Qdrant. Mixed PDFs supported. Native pages never OCR'd.
 
 ### Current
 
@@ -114,6 +127,11 @@ Do **not** OCR every page. It increases latency and can introduce errors.
 
 # Phase 2 — Better Chunking
 
+> **Status: ✅ Done.** Root fix: newline-preserving normalization (was silently disabling
+> section/table/header heuristics). Strategies wired at ingest (`chunking_strategy`,
+> default `sliding_window` = byte-identical); semantic true offsets; gap-free progressive;
+> layout tables chunked whole in order. Old-vs-new benchmark via baseline set pending live run.
+
 ### Current
 
 ```text
@@ -143,6 +161,11 @@ Structure-aware chunks
 
 # Phase 3 — Improve Retrieval
 
+> **Status: ✅ Done (reranker stays off).** Sparse is real BM25-TF client-side + Qdrant
+> server IDF (was TF-only); `fusion_top_k` enforced; pre-IDF collections migrate on init.
+> Reranker path hardened (depth cap 20, no-mutate) but `enabled: false` — Docker lacks
+> torch by design. Ablations (Dense/Sparse/Hybrid/+Rerank) pending live runs.
+
 ### Target
 
 ```text
@@ -171,6 +194,11 @@ Query ──────────┤          ├→ RRF → Reranker → Top
 
 # Phase 4 — Better Query Handling
 
+> **Status: ✅ Done (deterministic).** `agent/router.py`: regex router
+> (simple/temporal/comparison/complex) — simple keeps byte-identical single call,
+> temporal sets explicit year → reference_time, comparison fans out ×2, multi-`?`
+> splits capped at 3, all else falls back to SIMPLE. No LLM on this path by design.
+
 ### Target
 
 ```text
@@ -195,6 +223,11 @@ Query Router
 ---
 
 # Phase 5 — Multi-Hop RAG
+
+> **Status: ⚠️ Partial.** Deterministic multi-question split + comparison fan-out
+> (Phase 4 router) cover the decomposition mechanics with zero LLM cost. LLM-planned
+> sub-question decomposition explicitly deferred until live eval shows the
+> deterministic splitter is insufficient. Per plan rule: basic retrieval first (done).
 
 ### Current
 
@@ -230,6 +263,11 @@ Answer
 ---
 
 # Phase 6 — Stronger Verification
+
+> **Status: ✅ Done.** Fused decompose+verify (1 call) + batch + budgeted individual
+> fallback; inline `[Segment N]` citations with invalid-ref strip; NEUTRAL-only targeted
+> claim retrieval (≤3/analysis, fresh mini-context re-verify, persisted linkage);
+> CONTRADICTED never re-searched. Dedicated NLI encoder deferred pending judge-precision data.
 
 ### Current
 
@@ -279,6 +317,11 @@ Do not rely only on an LLM judge where other evidence checks are possible.
 
 # Phase 7 — Trust + Provenance
 
+> **Status: ⚠️ Partial.** Hash chain, integrity audit, page/chunk/evidence linkage,
+> inline citations, and OCR provenance exist; KB snapshots + rollback give version
+> restore. Missing: OCR-chunk → original page-image link (only flags stored) and a
+> retrieval-time version filter (temporal ranges cover staleness instead).
+
 ### Target
 
 ```text
@@ -317,6 +360,10 @@ Answer → OCR chunk → page → original image/page
 
 # Phase 8 — Adaptive Recovery
 
+> **Status: ❌ Open (next candidate).** Current: blind rewrite → widen → regenerate,
+> single round (`max_recovery_attempts: 1`), no diagnosis, no budget. Target stands:
+> diagnose-then-act mapping, ≤2–3 attempts with token/latency budget, abstain on exhaustion.
+
 ### Current
 
 ```text
@@ -347,6 +394,11 @@ Diagnose
 
 # Phase 9 — Security
 
+> **Status: ❌ Open (red-team suite pending).** Base controls already strong (JWT +
+> revocation, SSRF allowlist + DNS pinning, SSE tickets, rate limits, magic-bytes).
+> Open residuals: service-token tenant binding (M-2), JWT aud/iss, login lockout,
+> upload AV, plus the adversarial suites (injection/poison/conflict/stale/OCR-garbled).
+
 ### Test
 
 Documents may contain:
@@ -374,6 +426,11 @@ Test:
 ---
 
 # Phase 10 — Speed + Production Engineering
+
+> **Status: ❌ Open.** Per-stage latencies already logged; pooled httpx, batched
+> embeddings, and LRU caches in place. Open: Prometheus `/metrics`, token/cost
+> accounting, pre-request budget enforcement, k6 beyond health/KB reads. Measure
+> first — no premature queues/buses (Redis/Celery only on measured pain).
 
 ### Do
 
@@ -410,6 +467,11 @@ Do not optimize blindly. Compare **before vs after**.
 
 # Phase 11 — Data / Index Lifecycle
 
+> **Status: ✅ Done.** `POST /knowledge-bases/{id}/snapshots` → 201;
+> `POST /knowledge-bases/{id}/rollback/{snap}` → 200 with NEW live id (409 on
+> vector-less snapshots); deletes purge Mongo + Qdrant + cache (tested); snapshot
+> chunk copies preserve OCR provenance. Re-index path = delete + re-upload.
+
 ### Support
 
 ```text
@@ -439,6 +501,10 @@ Prevent stale evidence from being returned accidentally.
 ---
 
 # Phase 12 — Final Evaluation
+
+> **Status: ❌ Open (harness ready, runs pending).** Dataset, metrics, runner, and
+> ablation matrix (`docs/evaluation/methodology.md`) are implemented; all four
+> ablation families await a live stack + operator run. No measured rows exist yet.
 
 Run controlled experiments.
 
@@ -495,6 +561,10 @@ Token/Cost
 ---
 
 # Phase 13 — Final Cleanup + Deployment
+
+> **Status: ❌ Open.** Dead code removed along the way (AmbiguityDetector, dead configs,
+> misleading log block); lint/format/uv-lock gates green in CI. Remaining: full
+> checklist verification against a live deploy (observability, rollback docs).
 
 ### Do
 

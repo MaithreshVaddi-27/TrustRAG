@@ -13,9 +13,9 @@
 
 | Configuration | Description |
 |--------------|-------------|
-| `baseline_rag` | Dense retrieval only + Gemini generation. No verification, no recovery. |
-| `hybrid_rag` | Dense + BM25 hybrid/RRF + Gemini generation. No verification. |
-| `hybrid_rerank` | Hybrid + cross-encoder reranking + Gemini generation. No verification. |
+| `baseline_rag` | Dense retrieval only + selected-LLM generation. No verification, no recovery. |
+| `hybrid_rag` | Dense + BM25 hybrid/RRF + selected-LLM generation. No verification. |
+| `hybrid_rerank` | Hybrid + cross-encoder reranking + selected-LLM generation. No verification. Reranker stays off by default (Docker lacks torch — enable only with the `local-models` extra); thresholds uncalibrated pending this ablation. |
 | `verified_rag` | Hybrid + reranking + claim verification. No adaptive recovery. |
 | `trustrag_full` | Full TRUSTRAG: hybrid + reranking + verification + diagnosis + recovery + abstention. |
 
@@ -51,10 +51,13 @@
 
 ## Query Dataset
 
-Minimum viable evaluation set:
-- 20+ queries with known ground-truth answers
+Minimum viable evaluation set (frozen as `baseline_v1`: 12 factual + 3 temporal +
+3 conflicting + 2 missing-evidence + 5 adversarial = 25 queries over the 6-file
+fixture corpus):
 - Queries spanning: factual, temporal (outdated evidence), conflicting sources, missing evidence
 - At least 5 adversarial: queries designed to trigger failures
+- Fixtures predate the IDF + newline changes: re-index after any chunking/normalization
+  change; gold snippets are verbatim fixture text (the stable key across re-indexes)
 
 ---
 

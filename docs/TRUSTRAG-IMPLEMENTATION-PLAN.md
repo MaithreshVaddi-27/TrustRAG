@@ -1,8 +1,9 @@
 # TRUSTRAG — Implementation Plan (verified against code)
 
 > **Status 2026-09-16:** Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ · OCR fallback ✅ · Phase 3 ✅ ·
-> Phase 4 ✅ · Phase 5 ✅ · Phase 6 ✅ (deterministic query router + bounded fan-out;
-> dead AmbiguityDetector removed). Backend 316/316, ruff clean, `models.yaml` v1.13.
+> Phase 4 ✅ · Phase 5 ✅ · Phase 6 ✅ · Phase 8 ✅ (lifecycle: snapshot/rollback routes,
+> empty-snapshot guard, OCR-preserving snapshots). Backend 322/322, ruff clean,
+> `models.yaml` v1.13 (no value change this phase).
 > Claim-level evidence linkage from inline cites deferred to Phase 5 (needs decomposition
 > changes — out of the narrowest layer). Details: `docs/IMPLEMENTATION_STATUS_2026-09-11.md`
 > §13–16. Live baseline + ablations pending operator run. Next: Phase 7 is done (OCR);

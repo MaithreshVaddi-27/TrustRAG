@@ -1,8 +1,8 @@
 # TrustRAG — Implementation Status (2026-09-11)
 
-> **2026-09-16 update:** RAG quality phases 0–2 + OCR fallback implemented (see §13).
-> Backend **273/273** ✅ (`pytest tests/`), ruff check + format clean ✅,
-> `uv lock --check` ✅. `models.yaml` config_version **1.7 → 1.10**.
+> **2026-09-16 update:** RAG quality phases 0–8 + OCR fallback implemented (see §13–§18).
+> Backend **322/322** ✅ (`pytest tests/`), ruff check + format clean ✅,
+> `uv lock --check` ✅. `models.yaml` config_version **1.7 → 1.13**.
 > Live baseline + ablations pending operator run (no local services during implementation).
 
 **Date:** 2026-09-11 → 2026-09-12  
@@ -414,3 +414,25 @@ order/dedup, concurrent fan-out, partial/total outage, node-level 2-call fan-out
 worst case 3 concurrent hybrid calls inside existing per-branch budgets.
 LLM-based sub-question decomposition deliberately NOT added — needs a live-eval
 signal that deterministic splitting is insufficient.
+
+---
+
+### 18. Phase 8 — index lifecycle (2026-09-16)
+
+Skills: `test-driven-development` (RED→GREEN), `surgical-patch` (narrowest layer).
+Verified first: KB/document delete paths already purge Mongo + Qdrant + cache
+(no orphan bug), snapshots already copy vectors — so the phase wired the missing
+surface instead of rebuilding working code.
+
+| Area | Change |
+|------|--------|
+| Routes | `POST /knowledge-bases/{id}/snapshots` → 201; `POST /knowledge-bases/{id}/rollback/{snap}` → 200 with the NEW live id (snapshot's — clients must swap; documented on the endpoint) |
+| Guard | Rollback refuses vector-less snapshots (Mongo chunks present, 0 Qdrant points — pre-vector-copy era) with 409 "re-upload instead" rather than restoring an empty KB; empty snapshots still roll back fine |
+| Fix | Snapshot chunk copies now carry `ocr_used`/`ocr_confidence` (were silently dropped, breaking the OCR provenance chain on restore) |
+| Proven | `delete_document` purges Qdrant by `document_id` filter (characterization test — was only assumed) |
+
+**Tests:** +6 `test_lifecycle.py` (both routes incl. id-swap + 409-on-foreign, empty-guard 409,
+OCR-preserving snapshot, Qdrant purge filter). **322/322 green**, ruff clean. No
+`models.yaml` change. Debugging note: `delete_kb_collection` resolves its Qdrant client
+from the qdrant module's own namespace — tests must patch `app.db.qdrant.get_qdrant_client`
+alongside the kb_service seam or they hit real Qdrant (503).
