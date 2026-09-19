@@ -56,6 +56,32 @@ def test_reciprocal_rank_fusion_logic():
     assert abs(fused[1]["rrf_score"] - (1.0 / 62.0)) < 1e-5
 
 
+def test_rrf_carries_ocr_image_and_version_provenance():
+    """Fused dicts must keep payload provenance or the answer chain breaks."""
+    point = MagicMock()
+    point.id = "point-9"
+    point.score = 0.7
+    point.payload = {
+        "text": "scanned text",
+        "document_id": "doc-9",
+        "ocr_used": True,
+        "ocr_confidence": 0.87,
+        "page_image_ref": "kb/doc/p2.png",
+        "document_version": "1.0",
+        "is_snapshot": False,
+        "page": 2,
+    }
+    fused = reciprocal_rank_fusion([point], [], k=60)
+    assert len(fused) == 1
+    row = fused[0]
+    assert row["ocr_used"] is True
+    assert row["ocr_confidence"] == 0.87
+    assert row["page_image_ref"] == "kb/doc/p2.png"
+    assert row["document_version"] == "1.0"
+    assert row["is_snapshot"] is False
+    assert row["page"] == 2
+
+
 @pytest.mark.asyncio
 async def test_collection_dimension_is_cached_per_collection():
     import app.retrieval.retriever as retriever
@@ -124,6 +150,48 @@ async def test_temporal_validity_filtering():
         # Only doc-active fits (2026-08-01 lies between 2026-07-01 and 2026-09-01)
         assert len(filtered) == 1
         assert filtered[0]["document_id"] == "64ee39d09c6292376e191981"
+
+
+@pytest.mark.asyncio
+async def test_temporal_filter_drops_orphan_points_and_marks_versions():
+    """Points whose parent document record is gone are stale evidence: drop them.
+
+    Points with no document_id at all cannot be judged — keep them (fail-open).
+    Surviving rows gain document_version/is_snapshot from the parent record.
+    """
+    results = [
+        {"document_id": "64ee39d09c6292376e191981", "text": "live chunk"},
+        {"document_id": "64ee39d09c6292376e191999", "text": "orphan chunk"},
+        {"document_id": None, "text": "unjudgeable chunk"},
+    ]
+    mock_docs = [
+        {
+            "_id": "64ee39d09c6292376e191981",
+            "filename": "live.txt",
+            "version": "2.0",
+            "is_snapshot": False,
+        },
+    ]
+    mock_cursor = MagicMock()
+
+    async def mock_async_gen():
+        for d in mock_docs:
+            yield d
+
+    mock_cursor.__aiter__ = MagicMock(side_effect=mock_async_gen)
+    mock_collection = MagicMock()
+    mock_collection.find = MagicMock(return_value=mock_cursor)
+
+    with patch("app.retrieval.retriever.get_collection", return_value=mock_collection):
+        filtered = await apply_temporal_filtering(results, datetime(2026, 8, 1, tzinfo=UTC))
+
+    texts = [r["text"] for r in filtered]
+    assert "orphan chunk" not in texts
+    assert "live chunk" in texts
+    assert "unjudgeable chunk" in texts
+    live = next(r for r in filtered if r["text"] == "live chunk")
+    assert live["document_version"] == "2.0"
+    assert live["is_snapshot"] is False
 
 
 @pytest.mark.asyncio

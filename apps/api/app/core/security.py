@@ -82,6 +82,8 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
         "sub": str(subject),
         "iat": datetime.now(UTC),
         "jti": str(uuid.uuid4()),
+        "iss": settings.jwt_issuer,
+        "aud": settings.jwt_audience,
     }
 
     encoded_jwt = jwt.encode(to_encode, settings.jwt_secret, algorithm=ALGORITHM)
@@ -109,7 +111,14 @@ def decode_access_token(token: str) -> dict[str, Any]:
     """
     settings = get_settings()
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[ALGORITHM],
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+            options={"verify_aud": True, "verify_iss": True},
+        )
         # User and service tokens share the secret/algorithm — never accept a
         # service token where a user token is required (and vice versa is
         # already enforced in decode_service_token).
@@ -131,6 +140,8 @@ def create_service_token(
     service_name: str,
     permissions: list[str] | None = None,
     expires_delta: timedelta | None = None,
+    bound_kb_id: str | None = None,
+    bound_user_id: str | None = None,
 ) -> str:
     """
     Generate a signed JWT token for service-to-service authentication.
@@ -139,6 +150,9 @@ def create_service_token(
         service_name: Unique identifier for the service (e.g., "ingestion-worker", "api-gateway")
         permissions: List of permission strings (e.g., ["ingest:write", "search:read"])
         expires_delta: Optional custom expiration. Defaults to SERVICE_TOKEN_TTL_HOURS.
+        bound_kb_id: Optional KB tenancy binding (M-2).
+            When set, internal endpoints must enforce it.
+        bound_user_id: Optional user tenancy binding (M-2).
 
     Returns:
         Encoded JWT token string.
@@ -149,14 +163,20 @@ def create_service_token(
     else:
         expire = datetime.now(UTC) + timedelta(hours=SERVICE_TOKEN_TTL_HOURS)
 
-    to_encode = {
+    to_encode: dict[str, Any] = {
         "exp": expire,
         "sub": service_name,
         "iat": datetime.now(UTC),
         "jti": str(uuid.uuid4()),
         "type": SERVICE_TOKEN_TYPE,
         "permissions": permissions or [],
+        "iss": settings.jwt_issuer,
+        "aud": settings.jwt_audience,
     }
+    if bound_kb_id:
+        to_encode["bound_kb_id"] = str(bound_kb_id)
+    if bound_user_id:
+        to_encode["bound_user_id"] = str(bound_user_id)
 
     encoded_jwt = jwt.encode(to_encode, settings.jwt_secret, algorithm=ALGORITHM)
     return encoded_jwt
@@ -169,7 +189,14 @@ def decode_service_token(token: str) -> dict[str, Any]:
     """
     settings = get_settings()
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[ALGORITHM],
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+            options={"verify_aud": True, "verify_iss": True},
+        )
 
         # Verify this is a service token
         if payload.get("type") != SERVICE_TOKEN_TYPE:

@@ -520,3 +520,44 @@ clients must swap). Rollback refuses vector-less (pre-vector-copy) snapshots wit
 instead of restoring an empty KB; genuinely-empty snapshots still roll back. Snapshot
 chunk copies now preserve `ocr_used`/`ocr_confidence`. Delete paths already purged
 Mongo + Qdrant (verified, characterization-tested) — no rebuild.
+
+## D-31: Diagnose-Then-Act Adaptive Recovery + Budgets (Phase 8)
+
+**Date:** 2026-09-19
+**Status:** Accepted & Implemented (`models.yaml` → v1.15 recovery block)
+
+**Decision:** Replace round-robin recovery with diagnosis-mapped strategies:
+RETRIEVAL_* → `query_rewrite`, LOW_COVERAGE/EVIDENCE_CONFLICT → `re_retrieve`,
+VERIFICATION_*/GENERATION_ERROR → `regenerate`; config priority survives only as
+the undiagnosed fallback. Cap raised 1 → 2 with token (2000) + latency (180s)
+budgets tracked on `AgentState`; exhaustion forces `RECOVERY_BUDGET_EXHAUSTED` →
+abstain. Per-attempt cost persisted on the recovery run record.
+
+## D-32: JWT iss/aud + Tenant-Bound Service Tokens + Lockout + AV (Phase 9)
+
+**Date:** 2026-09-19
+**Status:** Accepted & Implemented
+
+**Decision:** Both JWT types now carry and verify `iss=trustrag-api` /
+`aud=trustrag-client`. Service tokens accept optional `bound_kb_id` /
+`bound_user_id` (M-2), enforced with 403 on internal ingest. Login lockout is
+in-memory per-email (5 attempts / 900s window, cleared on success) — no schema
+migration, single-worker semantics documented. Upload AV is EICAR-signature
+blocking + best-effort `pyclamd` (fail-open, no new dependency), run before
+magic-byte validation. A 24-test red-team suite (`tests/test_redteam.py`) locks
+in: injection-as-data, tool-call non-execution, conflict→CONTRADICTED,
+cross-tenant 403s, and token/budget caps.
+
+## D-33: Dependency-Free Metrics + Pre-Request Budget (Phase 10)
+
+**Date:** 2026-09-19
+**Status:** Accepted & Implemented (`models.yaml` v1.15 `observability` block)
+
+**Decision:** No `prometheus_client` dependency — hand-rolled thread-safe counters
+in `core/metrics.py` rendered as Prometheus text at public `GET /api/v1/metrics`
+(counters only, no secrets). Token estimates use len//4 (zero LLM calls);
+`create_analysis` rejects over-`max_input_tokens` queries with 422 behind the
+`pre_request_budget_enforcement` kill-switch. k6 extended with `/metrics` +
+`/analyses` list reads only — generation/verification/ingest stay out of the CI
+gate (non-deterministic on throttled local models). Redis/Celery, multi-worker
+SSE bus, and server-side histograms explicitly deferred until measured pain.

@@ -77,11 +77,39 @@ async def _index_parsed_chunks(
         if doc:
             user_id = doc.get("user_id")
             doc_filename = doc.get("filename", "Document")
+        # Phase 7 provenance: parent-document version rides into every chunk
+        # record + vector payload so answers stay traceable to a version.
+        doc_version = doc.get("version", "1.0") if doc else "1.0"
+        doc_is_snapshot = bool(doc.get("is_snapshot", False)) if doc else False
 
         # NOTE: chunking happens at upload time (knowledge_bases.py selects the
         # configured strategy via get_chunking_strategy()). The `strategy`
         # parameter is kept for backward compatibility and ignored here —
         # this stage only embeds and indexes the chunks it receives.
+
+        # Phase 7 chain: persist each OCR page render ONCE (many chunks share
+        # one render). Fail-open: disk trouble must never fail ingestion.
+        page_image_refs: dict[Any, str | None] = {}
+        if get_model_config().ocr_store_page_images:
+            from app.ingestion.page_images import save_page_image
+
+            for c in chunks:
+                pg = c.get("page")
+                png = c.get("page_image_png")
+                if pg in page_image_refs:
+                    continue
+                ref: str | None = None
+                if png:
+                    try:
+                        ref = save_page_image(kb_id_str, doc_id_str, int(pg), png)
+                    except (ValueError, OSError) as exc:
+                        logger.warning(
+                            "Page-image persist failed; chunk keeps no image ref",
+                            doc_id=doc_id_str,
+                            page=pg,
+                            error=str(exc),
+                        )
+                page_image_refs[pg] = ref
 
         # Store chunks in MongoDB for future integrity audits
         import hashlib
@@ -102,6 +130,9 @@ async def _index_parsed_chunks(
                     "text_hash": hashlib.sha256(c["text"].encode("utf-8")).hexdigest(),
                     "ocr_used": bool(c.get("ocr_used", False)),
                     "ocr_confidence": c.get("ocr_confidence"),
+                    "page_image_ref": page_image_refs.get(c.get("page")),
+                    "document_version": doc_version,
+                    "is_snapshot": doc_is_snapshot,
                 }
             )
         if mongo_chunks:
@@ -180,6 +211,9 @@ async def _index_parsed_chunks(
                 "text": chunk["text"],
                 "ocr_used": bool(chunk.get("ocr_used", False)),
                 "ocr_confidence": chunk.get("ocr_confidence"),
+                "page_image_ref": page_image_refs.get(chunk.get("page")),
+                "document_version": doc_version,
+                "is_snapshot": doc_is_snapshot,
             }
 
             points.append(

@@ -357,14 +357,23 @@ reliability:
   minimum_evidence_coverage: 0.80
   maximum_contradiction_rate: 0.20
   abstain_below: 0.50
-  max_recovery_attempts: 1
+
+recovery:
+  max_recovery_attempts: 2        # diagnose-then-act, ≤2 attempts
+  max_recovery_tokens: 2000       # token budget across recovery rounds
+  max_recovery_latency_seconds: 180  # latency budget across recovery rounds
 
 cost_controls:
+  max_input_tokens: 100000        # hard limit per LLM call + pre-request query budget
   max_claim_retrievals: 3         # NEUTRAL-only targeted retrieval budget
   claim_retrieval_top_k: 5
 
+observability:
+  metrics_enabled: true           # GET /api/v1/metrics Prometheus exposition
+  pre_request_budget_enforcement: true  # reject over-budget queries with 422
+
 runtime:
-  config_version: "1.13"
+  config_version: "1.15"
 ```
 
 These are engineering defaults, not calibrated truth.

@@ -16,7 +16,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 runtime:
-  config_version: "1.13"
+  config_version: "1.15"
 
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
@@ -141,6 +141,10 @@ ingestion:
     min_native_chars: 50
     dpi: 300
     min_confidence: 0.5
+    # Persist the exact page renders the OCR engine read (Phase 7 chain:
+    # Answer → chunk → page → image). Native pages render nothing (no cost);
+    # scanned pages cost ~1 PNG per page on disk at ingest only.
+    store_page_images: true
 
 # ─── Reliability Engine ───────────────────────────────────────────────────────
 # These are engineering defaults — NOT calibrated probabilities.
@@ -154,16 +158,24 @@ reliability:
 
 # ─── Recovery Policy ──────────────────────────────────────────────────────────
 recovery:
-  max_recovery_attempts: 1          # Single recovery round only — cuts latency
+  max_recovery_attempts: 2          # Allow up to 2-3 recovery attempts
+  max_recovery_tokens: 2000         # Token budget across all recovery rounds
+  max_recovery_latency_seconds: 180 # Latency budget across all recovery rounds
   # Strategy costs (relative units) — prefer cheaper strategies first
+  # Fallback for undiagnosed failures; diagnosed failures map directly to strategy
   strategy_priority:
     - query_rewrite
     - re_retrieve
     - regenerate
 
+# ─── Observability (Phase 10) ───────────────────────────────────────────────
+observability:
+  metrics_enabled: true             # GET /api/v1/metrics Prometheus exposition
+  pre_request_budget_enforcement: true  # Reject over-budget queries with 422
+
 # ─── Context & Cost Controls ──────────────────────────────────────────────────
 cost_controls:
-  max_input_tokens: 100000          # Hard limit per LLM call
+  max_input_tokens: 100000          # Hard limit per LLM call AND pre-request query budget
   max_verification_claims: 8        # Small models choke on 20; 8 keeps NLI focused
   max_individual_nli_fallback: 8    # Must cover max_verification_claims (8): when
                                       # batch NLI fails, every claim is still attempted

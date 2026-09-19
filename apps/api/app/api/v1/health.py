@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import PlainTextResponse
 
 from app.api.deps import get_current_user
 from app.core.config import get_model_config, get_settings
@@ -24,6 +25,19 @@ from app.db.mongodb import health_check as mongo_health_check
 from app.db.qdrant import health_check as qdrant_health_check
 
 router = APIRouter(tags=["health"])
+
+
+@router.get(
+    "/metrics",
+    summary="Prometheus metrics exposition",
+    response_class=PlainTextResponse,
+    include_in_schema=False,
+)
+async def prometheus_metrics() -> PlainTextResponse:
+    """Phase 10: dependency-free Prometheus exposition (public, counters only — no secrets)."""
+    from app.core.metrics import render_prometheus
+
+    return PlainTextResponse(render_prometheus(), media_type="text/plain; version=0.0.4")
 
 
 @router.get("/health", summary="Public application health check")

@@ -8,7 +8,7 @@
 [![Ollama](https://img.shields.io/badge/Ollama-Local_Offline-000000?logo=ollama&logoColor=white)](https://ollama.com)
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF_Server-orange)](https://github.com/ggerganov/llama.cpp)
 [![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-Embeddings-005CED?logo=onnx&logoColor=white)](https://onnxruntime.ai)
-[![Tests](https://img.shields.io/badge/Backend%20Tests-326%20Passing-brightgreen)](apps/api/tests)
+[![Tests](https://img.shields.io/badge/Backend%20Tests-381%20Passing-brightgreen)](apps/api/tests)
 [![Tests](https://img.shields.io/badge/Frontend%20Tests-22%20Passing-brightgreen)](apps/web)
 [![E2E](https://img.shields.io/badge/Playwright%20E2E-2%20Passing-brightgreen)](apps/web/e2e)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
@@ -140,7 +140,7 @@ Each stage below names the code that runs it and the `config/models.yaml` knob t
 | 4 | **Integrity audit** | SHA-256 tamper check per chunk + temporal validity windows (`effective_from`/`effective_until`); corrupted segments are excluded before generation | — (always on) |
 | 5 | **Grounded generation** | Answer strictly conditioned on ≤8 surviving chunks within a 3000-char context budget (fits small-model windows); every factual sentence carries inline `[Segment N]` citations, and refs to unserved segments are stripped post-generation; empty/insufficient context → `ABSTAIN`, never a guess | `retrieval.max_context_chunks: 8`, `llm.temperature: 0.2` |
 | 6 | **Claim decomposition + NLI** | Answer split into ≤8 atomic, self-contained claims; each judged `SUPPORTED` / `CONTRADICTED` / `NEUTRAL` against the evidence in one batch call, with full per-claim fallback if the batch fails. NEUTRAL claims (missing evidence — never CONTRADICTED) get one bounded targeted-retrieval round each (claim text as query, top-5, ≤3/analysis) | `cost_controls.max_verification_claims: 8`, `max_individual_nli_fallback: 8`, `max_claim_retrievals: 3`, `claim_retrieval_top_k: 5`, `verification.temperature: 0.0` |
-| 7 | **Verdict & recovery** | Coverage/contradiction scored against thresholds (see below); on FAIL one recovery round runs, then either a grounded answer or safe `ABSTAIN` | `reliability.*`, `recovery.max_recovery_attempts: 1` |
+| 7 | **Verdict & recovery** | Coverage/contradiction scored against thresholds (see below); on FAIL diagnose-then-act recovery runs (retrieval→rewrite, coverage/conflict→expand, verification/generation→regenerate), ≤2 attempts within token (2000) + latency (180s) budgets, then either a grounded answer or safe `ABSTAIN` | `reliability.*`, `recovery.max_recovery_attempts: 2`, `max_recovery_tokens`, `max_recovery_latency_seconds` |
 
 > **Single-document note:** with one short document, any query retrieves roughly the same chunks. If verification still fails 0/8, suspect the NLI judge or truncated context — not retrieval. Check the Claims tab explanations and the analysis trace.
 
@@ -648,7 +648,7 @@ Change a port in `ports.yaml`, then run `python3 scripts/apply_ports.py` (CI enf
 
 ## Testing
 
-TrustRAG has 326 backend tests, 22 frontend tests, and 2 E2E tests — all passing.
+TrustRAG has 381 backend tests, 22 frontend tests, and 2 E2E tests — all passing.
 
 **Backend (same on all three OSes — run from Git Bash on Windows):**
 ```bash
@@ -722,6 +722,9 @@ k6 run load-test/smoke.js
 | `test_claim_retrieval.py` | Targeted per-claim retrieval (dedup, budget, outage), NEUTRAL→SUPPORTED flip with fresh linkage, CONTRADICTED exclusion, inline-cite union |
 | `test_router.py` | Router classify/split/merge matrix, fan-out concurrency + outage degradation, node-level comparison fan-out |
 | `test_lifecycle.py` | Snapshot/rollback routes, empty-snapshot 409 guard, OCR-preserving snapshots, document-delete vector purge |
+| `test_redteam.py` | 24 red-team tests: prompt injection as data, tool-call non-execution, conflict→CONTRADICTED, stale/OCR-garbled handling, cross-tenant 403s, token/budget caps |
+| `test_metrics.py` | Token estimation, Prometheus counters + exposition, ObjectId path normalization, pre-request budget 422 + kill-switch, `/metrics` endpoint |
+| `test_page_images.py` / `test_page_image_endpoint.py` | Page-image persistence refs, serving endpoint contracts |
 | `test_delete_safety.py` | Fail-closed deletes (vectors-before-metadata ordering, no swallowed vector errors), router cap floor |
 | `test_local_llm.py` / `test_hardware.py` | Ollama/llama.cpp clients, model registry, hardware profiles |
 | `test_disk_cache.py` / `test_semantic_cache.py` | Embedding disk cache, semantic answer cache |
@@ -848,12 +851,12 @@ Open the Claims tab and read the per-claim explanations: `NEUTRAL` with "Verific
 | Document | What's in it |
 |---|---|
 | [Architecture](docs/architecture/architecture.md) | Technical design of the LangGraph state machine, hybrid search, claim decomposition |
-| [Decision Log](docs/architecture/decision-log.md) | 22 ADRs explaining technology choices and tradeoffs |
-| [Security Controls](docs/security/security-controls.md) | JWT auth, anti-IDOR, SSRF defense, defensive headers |
+| [Decision Log](docs/architecture/decision-log.md) | 33 ADRs explaining technology choices and tradeoffs |
+| [Security Controls](docs/security/security-controls.md) | JWT auth + iss/aud, anti-IDOR, SSRF defense, lockout, AV, red-team, defensive headers |
 | [Threat Model](docs/security/threat-model.md) | STRIDE analysis, attack surface, countermeasures |
 | [Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md) | Production container setup, cloud hosting, env management |
 | [System Audit](docs/audits/2026-09-11_unified_senior_audit.md) | Multi-role senior audit: frontend, backend, AI/ML, security, optimization, testing |
-| [Implementation Status](docs/IMPLEMENTATION_STATUS_2026-09-11.md) | What was fixed, test state, remaining work |
+| [Phase Audit](docs/PHASE_AUDIT_2026-09-19.md) | Phase-by-phase verification of every upgrade-plan phase, test state, remaining work |
 | [Roadmap](docs/ROADMAP.md) | Milestones, completed phases, upcoming work |
 
 ---

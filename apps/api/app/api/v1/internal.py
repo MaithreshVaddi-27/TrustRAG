@@ -110,6 +110,26 @@ async def internal_ingest_document(
     """
     service_name = current_service.get("sub")
 
+    # M-2 tenant binding: if token is bound to a specific KB or user, enforce it
+    bound_kb = current_service.get("bound_kb_id")
+    if bound_kb and str(bound_kb) != str(kb_id):
+        from fastapi import HTTPException
+        from fastapi import status as _status
+
+        raise HTTPException(
+            status_code=_status.HTTP_403_FORBIDDEN,
+            detail="Service token not authorized for this knowledge base",
+        )
+    bound_user = current_service.get("bound_user_id")
+    if bound_user and str(bound_user) != str(document_data.user_id):
+        from fastapi import HTTPException
+        from fastapi import status as _status2
+
+        raise HTTPException(
+            status_code=_status2.HTTP_403_FORBIDDEN,
+            detail="Service token not authorized for this user",
+        )
+
     # Add document metadata
     doc = await add_document(
         kb_id_str=kb_id,

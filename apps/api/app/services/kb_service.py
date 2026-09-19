@@ -155,6 +155,11 @@ async def delete_kb(kb_id_str: str, user_id_str: str) -> None:
     # 3. Delete the KB record itself
     await get_collection(Collections.KNOWLEDGE_BASES).delete_one({"_id": kb_id})
 
+    # 4. Purge OCR page-image files (Phase 7 chain). Best-effort, never raises.
+    from app.ingestion.page_images import delete_kb_page_images
+
+    delete_kb_page_images(kb_id_str)
+
     # Cached answers must never outlive the evidence that produced them.
     from app.core.semantic_cache import invalidate_semantic_cache
 
@@ -307,8 +312,20 @@ async def create_kb_snapshot(kb_id_str: str, user_id_str: str, version: str = "1
         {"knowledge_base_id": ObjectId(kb_id_str), "is_snapshot": {"$ne": True}}
     ).to_list(10000)
 
+    from app.ingestion.page_images import copy_page_image
+
+    doc_version_map = {str(d["_id"]): d.get("version", "1.0") for d in existing_docs}
+
     for chunk in existing_chunks:
         remapped_doc_id = doc_id_map.get(str(chunk["document_id"]), str(chunk["document_id"]))
+        # Phase 7 chain: snapshot owns COPIES of page images (live files may
+        # be deleted later); copy failures fail open with a warning, never
+        # fail the snapshot.
+        new_image_ref: str | None = None
+        if chunk.get("page_image_ref"):
+            new_image_ref = copy_page_image(
+                chunk["page_image_ref"], snapshot_id_str, remapped_doc_id
+            )
         chunk_copy = {
             "document_id": ObjectId(remapped_doc_id),
             "knowledge_base_id": ObjectId(result.inserted_id),
@@ -321,6 +338,8 @@ async def create_kb_snapshot(kb_id_str: str, user_id_str: str, version: str = "1
             "text_hash": chunk.get("text_hash"),
             "ocr_used": bool(chunk.get("ocr_used", False)),
             "ocr_confidence": chunk.get("ocr_confidence"),
+            "page_image_ref": new_image_ref,
+            "document_version": doc_version_map.get(str(chunk["document_id"]), version),
             "is_snapshot": True,
         }
         await chunks_coll.insert_one(chunk_copy)
@@ -549,6 +568,13 @@ async def delete_document(doc_id_str: str, user_id_str: str) -> None:
 
     # 3. Delete document record itself
     await doc_coll.delete_one({"_id": doc_id})
+
+    # 4. Purge OCR page-image files (Phase 7 chain). Best-effort: the helper
+    # never raises, and chunks/vectors are already gone so nothing can serve
+    # a dangling ref.
+    from app.ingestion.page_images import delete_doc_page_images
+
+    delete_doc_page_images(kb_id_str, doc_id_str)
 
     from app.core.semantic_cache import invalidate_semantic_cache
 

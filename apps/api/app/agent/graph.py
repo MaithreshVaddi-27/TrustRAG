@@ -51,13 +51,13 @@ class AgentState(TypedDict):
     claims: list[dict[str, Any]]
     attempts: int
     verdict_status: str  # "PASS" | "FAIL"
-    recovery_strategy: str | None  # "query_rewrite" | "re_retrieve" | None
+    recovery_strategy: str | None  # "query_rewrite" | "re_retrieve" | "regenerate" | None
     reliability_score: float | None
     diagnosis_type: (
         str | None
     )  # RETRIEVAL_FAILURE | RETRIEVAL_OUTAGE | EVIDENCE_CONFLICT | LOW_COVERAGE
     # | VERIFICATION_TIMEOUT | VERIFICATION_ERROR | RETRIEVAL_ERROR
-    # | GENERATION_ERROR | None
+    # | GENERATION_ERROR | RECOVERY_BUDGET_EXHAUSTED | None
     diagnosis_failures: list[str]
     web_search_enabled: bool
     web_search_provider: str  # "tavily" | "duckduckgo" | "both"
@@ -70,6 +70,9 @@ class AgentState(TypedDict):
     cache_hit: bool
     # Error tracking for fallback paths
     node_errors: list[dict[str, Any]]
+    # Recovery budget tracking
+    recovery_tokens_used: int
+    recovery_latency_ms: int
 
 
 # ─── Standardized Error Handling ─────────────────────────────────────────────
@@ -372,6 +375,12 @@ async def retrieval_node(state: AgentState) -> AgentState:
                                 "character_offset": c.get("character_offset", 0),
                                 "zone": chunk_zone,
                                 "text": c["text"],
+                                # Self-heal must not strip Phase 7 provenance.
+                                "ocr_used": bool(c.get("ocr_used", False)),
+                                "ocr_confidence": c.get("ocr_confidence"),
+                                "page_image_ref": c.get("page_image_ref"),
+                                "document_version": c.get("document_version", "1.0"),
+                                "is_snapshot": bool(c.get("is_snapshot", False)),
                             }
                             sync_points.append(
                                 models.PointStruct(
@@ -537,6 +546,13 @@ async def retrieval_node(state: AgentState) -> AgentState:
                     "document_id": doc_id,
                     "filename": c.get("filename"),
                     "url": c.get("url"),
+                    # Phase 7 provenance: evidence stays traceable to the
+                    # source page (and its OCR image when one exists).
+                    "page": c.get("page"),
+                    "chunk_index": c.get("chunk_index"),
+                    "ocr_used": bool(c.get("ocr_used", False)),
+                    "ocr_confidence": c.get("ocr_confidence"),
+                    "page_image_ref": c.get("page_image_ref"),
                     "retrieval_score": c.get("dense_score", 0.0),
                     "fusion_score": c.get("rrf_score", 0.0),
                     "rerank_score": c.get("rerank_score"),
@@ -843,6 +859,14 @@ async def verification_node(state: AgentState) -> AgentState:
     state["diagnosis_type"] = verdict.diagnosis_type.value
     state["diagnosis_failures"] = verdict.diagnosis_failures
 
+    # Phase 10: verification outcome counters (never break verification path)
+    try:
+        from app.core.metrics import record_verification_claims
+
+        record_verification_claims(supported, contradicted, neutral)
+    except Exception:  # noqa: S110
+        pass
+
     logger.info(
         "Unified verdict computed",
         verdict=verdict.verdict_status.value,
@@ -920,12 +944,45 @@ def _looks_like_instruction_echo(text: str) -> bool:
 
 
 async def recovery_node(state: AgentState) -> AgentState:
-    """Determine adaptive strategy and execute recovery step (e.g. Query Rewriting)."""
+    """Determine adaptive strategy and execute recovery step (e.g. Query Rewriting).
+
+    Diagnoses the failure type first, then selects the appropriate recovery strategy.
+    Tracks token and latency budget across recovery attempts; abstains when exhausted.
+    """
     cfg = get_model_config()
     recovery_timeout = cfg.llm_timeout_seconds
 
+    # Initialize budget tracking on first attempt
+    if state.get("recovery_tokens_used") is None:
+        state["recovery_tokens_used"] = 0
+    if state.get("recovery_latency_ms") is None:
+        state["recovery_latency_ms"] = 0
+
     async def _run_recovery() -> AgentState:
         state["attempts"] += 1
+
+        # Check budget before attempting recovery
+        max_tokens = cfg.max_recovery_tokens
+        max_latency = cfg.max_recovery_latency_seconds * 1000  # Convert to ms
+
+        tokens_exceeded = state["recovery_tokens_used"] >= max_tokens
+        latency_exceeded = state["recovery_latency_ms"] >= max_latency
+        if tokens_exceeded or latency_exceeded:
+            logger.warning(
+                "Recovery budget exhausted, forcing abstention",
+                tokens_used=state["recovery_tokens_used"],
+                max_tokens=max_tokens,
+                latency_ms=state["recovery_latency_ms"],
+                max_latency_ms=max_latency,
+            )
+            state["verdict_status"] = "PASS"
+            state["diagnosis_type"] = "RECOVERY_BUDGET_EXHAUSTED"
+            state["diagnosis_failures"] = [
+                f"Recovery budget exhausted: tokens={state['recovery_tokens_used']}/{max_tokens}, "
+                f"latency={state['recovery_latency_ms']}ms/{max_latency}ms"
+            ]
+            state["attempts"] = cfg.max_recovery_attempts  # Force end
+            return state
 
         # Snapshot failed-claim context BEFORE clearing: the query_rewrite
         # strategy targets missing facts, but state["claims"] is reset below.
@@ -948,156 +1005,42 @@ async def recovery_node(state: AgentState) -> AgentState:
         state["verdict_status"] = "FAIL"
         state["reliability_score"] = None
 
-        # Determine recovery strategy from public config property
-        priority = cfg.recovery_strategy_priority
-        idx = (state["attempts"] - 1) % len(priority)
-        strategy = priority[idx]
+        # DIAGNOSE: Map diagnosis_type to recovery strategy
+        strategy = _select_recovery_strategy(state, cfg)
 
         logger.info(
-            "Triggering adaptive recovery loop", attempt=state["attempts"], strategy=strategy
+            "Triggering adaptive recovery loop",
+            attempt=state["attempts"],
+            strategy=strategy,
+            diagnosis=state.get("diagnosis_type"),
         )
 
-        if strategy == "query_rewrite":
-            # Use LLM to expand acronyms and terms contextually (no hardcoded map)
-            # so it adapts to any knowledge base domain.
-            # Invoke LLM to rewrite the query targeting the missing facts
-            missing_claims = missing_claims_snapshot
-            if missing_claims:
-                missing_str = "\n".join(f"- {c}" for c in missing_claims)
-                rewrite_prompt = f"""You are a query expansion assistant for an IR system.
-The original query may contain acronyms or ambiguous terms.
-Your task: rewrite the query to search for the missing factual details below.
-- Expand acronyms/abbreviations to full forms
-  (e.g., API → Application Programming Interface)
-- Add synonyms or related terms that would help retrieval
-- Keep the query focused and concise (5 to 12 words)
+        # Track start time for latency budget
+        import time
 
-Output only the expanded search query string. No markdown or commentary.
-Never reply empty: if unsure, return the original query with spelling corrected.
+        start_time = time.monotonic()
 
-<ORIGINAL_QUERY>
-{state["query"]}
-</ORIGINAL_QUERY>
-<MISSING_CLAIMS>
-{missing_str}
-</MISSING_CLAIMS>
-"""
+        try:
+            if strategy == "query_rewrite":
+                await _execute_query_rewrite(state, prior_answer, missing_claims_snapshot, cfg)
+            elif strategy == "re_retrieve":
+                await _execute_re_retrieve(state, prior_answer, cfg)
+            elif strategy == "regenerate":
+                state["recovery_strategy"] = "regenerate"
             else:
-                # Query rewrite triggered because generation abstained / insufficient context
-                rewrite_prompt = f"""You are a search query expansion assistant for an IR system.
-The original query did not return sufficient information to answer the question.
-Your task: expand the query by resolving ambiguous acronyms and terms.
-- Expand any acronyms/abbreviations to their full forms
-- Add synonyms or related terms that would help retrieval
-- Keep the query focused and concise (5 to 12 words)
-
-Output only the expanded search query string. No markdown or quotes.
-Never reply empty: if unsure, return the original query with spelling corrected.
-
-<ORIGINAL_QUERY>
-{state["query"]}
-</ORIGINAL_QUERY>
-"""
-            try:
-                from app.core.local_llm import local_cap_kwargs
-
-                model = get_verification_model(
-                    provider=state.get("llm_provider"), model=state.get("llm_model")
-                )
-                # Local-RAM: a 5-12 word rewrite must not reserve 1024 output
-                # tokens of KV cache. Cloud providers ignore the foreign key.
-                cap = local_cap_kwargs(
-                    state.get("llm_provider") or cfg.verification_provider,
-                    max_tokens=128,
-                )
-                invoker = model.bind(**cap) if cap else model
-                response = await invoker.ainvoke(rewrite_prompt)
-                new_query = normalize_llm_content(response.content)
-                new_query = _sanitize_rewritten_query(str(new_query))
-
-                if not new_query or len(new_query) < 3:
-                    # Small local models sometimes return an empty rewrite.
-                    # An empty query would waste a full retrieval+generation
-                    # round on unranked content — keep the original instead.
-                    logger.warning(
-                        "Query rewrite returned empty text, keeping original query",
-                        original=state["query"],
-                    )
-                    if is_refusal_answer(prior_answer) and state.get("chunks"):
-                        # ...and the model already refused these exact chunks:
-                        # re-searching the identical query can only return the
-                        # same context for a certain repeat refusal. Route
-                        # through regenerate so retrieval short-circuits and
-                        # the futile-generation guard skips the repeat call —
-                        # the round then costs ~zero instead of minutes.
-                        state["recovery_strategy"] = "regenerate"
-                        # Restore the refusal cleared above: it arms the
-                        # futile-generation guard (regenerate + refusal +
-                        # unchanged chunks → skip) so the round costs ~zero.
-                        state["answer"] = prior_answer
-                        await add_trace_event(
-                            state["analysis_id"],
-                            "recovery.regenerate",
-                            {
-                                "message": "Empty rewrite on already-refused evidence — "
-                                "reusing saved segments without new retrieval spend",
-                            },
-                        )
-                    else:
-                        state["recovery_strategy"] = None
-                else:
-                    logger.info(
-                        "Query rewritten successfully",
-                        original=state["query"],
-                        rewritten=new_query,
-                    )
-                    state["current_query"] = new_query
-                    state["recovery_strategy"] = "query_rewrite"
-
-                    await add_trace_event(
-                        state["analysis_id"],
-                        "recovery.rewrite",
-                        {
-                            "message": "Rewriting query to target missing details",
-                            "original_query": state["query"],
-                            "rewritten_query": new_query,
-                        },
-                    )
-            except Exception as exc:
-                logger.error("Query rewrite failed, falling back to original query", error=str(exc))
                 state["recovery_strategy"] = None
 
-        elif strategy == "re_retrieve":
-            # Load-aware downgrade (decision layer): when evidence is already
-            # sufficient, the failure is generation-side — widening search only
-            # burns embedding/rerank/compute on a small local model. Retry
-            # generation on the saved chunks instead (retrieval_node short-
-            # circuits on the "regenerate" strategy).
-            if len(state.get("chunks") or []) >= cfg.max_context_chunks:
-                strategy = "regenerate"
-                state["recovery_strategy"] = "regenerate"
-                logger.info(
-                    "Recovery downgraded re_retrieve → regenerate (evidence sufficient)",
-                    chunks=len(state.get("chunks") or []),
-                )
-                await add_trace_event(
-                    state["analysis_id"],
-                    "recovery.regenerate",
-                    {
-                        "message": "Evidence sufficient — retrying generation on "
-                        "saved segments without new retrieval spend",
-                    },
-                )
-            else:
-                state["recovery_strategy"] = "re_retrieve"
-                # re_retrieve executes in retrieval_node via doubled search params
-
-        elif strategy == "regenerate":
-            # Explicit yaml strategy: same cheap retry, no retrieval spend.
-            state["recovery_strategy"] = "regenerate"
-
-        else:
+        except Exception as exc:
+            logger.error("Recovery strategy execution failed", strategy=strategy, error=str(exc))
             state["recovery_strategy"] = None
+
+        finally:
+            # Update budget tracking
+            elapsed_ms = int((time.monotonic() - start_time) * 1000)
+            state["recovery_latency_ms"] = state.get("recovery_latency_ms", 0) + elapsed_ms
+            # Estimate tokens used (rough approximation: 4 chars ≈ 1 token for output)
+            tokens_estimate = len(str(state.get("current_query", ""))) // 4 + 100  # base cost
+            state["recovery_tokens_used"] = state.get("recovery_tokens_used", 0) + tokens_estimate
 
         # Persist recovery run record in MongoDB
         run_doc = {
@@ -1105,9 +1048,19 @@ Never reply empty: if unsure, return the original query with spelling corrected.
             "attempt": state["attempts"],
             "strategy": strategy,
             "query_used": state["current_query"],
+            "tokens_used": tokens_estimate if "tokens_estimate" in locals() else 0,
+            "latency_ms": elapsed_ms,
             "created_at": datetime.now(UTC),
         }
         await get_collection(Collections.RECOVERY_RUNS).insert_one(run_doc)
+
+        # Phase 10: recovery strategy counter (never break recovery path)
+        try:
+            from app.core.metrics import record_recovery_attempt
+
+            record_recovery_attempt(strategy)
+        except Exception:  # noqa: S110
+            pass
 
         return state
 
@@ -1129,15 +1082,187 @@ Never reply empty: if unsure, return the original query with spelling corrected.
     )
 
 
+def _select_recovery_strategy(state: AgentState, cfg) -> str:
+    """Select recovery strategy based on diagnosis type.
+
+    Mapping per UPGRADE_PLAN §8:
+    - RETRIEVAL_FAILURE / RETRIEVAL_OUTAGE / RETRIEVAL_ERROR → query_rewrite
+    - LOW_COVERAGE / EVIDENCE_CONFLICT → re_retrieve (expand search)
+    - VERIFICATION_TIMEOUT / VERIFICATION_ERROR → regenerate
+    - GENERATION_ERROR → regenerate
+    - Fallback to config priority for undiagnosed failures
+    """
+    diagnosis = state.get("diagnosis_type")
+
+    # Direct mapping from diagnosis to strategy
+    if diagnosis in ("RETRIEVAL_FAILURE", "RETRIEVAL_OUTAGE", "RETRIEVAL_ERROR"):
+        return "query_rewrite"
+    if diagnosis in ("LOW_COVERAGE", "EVIDENCE_CONFLICT"):
+        return "re_retrieve"
+    if diagnosis in ("VERIFICATION_TIMEOUT", "VERIFICATION_ERROR", "GENERATION_ERROR"):
+        return "regenerate"
+
+    # Fallback: round-robin from config priority
+    priority = cfg.recovery_strategy_priority
+    idx = (state["attempts"] - 1) % len(priority)
+    return priority[idx]
+
+
+async def _execute_query_rewrite(
+    state: AgentState,
+    prior_answer: str | None,
+    missing_claims_snapshot: list[str],
+    cfg,
+) -> None:
+    """Execute query rewrite strategy targeting missing facts."""
+    missing_claims = missing_claims_snapshot
+    if missing_claims:
+        missing_str = "\n".join(f"- {c}" for c in missing_claims)
+        rewrite_prompt = f"""You are a query expansion assistant for an IR system.
+The original query may contain acronyms or ambiguous terms.
+Your task: rewrite the query to search for the missing factual details below.
+- Expand acronyms/abbreviations to full forms
+  (e.g., API → Application Programming Interface)
+- Add synonyms or related terms that would help retrieval
+- Keep the query focused and concise (5 to 12 words)
+
+Output only the expanded search query string. No markdown or commentary.
+Never reply empty: if unsure, return the original query with spelling corrected.
+
+<ORIGINAL_QUERY>
+{state["query"]}
+</ORIGINAL_QUERY>
+<MISSING_CLAIMS>
+{missing_str}
+</MISSING_CLAIMS>
+"""
+    else:
+        # Query rewrite triggered because generation abstained / insufficient context
+        rewrite_prompt = f"""You are a search query expansion assistant for an IR system.
+The original query did not return sufficient information to answer the question.
+Your task: expand the query by resolving ambiguous acronyms and terms.
+- Expand any acronyms/abbreviations to their full forms
+- Add synonyms or related terms that would help retrieval
+- Keep the query focused and concise (5 to 12 words)
+
+Output only the expanded search query string. No markdown or quotes.
+Never reply empty: if unsure, return the original query with spelling corrected.
+
+<ORIGINAL_QUERY>
+{state["query"]}
+</ORIGINAL_QUERY>
+"""
+    try:
+        from app.core.local_llm import local_cap_kwargs
+
+        model = get_verification_model(
+            provider=state.get("llm_provider"), model=state.get("llm_model")
+        )
+        # Local-RAM: a 5-12 word rewrite must not reserve 1024 output
+        # tokens of KV cache. Cloud providers ignore the foreign key.
+        cap = local_cap_kwargs(
+            state.get("llm_provider") or cfg.verification_provider,
+            max_tokens=128,
+        )
+        invoker = model.bind(**cap) if cap else model
+        response = await invoker.ainvoke(rewrite_prompt)
+        new_query = normalize_llm_content(response.content)
+        new_query = _sanitize_rewritten_query(str(new_query))
+
+        if not new_query or len(new_query) < 3:
+            # Small local models sometimes return an empty rewrite.
+            # An empty query would waste a full retrieval+generation
+            # round on unranked content — keep the original instead.
+            logger.warning(
+                "Query rewrite returned empty text, keeping original query",
+                original=state["query"],
+            )
+            if is_refusal_answer(prior_answer) and state.get("chunks"):
+                # ...and the model already refused these exact chunks:
+                # re-searching the identical query can only return the
+                # same context for a certain repeat refusal. Route
+                # through regenerate so retrieval short-circuits and
+                # the futile-generation guard skips the repeat call —
+                # the round then costs ~zero instead of minutes.
+                state["recovery_strategy"] = "regenerate"
+                # Restore the refusal cleared above: it arms the
+                # futile-generation guard (regenerate + refusal +
+                # unchanged chunks → skip) so the round costs ~zero.
+                state["answer"] = prior_answer
+                await add_trace_event(
+                    state["analysis_id"],
+                    "recovery.regenerate",
+                    {
+                        "message": "Empty rewrite on already-refused evidence — "
+                        "reusing saved segments without new retrieval spend",
+                    },
+                )
+            else:
+                state["recovery_strategy"] = None
+        else:
+            logger.info(
+                "Query rewritten successfully",
+                original=state["query"],
+                rewritten=new_query,
+            )
+            state["current_query"] = new_query
+            state["recovery_strategy"] = "query_rewrite"
+
+            await add_trace_event(
+                state["analysis_id"],
+                "recovery.rewrite",
+                {
+                    "message": "Rewriting query to target missing details",
+                    "original_query": state["query"],
+                    "rewritten_query": new_query,
+                },
+            )
+    except Exception as exc:
+        logger.error("Query rewrite failed, falling back to original query", error=str(exc))
+        state["recovery_strategy"] = None
+
+
+async def _execute_re_retrieve(state: AgentState, prior_answer: str | None, cfg) -> None:
+    """Execute re-retrieve strategy (expand search)."""
+    # Load-aware downgrade (decision layer): when evidence is already
+    # sufficient, the failure is generation-side — widening search only
+    # burns embedding/rerank/compute on a small local model. Retry
+    # generation on the saved chunks instead (retrieval_node short-
+    # circuits on the "regenerate" strategy).
+    if len(state.get("chunks") or []) >= cfg.max_context_chunks:
+        state["recovery_strategy"] = "regenerate"
+        logger.info(
+            "Recovery downgraded re_retrieve → regenerate (evidence sufficient)",
+            chunks=len(state.get("chunks") or []),
+        )
+        await add_trace_event(
+            state["analysis_id"],
+            "recovery.regenerate",
+            {
+                "message": "Evidence sufficient — retrying generation on "
+                "saved segments without new retrieval spend",
+            },
+        )
+    else:
+        state["recovery_strategy"] = "re_retrieve"
+        # re_retrieve executes in retrieval_node via doubled search params
+
+
 # ─── Conditional Edge Router ──────────────────────────────────────────────────
 
 
 def should_recover(state: AgentState) -> str:
-    """Determine if recovery node should execute or terminate the graph run."""
+    """Determine if recovery node should execute or terminate the graph run.
+
+    Checks attempt count, PASS verdict, AND budget exhaustion (tokens/latency).
+    """
     cfg = get_model_config()
     max_recovery = cfg.max_recovery_attempts
 
     if state["verdict_status"] == "PASS" or state["attempts"] >= max_recovery:
+        return "end"
+    # Check budget exhaustion (set by recovery_node when budget exceeded)
+    if state.get("diagnosis_type") == "RECOVERY_BUDGET_EXHAUSTED":
         return "end"
     return "recover"
 

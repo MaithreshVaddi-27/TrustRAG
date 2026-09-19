@@ -9,6 +9,7 @@ seams and are patched. Real PyMuPDF is used to build tiny in-memory PDFs.
 from __future__ import annotations
 
 import io
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fitz
@@ -126,6 +127,31 @@ def test_parse_pdf_ocr_failure_fails_open_to_native_text():
     assert pages[0]["ocr_used"] is False
 
 
+def test_parse_pdf_ocr_page_carries_render_bytes():
+    """OCR pages keep the exact rendered pixels so chunks can link to the image."""
+    ocr_result = OCRPageResult(text="scanned hello", confidence=0.9, used=True)
+    with patch.object(ocr_module, "ocr_image_bytes", return_value=ocr_result) as mock_ocr:
+        pages = parse_pdf(io.BytesIO(_pdf_bytes("")))
+    assert pages[0]["ocr_used"] is True
+    png = pages[0]["page_image_png"]
+    assert isinstance(png, bytes) and png.startswith(b"\x89PNG")
+    # The engine saw the exact bytes we kept (evidence fidelity).
+    assert mock_ocr.call_args.args[0] == png
+
+
+def test_parse_pdf_native_page_carries_no_image_bytes():
+    pages = parse_pdf(io.BytesIO(_pdf_bytes("Hello native world " * 10)))
+    assert pages[0]["ocr_used"] is False
+    assert pages[0]["page_image_png"] is None
+
+
+def test_parse_pdf_ocr_failure_carries_no_image_bytes():
+    with patch.object(ocr_module, "ocr_image_bytes", side_effect=Exception("engine down")):
+        pages = parse_pdf(io.BytesIO(_pdf_bytes("ab")))
+    assert pages[0]["ocr_used"] is False
+    assert pages[0]["page_image_png"] is None
+
+
 def test_parse_pdf_dense_native_page_never_calls_engine():
     from app.core.config import get_model_config
 
@@ -159,6 +185,27 @@ def test_chunker_defaults_when_flags_absent():
     chunks = chunk_text([{"page": 1, "text": "legacy page " * 200}])
     assert chunks
     assert all(c["ocr_used"] is False and c["ocr_confidence"] is None for c in chunks)
+    assert all(c["page_image_png"] is None for c in chunks)
+
+
+def test_chunker_propagates_page_image_bytes():
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+    pages = [
+        {"page": 1, "text": "native " * 200, "ocr_used": False, "ocr_confidence": None},
+        {
+            "page": 2,
+            "text": "scanned " * 200,
+            "ocr_used": True,
+            "ocr_confidence": 0.87,
+            "page_image_png": png,
+        },
+    ]
+    chunks = chunk_text(pages)
+    by_page = {}
+    for c in chunks:
+        by_page.setdefault(c["page"], []).append(c)
+    assert all(c["page_image_png"] is None for c in by_page[1])
+    assert all(c["page_image_png"] == png for c in by_page[2])
 
 
 @pytest.mark.asyncio
@@ -210,6 +257,79 @@ async def test_pipeline_payload_carries_ocr_provenance():
     assert point.payload["ocr_confidence"] == 0.87
 
 
+@pytest.mark.asyncio
+async def test_pipeline_saves_page_image_once_per_page(tmp_path, monkeypatch):
+    """Two chunks from one OCR page → one PNG file; ref rides both stores."""
+    from app.ingestion.pipeline import index_parsed_chunks
+
+    monkeypatch.setenv("PAGE_IMAGES_DIR", str(tmp_path / "page_images"))
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+    mock_client = MagicMock()
+    mock_client.upsert = AsyncMock()
+    mock_collection = MagicMock()
+    mock_collection.find_one = AsyncMock(
+        return_value={
+            "_id": ObjectId("64ee39d09c6292376e191983"),
+            "user_id": ObjectId("64ee39d09c6292376e191981"),
+            "version": "1.0",
+            "is_snapshot": False,
+        }
+    )
+    mock_collection.update_one = AsyncMock()
+    mock_collection.insert_many = AsyncMock()
+    mock_embeddings = MagicMock()
+    mock_embeddings.aembed_documents = AsyncMock(return_value=[[0.1] * 384] * 2)
+
+    chunks = [
+        {
+            "text": "scanned chunk one",
+            "page": 2,
+            "chunk_index": 0,
+            "character_offset": 0,
+            "zone": "body",
+            "ocr_used": True,
+            "ocr_confidence": 0.87,
+            "page_image_png": png,
+        },
+        {
+            "text": "scanned chunk two",
+            "page": 2,
+            "chunk_index": 1,
+            "character_offset": 100,
+            "zone": "body",
+            "ocr_used": True,
+            "ocr_confidence": 0.87,
+            "page_image_png": png,
+        },
+    ]
+    with (
+        patch("app.ingestion.pipeline.init_kb_collection", AsyncMock()),
+        patch("app.ingestion.pipeline.get_embedding_model", return_value=mock_embeddings),
+        patch("app.ingestion.pipeline.get_collection", return_value=mock_collection),
+        patch("app.ingestion.pipeline.get_qdrant_client", AsyncMock(return_value=mock_client)),
+    ):
+        await index_parsed_chunks(
+            doc_id_str="64ee39d09c6292376e191983",
+            kb_id_str="64ee39d09c6292376e191982",
+            chunks=chunks,
+        )
+
+    saved = list((tmp_path / "page_images").rglob("*.png"))
+    assert len(saved) == 1
+    assert saved[0].read_bytes() == png
+    expected_ref = os.path.join("64ee39d09c6292376e191982", "64ee39d09c6292376e191983", "p2.png")
+    mongo_docs = mock_collection.insert_many.call_args.args[0]
+    assert {d["page_image_ref"] for d in mongo_docs} == {expected_ref}
+    for d in mongo_docs:
+        assert "page_image_png" not in d  # bytes never leak into stores
+        assert d["document_version"] == "1.0"
+        assert d["is_snapshot"] is False
+    points = mock_client.upsert.call_args.kwargs["points"]
+    assert points[0].payload["page_image_ref"] == mongo_docs[0]["page_image_ref"]
+    assert points[0].payload["document_version"] == "1.0"
+    assert "page_image_png" not in points[0].payload
+
+
 # ── Config defaults ──────────────────────────────────────────────────────────
 
 
@@ -221,4 +341,6 @@ def test_ocr_config_defaults():
     assert cfg.ocr_min_native_chars == 50
     assert cfg.ocr_dpi == 300
     assert cfg.ocr_min_confidence == 0.5
+    assert cfg.ocr_store_page_images is True
     assert cfg.as_snapshot()["ocr_enabled"] is True
+    assert cfg.as_snapshot()["ocr_store_page_images"] is True

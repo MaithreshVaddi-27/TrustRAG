@@ -4,6 +4,7 @@ TRUSTRAG — Authentication business logic service.
 
 from __future__ import annotations
 
+import time as _time
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -11,6 +12,7 @@ from typing import Any
 from pymongo.errors import DuplicateKeyError
 
 from app.api.v1.schemas.auth import UserRegister, UserResponse
+from app.core.config import get_settings
 from app.core.exceptions import AuthenticationError, ConflictError
 from app.core.security import (
     create_access_token,
@@ -62,14 +64,45 @@ async def register_user(schema: UserRegister) -> UserResponse:
         ) from exc
 
 
+# ─── Login lockout (in-memory; per-process) ─────────────────────────────────
+
+_FAILED_LOGINS: dict[str, list[float]] = {}  # email -> list of epoch seconds
+
+
+def _is_locked_out(email: str) -> bool:
+    settings = get_settings()
+    now = _time.monotonic()
+    window = settings.login_lockout_seconds
+    attempts = _FAILED_LOGINS.get(email, [])
+    # prune old entries
+    attempts = [t for t in attempts if now - t < window]
+    _FAILED_LOGINS[email] = attempts
+    return len(attempts) >= settings.login_max_attempts
+
+
+def _record_failed_login(email: str) -> None:
+    _FAILED_LOGINS.setdefault(email, []).append(_time.monotonic())
+
+
+def _clear_failed_logins(email: str) -> None:
+    _FAILED_LOGINS.pop(email, None)
+
+
 async def authenticate_user(email: str, password: str) -> tuple[str, UserResponse]:
     """
     Verify login credentials and generate access token.
 
-    Raises AuthenticationError on bad credentials.
+    Raises AuthenticationError on bad credentials or lockout.
     """
-    users_coll = get_collection(Collections.USERS)
     email_clean = email.strip().lower()
+
+    if _is_locked_out(email_clean):
+        raise AuthenticationError(
+            "Too many failed attempts",
+            detail="Account temporarily locked. Try again later.",
+        )
+
+    users_coll = get_collection(Collections.USERS)
 
     user = await users_coll.find_one({"email": email_clean})
     if not user:
@@ -78,14 +111,17 @@ async def authenticate_user(email: str, password: str) -> tuple[str, UserRespons
         # A malformed dummy hash would make bcrypt fail fast instead of doing the full
         # cost-12 computation, reopening the exact timing side-channel this guards against.
         verify_password(password, "$2b$12$Fhvxd2NUDtaI9Np/Ct9Tn.jCLcGFUPgwN5oMcPCk8PlX36lOm2iFO")
+        _record_failed_login(email_clean)
         raise AuthenticationError("Authentication failed", detail="Invalid email or password")
 
     if not verify_password(password, user["hashed_password"]):
+        _record_failed_login(email_clean)
         raise AuthenticationError("Authentication failed", detail="Invalid email or password")
 
     if not user.get("is_active", True):
         raise AuthenticationError("Authentication failed", detail="Account is deactivated")
 
+    _clear_failed_logins(email_clean)
     # Generate token
     token = create_access_token(str(user["_id"]))
     return token, serialize_user(user)

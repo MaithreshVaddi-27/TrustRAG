@@ -787,3 +787,217 @@ async def test_verification_node_outage_fast_path_skips_verification(mock_execut
     assert res["answer"] == outage_msg
     assert res["verdict_status"] == "FAIL"
     assert res["attempts"] == get_model_config().max_recovery_attempts
+
+
+# ─── Phase 8: Adaptive Recovery Tests ───────────────────────────────────────────
+
+
+def test_select_recovery_strategy_diagnosis_mapping():
+    """Test that diagnosis types map to correct recovery strategies."""
+    from app.agent.graph import _select_recovery_strategy
+    from app.core.config import get_model_config
+
+    cfg = get_model_config()
+
+    # RETRIEVAL_FAILURE → query_rewrite
+    state = {"attempts": 1, "diagnosis_type": "RETRIEVAL_FAILURE"}
+    assert _select_recovery_strategy(state, cfg) == "query_rewrite"
+
+    # RETRIEVAL_OUTAGE → query_rewrite
+    state = {"attempts": 1, "diagnosis_type": "RETRIEVAL_OUTAGE"}
+    assert _select_recovery_strategy(state, cfg) == "query_rewrite"
+
+    # RETRIEVAL_ERROR → query_rewrite
+    state = {"attempts": 1, "diagnosis_type": "RETRIEVAL_ERROR"}
+    assert _select_recovery_strategy(state, cfg) == "query_rewrite"
+
+    # LOW_COVERAGE → re_retrieve
+    state = {"attempts": 1, "diagnosis_type": "LOW_COVERAGE"}
+    assert _select_recovery_strategy(state, cfg) == "re_retrieve"
+
+    # EVIDENCE_CONFLICT → re_retrieve
+    state = {"attempts": 1, "diagnosis_type": "EVIDENCE_CONFLICT"}
+    assert _select_recovery_strategy(state, cfg) == "re_retrieve"
+
+    # VERIFICATION_TIMEOUT → regenerate
+    state = {"attempts": 1, "diagnosis_type": "VERIFICATION_TIMEOUT"}
+    assert _select_recovery_strategy(state, cfg) == "regenerate"
+
+    # VERIFICATION_ERROR → regenerate
+    state = {"attempts": 1, "diagnosis_type": "VERIFICATION_ERROR"}
+    assert _select_recovery_strategy(state, cfg) == "regenerate"
+
+    # GENERATION_ERROR → regenerate
+    state = {"attempts": 1, "diagnosis_type": "GENERATION_ERROR"}
+    assert _select_recovery_strategy(state, cfg) == "regenerate"
+
+
+def test_should_recover_budget_exhaustion_ends_graph():
+    """Budget exhaustion should end the graph (force abstention)."""
+    state = {
+        "verdict_status": "FAIL",
+        "attempts": 0,
+        "diagnosis_type": "RECOVERY_BUDGET_EXHAUSTED",
+    }
+    assert should_recover(state) == "end"
+
+
+def test_should_recover_still_respects_attempts_and_pass():
+    """should_recover still respects PASS verdict and max attempts."""
+    from app.core.config import get_model_config
+
+    max_recovery = get_model_config().max_recovery_attempts
+
+    # PASS ends graph even with budget not exhausted
+    state_pass = {"verdict_status": "PASS", "attempts": 0, "diagnosis_type": None}
+    assert should_recover(state_pass) == "end"
+
+    # Max attempts ends graph
+    state_max = {"verdict_status": "FAIL", "attempts": max_recovery, "diagnosis_type": None}
+    assert should_recover(state_max) == "end"
+
+    # Normal FAIL under attempts ceiling triggers recover
+    state_fail = {"verdict_status": "FAIL", "attempts": max_recovery - 1, "diagnosis_type": None}
+    assert should_recover(state_fail) == "recover"
+
+
+@patch("app.agent.graph.add_trace_event", AsyncMock())
+@patch("app.agent.graph.get_collection")
+@patch("app.agent.graph.get_verification_model")
+@pytest.mark.asyncio
+async def test_recovery_node_budget_enforcement(mock_get_model, mock_collection):
+    """Recovery node should track budget and force abstention when exhausted."""
+    from app.agent.graph import recovery_node
+    from app.core.config import get_model_config
+
+    cfg = get_model_config()
+
+    # Mock LLM for query rewrite
+    mock_model = MagicMock()
+    mock_model.bind.return_value = mock_model
+    mock_model.ainvoke = AsyncMock()
+    mock_model.ainvoke.return_value.content = "expanded query for missing facts"
+    mock_get_model.return_value = mock_model
+
+    # Mock DB
+    mock_db = MagicMock()
+    mock_db.insert_one = AsyncMock()
+    mock_collection.return_value = mock_db
+
+    # Set budget nearly exhausted
+    state = {
+        "analysis_id": "64ee39d09c6292376e191983",
+        "kb_id": "64ee39d09c6292376e191982",
+        "query": "original query",
+        "current_query": "original query",
+        "answer": "ABSTAIN",
+        "chunks": [],
+        "evidence_ids": [],
+        "claims": [],
+        "attempts": 0,
+        "verdict_status": "FAIL",
+        "recovery_strategy": None,
+        "reliability_score": None,
+        "diagnosis_type": "RETRIEVAL_FAILURE",
+        "diagnosis_failures": ["No evidence"],
+        "web_search_enabled": False,
+        "web_search_provider": "both",
+        "llm_provider": None,
+        "llm_model": None,
+        "embedding_provider": None,
+        "embedding_model": None,
+        "cache_hit": False,
+        "node_errors": [],
+        # Budget nearly exhausted - just under the limit
+        "recovery_tokens_used": cfg.max_recovery_tokens - 100,
+        "recovery_latency_ms": cfg.max_recovery_latency_seconds * 1000 - 100,
+    }
+
+    # This attempt should succeed (under budget)
+    res = await recovery_node(state)
+
+    # But next attempt would exceed budget
+    state = {
+        **res,
+        "recovery_tokens_used": cfg.max_recovery_tokens + 100,  # Exceeded
+        "recovery_latency_ms": cfg.max_recovery_latency_seconds * 1000 + 100,  # Exceeded
+    }
+
+    res = await recovery_node(state)
+    assert res["diagnosis_type"] == "RECOVERY_BUDGET_EXHAUSTED"
+    assert res["verdict_status"] == "PASS"  # Forces abstention
+    assert res["attempts"] == cfg.max_recovery_attempts  # Forces end
+
+
+@patch("app.agent.graph.add_trace_event", AsyncMock())
+@patch("app.agent.graph.get_collection")
+@patch("app.agent.graph.get_verification_model")
+@pytest.mark.asyncio
+async def test_recovery_node_diagnosis_based_strategy(mock_get_model, mock_collection):
+    """Recovery node should select strategy based on diagnosis, not round-robin."""
+    from app.agent.graph import recovery_node
+
+    # Mock LLM for query rewrite
+    mock_model = MagicMock()
+    mock_model.bind.return_value = mock_model
+    mock_model.ainvoke = AsyncMock()
+    mock_model.ainvoke.return_value.content = "expanded query"
+    mock_get_model.return_value = mock_model
+
+    # Mock DB
+    mock_db = MagicMock()
+    mock_db.insert_one = AsyncMock()
+    mock_collection.return_value = mock_db
+
+    # Test RETRIEVAL_FAILURE → query_rewrite
+    state = {
+        "analysis_id": "64ee39d09c6292376e191983",
+        "kb_id": "64ee39d09c6292376e191982",
+        "query": "original query",
+        "current_query": "original query",
+        "answer": "ABSTAIN",
+        "chunks": [],
+        "evidence_ids": [],
+        "claims": [],
+        "attempts": 0,
+        "verdict_status": "FAIL",
+        "recovery_strategy": None,
+        "reliability_score": None,
+        "diagnosis_type": "RETRIEVAL_FAILURE",
+        "diagnosis_failures": ["No evidence"],
+        "web_search_enabled": False,
+        "web_search_provider": "both",
+        "llm_provider": None,
+        "llm_model": None,
+        "embedding_provider": None,
+        "embedding_model": None,
+        "cache_hit": False,
+        "node_errors": [],
+        "recovery_tokens_used": 0,
+        "recovery_latency_ms": 0,
+    }
+
+    res = await recovery_node(state)
+    assert res["recovery_strategy"] == "query_rewrite"
+
+    # Test LOW_COVERAGE → re_retrieve
+    state = {
+        **state,
+        "diagnosis_type": "LOW_COVERAGE",
+        "attempts": 1,
+        "recovery_tokens_used": 100,
+        "recovery_latency_ms": 500,
+    }
+    res = await recovery_node(state)
+    assert res["recovery_strategy"] == "re_retrieve"
+
+    # Test VERIFICATION_TIMEOUT → regenerate
+    state = {
+        **state,
+        "diagnosis_type": "VERIFICATION_TIMEOUT",
+        "attempts": 2,
+        "recovery_tokens_used": 200,
+        "recovery_latency_ms": 1000,
+    }
+    res = await recovery_node(state)
+    assert res["recovery_strategy"] == "regenerate"

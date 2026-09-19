@@ -101,8 +101,12 @@ class Settings(BaseSettings):
     # ── Security ──────────────────────────────────────────────────────────────
     jwt_secret: str
     jwt_expiry_minutes: int = 60
+    jwt_issuer: str = "trustrag-api"
+    jwt_audience: str = "trustrag-client"
     cors_origins: str = "http://localhost:5173"
     trusted_proxy_ips: str = ""  # Comma-separated proxy IPs/CIDRs allowed to supply X-Forwarded-For
+    login_max_attempts: int = 5
+    login_lockout_seconds: int = 900  # 15 min
 
     # ── Hugging Face ──────────────────────────────────────────────────────────
     hf_token: str = ""  # Optional read-only token to prevent download rate-limits
@@ -566,6 +570,10 @@ class ModelConfig:
     def ocr_min_confidence(self) -> float:
         return float(self._get("ingestion", "ocr", "min_confidence", required=False) or 0.5)
 
+    @property
+    def ocr_store_page_images(self) -> bool:
+        return bool(self._get("ingestion", "ocr", "store_page_images", required=False) is not False)
+
     # ── Reliability ──────────────────────────────────────────────────────────
     @property
     def minimum_evidence_coverage(self) -> float:
@@ -591,6 +599,26 @@ class ModelConfig:
         if isinstance(val, list) and val:
             return [str(s) for s in val]
         return ["query_rewrite", "re_retrieve"]
+
+    @property
+    def max_recovery_tokens(self) -> int:
+        return int(self._get("recovery", "max_recovery_tokens", required=False) or 2000)
+
+    @property
+    def max_recovery_latency_seconds(self) -> int:
+        return int(self._get("recovery", "max_recovery_latency_seconds", required=False) or 180)
+
+    # ── Observability (Phase 10) ──────────────────────────────────────────
+    @property
+    def metrics_enabled(self) -> bool:
+        return bool(self._get("observability", "metrics_enabled", required=False) is not False)
+
+    @property
+    def pre_request_budget_enforcement(self) -> bool:
+        return bool(
+            self._get("observability", "pre_request_budget_enforcement", required=False)
+            is not False
+        )
 
     # ── Cost controls ─────────────────────────────────────────────────────────
     @property
@@ -634,6 +662,7 @@ class ModelConfig:
             "fusion_top_k": self.fusion_top_k,
             "max_fanout_sub_queries": self.max_fanout_sub_queries,
             "ocr_enabled": self.ocr_enabled,
+            "ocr_store_page_images": self.ocr_store_page_images,
             "sparse_k1": self.sparse_k1,
             "sparse_b": self.sparse_b,
             "sparse_avg_len_tokens": self.sparse_avg_len_tokens,

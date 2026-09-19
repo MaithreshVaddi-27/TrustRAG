@@ -149,48 +149,6 @@ def gen_cache_clear() -> None:
         _GEN_CACHE.clear()
 
 
-# ─── LLM Response Cache (legacy global — kept for backward compat, but gen-only now) ───
-_llm_cache_enabled = False
-
-
-def _enable_llm_cache() -> None:
-    """Set up LangChain in-memory cache for LLM responses (idempotent).
-    NOTE: This global cache is now deprecated in favor of gen_cache_get/set
-    which scopes to generation calls only. Kept for any legacy callers.
-    """
-    global _llm_cache_enabled
-    if _llm_cache_enabled:
-        return
-    try:
-        import langchain
-        from langchain_core.caches import InMemoryCache
-
-        # Use a bounded wrapper instead of raw InMemoryCache
-        class BoundedCache(InMemoryCache):
-            def __init__(self):
-                super().__init__()
-                self._cache = OrderedDict()
-                self._max_size = 512
-
-            def update(self, prompt: str, llm_string: str, return_val: list) -> None:
-                key = f"{prompt}:{llm_string}"
-                with _GEN_CACHE_LOCK:  # Reuse the same lock
-                    if len(self._cache) >= self._max_size:
-                        self._cache.popitem(last=False)
-                    self._cache[key] = return_val
-                    self._cache.move_to_end(key)
-
-            def lookup(self, prompt: str, llm_string: str) -> list | None:
-                key = f"{prompt}:{llm_string}"
-                return self._cache.get(key)
-
-        langchain.llm_cache = BoundedCache()
-        _llm_cache_enabled = True
-        logger.info("LLM response cache enabled (BoundedCache, generation-scoped)")
-    except Exception as exc:
-        logger.debug("Could not enable LLM cache", error=str(exc))
-
-
 # ─── LLM ─────────────────────────────────────────────────────────────────────
 
 

@@ -137,11 +137,15 @@ def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
     """
     Parse a PDF file page-by-page.
     Returns a list of dicts: [{"page": page_num, "text": page_text,
-    "ocr_used": bool, "ocr_confidence": float | None}].
+    "ocr_used": bool, "ocr_confidence": float | None,
+    "page_image_png": bytes | None}].
 
     Pages with sufficient native text keep native extraction. Pages below the
     native-text density threshold fall back to RapidOCR-ONNX (ingestion.ocr.*)
     when enabled. OCR failures fail open to whatever native text exists.
+    OCR pages keep the exact rendered pixels (page_image_png) so the
+    Answer → chunk → page → image provenance chain can be served later;
+    native pages carry None (no render exists, no disk cost).
     """
     from app.core.config import get_model_config
     from app.ingestion import ocr as ocr_module
@@ -152,18 +156,21 @@ def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
             pages = []
             for i, page in enumerate(doc):
                 native_text = page.get_text().strip()
-                text, ocr_used, ocr_confidence = native_text, False, None
+                text, ocr_used, ocr_confidence, page_image_png = native_text, False, None, None
                 if cfg.ocr_enabled and ocr_module.should_ocr_page(
                     native_text, cfg.ocr_min_native_chars
                 ):
                     try:
                         pix = page.get_pixmap(dpi=cfg.ocr_dpi)
+                        png_bytes = pix.tobytes("png")
                         ocr_result = ocr_module.ocr_image_bytes(
-                            pix.tobytes("png"),
+                            png_bytes,
                             min_confidence=cfg.ocr_min_confidence,
                         )
                         text = ocr_result.text.strip()
                         ocr_used, ocr_confidence = True, ocr_result.confidence
+                        # Keep the exact pixels the engine read (Phase 7 chain).
+                        page_image_png = png_bytes
                         logger.info(
                             "OCR fallback used for PDF page",
                             page=i + 1,
@@ -183,6 +190,7 @@ def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
                         "text": text,
                         "ocr_used": ocr_used,
                         "ocr_confidence": ocr_confidence,
+                        "page_image_png": page_image_png,
                     }
                 )
             return pages
@@ -340,6 +348,47 @@ def parse_txt_or_md(stream: BinaryIO) -> list[dict[str, Any]]:
         ) from exc
 
 
+EICAR_TEST_STRING = b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+
+
+def scan_for_malware(stream: BinaryIO) -> None:
+    """Lightweight AV hook: flag EICAR test file; optionally call ClamAV via clamd."""
+    try:
+        pos = stream.tell()
+    except Exception:
+        pos = None
+    try:
+        head = stream.read(8192)
+        if EICAR_TEST_STRING in head:
+            raise IngestionError(
+                "Malware detected (EICAR test signature)",
+                detail="Upload blocked by AV scan",
+            )
+        # Optional: if pyclamd is available and clamd is running, scan there (fail-open)
+        try:
+            import pyclamd  # type: ignore
+
+            stream.seek(0)
+            # pyclamd expects bytes; use scan_stream if daemon reachable (best-effort)
+            try:
+                cd = pyclamd.ClamdNetworkSocket()
+                if cd.ping():
+                    stream.seek(0)
+                    result = cd.scan_stream(stream.read())
+                    if result:
+                        raise IngestionError("Malware detected by AV engine", detail=str(result))
+            except Exception:  # noqa: S110
+                pass  # AV daemon not available — fail-open
+        except ImportError:
+            pass
+    finally:
+        if pos is not None:
+            try:
+                stream.seek(pos)
+            except Exception:  # noqa: S110
+                pass
+
+
 def parse_document(
     filename: str, stream: BinaryIO
 ) -> tuple[list[dict[str, Any]], datetime | None, datetime | None]:
@@ -347,6 +396,8 @@ def parse_document(
     Determine format and parse document bytes across all supported extensions.
     Extracts temporal validity metadata if present.
     """
+    # AV scan before magic-byte validation (malware may masquerade)
+    scan_for_malware(stream)
     # Validate magic bytes before parsing
     validate_magic_bytes(filename, stream)
 

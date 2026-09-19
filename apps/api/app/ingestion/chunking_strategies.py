@@ -71,6 +71,7 @@ class SemanticChunkingStrategy(ChunkingStrategy):
 
             ocr_used = bool(page_obj.get("ocr_used", False))
             ocr_confidence = page_obj.get("ocr_confidence")
+            page_image_png = page_obj.get("page_image_png")
 
             # Detect potential section boundaries (headings, etc.)
             lines = text.split("\n")
@@ -114,6 +115,7 @@ class SemanticChunkingStrategy(ChunkingStrategy):
                             "text": section,
                             "ocr_used": ocr_used,
                             "ocr_confidence": ocr_confidence,
+                            "page_image_png": page_image_png,
                         }
                     ],
                     chunk_size=chunk_size,
@@ -159,6 +161,7 @@ class ProgressiveChunkingStrategy(ChunkingStrategy):
 
             ocr_used = bool(page_obj.get("ocr_used", False))
             ocr_confidence = page_obj.get("ocr_confidence")
+            page_image_png = page_obj.get("page_image_png")
 
             length = len(text)
             start = 0
@@ -181,6 +184,7 @@ class ProgressiveChunkingStrategy(ChunkingStrategy):
                             "zone": zone,
                             "ocr_used": ocr_used,
                             "ocr_confidence": ocr_confidence,
+                            "page_image_png": page_image_png,
                         }
                     )
                     chunk_index += 1
@@ -234,6 +238,7 @@ class LayoutAwareChunkingStrategy(ChunkingStrategy):
 
             ocr_used = bool(page_obj.get("ocr_used", False))
             ocr_confidence = page_obj.get("ocr_confidence")
+            page_image_png = page_obj.get("page_image_png")
 
             # Group consecutive lines into table vs prose blocks, preserving
             # page order. Tables are chunked as whole blocks (never split
@@ -258,6 +263,7 @@ class LayoutAwareChunkingStrategy(ChunkingStrategy):
                         chunk_overlap,
                         ocr_used,
                         ocr_confidence,
+                        page_image_png,
                     )
                     chunks.extend(table_chunks)
                     chunk_index += len(table_chunks)
@@ -269,6 +275,7 @@ class LayoutAwareChunkingStrategy(ChunkingStrategy):
                                 "text": "\n".join(block_lines),
                                 "ocr_used": ocr_used,
                                 "ocr_confidence": ocr_confidence,
+                                "page_image_png": page_image_png,
                             }
                         ],
                         chunk_size=chunk_size,
@@ -291,6 +298,7 @@ class LayoutAwareChunkingStrategy(ChunkingStrategy):
         chunk_overlap: int,
         ocr_used: bool = False,
         ocr_confidence: float | None = None,
+        page_image_png: bytes | None = None,
     ) -> list[dict[str, Any]]:
         """Chunk table-related content while preserving row structure."""
         if not table_rows:
@@ -304,6 +312,7 @@ class LayoutAwareChunkingStrategy(ChunkingStrategy):
                     "text": combined,
                     "ocr_used": ocr_used,
                     "ocr_confidence": ocr_confidence,
+                    "page_image_png": page_image_png,
                 }
             ],
             chunk_size=chunk_size,

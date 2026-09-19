@@ -283,3 +283,100 @@ async def test_delete_document_purges_qdrant_points_by_document_id():
     assert matched_values == [doc_id]
     mock_coll.delete_many.assert_awaited_once()
     mock_coll.delete_one.assert_awaited_once()
+
+
+# ── Page-image lifecycle (Phase 7 residual) ──────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_snapshot_copies_page_images_with_remapped_refs():
+    """Snapshot chunk copies carry page_image_ref pointing at COPIED files."""
+    import os
+
+    from app.services import kb_service
+
+    live_doc_id = "64ee39d09c6292376e191999"
+    live_doc = _kb_doc(KB_ID)
+    img_chunk = {
+        "_id": ObjectId(),
+        "document_id": ObjectId(live_doc_id),
+        "knowledge_base_id": ObjectId(KB_ID),
+        "user_id": ObjectId(USER_ID),
+        "chunk_index": 0,
+        "text": "scanned refund text",
+        "page": 2,
+        "character_offset": 0,
+        "zone": "body",
+        "text_hash": "abc",
+        "ocr_used": True,
+        "ocr_confidence": 0.87,
+        "page_image_ref": os.path.join(KB_ID, live_doc_id, "p2.png"),
+    }
+    live_text_doc = {
+        "_id": img_chunk["document_id"],
+        "user_id": ObjectId(USER_ID),
+        "knowledge_base_id": ObjectId(KB_ID),
+        "filename": "scan.pdf",
+        "file_size": 10,
+        "content_hash": "def",
+        "ingestion_status": "completed",
+    }
+    mock_collection = MagicMock()
+    mock_collection.find_one = AsyncMock(return_value=live_doc)
+    mock_collection.find = MagicMock(
+        side_effect=[_FakeCursor([live_text_doc]), _FakeCursor([img_chunk])]
+    )
+    mock_collection.count_documents = AsyncMock(return_value=1)
+    inserted: list[dict] = []
+
+    async def capture_insert(doc):
+        inserted.append(doc)
+        return MagicMock(inserted_id=ObjectId())
+
+    mock_collection.insert_one = AsyncMock(side_effect=capture_insert)
+    mock_collection.update_one = AsyncMock()
+    mock_qdrant = MagicMock()
+    mock_qdrant.collection_exists = AsyncMock(return_value=False)
+
+    with (
+        patch.object(kb_service, "get_collection", return_value=mock_collection),
+        patch.object(kb_service, "get_qdrant_client", return_value=mock_qdrant),
+        patch("app.ingestion.page_images.copy_page_image", return_value="NEWREF") as mock_copy,
+    ):
+        await kb_service.create_kb_snapshot(KB_ID, USER_ID, version="1.1")
+
+    mock_copy.assert_called_once()
+    chunk_copies = [d for d in inserted if d.get("text") == "scanned refund text"]
+    assert len(chunk_copies) == 1
+    assert chunk_copies[0]["page_image_ref"] == "NEWREF"
+
+
+@pytest.mark.asyncio
+async def test_delete_document_purges_page_images():
+    """Document delete removes its page-image files (no orphan bytes on disk)."""
+    from app.services import kb_service
+
+    doc_id = "64ee39d09c6292376e191999"
+    mock_doc = {
+        "_id": ObjectId(doc_id),
+        "knowledge_base_id": ObjectId(KB_ID),
+        "filename": "scan.pdf",
+    }
+    mock_kb = _kb_doc(KB_ID)
+    mock_coll = MagicMock()
+    mock_coll.find_one = AsyncMock(side_effect=[mock_doc, mock_kb])
+    mock_coll.count_documents = AsyncMock(return_value=1)
+    mock_coll.delete_many = AsyncMock()
+    mock_coll.delete_one = AsyncMock()
+    mock_qdrant = MagicMock()
+    mock_qdrant.collection_exists = AsyncMock(return_value=True)
+    mock_qdrant.delete = AsyncMock()
+
+    with (
+        patch.object(kb_service, "get_collection", return_value=mock_coll),
+        patch.object(kb_service, "get_qdrant_client", return_value=mock_qdrant),
+        patch("app.ingestion.page_images.delete_doc_page_images", return_value=2) as mock_purge,
+    ):
+        await kb_service.delete_document(doc_id, USER_ID)
+
+    mock_purge.assert_called_once_with(KB_ID, doc_id)

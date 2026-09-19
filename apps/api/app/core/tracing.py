@@ -51,8 +51,16 @@ async def tracing_middleware(request: Request, call_next: Callable[[Request], An
         duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
         response.headers["X-Response-Time"] = f"{duration_ms}ms"
 
+        # Phase 10: record Prometheus-style counters (never break the request path)
+        try:
+            from app.core.metrics import record_http_request
+
+            record_http_request(method, path, response.status_code, duration_ms)
+        except Exception:  # noqa: S110
+            pass
+
         # Log trace context for slower requests (> 500ms)
-        if duration_ms > 500 and not path.startswith("/metrics"):
+        if duration_ms > 500 and not path.endswith("/metrics"):
             logger.info(
                 "Slow request trace recorded",
                 method=method,
@@ -71,4 +79,10 @@ async def tracing_middleware(request: Request, call_next: Callable[[Request], An
             duration_ms=duration_ms,
             error=str(exc),
         )
+        try:
+            from app.core.metrics import record_http_request
+
+            record_http_request(method, path, 500, duration_ms)
+        except Exception:  # noqa: S110
+            pass
         raise exc

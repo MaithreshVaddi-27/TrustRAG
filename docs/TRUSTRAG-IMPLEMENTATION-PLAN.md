@@ -1,13 +1,17 @@
 # TRUSTRAG — Implementation Plan (verified against code)
 
-> **Status 2026-09-16:** Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ · OCR fallback ✅ · Phase 3 ✅ ·
-> Phase 4 ✅ · Phase 5 ✅ · Phase 6 ✅ · Phase 8 ✅ (lifecycle: snapshot/rollback routes,
-> empty-snapshot guard, OCR-preserving snapshots). Backend 322/322, ruff clean,
-> `models.yaml` v1.13 (no value change this phase).
-> Claim-level evidence linkage from inline cites deferred to Phase 5 (needs decomposition
-> changes — out of the narrowest layer). Details: `docs/IMPLEMENTATION_STATUS_2026-09-11.md`
-> §13–16. Live baseline + ablations pending operator run. Next: Phase 7 is done (OCR);
-> remaining: provenance/versioning, adaptive recovery, security, prod, final eval.
+> **Status 2026-09-19:** Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ · OCR fallback ✅ · Phase 3 ✅ ·
+> Phase 4 ✅ · Phase 5 ✅ · Phase 6 ✅ · Phase 7 ✅ (trust + provenance: snapshot versioning,
+> `page_image_ref` pipeline, orphan-guard temporal filter, page-image purge hooks) ·
+> Phase 8 ✅ (lifecycle: snapshot/rollback routes, empty-snapshot guard, OCR-preserving snapshots) ·
+> Phase 8-AR ✅ (adaptive recovery: diagnose-then-act, ≤2 attempts, token/latency budgets) ·
+> Phase 9 ✅ (JWT iss/aud, service-token tenant binding, login lockout, upload AV, 24-test red-team) ·
+> Phase 10 ✅ (`/metrics` exposition, pre-request budget enforcement, per-analysis accounting, k6 reads).
+> Backend 381 passed / 8 warnings, ruff check + format clean,
+> `models.yaml` v1.15 (`observability` block).
+> Claim-level evidence linkage from inline cites closed in Phase 5 (union, no decomposition
+> changes needed). Details: `docs/PHASE_AUDIT_2026-09-19.md`.
+> Live baseline + ablations pending operator run. Next: Phase 12 Final Evaluation + Phase 13 Deployment.
 
 > Source: `docs/TRUSTRAG-UPGRADE-PLAN.md` verified file-by-file against the
 > actual repo. No application code was modified to produce this plan.
@@ -15,7 +19,7 @@
 > Rule: one phase at a time, test it, then move on. Prefer fixing existing
 > code over adding new components.
 
-Key config reference: `apps/api/config/models.yaml` (v1.7). All tuning knobs
+Key config reference: `apps/api/config/models.yaml` (v1.15). All tuning knobs
 below live there unless stated otherwise.
 
 ---

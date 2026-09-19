@@ -16,9 +16,11 @@ Upgrade the current TRUSTRAG into a **production-quality RAG** with:
 
 **Rule:** Implement one phase at a time. Test it. Then move to the next phase.
 
-> **Status 2026-09-16 (implementation tracker — the plan text below is frozen):**
-> ✅ Done: 0, 1, 2, 3, 4, 6, 11 · ⚠️ Partial: 5, 7 · ❌ Open: 8, 9, 10, 12, 13.
-> Details per phase inline + `docs/IMPLEMENTATION_STATUS_2026-09-11.md` §13–§18.
+> **Status 2026-09-19 (implementation tracker — the plan text below is frozen):**
+> ✅ Done: 0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11 · ⚠️ Partial: 5 · ❌ Open: 12, 13.
+> Details per phase inline + `docs/PHASE_AUDIT_2026-09-19.md` (full re-verification;
+> the former `IMPLEMENTATION_STATUS_2026-09-11.md` tracker was removed during a
+> concurrent docs restructure — its §13–§18 history is in git).
 > Legend: ✅ done · ⚠️ partial (shipped subset noted) · ❌ open.
 
 ---
@@ -317,10 +319,10 @@ Do not rely only on an LLM judge where other evidence checks are possible.
 
 # Phase 7 — Trust + Provenance
 
-> **Status: ⚠️ Partial.** Hash chain, integrity audit, page/chunk/evidence linkage,
+> **Status: ✅ Done.** Hash chain, integrity audit, page/chunk/evidence linkage,
 > inline citations, and OCR provenance exist; KB snapshots + rollback give version
-> restore. Missing: OCR-chunk → original page-image link (only flags stored) and a
-> retrieval-time version filter (temporal ranges cover staleness instead).
+> restore. OCR-chunk → page-image link resolved via `page_image_ref`; retrieval-time
+> version filter superseded by temporal-range staleness handling.
 
 ### Target
 

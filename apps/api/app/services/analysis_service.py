@@ -244,6 +244,28 @@ async def create_analysis(
                 detail=f"kb_dim={kb.embedding_dim} server_dim={cfg.embedding_dimensionality}",
             )
 
+    # Phase 10: pre-request token budget enforcement (zero LLM calls).
+    # Estimate query cost up front; reject absurd inputs with 422 instead of
+    # burning embedding/retrieval/generation on a request that cannot fit.
+    from app.core.metrics import (
+        estimate_tokens,
+        record_analysis_created,
+        record_budget_rejection,
+        record_tokens_estimated,
+    )
+
+    query_text = schema.query.strip()
+    query_tokens = estimate_tokens(query_text)
+    record_tokens_estimated(query_tokens)
+    if cfg.pre_request_budget_enforcement and query_tokens > cfg.max_input_tokens:
+        record_budget_rejection("max_input_tokens")
+        raise InputValidationError(
+            f"Query too large: estimated {query_tokens} tokens exceeds the "
+            f"per-request budget of {cfg.max_input_tokens} tokens. "
+            "Shorten the query and try again.",
+            detail=f"estimated_tokens={query_tokens} budget={cfg.max_input_tokens}",
+        )
+
     # Resolve EFFECTIVE engine now: the persisted doc (and every downstream
     # consumer: HUD chips, trace, export dossier) must name what will actually
     # run — not the raw nullable request fields (previously stored "" → the UI
@@ -273,6 +295,7 @@ async def create_analysis(
         "user_id": ObjectId(user_id_str),
         "knowledge_base_id": ObjectId(schema.knowledge_base_id),
         "query": schema.query.strip(),
+        "estimated_input_tokens": query_tokens,
         "status": "pending",
         "answer": None,
         "reliability": {"score": None, "status": "PENDING"},
@@ -289,6 +312,7 @@ async def create_analysis(
 
     result = await get_collection(Collections.ANALYSES).insert_one(analysis_doc)
     analysis_doc["_id"] = result.inserted_id
+    record_analysis_created()
 
     # Emit initial started trace event
     await add_trace_event(
@@ -617,6 +641,12 @@ async def run_analysis_pipeline(
                 "analysis.outage",
                 {"message": outage_failures[0]},
             )
+            try:
+                from app.core.metrics import record_analysis_completed as _rec_completed
+
+                _rec_completed("failed")
+            except Exception:  # noqa: S110
+                pass
             return
 
         answer = final_state["answer"]
@@ -666,6 +696,12 @@ async def run_analysis_pipeline(
                 "analysis.abstained",
                 {"message": "Agent reasoning resulted in abstention"},
             )
+            try:
+                from app.core.metrics import record_analysis_completed as _rec_abstained
+
+                _rec_abstained("abstained")
+            except Exception:  # noqa: S110
+                pass
         else:
             # DEGENERATE-STUB GUARD 2026-09-06: when verification fails with zero
             # claims, the stored "answer" can be a context-overflow stub (e.g. the
@@ -727,6 +763,12 @@ async def run_analysis_pipeline(
                     "verdict": verdict.diagnosis_type.value,
                 },
             )
+            try:
+                from app.core.metrics import record_analysis_completed as _rec_done
+
+                _rec_done(stored_status)
+            except Exception:  # noqa: S110
+                pass
 
     except Exception as exc:
         logger.error(
@@ -770,6 +812,12 @@ async def run_analysis_pipeline(
                 }
             },
         )
+        try:
+            from app.core.metrics import record_analysis_completed as _rec_failed
+
+            _rec_failed("failed")
+        except Exception:  # noqa: S110
+            pass
     finally:
         try:
             import asyncio

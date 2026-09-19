@@ -1,7 +1,7 @@
 # TRUSTRAG — Project Roadmap & Remaining Steps
 
-> Last updated: 2026-09-16  
-> Current status: All 12 core phases complete + Post-Launch Quality & Audit Cycle complete (v1 → v4) + ultra-low RAM + ONNX + claims-hardening + fusion passes + RAG quality phases 0–8 (eval harness, BM25+IDF, reranker cap, OCR, chunking, citations, claim retrieval, router, lifecycle). **322 backend tests, 22 frontend Vitest, 2 Playwright E2E, k6 load smoke — 100% pass rate.** Active and upcoming work below.
+> Last updated: 2026-09-19  
+> Current status: All 12 core phases complete + Post-Launch Quality & Audit Cycle complete (v1 → v4) + ultra-low RAM + ONNX + claims-hardening + fusion passes + RAG quality phases 0–8 (eval harness, BM25+IDF, reranker cap, OCR, chunking, citations, claim retrieval, router, lifecycle) + adaptive recovery + security residuals/red-team + production observability. **381 backend tests, 22 frontend Vitest, 2 Playwright E2E, k6 load smoke — 100% pass rate.** Active and upcoming work below.
 
 ---
 
@@ -34,6 +34,7 @@
 | **18** | **Fused Decompose+Verify + CI Repairs (2026-09-12)** | Single-call fused NLI path with two-step fallback (live-evaled 2.0s vs 3.4s); fixed frontend-build (missing install), Docker context + empty-venv boot bug, stale k6 health contract; onnxruntime shipped in image; Bandit B615 revision pin; Trivy SARIF advisory | ✅ COMPLETE |
 | **19** | **Offline-Warning + Probe Hardening (2026-09-12)** | `/models/providers` degrades instead of 500ing; UI warns on failed providers query too; probe retries once and splits refused (down) vs timeout (slow); concurrent provider checks; hermetic verification suite | ✅ COMPLETE |
 | **20** | **RAG Quality Phases 0–8 (2026-09-16)** | Frozen 25-query baseline + metrics harness + live runner (`tests/eval/`, `scripts/run_baseline_eval.py`); BM25-TF + server IDF with collection migration; reranker depth cap, stays default-off; RapidOCR-ONNX per-page fallback with provenance; newline-preserving normalization + wired chunking strategies; inline `[Segment N]` citations + strip post-check; NEUTRAL-only targeted claim retrieval; deterministic router + fan-out; snapshot/rollback routes + empty-snapshot guard — 322 backend tests | ✅ COMPLETE |
+| **21** | **Adaptive Recovery + Security + Observability (2026-09-19)** | Diagnose-then-act recovery (≤2 attempts, token/latency budgets, abstain on exhaustion); JWT `iss`/`aud` + service-token KB/user binding + login lockout + upload AV + 24-test red-team suite; dependency-free `/metrics` exposition + pre-request budget enforcement + per-analysis accounting + k6 read-path coverage; full phase-by-phase re-verification audit (`docs/PHASE_AUDIT_2026-09-19.md`) — **381 backend tests** | ✅ COMPLETE |
 
 ---
 
