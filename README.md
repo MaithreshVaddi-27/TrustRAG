@@ -8,7 +8,7 @@
 [![Ollama](https://img.shields.io/badge/Ollama-Local_Offline-000000?logo=ollama&logoColor=white)](https://ollama.com)
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF_Server-orange)](https://github.com/ggerganov/llama.cpp)
 [![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-Embeddings-005CED?logo=onnx&logoColor=white)](https://onnxruntime.ai)
-[![Tests](https://img.shields.io/badge/Backend%20Tests-381%20Passing-brightgreen)](apps/api/tests)
+[![Tests](https://img.shields.io/badge/Backend%20Tests-383%20Passing-brightgreen)](apps/api/tests)
 [![Tests](https://img.shields.io/badge/Frontend%20Tests-22%20Passing-brightgreen)](apps/web)
 [![E2E](https://img.shields.io/badge/Playwright%20E2E-2%20Passing-brightgreen)](apps/web/e2e)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
@@ -513,7 +513,7 @@ TrustRAG/
 │   │   │   ├── services/           # Business logic: KB, analysis, auth
 │   │   │   └── verification/       # Batch NLI verifier & SHA-256 auditor
 │   │   ├── config/models.yaml      # Model IDs, thresholds, tuning
-│   │   └── tests/                  # 326 tests (all passing: eval, sparse_bm25, qdrant, ocr, reranker, router, citations, claim-retrieval, lifecycle, delete-safety + core suites)
+│   │   └── tests/                  # 383 tests (eval, sparse_bm25, qdrant, ocr, reranker, router, citations, claim-retrieval, lifecycle, delete-safety + core suites)
 │   │
 │   └── web/                        # React 18 + Vite 6 frontend
 │       ├── src/
@@ -616,7 +616,7 @@ Two files own all non-secret config. **Env vars always win** over both.
 
 | File | Owns | Example knobs |
 |---|---|---|
-| `apps/api/config/models.yaml` (`config_version: 1.13`) | Model IDs, thresholds, tuning | LLM/embedding IDs, `retrieval.*` (incl. `sparse_k1/b`, `query_router.*`), `reranker.*` (off by default, `top_k: 20` depth cap), `ingestion.*` (incl. `chunking_strategy`, `ocr.*`), `reliability.*`, `recovery.*`, `cost_controls.*` (incl. `max_claim_retrievals`, `claim_retrieval_top_k`), `verification.*`, `optimization.*` |
+| `apps/api/config/models.yaml` (`config_version: 1.15`) | Model IDs, thresholds, tuning | LLM/embedding IDs, `retrieval.*` (incl. `sparse_k1/b`, `query_router.*`), `reranker.*` (off by default, `top_k: 20` depth cap), `ingestion.*` (incl. `chunking_strategy`, `ocr.*`), `reliability.*`, `recovery.*` (incl. `max_recovery_attempts`, `max_recovery_tokens`, `max_recovery_latency_seconds`), `cost_controls.*` (incl. `max_claim_retrievals`, `claim_retrieval_top_k`), `verification.*`, `optimization.*` |
 | `config/ports.yaml` | Ports + derived base URLs | backend `8000`, frontend `5173`, Ollama `11434`, llama.cpp `8080`, MongoDB `27017`, Qdrant `6335:6333` host:container |
 
 Change a port in `ports.yaml`, then run `python3 scripts/apply_ports.py` (CI enforces with `--check`).
@@ -648,7 +648,7 @@ Change a port in `ports.yaml`, then run `python3 scripts/apply_ports.py` (CI enf
 
 ## Testing
 
-TrustRAG has 381 backend tests, 22 frontend tests, and 2 E2E tests — all passing.
+TrustRAG has 383 backend tests, 22 frontend tests, and 2 E2E tests — all passing.
 
 **Backend (same on all three OSes — run from Git Bash on Windows):**
 ```bash
