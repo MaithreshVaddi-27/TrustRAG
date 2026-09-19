@@ -96,7 +96,7 @@ reranker:
 # ─── Retrieval ────────────────────────────────────────────────────────────────
 retrieval:
   dense_top_k: 20
-  sparse_top_k: 20          # BM25 via Qdrant sparse vectors
+  sparse_top_k: 0          # BM25 via Qdrant sparse vectors
   fusion_method: rrf        # Reciprocal Rank Fusion
   rrf_k: 60                 # RRF constant (standard default)
   fusion_top_k: 20

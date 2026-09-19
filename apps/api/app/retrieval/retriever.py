@@ -98,6 +98,11 @@ async def dense_search(
             that the knowledge base lacks matching content — callers must
             distinguish it from an empty result list.
     """
+    if top_k <= 0:
+        # Zero budget disables the dense leg (single-leg ablations, e.g.
+        # sparse-only via dense_top_k=0). Successful empty — never an outage —
+        # so the surviving leg's results flow through RRF untouched.
+        return []
     try:
         client = await get_qdrant_client()
     except Exception as exc:
@@ -192,6 +197,11 @@ async def sparse_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
             sparse representation (query with no indexable tokens) is genuine
             "no evidence" and returns [] instead.
     """
+    if top_k <= 0:
+        # Zero budget disables the sparse leg (single-leg ablations, e.g.
+        # dense-only via sparse_top_k=0). Qdrant rejects limit=0, so never
+        # send the query: successful empty — never an outage.
+        return []
     try:
         client = await get_qdrant_client()
     except Exception as exc:

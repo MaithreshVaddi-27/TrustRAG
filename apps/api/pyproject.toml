@@ -10,7 +10,6 @@ dependencies = [
     # ── Web framework ────────────────────────────────────────────────────────
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
-    "orjson>=3.10.0",             # Fast JSON serializer (20-30% serialization savings)
     "python-multipart>=0.0.12",   # File uploads
 
     # ── Configuration & settings ─────────────────────────────────────────────
@@ -52,7 +51,6 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",            # Password hashing
     "slowapi>=0.1.9",                    # Rate limiting for FastAPI
     "email-validator>=2.0.0",            # Email format validation for Pydantic EmailStr
-    "hvac>=2.2.0",                       # HashiCorp Vault client (open source)
     "python-dotenv>=1.0.0",              # .env file loading
 
     # ── Observability ────────────────────────────────────────────────────────

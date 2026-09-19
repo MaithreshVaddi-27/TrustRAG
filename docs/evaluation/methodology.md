@@ -102,7 +102,11 @@ To change the set, add `baseline_v2.jsonl` and keep v1 for comparability.
 
 | Date | Config | Dataset | recall@k | hit_rate | MRR | nDCG | coverage | contra | citation | abstain | p50 | p95 |
 |------|--------|---------|----------|----------|-----|------|----------|--------|----------|---------|-----|-----|
-| _pending live run_ | trustrag_baseline | baseline_v1 | — | — | — | — | — | — | n/a¹ | — | — | — |
+| 2026-09-19 | trustrag_full | baseline_v1 | 0.88 | 0.88 | 0.88 | 0.88 | 0.92 | 0.00 | 1.00 | 0.04 | 3624 | 13448 |
+| 2026-09-19 | trustrag_norecovery | baseline_v1 | 0.88 | 0.88 | 0.88 | 0.88 | 0.68 | 0.14 | n/a¹ | 0.16 | 2892 | 9211 |
+| 2026-09-19 | trustrag_denseonly (v2) | baseline_v1 | 0.88 | 0.88 | 0.88 | 0.88 | 0.92 | 0.00 | n/a¹ | 0.00 | 2022 | 11748 |
+| 2026-09-19 | trustrag_rerank | baseline_v1 | 0.88 | 0.88 | 0.88 | 0.88 | 0.92 | 0.00 | 1.00 | 0.04 | 2940 | 11786 |
+| 2026-09-19 | trustrag_denseonly (v1, broken) | baseline_v1 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | n/a¹ | 0.00 | 119 | 167 |
 
 ¹ Citation correctness is an existence check until Phase 5 (every `[Segment N]` names a
 served segment — provenance honesty, not entailment); the runner records `claims_with_evidence_rate` alongside.

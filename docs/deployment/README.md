@@ -296,6 +296,52 @@ three into a single operator re-upload window.
 
 ---
 
+## Pre-Production Checklist & Rollback (Phase 13)
+
+Run through this list before every production deploy. All items verified
+2026-09-19 against `ca10bb6` (381 backend tests green, k6 live gate green).
+
+### Pre-deploy
+- [ ] `pytest tests/ -q` green in `apps/api` (381 passed, 8 warnings)
+- [ ] `ruff check app/ tests/` + `ruff format --check` clean
+- [ ] `uv lock --check` clean (direct deps only: no `hvac`/`orjson` pins)
+- [ ] No DB migration needed (Mongo schemaless + idempotent indexes; Qdrant
+  collections self-migrate on IDF-config mismatch — re-upload KB docs instead)
+- [ ] Kill-switches known (all safe defaults; flip via env or `models.yaml`):
+  | Flag | Off state |
+  |---|---|
+  | `FUSED_DECOMPOSE_VERIFY=0` | Classic decompose→batch verification path |
+  | `pre_request_budget_enforcement: false` | Over-budget queries run instead of 422 |
+  | `retrieval.query_router.enabled: false` | Single hybrid call, no fan-out |
+  | `reranker.enabled: false` (default) | RRF order, no cross-encoder |
+- [ ] Rollback plan ready: KB-level `POST /knowledge-bases/{id}/rollback/{snap}`
+  for bad ingests; `git revert` + redeploy for bad code (no migrations to unwind)
+
+### Deploy verification (staging = local stack, then prod)
+- [ ] `GET /api/v1/health` → `{"status":"ok",...}` (public, Docker HEALTHCHECK)
+- [ ] k6 gate: `API_BASE_URL=<backend> k6 run load-test/smoke.js` → 0% failed,
+  p95 < 300ms (measured 2026-09-19: 7282 reqs, 0.00% failed, p95 9.28ms —
+  includes `/metrics` + `/analyses` read paths)
+- [ ] Key flows live: register → login → create KB → upload → analysis completes
+- [ ] `GET /api/v1/metrics` exposes `trustrag_*` counters (public, no secrets)
+
+### Rollback triggers (decide before deploy, not during)
+- HTTP error rate > 1% sustained 5 min
+- k6/API p95 latency > 300ms sustained
+- `/health` reports `degraded` (Mongo/Qdrant down)
+- Abstention rate spikes vs the `docs/evaluation/methodology.md` baseline row
+- Any 5xx on auth/upload/analyses creation paths
+
+### Observability
+- `GET /api/v1/metrics` — Prometheus exposition (request counts/latency,
+  analyses by status, recovery by strategy, claim verdicts, token estimates,
+  budget rejections). Scrape it; alert on the triggers above.
+- `GET /api/v1/health/detailed` (authed) — services, models, RSS, NLI metrics.
+- Every response carries `X-Response-Time`; requests slower than 500ms are
+  trace-logged server-side.
+
+---
+
 ## Troubleshooting
 
 ### API returns 503 on startup

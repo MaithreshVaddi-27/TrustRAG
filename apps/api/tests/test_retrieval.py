@@ -264,6 +264,40 @@ async def test_sparse_search_returns_empty_when_no_indexable_tokens():
 
 
 @pytest.mark.asyncio
+async def test_sparse_search_top_k_zero_disables_leg_without_qdrant():
+    """top_k<=0 means the sparse leg is disabled: successful empty, never an outage."""
+    with (
+        patch(
+            "app.retrieval.retriever.get_qdrant_client",
+            side_effect=AssertionError("must not touch Qdrant when leg disabled"),
+        ),
+        patch(
+            "app.retrieval.retriever.generate_sparse_vector",
+            side_effect=AssertionError("must not vectorize when leg disabled"),
+        ),
+    ):
+        assert await sparse_search("refund policy", "kb_x", top_k=0) == []
+        assert await sparse_search("refund policy", "kb_x", top_k=-3) == []
+
+
+@pytest.mark.asyncio
+async def test_dense_search_top_k_zero_disables_leg_without_embedding():
+    """top_k<=0 means the dense leg is disabled: successful empty, never an outage."""
+    with (
+        patch(
+            "app.retrieval.retriever.get_qdrant_client",
+            side_effect=AssertionError("must not touch Qdrant when leg disabled"),
+        ),
+        patch(
+            "app.retrieval.retriever.get_embedding_model",
+            side_effect=AssertionError("must not embed when leg disabled"),
+        ),
+    ):
+        assert await dense_search("refund policy", "kb_x", top_k=0) == []
+        assert await dense_search("refund policy", "kb_x", top_k=-1) == []
+
+
+@pytest.mark.asyncio
 async def test_sparse_search_raises_outage_when_query_fails():
     mock_client = SimpleNamespace(query_points=AsyncMock(side_effect=Exception("Qdrant timed out")))
     with (
