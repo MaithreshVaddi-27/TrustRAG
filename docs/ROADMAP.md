@@ -1,7 +1,7 @@
 # TRUSTRAG — Project Roadmap & Remaining Steps
 
 > Last updated: 2026-09-19  
-> Current status: All 12 core phases complete + Post-Launch Quality & Audit Cycle complete (v1 → v4) + ultra-low RAM + ONNX + claims-hardening + fusion passes + RAG quality phases 0–8 (eval harness, BM25+IDF, reranker cap, OCR, chunking, citations, claim retrieval, router, lifecycle) + adaptive recovery + security residuals/red-team + production observability. **381 backend tests, 22 frontend Vitest, 2 Playwright E2E, k6 load smoke — 100% pass rate.** Active and upcoming work below.
+> Current status: All 12 core phases complete + Post-Launch Quality & Audit Cycle complete (v1 → v4) + ultra-low RAM + ONNX + claims-hardening + fusion passes + RAG quality phases 0–8 (eval harness, BM25+IDF, reranker cap, OCR, chunking, citations, claim retrieval, router, lifecycle) + adaptive recovery + security residuals/red-team + production observability. **383 backend tests collected, 22 frontend Vitest, 2 Playwright E2E, k6 load smoke.** Active and upcoming work below.
 
 ---
 
@@ -25,16 +25,16 @@
 | **P-L** | **Multi-Tenant User Data Isolation** | Scoped `user_id` on all records, compound indexes (`claim_user_time`, `evidence_user_time`), cascade deletions | ✅ COMPLETE |
 | **P-L** | **Open Knowledge & JSON-LD Export** | `(Subject, Predicate, Object)` claim triples, schema.org JSON-LD compliance export (`GET /analyses/{id}/export`) | ✅ COMPLETE |
 | **P-L** | **Observability & Health Telemetry** | Full health monitoring (`mongodb` + `qdrant`), interactive diagnostics panel in `SettingsPage.jsx` | ✅ COMPLETE |
-| **P-L** | **Master Quality Audit (52 Findings)** | 52 findings resolved across FE/BE/DB/SEC/PERF, documented in `docs/audits/2026-09-11_unified_senior_audit.md` (canonical; history in git) | ✅ COMPLETE |
+| **P-L** | **Master Quality Audit (52 Findings)** | 52 findings resolved across FE/BE/DB/SEC/PERF (report removed during cleanup; history in git) | ✅ COMPLETE |
 | **13** | **SOTA UI Overhaul & Low-RAM Architecture** | Ultra-premium landing page, 75% Qdrant RAM compression (INT8 on-disk), 0 MB GPU RAM via Gemini 384d MRL, LRU embedding cache, and universal Model Context Protocol (MCP) server | ✅ COMPLETE |
-| **14** | **Master SOTA Multi-Role Production Audit** | Deep Systems, Security, AI/ML, and QA audit suite (79/79 pytest, 0 lint warnings) documented in `docs/audits/` | ✅ COMPLETE |
+| **14** | **Master SOTA Multi-Role Production Audit** | Deep Systems, Security, AI/ML, and QA audit suite (79/79 pytest, 0 lint warnings; report removed during cleanup, history in git) | ✅ COMPLETE |
 | **15** | **Ultra-Low RAM + Security Hardening (2026-09-11)** | psutil RSS guard, batched SQLite writes, bounded LLM registry (4 max), X-Request-ID validation, production CORS lock, split health endpoints, magic-bytes + zip-bomb upload defense, `MALLOC_ARENA_MAX`, Apple-design reduced-motion | ✅ COMPLETE |
 | **16** | **ONNX BGE Runtime — Torch-Free Embeddings (2026-09-11)** | `scripts/export_bge_onnx.py` + ONNX Runtime wrapper (`EMBEDDING_PROVIDER=onnx`), numerical parity verified, ~500–1000 MB RSS savings | ✅ COMPLETE |
 | **17** | **Claims Verification Hardening (2026-09-12)** | Tolerant NLI parsing (VERIFIED→SUPPORTED aliasing, segment coercion, batch bare-int drop) fixing 0/x-supported on good answers; 6 new regression tests; 38-error lint sweep | ✅ COMPLETE |
 | **18** | **Fused Decompose+Verify + CI Repairs (2026-09-12)** | Single-call fused NLI path with two-step fallback (live-evaled 2.0s vs 3.4s); fixed frontend-build (missing install), Docker context + empty-venv boot bug, stale k6 health contract; onnxruntime shipped in image; Bandit B615 revision pin; Trivy SARIF advisory | ✅ COMPLETE |
 | **19** | **Offline-Warning + Probe Hardening (2026-09-12)** | `/models/providers` degrades instead of 500ing; UI warns on failed providers query too; probe retries once and splits refused (down) vs timeout (slow); concurrent provider checks; hermetic verification suite | ✅ COMPLETE |
 | **20** | **RAG Quality Phases 0–8 (2026-09-16)** | Frozen 25-query baseline + metrics harness + live runner (`tests/eval/`, `scripts/run_baseline_eval.py`); BM25-TF + server IDF with collection migration; reranker depth cap, stays default-off; RapidOCR-ONNX per-page fallback with provenance; newline-preserving normalization + wired chunking strategies; inline `[Segment N]` citations + strip post-check; NEUTRAL-only targeted claim retrieval; deterministic router + fan-out; snapshot/rollback routes + empty-snapshot guard — 322 backend tests | ✅ COMPLETE |
-| **21** | **Adaptive Recovery + Security + Observability (2026-09-19)** | Diagnose-then-act recovery (≤2 attempts, token/latency budgets, abstain on exhaustion); JWT `iss`/`aud` + service-token KB/user binding + login lockout + upload AV + 24-test red-team suite; dependency-free `/metrics` exposition + pre-request budget enforcement + per-analysis accounting + k6 read-path coverage; full phase-by-phase re-verification audit (`docs/PHASE_AUDIT_2026-09-19.md`) — **381 backend tests** | ✅ COMPLETE |
+| **21** | **Adaptive Recovery + Security + Observability (2026-09-19)** | Diagnose-then-act recovery (≤2 attempts, token/latency budgets, abstain on exhaustion); JWT `iss`/`aud` + service-token KB/user binding + login lockout + upload AV + 24-test red-team suite; dependency-free `/metrics` exposition + pre-request budget enforcement + per-analysis accounting + k6 read-path coverage; full phase-by-phase re-verification audit (removed during cleanup, history in git) — **381 backend tests** | ✅ COMPLETE |
 
 ---
 
@@ -76,15 +76,16 @@
 - [ ] **Named Qdrant Vectors** — Migrate collection schema to explicit `NamedVectorParams` for multi-vector scenarios.
 
 ### Observability & Monitoring
+- [x] **Prometheus Metrics** — public `GET /api/v1/metrics` (dependency-free exposition: request counts/latency, analyses by status, recovery by strategy, claim verdicts, token estimates, budget rejections)
+- [x] **Token Budget Enforcement** — pre-request `max_input_tokens` estimate rejects over-budget queries with 422 (kill-switchable); per-analysis token accounting
 - [ ] **Structured Log Shipping** — Ship structlog JSON logs to Datadog, Grafana Loki, or Papertrail.
 - [ ] **Application APM** — Integrate Sentry for exception tracking and performance tracing.
-- [ ] **Prometheus Metrics** — Expose `/metrics` endpoint measuring retrieval latency, NLI verification duration, and claim support ratios.
 - [ ] **Gemini Cost Accounting** — Track and aggregate token expenditures per analysis run and experiment.
 
 ### Advanced Security
-- [ ] **Refresh Token Rotation** — Implement 15-minute access tokens with 7-day rolling refresh tokens.
-- [ ] **Account Lockout Policy** — Temporarily lock accounts after 5 consecutive failed login attempts.
-- [ ] **File Content Antivirus Scanning** — Integrate ClamAV scanning on uploaded document streams.
+- [x] **Refresh Token Rotation** — superseded: JTI-based revocation (`revoked_tokens` + logout endpoint) with short-lived access tokens instead of rotating refresh tokens
+- [x] **Account Lockout Policy** — in-memory per-email lockout (5 attempts / 900s, cleared on success)
+- [x] **File Content Antivirus Scanning** — EICAR-signature block + best-effort `pyclamd` (fail-open, no new dependency)
 
 ---
 
@@ -117,4 +118,6 @@
 | **Audit v5 (SOTA)** | 2026-08-31 | Port 8080 default, Model Context Protocol (MCP) live grounding, LangGraph self-healing loop fixes, dual-channel SSE fallback polling, GFM tables via remark-gfm, 86 automated tests | ✅ **100% VERIFIED** |
 | **RAG quality (phases 0–8)** | 2026-09-16 | Eval harness, BM25+IDF, reranker cap, OCR, chunking, citations, claim retrieval, router, lifecycle; 322 backend tests | ✅ **100% VERIFIED** |
 
-> All historical audit passes have been verified and consolidated into the audit files under [`docs/audits/`](docs/audits/).
+> All historical audit passes have been verified and consolidated. The point-in-time
+> audit reports were removed during cleanup; retrieve them from git history
+> (`git log -- docs/audits docs/PHASE_AUDIT_*.md`).

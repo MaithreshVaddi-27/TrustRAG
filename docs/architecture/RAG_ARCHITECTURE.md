@@ -33,14 +33,14 @@ TrustRAG is a trustworthy Retrieval-Augmented Generation system. It goes beyond 
 
 | Layer | Technology |
 |---|---|
-| Web framework | FastAPI (async, Python 3.12) |
+| Web framework | FastAPI (async, Python 3.11+) |
 | Agent orchestration | LangGraph (`StateGraph`) |
-| Vector database | Qdrant (dense + sparse vectors) |
-| Document store | MongoDB |
-| Embeddings | ONNX BGE (local), OpenAI text-embedding-3-small (cloud) |
-| Reranking | CrossEncoder (sentence-transformers) |
-| Generation | Google Gemini, Ollama (local), llama.cpp (local) |
-| Frontend | React 18, Vite 6, Tailwind CSS 4, Framer Motion 12 |
+| Vector database | Qdrant (dense + sparse vectors, 384d) |
+| Document store | MongoDB (async `motor`) |
+| Embeddings | Local-only `BAAI/bge-small-en-v1.5` — PyTorch (`huggingface`) or ONNX Runtime (`onnx`, torch-free) |
+| Reranking | CrossEncoder (sentence-transformers, off by default) |
+| Generation | llama.cpp / Ollama (local, default) · Gemini / NVIDIA NIM (cloud, selectable) |
+| Frontend | React 18, Vite 6, Tailwind CSS 3, `motion` |
 | Container runtime | Docker Compose |
 
 ---
@@ -56,20 +56,22 @@ TrustRAG/
 │   │   │   ├── agent/
 │   │   │   │   ├── graph.py          # LangGraph StateGraph + recovery loop
 │   │   │   │   └── router.py         # Pre-retrieval deterministic query router
+│   │   │   ├── api/v1/               # REST route handlers (auth, KBs, analyses, …)
 │   │   │   ├── retrieval/
 │   │   │   │   ├── retriever.py      # Hybrid dense+sparse search with RRF
-│   │   │   │   └── reranker.py       # CrossEncoder reranking
+│   │   │   │   └── reranker.py       # CrossEncoder reranking (off by default)
 │   │   │   ├── generation/
 │   │   │   │   └── generator.py      # Grounded answer generation + citations
 │   │   │   ├── verification/
 │   │   │   │   ├── verifier.py       # Claim decomposition + NLI verification
 │   │   │   │   ├── verdict.py        # Trust verdict computation
-│   │   │   │   └── integrity.py      # Evidence integrity audit
+│   │   │   │   └── integrity.py      # Evidence integrity audit (SHA-256)
 │   │   │   ├── ingestion/
 │   │   │   │   ├── pipeline.py       # Ingestion coordinator
-│   │   │   │   ├── chunker.py        # Character-based chunking
+│   │   │   │   ├── parser.py         # Multi-format parsing + OCR routing
+│   │   │   │   ├── chunker.py        # Word-snapping windows (512/64)
 │   │   │   │   ├── chunking_strategies.py  # Pluggable chunking strategies
-│   │   │   │   └── sparse_vector.py  # Sparse keyword weight generation
+│   │   │   │   └── sparse_vector.py  # BM25-style sparse weight generation
 │   │   │   ├── core/
 │   │   │   │   ├── config.py         # Settings + models.yaml loader
 │   │   │   │   ├── model_registry.py # Model factory (embedding, verification, LLM)
@@ -79,32 +81,36 @@ TrustRAG/
 │   │   │   │   └── memory.py         # Conversation memory trimming
 │   │   │   ├── db/
 │   │   │   │   ├── qdrant.py         # Qdrant client + collection init
-│   │   │   │   └── mongodb.py        # MongoDB client
+│   │   │   │   └── mongodb.py        # MongoDB client + indexes (`Collections`)
 │   │   │   ├── services/
-│   │   │   │   ├── kb_service.py     # Knowledge base CRUD
-│   │   │   │   └── search_service.py # Search orchestration
-│   │   │   ├── api/                  # REST route handlers
-│   │   │   └── mcp/                  # MCP server + client
-│   │   └── config/
-│   │       └── models.yaml           # Model IDs, thresholds, tuning params
+│   │   │   │   ├── analysis_service.py  # Analysis lifecycle + SSE tickets
+│   │   │   │   ├── kb_service.py     # Knowledge base CRUD + snapshots
+│   │   │   │   ├── auth_service.py   # Auth + JTI revocation
+│   │   │   │   ├── experiment_service.py  # Experiment records
+│   │   │   │   └── search_service.py # Web-search orchestration (SSRF-guarded)
+│   │   │   └── mcp/                  # MCP server (`trustrag_*` tools) + client
+│   │   ├── config/
+│   │   │   └── models.yaml           # Model IDs, thresholds, tuning params (v1.15)
+│   │   ├── tests/                    # Backend suite incl. `tests/eval/` harness
+│   │   └── pyproject.toml
 │   └── web/                          # React frontend
 │       ├── src/
+│       │   ├── pages/                # 12 routes (Landing … Settings, Trace, 404)
 │       │   ├── components/
-│       │   │   ├── Layout/           # AppLayout, Sidebar, Header
-│       │   │   ├── Playground/       # QueryPanel, ResultsPanel
-│       │   │   ├── KnowledgeBase/    # KB upload, management UI
-│       │   │   └── shared/           # Button, Card, Skeleton, etc.
-│       │   ├── pages/                # LandingPage, PlaygroundPage, DashboardPage, KnowledgeBasesPage
-│       │   ├── hooks/                # useQuery, useKnowledgeBase
-│       │   ├── lib/                  # API client, animations, motionConfig
-│       │   └── styles/               # Tailwind config, global CSS
-│       └── index.html
-├── docker-compose.yml
+│       │   │   ├── landing/          # Landing page sections
+│       │   │   └── workbench/        # QueryPanel, ResultsPanel, ClaimInspector, …
+│       │   ├── services/             # Domain services (KB, analysis, auth, …)
+│       │   ├── lib/                  # Central Axios client, labels, motion config
+│       │   ├── store/                # Auth session store
+│       │   ├── hooks/                # `useBackendHealth`, …
+│       │   ├── layouts/              # App / auth layouts
+│       │   └── styles/               # Per-page CSS
+│       ├── e2e/                      # Playwright specs
+│       └── package.json
+├── docker-compose.yml                # api + web + qdrant (MongoDB + LLM on host)
 ├── config/
-│   ├── models.yaml
-│   └── ports.yaml
-└── docs/
-    └── RAG_ARCHITECTURE.md           # This file
+│   └── ports.yaml                    # Canonical port registry
+└── docs/                             # Specs, architecture, security, eval, deploy
 ```
 
 ---
@@ -176,9 +182,9 @@ class AgentState(TypedDict):
 
 Pipeline (`app/ingestion/pipeline.py`) stages:
 
-1. **Parse** — file type handler extracts raw text (PDF, DOCX, TXT, etc.)
-2. **Chunk** — character-based splitting with word-boundary snapping; configurable `chunk_size` (default 1000) and `chunk_overlap` (default 200)
-3. **Embed** — per-chunk: dense vector (ONNX BGE or OpenAI) + sparse keyword weights
+1. **Parse** — file type handler extracts raw text (PDF, DOCX, CSV, JSON, HTML, HTM, TXT, MD; scanned pages via RapidOCR-ONNX fallback)
+2. **Chunk** — word-snapping windows; configurable `chunk_size` (default 512) and `chunk_overlap` (default 64); selectable `chunking_strategy`
+3. **Embed** — per-chunk: dense vector (local BGE, torch or ONNX) + BM25-style sparse weights
 4. **Index** — upsert points to Qdrant collection `kb_{kb_id}`
 5. **Status update** — write `completed` / `failed` to MongoDB document record
 
@@ -188,16 +194,16 @@ A per-event-loop `Semaphore(1)` serializes ingestion jobs so concurrent uploads 
 
 ### Query Processing
 
-Router (`app/agent/router.py`) applies deterministic rules before any retrieval:
+Router (`app/agent/router.py`) applies deterministic regex rules before any retrieval:
 
 | Route | Trigger | Behavior |
 |---|---|---|
-| SIMPLE | < 8 words, no temporal/comparison markers | Single-pass retrieval |
-| TEMPORAL | time-related keywords (e.g. "latest", "2024") | Adds temporal filter to retrieval |
-| COMPARISON | comparison markers ("vs", "compare", "difference") | Fan-out to sub-queries, merge via RRF |
-| COMPLEX | ≥ 8 words, multiple noun phrases | Expanded retrieval with broader search params |
+| SIMPLE | Default; unsplittable input falls back here | Single-pass hybrid retrieval |
+| TEMPORAL | Query names an explicit year (e.g. "in 2025") | Single call + `reference_time` (mid-year) for range filtering |
+| COMPARISON | Markers (`vs`, `versus`, `compare`, "differences between") | Fan-out to sub-queries (≤2× base), merged via RRF |
+| COMPLEX | Multi-`?` input | Deterministic per-question split, capped at `max_sub_queries: 3` |
 
-The router is a pure function — no LLM call — so it adds zero latency.
+The router is a pure function — no LLM call — so it adds zero latency. Partial branch outage degrades to surviving branches.
 
 ---
 
@@ -205,11 +211,11 @@ The router is a pure function — no LLM call — so it adds zero latency.
 
 Retriever (`app/retrieval/retriever.py`):
 
-1. **Dense path** — embed query via ONNX BGE, Qdrant `search` with cosine similarity
-2. **Sparse path** — generate sparse keyword weights, Qdrant `search` with sparse vectors
-3. **Reciprocal Rank Fusion** — merge both ranked lists: `score = Σ 1/(k + rank_i)` with configurable `k` (default 60)
-4. **CrossEncoder reranking** — `sentence-transformers` CrossEncoder on fused candidates; early termination when top candidate confidence ≥ 0.85 and score gap ≥ 0.15
-5. **Adaptive top-k** — returns fewer chunks when confidence is high, up to `max_context_chunks` when confidence is low
+1. **Dense path** — embed query via local BGE, Qdrant `search` with cosine similarity
+2. **Sparse path** — BM25-style client TF saturation + Qdrant server-side IDF (`Modifier.IDF`); `sparse_top_k: 0` disables this leg (current default — set `20` for full hybrid)
+3. **Reciprocal Rank Fusion** — merge ranked lists: `score = Σ 1/(k + rank_i)` with `rrf_k: 60`, `fusion_top_k: 20` enforced
+4. **CrossEncoder reranking** — `sentence-transformers` CrossEncoder on fused candidates (off by default; needs the `local-models` extra); depth cap `top_k: 20`
+5. **Adaptive top-k** — returns fewer chunks when confidence is high, up to `max_context_chunks: 8` when confidence is low
 
 Per-branch timeouts (45 s each) ensure one hung branch degrades gracefully instead of failing the whole query.
 
@@ -261,26 +267,33 @@ Sanitization strips meta-prefixes ("Expanded Search Query:", "Rewritten Query:")
 
 **Qdrant** — vector database
 - Collection per knowledge base: `kb_{kb_id}`
-- Each point: dense vector (384-d or 1536-d) + sparse keyword weights + payload (chunk text, document ID, chunk index)
-- Supports hybrid dense+sparse search natively
+- Each point: dense vector (384d BGE) + sparse weights + payload (chunk text, document ID, chunk index, OCR flags)
+- Hybrid dense+sparse search; INT8 on-disk quantization; pre-IDF collections recreate on init
 
-**MongoDB** — document store
-- Collections: `knowledge_bases`, `documents`, `analyses`, `document_chunks`, `recovery_runs`, `conversation_history`
+**MongoDB** — document store (`Collections` in `app/db/mongodb.py`)
+- Collections: `users`, `knowledge_bases`, `documents`, `document_chunks`, `analyses`, `claims`, `evidence`, `recovery_runs`, `trace_events`, `experiments`, `feedback`, `revoked_tokens`, `stream_tickets`
 - Tracks ingestion status, analysis results, claim verification results, recovery run history
-- Evidence integrity audit compares sha256 hashes of stored vectors against source `document_chunks` records
+- Evidence integrity audit compares SHA-256 hashes of served chunks against source `document_chunks` records
 
 ---
 
 ## Frontend Architecture
 
-React 18 SPA with four main routes:
+React 18 SPA with twelve routes:
 
 | Route | Page | Purpose |
 |---|---|---|
 | `/` | LandingPage | Marketing / product overview |
+| `/login`, `/register` | Auth pages | JWT login / account creation |
+| `/dashboard` | DashboardPage | KBs, recent analyses, reliability at a glance |
 | `/playground` | PlaygroundPage | Query interface + results viewer |
-| `/dashboard` | DashboardPage | Analytics, usage stats |
-| `/knowledge-bases` | KnowledgeBasesPage | Upload documents, manage KBs |
+| `/knowledge-bases` | KnowledgeBasesPage | Upload documents, manage KBs, snapshots |
+| `/evidence` | EvidencePage | Evidence segments + integrity status |
+| `/claims` | ClaimsPage | Verified claims + verdicts |
+| `/conflicts` | ConflictsPage | Source/claim disagreements |
+| `/experiments` | ExperimentsPage | A/B tests and metrics |
+| `/traces/:id` | TracePage | Pipeline timeline, timings, recovery events |
+| `/settings` | SettingsPage | Provider, embedding, account preferences |
 
 Key components:
 - **QueryPanel** — input form with model/provider selector, streaming progress
@@ -290,7 +303,7 @@ Key components:
 - **ExecutionTrace** — timeline of pipeline nodes executed, timings, recovery events
 - **FormattedAnswer** — rendered markdown answer with inline `[Segment N]` citations
 
-Motion system: `framer-motion` with configurable spring physics (`motionConfig.ts`), entrance/exit animations, layout transitions.
+Motion system: `motion` package with shared config (`lib/motionConfig.js`), entrance/exit animations, layout transitions.
 
 ---
 
@@ -305,9 +318,9 @@ Motion system: `framer-motion` with configurable spring physics (`motionConfig.t
 - Semantic cache similarity threshold
 
 **`.env`** — secrets and deployment-specific values:
-- `GEMINI_API_KEY`, `OPENAI_API_KEY`
-- `MONGODB_URI`, `QDRANT_URL`
-- `EMBEDDING_PROVIDER`, `AI_PROVIDER` (override models.yaml defaults)
+- `JWT_SECRET`, `MONGODB_URI`, `QDRANT_URL` (+ `QDRANT_API_KEY` for cloud)
+- `GEMINI_API_KEY` / `NVIDIA_API_KEY` (only for cloud LLM providers), `TAVILY_API_KEY` (else DuckDuckGo)
+- `EMBEDDING_PROVIDER`, `LLM_PROVIDER`, model/endpoint overrides (env wins over `models.yaml`)
 
 **`config/ports.yaml`** — canonical port registry for all services (Qdrant, MongoDB, Ollama, llama.cpp, frontend dev server).
 
@@ -318,11 +331,12 @@ Settings class (`app/core/config.py`) merges `.env` → `models.yaml` into a typ
 ## Deployment
 
 **Docker Compose** (`docker-compose.yml`) — orchestrates:
-- `api` — FastAPI backend (port 8000)
-- `web` — React frontend served by nginx (port 3000)
-- `qdrant` — Qdrant vector database (port 6333)
-- `mongodb` — MongoDB (port 27017)
-- `ollama` — Ollama inference server (port 11434)
+- `api` — FastAPI backend (port 8000, hot-reload bind mount, non-root runtime)
+- `web` — React frontend, Node 22 dev server with HMR (port 5173)
+- `qdrant` — Qdrant vector database (host 6335 → container 6333, persistent volume)
+
+MongoDB and the LLM server (Ollama / llama-server) run on the **host**; the `api`
+container reaches them via `host.docker.internal`.
 
 **Hardware detection** (`app/core/hardware.py`):
 - Auto-detects Apple Silicon Metal, NVIDIA CUDA, or CPU-only

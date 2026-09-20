@@ -1,6 +1,5 @@
 /**
- * Auth service — API calls for auth endpoints.
- * Phase 4 will wire these to the real FastAPI /api/v1/auth/* routes.
+ * Auth service — API calls for the FastAPI /api/v1/auth/* routes.
  */
 
 import api from '@/lib/api'

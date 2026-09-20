@@ -1,6 +1,8 @@
 # TRUSTRAG Documentation Index
 
-Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench. This directory is organized by domain: architecture, security, quality audits, evaluation methodology, and deployment.
+Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench. This directory is organized by domain: product specification, architecture, security, evaluation methodology, and deployment.
+
+> **Note:** Point-in-time audit reports (`docs/audits/`, `PHASE_AUDIT_*.md`) and the stale agent work-plan (`docs/superpowers/`) were removed during cleanup. Their history remains in git (`git log -- docs/audits docs/PHASE_AUDIT_*.md docs/superpowers`).
 
 ---
 
@@ -8,62 +10,70 @@ Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench
 
 ```
 docs/
-├── README.md                  # Master index (this file)
-├── TRUSTRAG_specs.md          # Full product specification
-├── ROADMAP.md                 # Product vision, milestones, phase tracking
-├── PHASE_AUDIT_2026-09-19.md  # Phase-by-phase verification audit (all phases; replaces the removed IMPLEMENTATION_STATUS tracker — history in git)
+├── README.md                        # Master index (this file)
+├── TRUSTRAG_specs.md                # Full product specification (source of truth)
+├── TRUSTRAG-IMPLEMENTATION-PLAN.md  # Phase-by-phase plan, verified against code
+├── TRUSTRAG-UPGRADE-PLAN.md         # Original upgrade plan with per-phase status
+├── ROADMAP.md                       # Product vision, milestones, phase tracking
 ├── architecture/
-│   ├── architecture.md        # End-to-end system design, MCP tools, LangGraph loop, data flow
-│   └── decision-log.md        # ADRs D-01 through D-30 (BM25+IDF, reranker cap, OCR, chunking, citations, claim retrieval, router, lifecycle)
-├── audits/
-│   └── 2026-09-11_unified_senior_audit.md  # Canonical audit (supersedes all prior audits; history in git)
+│   ├── architecture.md              # End-to-end system design, MCP tools, LangGraph loop, data flow
+│   ├── RAG_ARCHITECTURE.md          # RAG pipeline technical reference
+│   └── decision-log.md              # ADRs D-01 through D-33
 ├── security/
-│   ├── security-controls.md   # Auth, anti-IDOR, SSRF, rate limits, headers
-│   └── threat-model.md        # STRIDE threat model and mitigations
+│   ├── security-controls.md         # Auth, anti-IDOR, SSRF, rate limits, headers
+│   └── threat-model.md              # STRIDE threat model and mitigations
 ├── evaluation/
-│   └── methodology.md         # Benchmark dataset and reliability metrics
+│   ├── methodology.md               # Benchmark dataset, metrics, measured snapshot
+│   └── results/                     # Live eval-run JSON (gitignored, local only)
 ├── deployment/
-│   ├── DEPLOYMENT_GUIDE.md    # Cloudflare Pages + Google Cloud Run + MongoDB Atlas
-│   └── README.md              # Docker Compose / local deployment runbook
+│   ├── DEPLOYMENT_GUIDE.md          # Cloud production runbook (Pages + GCR + Atlas)
+│   └── README.md                    # Env vars, local/Compose setup, pre-prod checklist
 ```
 
 ---
 
 ## 📑 Core Sections
 
-### 1. Architecture & Design
-- [**System Architecture (`architecture/architecture.md`)**](architecture/architecture.md): LangGraph agent loop, MCP tools, hybrid retrieval (dense + sparse RRF), claim decomposition → NLI verification → verdict pipeline.
-- [**Decision Log (`architecture/decision-log.md`)**](architecture/decision-log.md): Architectural Decision Records covering technology choices, storage layers, and code quality decisions (D-21 ONNX embeddings, D-22 tolerant NLI parsing, D-23–D-30: BM25+IDF, reranker cap, RapidOCR, chunking, citations, claim retrieval, router, lifecycle).
-- [**Implementation Plan (`TRUSTRAG-IMPLEMENTATION-PLAN.md` + `TRUSTRAG-UPGRADE-PLAN.md`)](TRUSTRAG-IMPLEMENTATION-PLAN.md): phase-by-phase upgrade plan verified against code, with per-phase status (phases 0–4, 6–11 done; 5 partial; 12–13 remaining).
+### 1. Product & Planning
 
-### 2. Audits & Implementation Status
-- [**2026-09-11 — Unified Senior Audit**](audits/2026-09-11_unified_senior_audit.md): **Canonical audit** — multi-role review (frontend, backend, AI/ML, security, optimization, testing) with Apple-design compliance, ultra-low RAM plan, and 2-day vs >2-day upgrade split. Supersedes all prior audits (history preserved in git).
-- [**Phase Audit (`PHASE_AUDIT_2026-09-19.md`)**](PHASE_AUDIT_2026-09-19.md): Manual re-verification of every upgrade-plan phase against code — current test state (backend 381/381, frontend 22/22), Phase 5 partial justification, and remaining work (Phase 12 live runs, Phase 13 e2e). Replaces the removed `IMPLEMENTATION_STATUS_2026-09-11.md` tracker (history in git).
+- [**Specification (`TRUSTRAG_specs.md`)**](TRUSTRAG_specs.md): product definition, engineering principles, stack, architecture, config, ingestion → recovery pipeline, API, testing, acceptance criteria. Read this first before contributing.
+- [**Implementation Plan (`TRUSTRAG-IMPLEMENTATION-PLAN.md`)**](TRUSTRAG-IMPLEMENTATION-PLAN.md): phase order, per-phase files/changes/tests, evaluation gates, production risks — verified file-by-file against the repo.
+- [**Upgrade Plan (`TRUSTRAG-UPGRADE-PLAN.md`)**](TRUSTRAG-UPGRADE-PLAN.md): original goal-by-phase plan with frozen status notes per phase.
+- [**Roadmap (`ROADMAP.md`)**](ROADMAP.md): completed phases, pre-deployment checklist, and prioritized upcoming work.
+
+### 2. Architecture & Design
+
+- [**System Architecture (`architecture/architecture.md`)**](architecture/architecture.md): LangGraph agent loop, MCP tools, hybrid retrieval (dense + sparse RRF), claim decomposition → NLI verification → verdict pipeline.
+- [**RAG Reference (`architecture/RAG_ARCHITECTURE.md`)**](architecture/RAG_ARCHITECTURE.md): pipeline flow, LangGraph state, ingestion/retrieval/generation/verification internals, data stores, frontend architecture.
+- [**Decision Log (`architecture/decision-log.md`)**](architecture/decision-log.md): ADRs covering providers, storage, ports, embeddings (local-only BGE, ONNX), NLI parsing, BM25+IDF, reranker cap, RapidOCR, chunking, citations, claim retrieval, router, lifecycle, recovery, security, observability.
 
 ### 3. Security
-- [**Security Controls (`security/security-controls.md`)**](security/security-controls.md): JWT, bcrypt, anti-IDOR, SSRF guards, rate limiting, defensive headers.
-- [**Threat Model (`security/threat-model.md`)**](security/threat-model.md): STRIDE analysis and countermeasures.
+
+- [**Security Controls (`security/security-controls.md`)**](security/security-controls.md): JWT, bcrypt, JTI revocation, anti-IDOR, SSRF guards, rate limiting, defensive headers, red-team suite.
+- [**Threat Model (`security/threat-model.md`)**](security/threat-model.md): assets, STRIDE threats T-01…T-11, mitigations, residual risks, out-of-scope items.
 
 ### 4. Evaluation
-- [**Methodology (`evaluation/methodology.md`)**](evaluation/methodology.md): datasets and reliability metrics.
+
+- [**Methodology (`evaluation/methodology.md`)**](evaluation/methodology.md): experiment configs, metrics, ablation plan, frozen `baseline_v1` dataset, live run procedure, measured snapshot table.
 
 ### 5. Deployment
-- [**Production Deployment (`deployment/DEPLOYMENT_GUIDE.md`)**](deployment/DEPLOYMENT_GUIDE.md): Cloudflare Pages, GCR, MongoDB Atlas, Qdrant Cloud.
-- [**Local/Compose Deployment (`deployment/README.md`)**](deployment/README.md): Docker Compose and local run instructions.
+
+- [**Production Runbook (`deployment/DEPLOYMENT_GUIDE.md`)**](deployment/DEPLOYMENT_GUIDE.md): deploy order (data plane → API → frontend), Render/Railway/Koyeb/Cloud Run, Cloudflare Pages, CORS, smoke test, production gotchas.
+- [**Deploy Reference (`deployment/README.md`)**](deployment/README.md): environment variables, local/Compose setup, Atlas + Qdrant Cloud setup, health checks, re-indexing, pre-production checklist, troubleshooting.
 
 ---
 
-## Current Stack (2026-09-19, `models.yaml` v1.15)
+## Current Stack (`models.yaml` v1.15, verified against code)
 
-- **LLM**: llama.cpp (local, default: `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`), Ollama (default: `gemma3:1b`), Gemini, NVIDIA NIM — selectable per request.
-- **Embeddings**: BGE-small-en-v1.5 (local, 384d) — HuggingFace/torch by default, **ONNX Runtime** (`EMBEDDING_PROVIDER=onnx`, export via `scripts/export_bge_onnx.py`) for torch-free ultra-low RAM.
-- **Retrieval**: Qdrant (embedded local or cloud) + client BM25-TF sparse with server-side IDF (`Modifier.IDF`) + RRF with enforced `fusion_top_k`; deterministic query router (simple/temporal/comparison/complex, ≤3 fan-out); reranker off by default (`top_k: 20` depth cap; needs the `local-models` extra, absent from Docker).
-- **Ingestion**: newline-preserving normalization; `chunking_strategy` (`sliding_window` default); RapidOCR-ONNX per-page fallback (default on; models download to `~/.onnx` on first scanned page — pre-warm to avoid first-upload stall).
-- **Verification**: Batch NLI + per-claim fallback with tolerant parsing of small-model near-miss JSON (VERIFIED→SUPPORTED aliasing, segment coercion); inline `[Segment N]` citations with invalid-ref strip post-check; targeted NEUTRAL-only claim retrieval (≤3/analysis).
-- **Lifecycle**: KB snapshots + rollback routes (rollback returns a NEW live id; 409 on vector-less snapshots); delete paths purge Mongo + Qdrant.
+- **LLM**: llama.cpp default (`LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`), Ollama (`gemma3:1b`), Gemini, NVIDIA NIM — selectable per request.
+- **Embeddings**: local-only `BAAI/bge-small-en-v1.5` (384d) — `huggingface` (torch, default) or `onnx` (torch-free; export via `scripts/export_bge_onnx.py`).
+- **Retrieval**: dense BGE + BM25-TF sparse with Qdrant server-side IDF + RRF (`rrf_k=60`, `fusion_top_k=20` enforced); `sparse_top_k: 0` disables the sparse leg (current default — set `20` for full hybrid); deterministic router (simple/temporal/comparison/complex, fan-out ≤3); reranker off by default (depth cap `top_k: 20`, needs the `local-models` extra).
+- **Ingestion**: newline-preserving normalization; `chunking_strategy` (`sliding_window` default, 512/64); RapidOCR-ONNX per-page fallback (default on; models download to `~/.onnx` on first scanned page — pre-warm on deploy).
+- **Verification**: fused decompose+verify fast path with classic two-step fallback; tolerant parsing of small-model near-miss JSON; inline `[Segment N]` citations with invalid-ref strip; NEUTRAL-only targeted claim retrieval (≤3/analysis).
+- **Lifecycle**: KB snapshots + rollback (returns a NEW live id; 409 on vector-less snapshots); deletes purge Mongo + Qdrant.
 - **Recovery**: diagnose-then-act (retrieval→rewrite, coverage/conflict→expand, verification/generation→regenerate), ≤2 attempts, token (2000) + latency (180s) budgets, abstain on exhaustion.
-- **Security**: JWT `iss`/`aud` enforced (both token types), service-token KB/user binding (M-2), login lockout (5/900s), EICAR + best-effort clamd upload AV, 24-test red-team suite green.
-- **Observability**: public `GET /api/v1/metrics` (Prometheus exposition, no new deps), pre-request `max_input_tokens` enforcement (422, kill-switchable), per-analysis token/completion accounting; k6 covers `/metrics` + `/analyses` reads.
-- **Local LLM server**: start via `./scripts/start_local_llm.sh` (auto GPU offload + KV budget).
-- **Tests**: backend 381/381, frontend 22/22 + lint + build; ruff check + format clean.
-- **Pending operator runs**: live baseline + ablations (`scripts/run_baseline_eval.py`); pre-IDF KBs need document re-upload; chunking/normalization change needs re-index; OCR models not pre-warmed; k6/Playwright e2e need the live stack.
+- **Security**: JWT `iss`/`aud` on both token types, JTI revocation, service-token KB/user binding, login lockout (5/900s), EICAR + best-effort clamd upload AV, 24-test red-team suite.
+- **Observability**: public `GET /api/v1/metrics` (dependency-free Prometheus exposition), pre-request `max_input_tokens` enforcement (422, kill-switchable), per-analysis token accounting; k6 covers `/metrics` + `/analyses` reads.
+- **Local LLM server**: `./scripts/start_local_llm.sh` (auto GPU offload + KV budget) or `ollama serve`.
+- **Tests**: backend 383 collected, frontend 22 Vitest + 2 Playwright E2E; `ruff check` + `format` clean (verified 2026-09-20).
+- **Pending operator runs**: reranker-threshold calibration from Hybrid-vs-Hybrid+Rerank ablation; pre-IDF KBs need document re-upload; chunking/normalization change needs re-index; OCR models not pre-warmed.

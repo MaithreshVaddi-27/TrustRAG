@@ -129,7 +129,7 @@ If you prefer not linking your GitHub account to Render:
    - `MONGODB_URI` = *(your Atlas connection string)*
    - `QDRANT_URL` = *(your Qdrant cloud URL)*
    - `QDRANT_API_KEY` = *(your Qdrant API key)*
-   - `CORS_ORIGINS` = `http://localhost:5173`
+    - `CORS_ORIGINS` = `https://trustrag.pages.dev` *(your live frontend URL from Step 3; comma-separate to allow more)*
 7. Under **Health Check Path**, enter: `/api/v1/health`.
 8. Click **Create Web Service**.
 
@@ -183,7 +183,7 @@ JWT_SECRET=YOUR_64_CHAR_GENERATED_JWT_SECRET,\
 GEMINI_API_KEY=YOUR_GEMINI_API_KEY,\
 QDRANT_URL=https://xyz-abc.us-east-1.gcp.cloud.qdrant.io:6333,\
 QDRANT_API_KEY=YOUR_QDRANT_API_KEY,\
-CORS_ORIGINS=https://localhost:5173"
+CORS_ORIGINS=https://trustrag.pages.dev"
 ```
 
 ---
@@ -307,6 +307,6 @@ Perform a complete workflow verification on your live Cloudflare Pages URL:
 | :--- | :--- |
 | **Instant Cold Starts** | TRUSTRAG uses local 384d BGE embeddings (`BAAI/bge-small-en-v1.5`) — zero API keys, zero cloud calls. The ~120MB weights download once on first boot; the API warms them in the background so the port binds instantly. Separate one-time downloads: the ONNX path needs its exported file copied in (see `model_cache` volume), and OCR models fetch to `~/.onnx` on the first scanned page — neither is pre-warmed, so ingest one scanned PDF right after deploy. |
 | **MongoDB Atlas Free Tier Sleep** | M0 clusters auto-pause on inactivity. TRUSTRAG's `mongodb.py` includes a 2.5-minute exponential backoff retry loop that waits for Atlas to wake up without crashing the container. |
-| **Cloudflare Pages SPA 404s** | [`apps/web/public/_redirects`](apps/web/public/_redirects) routes `/* /index.html 200`. Direct page refreshes on `/playground`, `/evidence`, etc., will never throw 404 errors. |
+| **Cloudflare Pages SPA 404s** | [`apps/web/public/_redirects`](../../apps/web/public/_redirects) routes `/* /index.html 200`. Direct page refreshes on `/playground`, `/evidence`, etc., will never throw 404 errors. |
 | **Qdrant Authentication** | In `APP_ENV=production`, `QDRANT_API_KEY` is strictly required by Pydantic validator. Ensure your Qdrant Cloud key is set. |
 | **Secrets Management** | For enhanced enterprise security on Google Cloud, use Google Secret Manager: `gcloud secrets create trustrag-jwt-secret --data-file=-` and reference via `--set-secrets`. |

@@ -10,6 +10,7 @@
 |---------|---------------|--------|
 | Password hashing | `passlib[bcrypt]` — bcrypt with work factor ≥ 12 | Phase 4 |
 | JWT authentication | `python-jose[cryptography]` — HS256, configurable expiry, `iss`/`aud` issued + verified on both user and service tokens | RAG Phase 9 ✓ |
+| Token revocation | JTI blocklist in `revoked_tokens` (recorded on logout until `exp`, checked per request) | RAG Phase 9 ✓ |
 | JWT secret strength | Minimum 32-char enforced in Settings validation | Phase 1 ✓ |
 | Protected routes | FastAPI dependency injection (JWT required) | Phase 4 |
 | IDOR prevention | Every DB query includes `user_id` ownership filter | Phase 4 |

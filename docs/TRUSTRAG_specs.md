@@ -203,55 +203,64 @@ TRUSTRAG/
 ├── apps/
 │   ├── web/
 │   │   ├── src/
+│   │   │   ├── pages/          # 12 routes (Landing … Settings, Trace, 404)
 │   │   │   ├── components/
-│   │   │   ├── pages/
-│   │   │   ├── layouts/
-│   │   │   ├── hooks/
-│   │   │   ├── services/
-│   │   │   ├── query/
-│   │   │   ├── store/
-│   │   │   ├── lib/
-│   │   │   └── utils/
+│   │   │   │   ├── landing/    # Landing page sections
+│   │   │   │   └── workbench/  # QueryPanel, ResultsPanel, ClaimInspector, …
+│   │   │   ├── services/       # Domain services (KB, analysis, auth, …)
+│   │   │   ├── lib/            # Central Axios client, labels, motion config
+│   │   │   ├── store/          # Auth session store
+│   │   │   ├── hooks/          # useBackendHealth, …
+│   │   │   ├── layouts/        # App / auth layouts
+│   │   │   └── styles/         # Per-page CSS
 │   │   ├── public/
+│   │   ├── e2e/                # Playwright specs
 │   │   ├── package.json
 │   │   └── vite.config.js
 │   │
 │   └── api/
 │       ├── app/
-│       │   ├── api/
-│       │   ├── core/
-│       │   ├── db/
-│       │   ├── ai/
-│       │   ├── ingestion/
-│       │   ├── retrieval/
-│       │   ├── generation/
-│       │   ├── verification/
-│       │   ├── integrity/
-│       │   ├── reliability/
-│       │   ├── recovery/
-│       │   ├── workflows/
-│       │   ├── evaluation/
+│       │   ├── api/v1/         # REST route handlers
+│       │   ├── core/           # config, security, LLM, embeddings, metrics
+│       │   ├── db/             # MongoDB + Qdrant clients
+│       │   ├── agent/          # LangGraph loop + deterministic router
+│       │   ├── ingestion/      # parsers, chunkers, OCR fallback, pipeline
+│       │   ├── retrieval/      # hybrid retriever + reranker
+│       │   ├── generation/     # grounded answer generator
+│       │   ├── verification/   # decomposition + NLI + integrity audit
+│       │   ├── services/       # analysis, KB, auth, experiment, search
+│       │   ├── mcp/            # MCP server + client
 │       │   └── main.py
 │       ├── config/
 │       │   └── models.yaml
-│       ├── tests/
+│       ├── tests/              # Incl. tests/eval/ harness + frozen dataset
 │       ├── pyproject.toml
 │       └── Dockerfile
 │
 ├── docs/
+│   ├── TRUSTRAG_specs.md       # This file (source of truth)
+│   ├── TRUSTRAG-IMPLEMENTATION-PLAN.md
+│   ├── TRUSTRAG-UPGRADE-PLAN.md
+│   ├── ROADMAP.md
 │   ├── architecture/
 │   │   ├── architecture.md
-│   │   ├── decision-log.md
-│   │   └── diagrams/
+│   │   ├── RAG_ARCHITECTURE.md
+│   │   └── decision-log.md
 │   ├── security/
 │   │   ├── threat-model.md
 │   │   └── security-controls.md
 │   ├── deployment/
+│   │   ├── DEPLOYMENT_GUIDE.md
 │   │   └── README.md
 │   └── evaluation/
-│       └── methodology.md
+│       ├── methodology.md
+│       └── results/            # Live run JSON (gitignored, local only)
 │
+├── config/
+│   └── ports.yaml              # Canonical port registry
 ├── scripts/
+├── load-test/
+│   └── smoke.js
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml
@@ -262,8 +271,7 @@ TRUSTRAG/
 ├── README.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
-├── LICENSE
-└── TRUSTRAG_specs.md
+└── LICENSE
 ```
 
 Avoid folders/packages that have no real responsibility.

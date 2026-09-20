@@ -20,7 +20,7 @@
 ## Prerequisites
 
 - Python 3.11+
-- Node.js 20+
+- Node.js 22+
 - Docker + Docker Compose (for local dev)
 - Git
 

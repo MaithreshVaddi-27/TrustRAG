@@ -1,6 +1,6 @@
 # TRUSTRAG — Threat Model
 
-**Version:** 1.1 | **Phase:** RAG quality 0–8  
+**Version:** 1.2 | **Phase:** RAG quality 0–10 (recovery, security residuals, observability)  
 **Reviewer:** Engineering
 
 > This threat model covers MVP scope. It will be updated as features are added.

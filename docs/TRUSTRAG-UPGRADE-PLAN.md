@@ -16,9 +16,10 @@ Upgrade the current TRUSTRAG into a **production-quality RAG** with:
 
 **Rule:** Implement one phase at a time. Test it. Then move to the next phase.
 
-> **Status 2026-09-19 (implementation tracker — the plan text below is frozen):**
-> ✅ Done: 0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11 · ⚠️ Partial: 5 · ❌ Open: 12, 13.
-> Details per phase inline + `docs/PHASE_AUDIT_2026-09-19.md` (full re-verification;
+> **Status 2026-09-19, refreshed 2026-09-20 (implementation tracker — the plan text below is frozen):**
+> ✅ Done: 0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12 · ⚠️ Partial: 5 · ❌ Open: 13.
+> Details per phase inline + `docs/PHASE_AUDIT_2026-09-19.md` (full re-verification —
+> removed during cleanup, history in git;
 > the former `IMPLEMENTATION_STATUS_2026-09-11.md` tracker was removed during a
 > concurrent docs restructure — its §13–§18 history is in git).
 > Legend: ✅ done · ⚠️ partial (shipped subset noted) · ❌ open.
@@ -362,9 +363,10 @@ Answer → OCR chunk → page → original image/page
 
 # Phase 8 — Adaptive Recovery
 
-> **Status: ❌ Open (next candidate).** Current: blind rewrite → widen → regenerate,
-> single round (`max_recovery_attempts: 1`), no diagnosis, no budget. Target stands:
-> diagnose-then-act mapping, ≤2–3 attempts with token/latency budget, abstain on exhaustion.
+> **Status: ✅ Done (see D-31).** Diagnose-then-act mapping (retrieval→rewrite,
+> coverage/conflict→expand, verification/generation→regenerate), cap raised 1→2
+> with token (2000) + latency (180s) budgets on `AgentState`, exhaustion forces
+> abstain. Per-attempt cost persisted on the recovery run record.
 
 ### Current
 
@@ -396,10 +398,10 @@ Diagnose
 
 # Phase 9 — Security
 
-> **Status: ❌ Open (red-team suite pending).** Base controls already strong (JWT +
-> revocation, SSRF allowlist + DNS pinning, SSE tickets, rate limits, magic-bytes).
-> Open residuals: service-token tenant binding (M-2), JWT aud/iss, login lockout,
-> upload AV, plus the adversarial suites (injection/poison/conflict/stale/OCR-garbled).
+> **Status: ✅ Done (see D-32).** Service-token tenant binding (M-2, 403),
+> JWT `iss`/`aud` on both token types, in-memory login lockout (5/900s),
+> EICAR + best-effort `pyclamd` upload AV, 24-test red-team suite
+> (`tests/test_redteam.py`) green in CI.
 
 ### Test
 
@@ -429,10 +431,10 @@ Test:
 
 # Phase 10 — Speed + Production Engineering
 
-> **Status: ❌ Open.** Per-stage latencies already logged; pooled httpx, batched
-> embeddings, and LRU caches in place. Open: Prometheus `/metrics`, token/cost
-> accounting, pre-request budget enforcement, k6 beyond health/KB reads. Measure
-> first — no premature queues/buses (Redis/Celery only on measured pain).
+> **Status: ✅ Done (see D-33).** Dependency-free Prometheus `/metrics`,
+> per-analysis token accounting, pre-request `max_input_tokens` enforcement
+> (422, kill-switchable), k6 extended with `/metrics` + `/analyses` reads.
+> Redis/Celery and multi-worker SSE bus explicitly deferred until measured pain.
 
 ### Do
 
@@ -504,9 +506,11 @@ Prevent stale evidence from being returned accidentally.
 
 # Phase 12 — Final Evaluation
 
-> **Status: ❌ Open (harness ready, runs pending).** Dataset, metrics, runner, and
-> ablation matrix (`docs/evaluation/methodology.md`) are implemented; all four
-> ablation families await a live stack + operator run. No measured rows exist yet.
+> **Status: ✅ Measured (snapshot live).** Dataset, metrics, runner, and ablation
+> matrix (`docs/evaluation/methodology.md`) implemented and run on 2026-09-19:
+> snapshot rows for full / norecovery / denseonly (v2) / rerank (+ broken-v1
+> control); raw JSON in `docs/evaluation/results/` (gitignored, local only).
+> Remaining: reranker-threshold calibration from Hybrid-vs-Hybrid+Rerank.
 
 Run controlled experiments.
 

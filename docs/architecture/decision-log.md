@@ -34,12 +34,17 @@ Any deviation from the specification must be logged here with rationale.
 ## D-03: MongoDB Atlas (cloud M0) for all metadata and state
 
 **Date:** 2026-08-27  
-**Status:** Accepted  
+**Status:** Superseded — local-first default (Atlas optional, see note)  
 **Phase:** 0
 
 **Decision:** MongoDB Atlas M0 free-tier cluster is the only persistence for application data. Local MongoDB is NOT used — this enforces cloud-first from day one.
 
 **Rationale:** Spec §8. Avoids divergence between local and deployed environments. Atlas M0 is free and sufficient for the MVP.
+
+**Note (2026-09):** superseded in practice — the project is now local-first:
+local MongoDB (`MONGODB_URI=mongodb://localhost:27017`) is the default and
+Docker Compose connects to host MongoDB; Atlas remains supported via
+`mongodb+srv://` URI for production. Same `motor` client and index set either way.
 
 ---
 
@@ -66,6 +71,10 @@ Any deviation from the specification must be logged here with rationale.
 **Rationale:** Spec §20 requires JWT auth but does not specify refresh strategy. Symmetric JWT avoids key management complexity for a portfolio project. Refresh tokens can be added in Phase 12.
 
 **Risk:** Tokens cannot be individually revoked before expiry. Mitigated by short expiry window.
+
+**Note (Phase 9):** partially superseded — JTI-based revocation now exists
+(`revoked_tokens` collection; `POST /api/v1/auth/logout` records the token's
+`jti` until `exp`). Short expiry remains as defense-in-depth.
 
 ---
 

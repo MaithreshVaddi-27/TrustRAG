@@ -1,5 +1,9 @@
 # TRUSTRAG — Evaluation Methodology
 
+> Last measured: 2026-09-19 (snapshot below) · Runner: `scripts/run_baseline_eval.py` ·
+> Dataset: `apps/api/tests/eval/datasets/baseline_v1.jsonl` (frozen) ·
+> Raw run JSON: `docs/evaluation/results/` (gitignored, local only).
+
 ## Principles
 
 1. No fabricated results. All metrics must come from actual system runs.

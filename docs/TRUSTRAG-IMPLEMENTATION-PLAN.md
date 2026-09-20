@@ -7,11 +7,12 @@
 > Phase 8-AR ✅ (adaptive recovery: diagnose-then-act, ≤2 attempts, token/latency budgets) ·
 > Phase 9 ✅ (JWT iss/aud, service-token tenant binding, login lockout, upload AV, 24-test red-team) ·
 > Phase 10 ✅ (`/metrics` exposition, pre-request budget enforcement, per-analysis accounting, k6 reads).
-> Backend 381 passed / 8 warnings, ruff check + format clean,
+> Backend 383 collected, ruff check + format clean,
 > `models.yaml` v1.15 (`observability` block).
 > Claim-level evidence linkage from inline cites closed in Phase 5 (union, no decomposition
-> changes needed). Details: `docs/PHASE_AUDIT_2026-09-19.md`.
-> Live baseline + ablations pending operator run. Next: Phase 12 Final Evaluation + Phase 13 Deployment.
+> changes needed). Details: `docs/PHASE_AUDIT_2026-09-19.md` (removed during cleanup, history in git).
+> Phase 12 measured: live snapshot rows in `docs/evaluation/methodology.md`
+> (full / norecovery / denseonly / rerank, 2026-09-19). Next: Phase 13 Deployment verification.
 
 > Source: `docs/TRUSTRAG-UPGRADE-PLAN.md` verified file-by-file against the
 > actual repo. No application code was modified to produce this plan.
@@ -25,6 +26,11 @@ below live there unless stated otherwise.
 ---
 
 ## 1. Current → target architecture
+
+> **Historical note:** the "Current (as built)" snapshot below describes the
+> pre-implementation state (all phases open). It is preserved as the baseline
+> record — for the shipped system see `docs/architecture/architecture.md` and
+> `docs/architecture/RAG_ARCHITECTURE.md`.
 
 ### Current (as built)
 
