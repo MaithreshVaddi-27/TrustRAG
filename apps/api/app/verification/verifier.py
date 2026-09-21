@@ -17,7 +17,7 @@ from bson import ObjectId
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.config import get_model_config
-from app.core.local_llm import local_cap_kwargs
+from app.core.local_llm import verification_cap_kwargs
 from app.core.logging import get_logger
 from app.core.model_registry import get_verification_model
 from app.db.mongodb import Collections, get_collection
@@ -41,6 +41,37 @@ def get_nli_metrics() -> dict[str, int]:
     """Return NLI verification counters (batch_total_failures)."""
     with _NLI_METRICS_LOCK:
         return {"batch_total_failures": _NLI_BATCH_TOTAL_FAILURES}
+
+
+def _structured_verifier(model_obj: Any, provider: str | None, schema: Any, cap: dict[str, Any]):
+    """Structured-output runnable with per-provider transport.
+
+    Native tool-calling structured output is reliable for local and Gemini
+    models, but NVIDIA unknown-type models have flaky server-side
+    constrained decoding (observed live on muse-glimmer-30b: HTTP 400 on
+    guided_json, partial verdict arrays). Those go through the prompt-based
+    JSON path proven for local models (response_format json_object + the
+    shared repair logic) — verified 3/3 SUPPORTED twice where native
+    returned 2/3 and intermittently 400'd on the same prompt.
+    """
+    norm = (provider or get_model_config().verification_provider or "").strip().lower()
+    if norm not in ("nvidia", "nim"):
+        return model_obj.with_structured_output(schema, **cap)
+
+    from langchain_core.outputs import ChatGeneration, ChatResult
+
+    from app.core.llm_utils import build_structured_output_runnable
+
+    async def _generate_via_ainvoke(messages: Any, **kwargs: Any) -> ChatResult:
+        ai_message = await model_obj.ainvoke(messages, **kwargs)
+        return ChatResult(generations=[ChatGeneration(message=ai_message)])
+
+    return build_structured_output_runnable(
+        generate_fn=_generate_via_ainvoke,
+        schema=schema,
+        json_format_kwargs={"response_format": {"type": "json_object"}},
+        extra_kwargs=dict(cap),
+    )
 
 
 # ─── Meta-claim filter ─────────────────────────────────────────────────────────
@@ -160,6 +191,11 @@ _VERDICT_ALIASES = {
     "ENTAILED": "SUPPORTED",
     "CONFIRMED": "SUPPORTED",
     "VALID": "SUPPORTED",
+    # Verb/noun forms and single-letter shorthands reasoning models emit
+    # (observed live: verdict "S" for a supported claim).
+    "SUPPORT": "SUPPORTED",
+    "SUPPORTS": "SUPPORTED",
+    "S": "SUPPORTED",
     # → CONTRADICTED
     "REFUTED": "CONTRADICTED",
     "FALSE": "CONTRADICTED",
@@ -169,6 +205,10 @@ _VERDICT_ALIASES = {
     "CONTRADICTS": "CONTRADICTED",
     "REFUTES": "CONTRADICTED",
     "DENIED": "CONTRADICTED",
+    "CONTRADICT": "CONTRADICTED",
+    "REFUTE": "CONTRADICTED",
+    "DISPROVE": "CONTRADICTED",
+    "C": "CONTRADICTED",
     # → NEUTRAL
     "UNCERTAIN": "NEUTRAL",
     "UNKNOWN": "NEUTRAL",
@@ -178,6 +218,7 @@ _VERDICT_ALIASES = {
     "N/A": "NEUTRAL",
     "NA": "NEUTRAL",
     "NONE": "NEUTRAL",
+    "N": "NEUTRAL",
 }
 
 _CANONICAL_VERDICTS = ("SUPPORTED", "CONTRADICTED", "NEUTRAL")
@@ -186,7 +227,10 @@ _CANONICAL_VERDICTS = ("SUPPORTED", "CONTRADICTED", "NEUTRAL")
 def _normalize_verdict_value(value: Any) -> Any:
     """Map verdict aliases / junk to canonical SUPPORTED | CONTRADICTED | NEUTRAL."""
     if isinstance(value, str):
-        upper = value.strip().upper()
+        # Reasoning models append punctuation ("SUPPORTED.") or emit
+        # single-letter shorthands ("S") — strip decoration first so the
+        # canonical/alias lookup sees the bare token.
+        upper = value.strip().upper().rstrip(".:;!,")
         if upper in _CANONICAL_VERDICTS:
             return upper
         mapped = _VERDICT_ALIASES.get(upper)
@@ -572,8 +616,10 @@ async def decompose_answer_to_claims(
         # Local-RAM: ≤15 short claim strings fit in 512 tokens; looping
         # small models hit the cap instead of running to 1024. Truncation
         # falls back to single-claim verification (bounded), never a spiral.
-        cap = local_cap_kwargs(provider or get_model_config().verification_provider, max_tokens=512)
-        structured_llm = model_obj.with_structured_output(ClaimDecomposition, **cap)
+        cap = verification_cap_kwargs(
+            provider or get_model_config().verification_provider, model, max_tokens=512
+        )
+        structured_llm = _structured_verifier(model_obj, provider, ClaimDecomposition, cap)
 
         logger.info("Running answer claim decomposition", answer_len=len(answer))
 
@@ -622,8 +668,10 @@ async def verify_claim_nli(
 
         model_obj = get_verification_model(provider=provider, model=model)
         # Local-RAM: one verdict JSON (~100 tokens) — cap the runaway default.
-        cap = local_cap_kwargs(provider or get_model_config().verification_provider, max_tokens=384)
-        structured_nli = model_obj.with_structured_output(NLIVerdict, **cap)
+        cap = verification_cap_kwargs(
+            provider or get_model_config().verification_provider, model, max_tokens=384
+        )
+        structured_nli = _structured_verifier(model_obj, provider, NLIVerdict, cap)
 
         prompt_str = NLI_PROMPT_TEMPLATE.format(context_str=context_str, claim=claim)
 
@@ -684,8 +732,10 @@ async def batch_verify_claims_nli(
     # Local-RAM: 8 verdicts fit comfortably in 768 tokens; the 1024 default
     # only grows KV cache. (Kept generous — a truncated batch JSON costs a
     # retry plus up to 5 fallback calls, which would dwarf the saving.)
-    cap = local_cap_kwargs(provider or get_model_config().verification_provider, max_tokens=768)
-    structured_batch = model_obj.with_structured_output(BatchNLIVerdict, **cap)
+    cap = verification_cap_kwargs(
+        provider or get_model_config().verification_provider, model, max_tokens=768
+    )
+    structured_batch = _structured_verifier(model_obj, provider, BatchNLIVerdict, cap)
 
     try:
         logger.info("Executing batch NLI verification", claim_count=len(claims))
@@ -744,8 +794,10 @@ async def fused_decompose_verify(
     # Fused output carries claims AND verdicts for up to max_verification_claims
     # items — it needs headroom a single verdict call does not. Truncation
     # degrades to the two-step fallback (bounded), never a spiral.
-    cap = local_cap_kwargs(provider or get_model_config().verification_provider, max_tokens=1024)
-    structured_fused = model_obj.with_structured_output(FusedDecomposeVerify, **cap)
+    cap = verification_cap_kwargs(
+        provider or get_model_config().verification_provider, model, max_tokens=1024
+    )
+    structured_fused = _structured_verifier(model_obj, provider, FusedDecomposeVerify, cap)
 
     try:
         logger.info("Executing fused decompose+verify", answer_len=len(answer))

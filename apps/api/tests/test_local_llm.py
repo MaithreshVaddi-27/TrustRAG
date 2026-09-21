@@ -247,6 +247,39 @@ def test_local_cap_kwargs_only_for_local_providers():
     assert _llm_mod.local_cap_kwargs("", 384) == {}
 
 
+def test_verification_cap_kwargs_reasoning_headroom():
+    """Verification caps: local stays lean, reasoning cloud models get 2x
+    headroom with the provider-correct param name (thinking traces share
+    the completion budget — without this, verdict JSON truncates)."""
+    # Local: identical to local_cap_kwargs (KV-saving, unchanged).
+    assert _llm_mod.verification_cap_kwargs("ollama", "gemma3:1b", 384) == {"max_tokens": 384}
+    assert _llm_mod.verification_cap_kwargs("llama_cpp", "any-model", 768) == {"max_tokens": 768}
+    # Non-reasoning cloud: instance defaults ({}).
+    assert _llm_mod.verification_cap_kwargs("nvidia", "google/gemma-4-31b-it", 384) == {}
+    assert _llm_mod.verification_cap_kwargs("gemini", "gemini-3.5-flash-lite", 384) == {}
+    assert _llm_mod.verification_cap_kwargs("nvidia", None, 384) == {}
+    # Reasoning cloud: 2x with provider-correct names.
+    assert _llm_mod.verification_cap_kwargs("nvidia", "meta/muse-glimmer-30b", 384) == {
+        "max_tokens": 768
+    }
+    assert _llm_mod.verification_cap_kwargs("nvidia", "openai/gpt-oss-20b", 512) == {
+        "max_tokens": 1024
+    }
+    assert _llm_mod.verification_cap_kwargs("gemini", "some-reasoning-model", 384) == {
+        "max_output_tokens": 768
+    }
+
+
+def test_is_reasoning_model_detection():
+    assert _llm_mod.is_reasoning_model("meta/muse-glimmer-30b") is True
+    assert _llm_mod.is_reasoning_model("openai/gpt-oss-20b") is True
+    assert _llm_mod.is_reasoning_model("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning") is True
+    assert _llm_mod.is_reasoning_model("google/gemma-4-31b-it") is False
+    assert _llm_mod.is_reasoning_model("gemma3:1b") is False
+    assert _llm_mod.is_reasoning_model(None) is False
+    assert _llm_mod.is_reasoning_model("") is False
+
+
 # ─── Local-server preflight probe + discovery replace tests ───────────────────
 
 
@@ -440,28 +473,12 @@ def test_discover_mlx_cache_models_filters_non_mlx(monkeypatch, tmp_path):
     )
     path1.mkdir(parents=True)
     path2 = (
-        tmp_path
-        / ".cache"
-        / "huggingface"
-        / "hub"
-        / "models--mlx-community--Qwen3-1.7B-MLX-8bit"
+        tmp_path / ".cache" / "huggingface" / "hub" / "models--mlx-community--Qwen3-1.7B-MLX-8bit"
     )
     path2.mkdir(parents=True)
-    path3 = (
-        tmp_path
-        / ".cache"
-        / "huggingface"
-        / "hub"
-        / "models--bartowski--Model-GGUF"
-    )
+    path3 = tmp_path / ".cache" / "huggingface" / "hub" / "models--bartowski--Model-GGUF"
     path3.mkdir(parents=True)
-    path4 = (
-        tmp_path
-        / ".cache"
-        / "huggingface"
-        / "hub"
-        / "models--BAAI--bge-small-en-v1.5"
-    )
+    path4 = tmp_path / ".cache" / "huggingface" / "hub" / "models--BAAI--bge-small-en-v1.5"
     path4.mkdir(parents=True)
     monkeypatch.setattr(_llm_mod.Path, "home", lambda: tmp_path)
 
@@ -480,9 +497,7 @@ async def test_mlx_connected_lists_only_loaded_model(monkeypatch):
 
     class _API(_FakeHTTPClient):
         async def get(self, url):
-            return _FakeHTTPResponse(
-                200, {"data": [{"id": "mlx-community/Live-Loaded-4bit"}]}
-            )
+            return _FakeHTTPResponse(200, {"data": [{"id": "mlx-community/Live-Loaded-4bit"}]})
 
     monkeypatch.setattr(_llm_mod, "discover_mlx_cache_models", _fake_cache)
     monkeypatch.setattr(_llm_mod.httpx, "AsyncClient", _API)

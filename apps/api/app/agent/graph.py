@@ -1154,15 +1154,17 @@ Never reply empty: if unsure, return the original query with spelling corrected.
 </ORIGINAL_QUERY>
 """
     try:
-        from app.core.local_llm import local_cap_kwargs
+        from app.core.local_llm import verification_cap_kwargs
 
         model = get_verification_model(
             provider=state.get("llm_provider"), model=state.get("llm_model")
         )
         # Local-RAM: a 5-12 word rewrite must not reserve 1024 output
-        # tokens of KV cache. Cloud providers ignore the foreign key.
-        cap = local_cap_kwargs(
+        # tokens of KV cache. Non-reasoning cloud models use instance
+        # defaults; reasoning cloud models get 2x headroom.
+        cap = verification_cap_kwargs(
             state.get("llm_provider") or cfg.verification_provider,
+            state.get("llm_model"),
             max_tokens=128,
         )
         invoker = model.bind(**cap) if cap else model

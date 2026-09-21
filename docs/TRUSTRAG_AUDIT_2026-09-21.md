@@ -52,8 +52,7 @@ reaches a real constructor) → test now mocks `probe_cloud_llm` per the
 
 ## P1 — serious (wrong behavior / crash / race)
 
-### P1-0 Local-only kwargs leaked to Gemini/NVIDIA — `generator.py`
-`generate_grounded_answer` and `compress_context` sent `num_ctx`,
+### P1-0 Local-only kwargs leaked to Gemini/NVIDIA — `generator.py``generate_grounded_answer` and `compress_context` sent `num_ctx`,
 `num_batch`/`n_batch`, `keep_alive` (and `max_tokens`) to every provider.
 Verified against installed `langchain-google-genai 4.3.7` /
 `langchain-nvidia-ai-endpoints 1.4.3` / `langchain-core 1.6.1`: Gemini
@@ -168,6 +167,29 @@ Dead code removed: `apply_temporal_filtering_batched()` alias
 - `python -m compileall` on touched files → OK.
 - Targeted runtime probes: blank-env config, adaptive Top-K branch,
   stop-union, registry reopen, reranker-cache concurrency → pass.
+
+## Refinement pass — cloud reasoning models verify like local ones
+
+Symptom (playground screenshot): NVIDIA muse-glimmer-30b answer grounded
+and cited, yet "Only 1/3 claims supported → 33% FAILED". Reproduced live:
+batch NLI returned 2/3 verdicts with one NEUTRAL on verdict "S".
+
+Root causes + fixes (all provider-agnostic, local behavior unchanged):
+1. Verdict coercion too strict — `_normalize_verdict_value` rejected
+   single letters ("S") and trailing punctuation ("SUPPORTED.") →
+   false NEUTRALs. Added verb forms (SUPPORT/SUPPORTS/CONTRADICT/...),
+   S/C/N shorthands, and punctuation stripping.
+2. Reasoning traces share the completion budget — verification caps
+   (384/512/768/1024) truncate verdict JSON on thinking models. New
+   `verification_cap_kwargs(provider, model, N)`: local identical,
+   non-reasoning cloud unchanged ({}), reasoning cloud 2x with the
+   provider-correct name (max_tokens / max_output_tokens).
+3. Native tool-calling structured output is flaky on NVIDIA
+   unknown-type models (live: HTTP 400 on guided_json, partial arrays).
+   New `_structured_verifier()`: nvidia/nim go through the prompt-based
+   JSON path (response_format json_object + repair); others keep native.
+   Live batch re-run: 3/3 SUPPORTED with correct segments (was 2/3).
+   Suite: 392 passed (2 new unit tests).
 
 ## Follow-ups (not in this pass)
 

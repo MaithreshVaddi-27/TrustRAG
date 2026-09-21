@@ -308,6 +308,43 @@ def local_cap_kwargs(provider: str | None, max_tokens: int) -> dict[str, int]:
     return {}
 
 
+# Model ids whose thinking trace shares the completion budget with the
+# answer (observed live: muse-glimmer-30b spends ~475 tokens reasoning about
+# trivia). Verification caps sized for direct-answer models truncate their
+# verdict JSON → false NEUTRALs → failed reliability checks.
+REASONING_MODEL_KEYWORDS = ("glimmer", "gpt-oss", "reasoning", "deepseek-r1", "r1-")
+
+
+def is_reasoning_model(model: str | None) -> bool:
+    """True when the model id looks like a thinking/reasoning model."""
+    name = (model or "").lower()
+    return any(kw in name for kw in REASONING_MODEL_KEYWORDS)
+
+
+def verification_cap_kwargs(
+    provider: str | None, model: str | None, max_tokens: int
+) -> dict[str, int]:
+    """Task-sized output caps for verification calls on any provider.
+
+    Local providers keep the lean KV-saving caps (identical to
+    local_cap_kwargs). Non-reasoning cloud models keep instance defaults
+    ({} — the registry already sets tight max_output_tokens). Reasoning
+    cloud models get 2x headroom with the provider-correct param name,
+    because their thinking trace consumes the same budget the verdict
+    JSON needs; without it, batch NLI truncates and every claim degrades
+    to NEUTRAL (reliability FAILED on grounded answers).
+    """
+    norm = (provider or "").strip().lower()
+    if norm in LOCAL_LLM_PROVIDERS:
+        return {"max_tokens": int(max_tokens)}
+    if not is_reasoning_model(model):
+        return {}
+    roomy = int(max_tokens) * 2
+    if norm in ("gemini", "google_genai"):
+        return {"max_output_tokens": roomy}
+    return {"max_tokens": roomy}
+
+
 def _convert_messages_to_dict(messages: list[Any]) -> list[dict[str, str]]:
     """Normalize LangChain message objects or tuples into OpenAI/Ollama role dicts."""
     converted: list[dict[str, str]] = []

@@ -521,6 +521,14 @@ def test_nli_verdict_alias_matrix():
     assert _verdict_of("REFUTED") == "CONTRADICTED"
     assert _verdict_of("UNKNOWN") == "NEUTRAL"
     assert _verdict_of("garbage-wobble") == "NEUTRAL"
+    # Reasoning-model shorthand/punctuation (live: verdict "S" on a
+    # supported claim, "SUPPORTED." with trailing period).
+    assert _verdict_of("S") == "SUPPORTED"
+    assert _verdict_of("SUPPORTED.") == "SUPPORTED"
+    assert _verdict_of("SUPPORTS") == "SUPPORTED"
+    assert _verdict_of("C") == "CONTRADICTED"
+    assert _verdict_of("CONTRADICT.") == "CONTRADICTED"
+    assert _verdict_of("N") == "NEUTRAL"
 
 
 def test_nli_verdict_text_segments_coerced_or_dropped():
