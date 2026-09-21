@@ -59,6 +59,8 @@ export function QueryPanel({
       setSelectedModel('granite4.2:3b-q4_K_M')
     } else if (providerKey === 'llama_cpp') {
       setSelectedModel('occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M')
+    } else if (providerKey === 'mlx') {
+      setSelectedModel('mlx-community/Llama-3.2-1B-Instruct-4bit')
     } else if (providerKey === 'gemini') {
       setSelectedModel('gemini-3.5-flash-lite')
     } else if (providerKey === 'nvidia') {
@@ -168,7 +170,7 @@ export function QueryPanel({
             </div>
 
             <AnimatePresence>
-            {(selectedProvider === 'ollama' || selectedProvider === 'llama_cpp') && (providersUnresolved || (activeProviderInfo && !activeProviderInfo.connected)) && (
+            {(selectedProvider === 'ollama' || selectedProvider === 'llama_cpp' || selectedProvider === 'mlx') && (providersUnresolved || (activeProviderInfo && !activeProviderInfo.connected)) && (
               <motion.div
                 role="alert"
                 initial={{ opacity: 0, y: -6 }}
@@ -184,6 +186,8 @@ export function QueryPanel({
                 <p className="mt-1 text-[10px] leading-relaxed text-amber-200/80">
                   {selectedProvider === 'ollama' ? (
                     <>Run <code className="font-mono text-amber-100">ollama serve</code> in a terminal, then refresh.</>
+                  ) : selectedProvider === 'mlx' ? (
+                    <>Run <code className="font-mono text-amber-100">mlx_lm.server --model mlx-community/Llama-3.2-1B-Instruct-4bit</code> in a terminal (Apple Silicon), then refresh.</>
                   ) : (
                     <>Run <code className="font-mono text-amber-100">./scripts/start_local_llm.sh</code> in a terminal, then refresh.</>
                   )}
@@ -249,6 +253,20 @@ export function QueryPanel({
               </motion.button>
               <motion.button
                 type="button"
+                onClick={() => handleProviderChange('mlx')}
+                disabled={loading}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.96, transition: SPRING_SNAPPY }}
+                className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between transition-all duration-150 ease-out ${
+                  selectedProvider === 'mlx'
+                    ? 'bg-orange-600/30 text-orange-200 border border-orange-500/50 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                }`}>
+                <span>MLX</span>
+                <span className="text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-orange-400 font-mono">Mac</span>
+              </motion.button>
+              <motion.button
+                type="button"
                 onClick={() => handleProviderChange('gemini')}
                 disabled={loading}
                 whileHover={{ scale: 1.02 }}
@@ -282,7 +300,7 @@ export function QueryPanel({
                 <span className="font-medium">Model:</span>
                 <span className="flex items-center gap-2">
                   <span className="font-mono text-[10px] text-slate-500">
-                    {selectedProvider === 'ollama' ? ':11434' : (selectedProvider === 'llama_cpp' ? ':8080' : '')}
+                    {selectedProvider === 'ollama' ? ':11434' : ((selectedProvider === 'llama_cpp' || selectedProvider === 'mlx') ? ':8080' : '')}
                   </span>
                   <button
                     type="button"
@@ -397,7 +415,7 @@ export function QueryPanel({
                 </p>
 
                 {/* MCP Tool Grounding - only when web search is enabled */}
-                {(selectedProvider === 'ollama' || selectedProvider === 'llama_cpp') && (
+                {(selectedProvider === 'ollama' || selectedProvider === 'llama_cpp' || selectedProvider === 'mlx') && (
                   <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
                     <div className="flex items-center justify-between text-[11px]">
                       <div className="flex items-center gap-1.5 text-cyan-300 font-medium">

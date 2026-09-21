@@ -84,6 +84,7 @@ def test_snapshot_route_end_to_end_shape(mock_create_indexes, mock_connect, mock
     with (
         patch("app.services.kb_service.get_collection", return_value=mock_collection),
         patch("app.services.kb_service.get_qdrant_client", return_value=mock_qdrant),
+        patch("app.db.qdrant.get_qdrant_client", return_value=mock_qdrant),
     ):
         response = client.post(f"/api/v1/knowledge-bases/{KB_ID}/snapshots")
         assert response.status_code == 201

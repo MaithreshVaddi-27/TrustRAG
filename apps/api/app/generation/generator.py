@@ -7,16 +7,119 @@ abstention rules when context is insufficient.
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
+import tiktoken
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from app.core.config import get_model_config
 from app.core.llm_utils import normalize_llm_content
 from app.core.logging import get_logger
 from app.core.model_registry import get_llm
 
 logger = get_logger(__name__)
+
+# ─── Token Counting Utilities ──────────────────────────────────────────────────
+
+# Global encoder cache to avoid reloading tiktoken encoders
+_ENCODER_CACHE: dict[str, tiktoken.Encoding] = {}
+
+
+def _get_tiktoken_encoder(model_name: str | None = None) -> tiktoken.Encoding:
+    """
+    Get a tiktoken encoder for the given model.
+
+    Falls back to cl100k_base for unknown models (covers GPT-3.5/4, Llama, etc.).
+    """
+    if model_name is None:
+        model_name = "cl100k_base"
+
+    if model_name not in _ENCODER_CACHE:
+        try:
+            _ENCODER_CACHE[model_name] = tiktoken.encoding_for_model(model_name)
+        except KeyError:
+            # Fallback to cl100k_base for models not in tiktoken's registry
+            # This covers Llama, Mistral, Gemma, and most open models
+            _ENCODER_CACHE[model_name] = tiktoken.get_encoding("cl100k_base")
+
+    return _ENCODER_CACHE[model_name]
+
+
+def count_tokens(text: str, model_name: str | None = None) -> int:
+    """Count tokens in text using tiktoken."""
+    encoder = _get_tiktoken_encoder(model_name)
+    return len(encoder.encode(text))
+
+
+def calculate_dynamic_num_ctx(
+    context_str: str,
+    system_prompt: str,
+    query: str,
+    max_output_tokens: int,
+    provider: str | None = None,
+    model: str | None = None,
+    safety_margin: int = 512,
+) -> int:
+    """
+    Calculate dynamic num_ctx based on actual token usage.
+
+    Args:
+        context_str: The formatted context string
+        system_prompt: The system prompt
+        query: The user query
+        max_output_tokens: Maximum tokens for generation
+        provider: LLM provider (ollama, llama_cpp, mlx, gemini, nvidia)
+        model: Specific model name
+        safety_margin: Extra tokens to reserve for overhead
+
+    Returns:
+        Optimal num_ctx value (clamped to provider limits)
+    """
+    cfg = get_model_config()
+
+    # Count actual tokens needed
+    context_tokens = count_tokens(context_str, model)
+    system_tokens = count_tokens(system_prompt, model)
+    query_tokens = count_tokens(query, model)
+
+    total_input_tokens = context_tokens + system_tokens + query_tokens
+    required_ctx = total_input_tokens + max_output_tokens + safety_margin
+
+    # Get provider-specific max context limits
+    provider_limits = {
+        "ollama": cfg.local_llm_num_ctx,  # Default from models.yaml (4096)
+        "llama_cpp": cfg.local_llm_num_ctx,
+        "mlx": cfg.local_llm_num_ctx,
+        "gemini": 1000000,  # Large context window
+        "nvidia": 128000,   # Nemotron context
+    }
+
+    # Get the active provider if not specified
+    if provider is None:
+        provider = cfg.llm_provider
+
+    max_ctx = provider_limits.get(provider.lower(), cfg.local_llm_num_ctx)
+
+    # Clamp to provider max, but ensure minimum for basic functionality
+    optimal_ctx = min(max(required_ctx, 1024), max_ctx)
+
+    logger.debug(
+        "Dynamic num_ctx calculated",
+        context_tokens=context_tokens,
+        system_tokens=system_tokens,
+        query_tokens=query_tokens,
+        max_output_tokens=max_output_tokens,
+        required_ctx=required_ctx,
+        provider_max=max_ctx,
+        optimal_ctx=optimal_ctx,
+        provider=provider,
+        model=model,
+    )
+
+    return optimal_ctx
+
 
 GROUNDING_SYSTEM_PROMPT = """You are a highly reliable question-answering assistant.
 Your task is to answer the user query based on the provided text segments in Context below.
@@ -56,6 +159,126 @@ Strict Constraints:
    from the Context above (1 on up); never invent a segment number. Section
    headings and other non-factual lines need no citation.
 """
+
+
+# ─── Context Compression (Phase 2.4) ───────────────────────────────────────────
+
+# Compression prompt for summarizing context before main generation
+CONTEXT_COMPRESSION_PROMPT = """You are a context compression assistant. Your task is to summarize the provided text segments while preserving ALL factual information relevant to the query.
+
+Query: {query}
+
+Context Segments:
+{context}
+
+Instructions:
+1. Extract and condense ALL information relevant to answering the query.
+2. Remove redundant, boilerplate, or tangential content.
+3. Preserve specific facts, numbers, names, dates, and technical details.
+4. Maintain traceability: reference the original segment numbers [Segment N] for key facts.
+5. Output a compressed version that is 40-60% of the original length.
+6. Do NOT answer the query - only compress the context for downstream use.
+
+Compressed Context:"""
+
+
+async def compress_context(
+    query: str,
+    chunks: list[dict[str, Any]],
+    provider: str | None = None,
+    model: str | None = None,
+    target_reduction: float = 0.5,
+) -> tuple[str, list[int]]:
+    """
+    Compress context using a smaller/faster model before main generation.
+
+    This implements hierarchical summarization:
+    1. Format chunks with segment indices
+    2. Use a fast model to compress while preserving key facts
+    3. Return compressed context with original chunk indices for citation mapping
+
+    Args:
+        query: The user query (used to focus compression)
+        chunks: Evidence chunks from retrieval
+        provider: LLM provider for compression (can use faster/smaller model)
+        model: Specific model for compression
+        target_reduction: Target size reduction ratio (0.5 = 50% size)
+
+    Returns:
+        Tuple of (compressed_context_str, original_chunk_indices)
+    """
+    if not chunks:
+        return "No context segments available.", []
+
+    cfg = get_model_config()
+
+    # Use a fast model for compression if not specified
+    # Default to the same provider but we could use a smaller model
+    compression_provider = provider or cfg.llm_provider
+    compression_model = model or cfg.llm_model_for(compression_provider)
+
+    # Format context with segment indices first
+    context_str, chunk_indices = format_context_with_chunk_indices(chunks)
+
+    # Check if compression is worthwhile (context is large enough)
+    context_tokens = count_tokens(context_str, compression_model)
+    target_tokens = int(context_tokens * target_reduction)
+
+    # If context is already small, skip compression
+    if context_tokens <= 1000:
+        logger.debug("Context small, skipping compression", tokens=context_tokens)
+        return context_str, chunk_indices
+
+    # Build compression prompt
+    compression_prompt = CONTEXT_COMPRESSION_PROMPT.format(
+        query=query,
+        context=context_str,
+    )
+
+    try:
+        # Get a lightweight LLM for compression
+        llm = get_llm(provider=compression_provider, model=compression_model)
+
+        messages = [
+            SystemMessage(content="You are a precise context compression assistant."),
+            HumanMessage(content=compression_prompt),
+        ]
+
+        logger.info(
+            "Compressing context for generation",
+            original_tokens=context_tokens,
+            target_tokens=target_tokens,
+            provider=compression_provider,
+        )
+
+        response = await llm.ainvoke(
+            messages,
+            max_tokens=target_tokens,
+            temperature=0.1,  # Low temperature for faithful compression
+        )
+
+        compressed = normalize_llm_content(response.content)
+        if not compressed:
+            logger.warning("Compression returned empty, using original context")
+            return context_str, chunk_indices
+
+        compressed = compressed.strip()
+        compressed_tokens = count_tokens(compressed, compression_model)
+
+        logger.info(
+            "Context compression completed",
+            original_tokens=context_tokens,
+            compressed_tokens=compressed_tokens,
+            reduction_ratio=round(compressed_tokens / context_tokens, 2),
+        )
+
+        # Return compressed context with ORIGINAL chunk indices
+        # The segment headers in compressed text will reference original segment numbers
+        return compressed, chunk_indices
+
+    except Exception as exc:
+        logger.error("Context compression failed, using original", error=str(exc))
+        return context_str, chunk_indices
 
 
 def strip_stray_abstain(answer: str) -> str:
@@ -315,12 +538,40 @@ async def generate_grounded_answer(
         return "ABSTAIN"
 
     try:
+        # Load config for dynamic context sizing
+        cfg = get_model_config()
+
+        # Determine provider and model if not explicitly provided
+        resolved_provider = provider or cfg.llm_provider
+        resolved_model = model or cfg.llm_model_for(resolved_provider)
+
         # Load primary LLM (cached)
-        llm = get_llm(provider=provider, model=model)
+        llm = get_llm(provider=resolved_provider, model=resolved_model)
 
         # Prepare context text (indexed form: the segment count below is the
         # citation validity range for the post-check after generation)
         context_str, chunk_indices = format_context_with_chunk_indices(chunks)
+
+        # Phase 2.4: Context Compression - compress large contexts before LLM call
+        if cfg.context_compression_enabled:
+            context_str, chunk_indices = await compress_context(
+                query=query,
+                chunks=chunks,
+                provider=resolved_provider,
+                model=resolved_model,
+                target_reduction=cfg.context_compression_target_reduction,
+            )
+
+        # Dynamic context sizing: calculate optimal num_ctx based on actual token counts
+        max_output_tokens = cfg.llm_max_output_tokens
+        dynamic_num_ctx = calculate_dynamic_num_ctx(
+            context_str=context_str,
+            system_prompt=GROUNDING_SYSTEM_PROMPT,
+            query=query,
+            max_output_tokens=max_output_tokens,
+            provider=resolved_provider,
+            model=resolved_model,
+        )
 
         # Build prompt messages
         messages = [
@@ -330,11 +581,21 @@ async def generate_grounded_answer(
 
         logger.info(
             "Invoking LLM for grounded generation",
-            provider=provider or getattr(llm, "_llm_type", "default"),
+            provider=resolved_provider,
+            model=resolved_model,
             chunk_count=len(chunks),
+            dynamic_num_ctx=dynamic_num_ctx,
+            max_output_tokens=max_output_tokens,
         )
 
-        response = await llm.ainvoke(messages)
+        # Pass dynamic num_ctx and other local LLM params via kwargs
+        response = await llm.ainvoke(
+            messages,
+            num_ctx=dynamic_num_ctx,
+            max_tokens=max_output_tokens,
+            n_batch=cfg.local_llm_num_batch,
+            keep_alive=cfg.local_llm_keep_alive,
+        )
 
         # Standardize result (guard: None content must not become "None")
         answer = normalize_llm_content(response.content)

@@ -1,9 +1,10 @@
 """
-TRUSTRAG — Local LLM Client implementations for Ollama and llama.cpp.
+TRUSTRAG — Local LLM Client implementations for Ollama, llama.cpp, and MLX.
 
 Provides first-class LangChain BaseChatModel interfaces with zero native
 compilation dependencies by communicating directly with Ollama's local REST API
-and llama.cpp's OpenAI-compatible server API via async httpx.
+and the OpenAI-compatible server APIs of llama.cpp (llama-server) and Apple
+MLX (mlx_lm.server) via async httpx.
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field
 
+from app.core.concurrency import get_global_semaphore
+from app.core.config import get_model_config
 from app.core.exceptions import ConfigurationError, LLMUnavailableError
 from app.core.logging import get_logger
 
@@ -36,16 +39,16 @@ logger = get_logger(__name__)
 _HTTP_CLIENTS: dict[tuple[str, float, int], httpx.AsyncClient] = {}
 _HTTP_CLIENTS_LOCK = threading.Lock()
 
-# OPT (local-LLM load): local inference servers are serial (llama-server -np 2,
-# Ollama default queue). Without an LLM-level semaphore, 2 concurrent analyses
-# x ~9 sequential calls pile up into timeout cascades. Serialize local
-# generations here; the analysis-level semaphore in analysis_service.py is
-# per-process and too coarse to protect the single inference server.
-_LOCAL_LLM_SEMAPHORE = asyncio.Semaphore(int(os.getenv("LOCAL_LLM_MAX_CONCURRENCY", "1")))
+# Shared global semaphore for local LLM inference.
+# Managed by app.core.concurrency.get_global_semaphore() - hardware-aware
+# (2/4/8 based on RAM) with LOCAL_LLM_MAX_CONCURRENCY env override.
+def _get_local_llm_semaphore() -> asyncio.Semaphore:
+    """Get the global concurrency semaphore for local LLM inference."""
+    return get_global_semaphore()
 
 
 def _shared_http_client(base_url: str, timeout: float) -> httpx.AsyncClient:
-    """Return a per-event-loop, per-endpoint pooled AsyncClient."""
+    """Return a per-event-loop, per-endpoint pooled AsyncClient with connection limits."""
     try:
         loop_id = id(asyncio.get_running_loop())
     except RuntimeError:
@@ -54,7 +57,13 @@ def _shared_http_client(base_url: str, timeout: float) -> httpx.AsyncClient:
     with _HTTP_CLIENTS_LOCK:
         client = _HTTP_CLIENTS.get(key)
         if client is None or client.is_closed:
-            client = httpx.AsyncClient(timeout=timeout)
+            # Connection pooling: keep-alive for local inference servers
+            limits = httpx.Limits(max_keepalive_connections=5, max_connections=10, keepalive_expiry=30.0)
+            client = httpx.AsyncClient(
+                timeout=timeout,
+                limits=limits,
+                follow_redirects=True,
+            )
             _HTTP_CLIENTS[key] = client
         return client
 
@@ -73,12 +82,199 @@ async def close_local_llm_clients() -> None:
             logger.debug("One or more local LLM clients failed to close", errors=errors)
 
 
+# ─── Model Offloading (Phase 4.1) ────────────────────────────────────────────────
+# Auto-unload inactive models from memory to save RAM.
+# Ollama: call /api/ps to check loaded models, then /api/delete to unload unused
+# llama.cpp: auto-unload on idle (keep_alive) or restart server with new model
+
+
+async def unload_ollama_inactive_models(base_url: str, keep_model: str | None = None) -> dict[str, Any]:
+    """
+    Unload inactive models from Ollama to free memory.
+
+    Args:
+        base_url: Ollama base URL
+        keep_model: Model name to keep loaded (won't be unloaded)
+
+    Returns:
+        Dict with unloaded models info
+    """
+    cfg = get_model_config()
+    if not cfg.local_llm_model_unload_enabled:
+        return {"status": "disabled", "unloaded": []}
+
+    endpoint = f"{base_url.rstrip('/')}/api/ps"
+    try:
+        client = _shared_http_client(base_url, 10.0)
+        res = await client.get(endpoint)
+        if not res.is_success:
+            return {"status": "error", "message": f"HTTP {res.status_code}", "unloaded": []}
+
+        data = res.json()
+        loaded_models = data.get("models", [])
+
+        # Find models to unload (not the keep_model)
+        to_unload = []
+        for model_info in loaded_models:
+            model_name = model_info.get("name", "")
+            if model_name and model_name != keep_model:
+                to_unload.append(model_name)
+
+        if not to_unload:
+            return {"status": "no_action_needed", "loaded": [m.get("name") for m in loaded_models], "unloaded": []}
+
+        # Unload each model via /api/delete
+        unloaded = []
+        for model_name in to_unload:
+            try:
+                delete_payload = {"model": model_name}
+                del_res = await client.delete(f"{base_url.rstrip('/')}/api/delete", json=delete_payload)
+                if del_res.is_success:
+                    unloaded.append(model_name)
+                    logger.info("Unloaded inactive Ollama model", model=model_name)
+                else:
+                    logger.warning("Failed to unload Ollama model", model=model_name, status=del_res.status_code)
+            except Exception as exc:
+                logger.warning("Error unloading Ollama model", model=model_name, error=str(exc))
+
+        return {"status": "success", "unloaded": unloaded, "kept": keep_model}
+
+    except Exception as exc:
+        logger.error("Failed to unload Ollama inactive models", error=str(exc))
+        return {"status": "error", "message": str(exc), "unloaded": []}
+
+
+async def unload_llamacpp_inactive_models(base_url: str, keep_model: str | None = None) -> dict[str, Any]:
+    """
+    Unload inactive models from llama.cpp server.
+
+    For llama.cpp, the model is loaded via --model flag at startup.
+    To "unload", we rely on the server's keep_alive mechanism or restart.
+    This function checks if a different model is loaded and returns info.
+
+    Args:
+        base_url: llama.cpp base URL
+        keep_model: Model name to keep loaded (for info purposes)
+
+    Returns:
+        Dict with current model info
+    """
+    cfg = get_model_config()
+    if not cfg.local_llm_model_unload_enabled:
+        return {"status": "disabled", "current_model": None}
+
+    # For llama.cpp, model management is done at server startup.
+    # The server serves one model at a time (the one passed via --model).
+    # We can check which model is currently loaded via /v1/models
+    endpoint = f"{base_url.rstrip('/')}/models"
+    try:
+        client = _shared_http_client(base_url, 10.0)
+        res = await client.get(endpoint)
+        if not res.is_success:
+            return {"status": "error", "message": f"HTTP {res.status_code}", "current_model": None}
+
+        data = res.json()
+        models = data.get("data", [])
+        current_model = models[0].get("id") if models else None
+
+        # llama.cpp doesn't support dynamic unload via API.
+        # User needs to restart llama-server with the desired model.
+        # We just report the current state.
+        return {
+            "status": "info_only",
+            "current_model": current_model,
+            "note": "llama.cpp serves one model at a time. Restart server to change model.",
+            "keep_model": keep_model
+        }
+
+    except Exception as exc:
+        logger.error("Failed to check llama.cpp model status", error=str(exc))
+        return {"status": "error", "message": str(exc), "current_model": None}
+
+
+async def unload_inactive_models_for_provider(
+    provider: str,
+    base_url: str,
+    keep_model: str | None = None
+) -> dict[str, Any]:
+    """
+    Unified function to unload inactive models for a provider.
+
+    Args:
+        provider: Provider name ("ollama", "llama_cpp", "llamacpp", "mlx")
+        base_url: Base URL for the provider
+        keep_model: Model to keep loaded
+
+    Returns:
+        Dict with unload results
+    """
+    norm = (provider or "").strip().lower()
+    if norm == "ollama":
+        return await unload_ollama_inactive_models(base_url, keep_model)
+    elif norm in ("llama_cpp", "llamacpp", "mlx"):
+        return await unload_llamacpp_inactive_models(base_url, keep_model)
+    else:
+        return {"status": "unsupported", "provider": provider, "unloaded": []}
+
+
+# Periodic cleanup task (can be called from a background task)
+_LAST_UNLOAD_CHECK: dict[str, float] = {}
+_UNLOAD_CHECK_LOCK = threading.Lock()
+
+
+async def maybe_unload_inactive_models(provider: str, base_url: str, current_model: str | None = None) -> dict[str, Any] | None:
+    """
+    Check if it's time to unload inactive models and do so if needed.
+    Rate-limited to once per model_unload_timeout period.
+
+    Args:
+        provider: Provider name
+        base_url: Base URL
+        current_model: Currently active model (won't be unloaded)
+
+    Returns:
+        Result dict if unload was attempted, None if skipped
+    """
+    cfg = get_model_config()
+    if not cfg.local_llm_model_unload_enabled:
+        return None
+
+    # Parse timeout (e.g., "5m" -> 300 seconds)
+    timeout_str = cfg.local_llm_model_unload_timeout
+    try:
+        if timeout_str.endswith("s"):
+            timeout_sec = int(timeout_str[:-1])
+        elif timeout_str.endswith("m"):
+            timeout_sec = int(timeout_str[:-1]) * 60
+        elif timeout_str.endswith("h"):
+            timeout_sec = int(timeout_str[:-1]) * 3600
+        else:
+            timeout_sec = 300  # Default 5 minutes
+    except ValueError:
+        timeout_sec = 300
+
+    now = time.time()
+    key = f"{provider}:{base_url}"
+
+    with _UNLOAD_CHECK_LOCK:
+        last_check = _LAST_UNLOAD_CHECK.get(key, 0)
+        if now - last_check < timeout_sec:
+            return None  # Not time yet
+        _LAST_UNLOAD_CHECK[key] = now
+
+    # Time to check - perform unload
+    logger.info("Periodic model unload check", provider=provider, timeout=f"{timeout_sec}s")
+    return await unload_inactive_models_for_provider(provider, base_url, current_model)
+
+
 T = TypeVar("T", bound=BaseModel)
 
 # Providers served by a local inference process (single-tenant, serial).
 # Output caps and concurrency guards apply ONLY here — cloud chat models use
 # different parameter names (e.g. max_output_tokens) and must not receive ours.
-LOCAL_LLM_PROVIDERS = frozenset({"ollama", "llama_cpp", "llamacpp"})
+# "mlx" (mlx_lm.server, Apple Silicon) speaks the same OpenAI-compatible
+# protocol as llama.cpp, so it shares the client, caps, and semaphore.
+LOCAL_LLM_PROVIDERS = frozenset({"ollama", "llama_cpp", "llamacpp", "mlx"})
 
 
 def local_cap_kwargs(provider: str | None, max_tokens: int) -> dict[str, int]:
@@ -181,16 +377,42 @@ class ChatOllamaClient(BaseChatModel):
         dict_messages = _convert_messages_to_dict(messages)
         endpoint = f"{self.base_url.rstrip('/')}/api/chat"
 
+        cfg = get_model_config()
+        # Use config values with env override, fallback to hardcoded defaults
+        default_num_ctx = cfg.local_llm_num_ctx
+        default_num_batch = cfg.local_llm_num_batch  # Not used by Ollama, but kept for consistency
+        default_keep_alive = cfg.local_llm_keep_alive
+
+        # Optimization flags from models.yaml
+        use_prompt_cache = cfg.prompt_caching
+
+        # Speculative Decoding / Early Exit (Phase 2.5)
+        min_p = cfg.local_llm_min_p
+        top_k = cfg.local_llm_top_k
+        early_exit_eos = cfg.local_llm_early_exit_eos
+
         options: dict[str, Any] = {
             "temperature": kwargs.get("temperature", self.temperature),
             "top_p": kwargs.get("top_p", self.top_p),
             # OPT (local-LLM load): 2048 overflowed with 3000-char contexts +
             # system prompt and produced truncated stubs. 4096 matches
             # llama-server -c 4096 and fits the reduced context budget.
-            "num_ctx": kwargs.get("num_ctx", 4096),
+            "num_ctx": kwargs.get("num_ctx", default_num_ctx),
             "num_predict": kwargs.get("max_tokens", 1024),
             "repeat_penalty": kwargs.get("repeat_penalty", self.repeat_penalty),
+            # Batch size for prompt processing (Ollama uses num_batch)
+            "num_batch": kwargs.get("num_batch", default_num_batch),
+            # Min-p sampling: only tokens with p >= min_p * p_max are considered
+            "min_p": min_p if min_p > 0.0 else None,
+            # Top-k sampling: restrict to top K tokens
+            "top_k": top_k if top_k > 0 else None,
         }
+        # Clean up None values
+        options = {k: v for k, v in options.items() if v is not None}
+        # Ollama prompt caching: num_keep specifies how many prompt tokens to keep in KV cache
+        # -1 = keep all (full prompt caching), 0 = disable, N = keep first N tokens
+        if use_prompt_cache:
+            options["num_keep"] = kwargs.get("num_keep", -1)
         if stop:
             options["stop"] = stop
 
@@ -202,7 +424,7 @@ class ChatOllamaClient(BaseChatModel):
             "messages": dict_messages,
             "stream": False,
             "options": options,
-            "keep_alive": kwargs.get("keep_alive", "5m"),  # Release GPU memory after 5 min idle
+            "keep_alive": kwargs.get("keep_alive", default_keep_alive),  # Release GPU memory after idle period
         }
 
         requested_format = kwargs.get("format", self.format)
@@ -210,7 +432,7 @@ class ChatOllamaClient(BaseChatModel):
             payload["format"] = requested_format
 
         try:
-            async with _LOCAL_LLM_SEMAPHORE:
+            async with _get_local_llm_semaphore():
                 client = _shared_http_client(self.base_url, self.timeout)
                 res = await client.post(endpoint, json=payload)
                 if res.status_code == 404:
@@ -265,7 +487,9 @@ class ChatOllamaClient(BaseChatModel):
 class ChatLlamaCppClient(BaseChatModel):
     """
     Client for llama.cpp HTTP server (llama-server) via its OpenAI-compatible
-    /v1/chat/completions API.
+    /v1/chat/completions API. Also serves Apple MLX (mlx_lm.server), which
+    speaks the same protocol — the registry constructs this client for the
+    `mlx` provider with the MLX base URL and model id.
     """
 
     base_url: str = Field(default="http://127.0.0.1:8080/v1")
@@ -310,6 +534,21 @@ class ChatLlamaCppClient(BaseChatModel):
         dict_messages = _convert_messages_to_dict(messages)
         endpoint = f"{self.base_url.rstrip('/')}/chat/completions"
 
+        cfg = get_model_config()
+        # Use config values with env override, fallback to hardcoded defaults
+        default_num_batch = cfg.local_llm_num_batch
+        default_keep_alive = cfg.local_llm_keep_alive  # Note: llama.cpp uses different mechanism (auto-unload)
+
+        # Optimization flags from models.yaml (Phase 1: wire existing flags)
+        kv_cache_quant = cfg.kv_cache_quantization
+        use_flash_attn = cfg.flash_attention
+        use_prompt_cache = cfg.prompt_caching
+
+        # Speculative Decoding / Early Exit (Phase 2.5)
+        min_p = cfg.local_llm_min_p
+        top_k = cfg.local_llm_top_k
+        early_exit_eos = cfg.local_llm_early_exit_eos
+
         payload: dict[str, Any] = {
             "model": kwargs.get("model", self.model),
             "messages": dict_messages,
@@ -317,9 +556,24 @@ class ChatLlamaCppClient(BaseChatModel):
             "top_p": kwargs.get("top_p", self.top_p),
             "max_tokens": kwargs.get("max_tokens", self.max_tokens),
             "stream": False,
-            "cache_prompt": True,
+            "cache_prompt": use_prompt_cache,
             "repeat_penalty": kwargs.get("repeat_penalty", self.repeat_penalty),
+            # llama.cpp-specific: prompt processing batch size (controls KV cache build parallelism)
+            "n_batch": kwargs.get("n_batch", default_num_batch),
+            # KV cache quantization: q4_0, q8_0, fp16 (saves 50-75% context VRAM)
+            "cache_type_k": kv_cache_quant,
+            "cache_type_v": kv_cache_quant,
+            # Flash attention: computes attention in SRAM tiles (O(N) memory)
+            "flash_attention": use_flash_attn,
+            # Min-p sampling: only tokens with p >= min_p * p_max are considered
+            "min_p": min_p if min_p > 0.0 else None,
+            # Top-k sampling: restrict to top K tokens
+            "top_k": top_k if top_k > 0 else None,
+            # Early exit on EOS for n_predict streaming
+            "stop": ["<|endoftext|>", "<|im_end|>", "</s>"] if early_exit_eos else None,
         }
+        # Clean up None values
+        payload = {k: v for k, v in payload.items() if v is not None}
         if stop:
             payload["stop"] = stop
 
@@ -327,7 +581,7 @@ class ChatLlamaCppClient(BaseChatModel):
             payload["response_format"] = {"type": "json_object"}
 
         try:
-            async with _LOCAL_LLM_SEMAPHORE:
+            async with _get_local_llm_semaphore():
                 client = _shared_http_client(self.base_url, self.timeout)
                 res = await client.post(endpoint, json=payload)
             res.raise_for_status()
@@ -438,6 +692,12 @@ async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 
     if norm == "ollama":
         probe_url = f"{base}/api/tags"
         start_hint = "Start it with 'ollama serve' (then 'ollama pull <model>' if needed)."
+    elif norm == "mlx":
+        probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
+        start_hint = (
+            "Start it with 'mlx_lm.server --model <mlx-community/...-4bit>' "
+            "(Apple Silicon only; pip install mlx-lm)."
+        )
     else:
         probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
         start_hint = "Start it with './scripts/start_local_llm.sh' (llama-server on :8080)."
@@ -541,6 +801,7 @@ async def seed_local_model_discovery() -> dict[str, list[str]]:
     Sources (CLI-only, no server dependency):
       - ollama    -> `ollama list`
       - llama_cpp -> `llama-server --cache-list`
+      - mlx       -> HuggingFace hub scan for `mlx-community` / `*mlx*` weights
 
     Loads any previously-persisted snapshot, refreshes the in-process cache from
     the live CLIs, then persists the result so a backend started later seeds
@@ -554,12 +815,16 @@ async def seed_local_model_discovery() -> dict[str, list[str]]:
     llamacpp_models = [
         m for m in await discover_llamacpp_cache_models() if not _is_embedding_model_name(m)
     ]
+    mlx_models = [
+        m for m in discover_mlx_cache_models() if not _is_embedding_model_name(m)
+    ]
 
     merge_discovered_llms("ollama", ollama_models)
     merge_discovered_llms("llama_cpp", llamacpp_models)
+    merge_discovered_llms("mlx", mlx_models)
     save_discovery_snapshot()
 
-    return {"ollama": ollama_models, "llama_cpp": llamacpp_models}
+    return {"ollama": ollama_models, "llama_cpp": llamacpp_models, "mlx": mlx_models}
 
 
 async def discover_ollama_cli_models() -> list[str]:
@@ -638,6 +903,24 @@ def discover_hf_hub_gguf_models() -> list[str]:
             if "gguf" in dir_name.lower():
                 gguf_models.append(dir_name)
     return gguf_models
+
+
+def discover_mlx_cache_models() -> list[str]:
+    """Scan the local HuggingFace cache for downloaded MLX weights.
+
+    MLX models ship as `.safetensors` (not GGUF), so the GGUF scan misses
+    them. Matches `mlx-community` builds and any repo id containing `mlx`
+    (case-insensitive); embedding models are filtered out by callers.
+    Apple Silicon only — elsewhere the cache simply won't contain any.
+    """
+    mlx_models: list[str] = []
+    hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
+    if hf_cache.exists():
+        for model_dir in hf_cache.glob("models--*"):
+            dir_name = model_dir.name.replace("models--", "").replace("--", "/")
+            if "mlx" in dir_name.lower() and "gguf" not in dir_name.lower():
+                mlx_models.append(dir_name)
+    return sorted(set(mlx_models))
 
 
 async def check_ollama_status(base_url: str = "http://localhost:11434") -> dict[str, Any]:
@@ -739,6 +1022,66 @@ async def check_llamacpp_status(base_url: str = "http://127.0.0.1:8080/v1") -> d
     return {
         "connected": connected,
         "provider": "llama_cpp",
+        "base_url": base_url,
+        "models": combined,
+        "cache_models": cache_models,
+        "default_model": default_model,
+    }
+
+
+async def check_mlx_status(base_url: str = "http://127.0.0.1:8090/v1", max_ports: int = 5) -> dict[str, Any]:
+    """
+    Discover MLX status and GENERATIVE models by checking multiple MLX server ports.
+    MLX only supports 1 model per server, so we check ports 8090, 8091, 8092...
+    and aggregate all discovered models for UI selection.
+    """
+    cache_models = discover_mlx_cache_models()
+
+    all_api_models: list[str] = []
+    any_connected = False
+
+    # Check consecutive ports starting from base_url port
+    import re
+    base_port_match = re.search(r':(\d+)', base_url)
+    start_port = int(base_port_match.group(1)) if base_port_match else 8090
+
+    for port_offset in range(max_ports):
+        port = start_port + port_offset
+        endpoint = f"http://127.0.0.1:{port}/v1/models"
+
+        try:
+            res = await _fetch_json_with_retry(endpoint)
+            if res.status_code == 200:
+                any_connected = True
+                data = res.json()
+                models = [m.get("id") for m in data.get("data", []) if m.get("id")]
+                all_api_models.extend(models)
+        except (httpx.ConnectError, httpx.TimeoutException):
+            continue
+
+    api_llms = [m for m in all_api_models if not _is_embedding_model_name(m)]
+
+    # MLX server serves ONLY the model(s) passed via --model (reported by
+    # /v1/models). Cached/HF blobs are NOT servable until loaded, so when the
+    # server is connected the selector lists exactly the API set — otherwise
+    # users pick phantom models that fail at generation time.
+    if any_connected and api_llms:
+        combined = list(dict.fromkeys(api_llms))
+    else:
+        # Combine API-discovered + cached (deduplicated) when server is not connected
+        combined = list(dict.fromkeys(api_llms + cache_models))
+
+    default_model = (
+        "mlx-community/Llama-3.2-1B-Instruct-4bit"
+        if "mlx-community/Llama-3.2-1B-Instruct-4bit" in combined
+        else (combined[0] if combined else "")
+    )
+
+    merge_discovered_llms("mlx", combined, replace=True)
+
+    return {
+        "connected": any_connected,
+        "provider": "mlx",
         "base_url": base_url,
         "models": combined,
         "cache_models": cache_models,

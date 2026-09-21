@@ -333,7 +333,7 @@ async def apply_temporal_filtering(
     if not doc_ids:
         return results
 
-    # Fetch document metadata records from MongoDB
+    # Fetch document metadata records from MongoDB (batched)
     from bson import ObjectId
     from bson.errors import InvalidId
 
@@ -344,6 +344,7 @@ async def apply_temporal_filtering(
         with contextlib.suppress(InvalidId):
             doc_objs.append(ObjectId(did))
 
+    # Batch fetch all document metadata in parallel
     docs_cursor = doc_coll.find({"_id": {"$in": doc_objs}})
     docs_map = {}
     async for d in docs_cursor:
@@ -395,6 +396,18 @@ async def apply_temporal_filtering(
     return filtered_results
 
 
+async def apply_temporal_filtering_batched(
+    results: list[dict[str, Any]], reference_time: datetime | None = None
+) -> list[dict[str, Any]]:
+    """
+    Optimized version of apply_temporal_filtering that fetches document metadata
+    in a single batched query instead of individual lookups.
+
+    This is an alias for apply_temporal_filtering which already uses batched queries.
+    """
+    return await apply_temporal_filtering(results, reference_time)
+
+
 async def retrieve_hybrid_chunks(
     query: str,
     kb_id: str,
@@ -418,6 +431,10 @@ async def retrieve_hybrid_chunks(
 
     dense_top = top_k_override if top_k_override is not None else cfg.dense_top_k
     sparse_top = top_k_override if top_k_override is not None else cfg.sparse_top_k
+
+    # Adaptive Top-K: If enabled, we can dynamically adjust fusion_top_k based on confidence
+    # This will be applied after fusion when we have scores
+    adaptive_enabled = cfg.adaptive_top_k
 
     # Run dense + sparse searches concurrently with a hard budget so a
     # hung embedding/Qdrant call cannot pin a worker (OPT: local-LLM load).
@@ -472,10 +489,27 @@ async def retrieve_hybrid_chunks(
     # Apply temporal document boundaries
     filtered = await apply_temporal_filtering(fused, reference_time)
 
+    # Adaptive Top-K: Reduce fusion_top_k when retrieval confidence is high
+    # This reduces context sent to LLM, saving tokens and latency
+    fusion_top_k = cfg.fusion_top_k
+    if adaptive_enabled and filtered:
+        # Check if top result has high confidence (dense_score + sparse_score / RRF)
+        top_rrf = filtered[0].get("rrf_score", 0.0)
+        # Threshold from config or sensible default (0.82 as mentioned in models.yaml comment)
+        if top_rrf >= 0.82:
+            # High confidence: cap at 4 instead of full fusion_top_k
+            adaptive_k = min(4, fusion_top_k)
+            logger.debug(
+                "Adaptive Top-K: high confidence, reducing fusion_top_k",
+                top_rrf=top_rrf,
+                original_k=fusion_top_k,
+                adaptive_k=adaptive_k,
+            )
+            fusion_top_k = adaptive_k
+
     # Bound the fused candidate set (models.yaml: retrieval.fusion_top_k).
     # Truncation happens AFTER temporal filtering so stale drops cannot push
     # fresh evidence out of the budget.
-    fusion_top_k = cfg.fusion_top_k
     if fusion_top_k > 0:
         filtered = filtered[:fusion_top_k]
 

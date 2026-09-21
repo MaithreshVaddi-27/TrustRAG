@@ -28,6 +28,11 @@ from app.core.config import ModelConfig, get_model_config, get_settings
 from app.core.exceptions import ConfigurationError
 from app.core.logging import get_logger
 
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
@@ -35,10 +40,26 @@ logger = get_logger(__name__)
 
 # ─── Bounded LLM Registry (replaces lru_cache on get_llm/get_verification_model) ────
 # Limits concurrent model instances to prevent RAM/GPU leak from user-controlled keys.
-_MAX_LLM_INSTANCES = 4
+# Phase 2.2: Aggressive eviction - configurable max instances based on RAM
+_MAX_LLM_INSTANCES = 2  # Reduced from 4 for ultra-low RAM usage (8GB systems)
 _LLM_REGISTRY: OrderedDict[str, BaseChatModel] = OrderedDict()
 _LLM_REGISTRY_LOCK = threading.RLock()
 _LLM_REGISTRY_CLOSED = False
+
+
+def get_max_llm_instances() -> int:
+    """Get the maximum number of LLM instances based on available RAM."""
+    try:
+        import psutil
+        total_ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+        if total_ram_gb <= 8:
+            return 1  # Ultra-aggressive for 8GB systems
+        elif total_ram_gb <= 16:
+            return 2  # Conservative for 16GB systems
+        else:
+            return 4  # Standard for 32GB+ systems
+    except ImportError:
+        return _MAX_LLM_INSTANCES  # Default fallback
 
 
 def _llm_registry_key(provider: str, model: str | None) -> str:
@@ -78,12 +99,13 @@ def put_llm_instance(provider: str, model: str | None, llm: BaseChatModel) -> No
         return
 
     key = _llm_registry_key(provider, model)
+    max_instances = get_max_llm_instances()
     with _LLM_REGISTRY_LOCK:
         # Evict LRU if at capacity
-        if len(_LLM_REGISTRY) >= _MAX_LLM_INSTANCES and key not in _LLM_REGISTRY:
+        if len(_LLM_REGISTRY) >= max_instances and key not in _LLM_REGISTRY:
             evicted_key, evicted_llm = _LLM_REGISTRY.popitem(last=False)
             _close_llm_instance(evicted_llm)
-            logger.debug("Evicted LLM from registry", evicted=evicted_key)
+            logger.debug("Evicted LLM from registry", evicted=evicted_key, max_instances=max_instances)
 
         _LLM_REGISTRY[key] = llm
         _LLM_REGISTRY.move_to_end(key)
@@ -159,6 +181,7 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
     Supports:
       - ollama: ChatOllamaClient (local, zero cloud keys)
       - llama_cpp / llamacpp: ChatLlamaCppClient (local, OpenAI-compatible server)
+      - mlx: ChatLlamaCppClient pointed at mlx_lm.server (Apple Silicon, OpenAI-compatible)
       - gemini: ChatGoogleGenerativeAI via langchain-google-genai
       - nvidia: ChatNVIDIA via langchain-nvidia-ai-endpoints
 
@@ -176,8 +199,10 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
         active_model = model or settings.ollama_model or cfg.llm_model_for("ollama")
     elif active_provider in ("llama_cpp", "llamacpp"):
         active_model = model or settings.llamacpp_model or cfg.llm_model_for("llama_cpp")
+    elif active_provider == "mlx":
+        active_model = model or settings.mlx_model or cfg.llm_model_for("mlx")
     else:
-        active_model = model or cfg.llm_model
+        active_model = model or cfg.llm_model_for(active_provider)
 
     # Check registry first
     cached = get_llm_instance(active_provider, active_model)
@@ -213,6 +238,23 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
             llm = ChatLlamaCppClient(
                 base_url=settings.llamacpp_base_url,
                 model=active_model or "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
+                temperature=cfg.llm_temperature,
+                top_p=cfg.llm_top_p,
+                max_tokens=cfg.llm_max_output_tokens,
+                timeout=float(cfg.llm_timeout_seconds),
+            )
+            put_llm_instance(active_provider, active_model, llm)
+            return llm
+
+        if active_provider == "mlx":
+            # MLX speaks the same OpenAI-compatible protocol (mlx_lm.server),
+            # so the llama.cpp client is reused verbatim: task-sized caps,
+            # serial semaphore, and budgets all apply unchanged.
+            from app.core.local_llm import ChatLlamaCppClient
+
+            llm = ChatLlamaCppClient(
+                base_url=settings.mlx_base_url,
+                model=active_model or "mlx-community/Llama-3.2-1B-Instruct-4bit",
                 temperature=cfg.llm_temperature,
                 top_p=cfg.llm_top_p,
                 max_tokens=cfg.llm_max_output_tokens,
@@ -284,8 +326,10 @@ def get_verification_model(provider: str | None = None, model: str | None = None
         active_model = model or settings.ollama_model or cfg.verification_model_for("ollama")
     elif active_provider in ("llama_cpp", "llamacpp"):
         active_model = model or settings.llamacpp_model or cfg.verification_model_for("llama_cpp")
+    elif active_provider == "mlx":
+        active_model = model or settings.mlx_model or cfg.verification_model_for("mlx")
     else:
-        active_model = model or cfg.verification_model
+        active_model = model or cfg.verification_model_for(active_provider)
 
     # Check registry first (use distinct key prefix for verification models)
     cached = get_llm_instance(f"verify:{active_provider}", active_model)
@@ -319,6 +363,19 @@ def get_verification_model(provider: str | None = None, model: str | None = None
             llm = ChatLlamaCppClient(
                 base_url=settings.llamacpp_base_url,
                 model=active_model or "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
+                temperature=0.0,
+                max_tokens=cfg.verification_max_output_tokens,
+                timeout=float(cfg.verification_timeout_seconds),
+            )
+            put_llm_instance(f"verify:{active_provider}", active_model, llm)
+            return llm
+
+        if active_provider == "mlx":
+            from app.core.local_llm import ChatLlamaCppClient
+
+            llm = ChatLlamaCppClient(
+                base_url=settings.mlx_base_url,
+                model=active_model or "mlx-community/Llama-3.2-1B-Instruct-4bit",
                 temperature=0.0,
                 max_tokens=cfg.verification_max_output_tokens,
                 timeout=float(cfg.verification_timeout_seconds),
@@ -629,6 +686,7 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
         model=active_model,
         dimensionality=cfg.embedding_dimensionality,
         cache_dir=str(cache_dir),
+        quantization=cfg.embedding_quantization,
     )
 
     if settings.hf_token:
@@ -653,6 +711,23 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
         model_kwargs: dict[str, Any] = {"device": opt_device}
         if settings.hf_token:
             model_kwargs["token"] = settings.hf_token
+
+        # Phase 4.2: Embedding Quantization (int8) for RAM savings
+        if cfg.embedding_quantization:
+            try:
+                from optimum.intel import OVModelForFeatureExtraction
+                # Use OpenVINO for int8 quantization if available
+                model_kwargs["quantization_config"] = "int8"
+                logger.info("Int8 quantization enabled for embedding model")
+            except ImportError:
+                logger.warning("Optimum-Intel not available, skipping int8 quantization. Install 'optimum-intel' for CPU int8.")
+                # Fallback: try torch int8 quantization
+                try:
+                    import torch
+                    if hasattr(torch, 'quantization') and opt_device == "cpu":
+                        logger.info("Using PyTorch dynamic int8 quantization for embeddings")
+                except Exception:
+                    pass
 
         # Fast-path 1: Check local Hugging Face Hub snapshots directory
         hf_hub_name = "models--" + active_model.replace("/", "--")
@@ -714,7 +789,7 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
 @lru_cache(maxsize=1)
 def get_reranker():  # type: ignore[return]
     """
-    Return the reranker model (cross-encoder via sentence-transformers).
+    Return the reranker model (cross-encoder via sentence-transformers or ONNX).
 
     Returns None if reranking is disabled in models.yaml.
     Callers MUST check for None before use.
@@ -732,13 +807,51 @@ def get_reranker():  # type: ignore[return]
         os.environ["HF_TOKEN"] = settings.hf_token
         os.environ["HUGGING_FACE_HUB_TOKEN"] = settings.hf_token
 
+    # Check if ONNX quantization is requested
+    if cfg.reranker_use_onnx:
+        try:
+            from app.core.onnx_reranker import ONNXCrossEncoder
+            logger.info("Initializing ONNX reranker", model=cfg.reranker_model)
+
+            # Determine ONNX model path
+            onnx_path = cfg.reranker_onnx_model_path
+            if not onnx_path:
+                # Auto-generate path: cache_dir/reranker-model.onnx
+                cache_dir = Path(cfg.embedding_cache_dir).resolve()
+                model_name = cfg.reranker_model.replace("/", "--")
+                onnx_path = cache_dir / f"reranker-{model_name}.onnx"
+
+            # If ONNX model doesn't exist, we'll fall back to PyTorch
+            if not Path(onnx_path).exists():
+                logger.info("ONNX model not found, will export from PyTorch", path=str(onnx_path))
+                try:
+                    from sentence_transformers import CrossEncoder
+                    import torch
+                    model = CrossEncoder(cfg.reranker_model)
+                    # Export to ONNX
+                    from app.core.onnx_reranker import export_crossencoder_to_onnx
+                    export_crossencoder_to_onnx(model, str(onnx_path))
+                    logger.info("Successfully exported reranker to ONNX", path=str(onnx_path))
+                except Exception as export_exc:
+                    logger.warning("Failed to export reranker to ONNX, falling back to PyTorch", error=str(export_exc))
+
+            if Path(onnx_path).exists():
+                return ONNXCrossEncoder(str(onnx_path))
+            else:
+                logger.warning("ONNX export failed, falling back to PyTorch CrossEncoder")
+        except ImportError:
+            logger.warning("ONNX runtime not available for reranker, falling back to PyTorch")
+        except Exception as exc:
+            logger.warning("ONNX reranker initialization failed, falling back to PyTorch", error=str(exc))
+
+    # Fallback to PyTorch CrossEncoder
     try:
         from sentence_transformers import CrossEncoder
     except ImportError:
         logger.warning("sentence-transformers not installed. Reranker disabled. Using Hybrid RRF.")
         return None
 
-    logger.info("Initializing reranker", model=cfg.reranker_model)
+    logger.info("Initializing PyTorch reranker", model=cfg.reranker_model)
 
     from app.core.hardware import get_optimal_torch_device
 

@@ -371,7 +371,7 @@ async def _copy_kb_vectors(source_kb_id: str, dest_kb_id: str, doc_id_map: dict[
     ids); point ids are recomputed deterministically from the new doc ids so
     re-snapshotting stays idempotent.
     """
-    from app.db.qdrant import get_collection_name, get_qdrant_client, init_kb_collection
+    from app.db.qdrant import get_collection_name, init_kb_collection
     from app.ingestion.pipeline import hashlib_qdrant_id
 
     client = await get_qdrant_client()

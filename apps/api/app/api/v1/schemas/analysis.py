@@ -28,7 +28,10 @@ class AnalysisCreate(BaseModel):
     )
     llm_provider: str | None = Field(
         default=None,
-        description="Active LLM provider override ('ollama', 'llama_cpp', 'gemini', 'nvidia')",
+        description=(
+            "Active LLM provider override "
+            "('ollama', 'llama_cpp', 'mlx', 'gemini', 'nvidia')"
+        ),
     )
     llm_model: str | None = Field(
         default=None,
@@ -66,7 +69,7 @@ class AnalysisCreate(BaseModel):
         provider = {"llamacpp": "llama_cpp", "nim": "nvidia", "google_genai": "gemini"}.get(
             provider, provider
         )
-        allowed_providers = {"ollama", "llama_cpp", "gemini", "nvidia"}
+        allowed_providers = {"ollama", "llama_cpp", "mlx", "gemini", "nvidia"}
         if provider not in allowed_providers:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
@@ -74,42 +77,54 @@ class AnalysisCreate(BaseModel):
         # local cache (see local_llm.get_discovered_llms). A local server can only
         # serve weights already on disk, so discovery never opens an arbitrary
         # auto-download path — but it does let operators select freshly-installed
-        # GGUFs that the /models dropdown already lists.
+        # models that the /models dropdown already lists.
         allowed_llms = {
             "ollama": set(get_discovered_llms("ollama")),
             "llama_cpp": set(get_discovered_llms("llama_cpp")),
+            "mlx": set(get_discovered_llms("mlx")),
             "gemini": {
                 "gemini-3.5-flash-lite",
                 "gemini-2.5-flash",
                 "gemini-2.5-pro",
             },
             "nvidia": {
-                "meta/llama-3.3-70b-instruct",
-                "mistralai/mistral-large-2-instruct",
-                "nvidia/llama-3.1-nemotron-70b-instruct",
+                "openai/gpt-oss-20b",
+                "nvidia/nemotron-3.5-lightning-30b-a3b",
+                "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+                "google/gemma-4-31b-it",
             },
         }
         operator_llm_overrides = {
             "ollama": settings.ollama_model,
             "llama_cpp": settings.llamacpp_model,
+            "mlx": settings.mlx_model,
             "gemini": settings.gemini_model,
             "nvidia": cfg.llm_model if cfg.llm_provider == "nvidia" else "",
         }
         if operator_llm_overrides.get(provider):
             allowed_llms[provider].add(operator_llm_overrides[provider])
-        if provider in ("ollama", "llama_cpp") and not allowed_llms[provider]:
+        if provider in ("ollama", "llama_cpp", "mlx") and not allowed_llms[provider]:
             # New-user path: nothing installed yet. Fail closed with the fix
             # instead of a bare "not enabled" rejection.
+            start_hints = {
+                "ollama": "'ollama pull granite4.2:3b-q4_K_M' + 'ollama serve'",
+                "llama_cpp": "place a GGUF and run ./scripts/start_local_llm.sh",
+                "mlx": "'pip install mlx-lm' then 'mlx_lm.server --model "
+                "mlx-community/Llama-3.2-1B-Instruct-4bit' (Apple Silicon only)",
+            }
             raise ValueError(
                 f"No {provider} models discovered on this host. Install one "
-                "(e.g. 'ollama pull granite4.2:3b-q4_K_M' + 'ollama serve', or "
-                "place a GGUF and run ./scripts/start_local_llm.sh), then refresh."
+                f"({start_hints[provider]}), then refresh."
             )
 
         requested_llm_model = (
             self.llm_model
             or operator_llm_overrides.get(provider)
-            or (cfg.llm_model_for(provider) if provider in ("ollama", "llama_cpp") else None)
+            or (
+                cfg.llm_model_for(provider)
+                if provider in ("ollama", "llama_cpp", "mlx")
+                else None
+            )
         )
         if requested_llm_model and requested_llm_model not in allowed_llms[provider]:
             raise ValueError(f"Model is not enabled for provider '{provider}'")

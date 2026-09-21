@@ -22,6 +22,9 @@ def _stub_cfg(**overrides):
         "reranker_enabled": True,
         "reranker_model": "fake-model",
         "reranker_top_k": 20,
+        "reranker_batch_size": 16,
+        "reranker_early_termination_confidence": 0.85,
+        "reranker_score_gap_threshold": 0.15,
         "fusion_top_k": 20,
         "max_context_chunks": 8,
     }
@@ -81,8 +84,10 @@ def test_rerank_bounds_scoring_depth():
     texts = [f"doc-{i}" for i in range(25)]
     scores = {t: i / 25 for i, t in enumerate(texts)}
     out, model = _run(texts, scores)
-    assert len(model.seen_pairs) == 1
-    assert len(model.seen_pairs[0]) == 20  # reranker.top_k depth cap
+    # With batch_size=16 and top_k=20, we get two batches: 16 + 4
+    assert len(model.seen_pairs) == 2
+    assert len(model.seen_pairs[0]) == 16  # first batch (reranker_batch_size)
+    assert len(model.seen_pairs[1]) == 4  # second batch (remainder)
     assert out[0]["text"] == "doc-19"  # best of the scored head
     assert len(out) == 8  # output still capped by max_context_chunks
 
@@ -102,8 +107,10 @@ def test_rerank_does_not_mutate_caller_order():
 def test_rerank_disabled_returns_rrf_slice_without_model():
     exploding = MagicMock(side_effect=AssertionError("model must not load when disabled"))
     with patch.object(reranker_module, "get_reranker", exploding):
-        # Real config: reranker.enabled is false → model seam never touched.
-        out = _rerank_sync("probe query", _chunks([f"doc-{i}" for i in range(10)]))
+        # Explicitly disable reranker in config (default is now enabled in models.yaml)
+        cfg = _stub_cfg(reranker_enabled=False)
+        with patch.object(reranker_module, "get_model_config", return_value=cfg):
+            out = _rerank_sync("probe query", _chunks([f"doc-{i}" for i in range(10)]))
     exploding.assert_not_called()
     assert len(out) == 8
 

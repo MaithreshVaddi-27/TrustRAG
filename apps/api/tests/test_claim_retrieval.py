@@ -243,7 +243,9 @@ async def test_inline_answer_citations_union_into_evidence_ids():
 
 
 def test_dead_reliability_weights_removed_from_models_yaml():
-    with open("config/models.yaml", encoding="utf-8") as f:
+    import os
+    config_path = os.path.join(os.path.dirname(__file__), "..", "config", "models.yaml")
+    with open(config_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     for dead_key in (
         "citation_correctness_weight",

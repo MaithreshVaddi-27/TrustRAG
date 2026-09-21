@@ -78,6 +78,7 @@ def test_model_registry_local_providers(monkeypatch):
         s = get_settings()
         monkeypatch.setattr(s, "ollama_model", "")
         monkeypatch.setattr(s, "llamacpp_model", "")
+        monkeypatch.setattr(s, "mlx_model", "")
         ollama_llm = get_llm("ollama")
         assert isinstance(ollama_llm, ChatOllamaClient)
         assert ollama_llm.model == "gemma3:1b"
@@ -86,6 +87,11 @@ def test_model_registry_local_providers(monkeypatch):
         assert isinstance(llamacpp_llm, ChatLlamaCppClient)
         assert llamacpp_llm.model == "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
 
+        mlx_llm = get_llm("mlx")
+        assert isinstance(mlx_llm, ChatLlamaCppClient)
+        assert mlx_llm.model == "mlx-community/Llama-3.2-1B-Instruct-4bit"
+        assert mlx_llm.base_url == s.mlx_base_url
+
         v_ollama = get_verification_model("ollama")
         assert isinstance(v_ollama, ChatOllamaClient)
         assert v_ollama.temperature == 0.0
@@ -93,6 +99,10 @@ def test_model_registry_local_providers(monkeypatch):
         v_llamacpp = get_verification_model("llama_cpp")
         assert isinstance(v_llamacpp, ChatLlamaCppClient)
         assert v_llamacpp.temperature == 0.0
+
+        v_mlx = get_verification_model("mlx")
+        assert isinstance(v_mlx, ChatLlamaCppClient)
+        assert v_mlx.temperature == 0.0
     finally:
         clear_model_caches()
         reload_settings()
@@ -416,3 +426,80 @@ async def test_llamacpp_connected_lists_only_loaded_model(monkeypatch):
             _llm_mod._DISCOVERED_LLMS.clear()
             for k, v in saved.items():
                 _llm_mod._DISCOVERED_LLMS[k] = set(v)
+
+
+def test_discover_mlx_cache_models_filters_non_mlx(monkeypatch, tmp_path):
+    """HF-cache scan returns MLX weights only — GGUFs and unrelated models excluded."""
+
+    (tmp_path / ".cache" / "huggingface" / "hub" / "models--mlx-community--Llama-3.2-1B-Instruct-4bit").mkdir(
+        parents=True
+    )
+    (tmp_path / ".cache" / "huggingface" / "hub" / "models--mlx-community--Qwen3-1.7B-MLX-8bit").mkdir(
+        parents=True
+    )
+    (tmp_path / ".cache" / "huggingface" / "hub" / "models--bartowski--Model-GGUF").mkdir(
+        parents=True
+    )
+    (tmp_path / ".cache" / "huggingface" / "hub" / "models--BAAI--bge-small-en-v1.5").mkdir(
+        parents=True
+    )
+    monkeypatch.setattr(_llm_mod.Path, "home", lambda: tmp_path)
+
+    found = _llm_mod.discover_mlx_cache_models()
+    assert "mlx-community/Llama-3.2-1B-Instruct-4bit" in found
+    assert "mlx-community/Qwen3-1.7B-MLX-8bit" in found
+    assert not any("gguf" in m.lower() or "bge" in m.lower() for m in found)
+
+
+@pytest.mark.asyncio
+async def test_mlx_connected_lists_only_loaded_model(monkeypatch):
+    """A connected mlx server serves only --model; cache blobs are phantoms."""
+
+    def _fake_cache():
+        return ["mlx-community/Stale-Cached-4bit"]
+
+    class _API(_FakeHTTPClient):
+        async def get(self, url):
+            return _FakeHTTPResponse(
+                200, {"data": [{"id": "mlx-community/Live-Loaded-4bit"}]}
+            )
+
+    monkeypatch.setattr(_llm_mod, "discover_mlx_cache_models", _fake_cache)
+    monkeypatch.setattr(_llm_mod.httpx, "AsyncClient", _API)
+
+    with _llm_mod._DISCOVERED_LLMS_LOCK:
+        saved = {k: set(v) for k, v in _llm_mod._DISCOVERED_LLMS.items()}
+        _llm_mod._DISCOVERED_LLMS.clear()
+    try:
+        status = await _llm_mod.check_mlx_status("http://127.0.0.1:8080/v1")
+        assert status["connected"] is True
+        assert status["provider"] == "mlx"
+        assert status["models"] == ["mlx-community/Live-Loaded-4bit"]
+        assert _llm_mod.get_discovered_llms("mlx") == {"mlx-community/Live-Loaded-4bit"}
+    finally:
+        with _llm_mod._DISCOVERED_LLMS_LOCK:
+            _llm_mod._DISCOVERED_LLMS.clear()
+            for k, v in saved.items():
+                _llm_mod._DISCOVERED_LLMS[k] = set(v)
+
+
+@pytest.mark.asyncio
+async def test_probe_mlx_hint_names_server_command(monkeypatch):
+    """A down MLX server must tell the operator the mlx_lm.server command."""
+    import httpx
+
+    from app.core.exceptions import LLMUnavailableError
+    from app.core.local_llm import probe_local_llm_server
+
+    class _Down(_FakeHTTPClient):
+        async def get(self, url):
+            assert url.endswith("/v1/models")
+            raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(_llm_mod.httpx, "AsyncClient", _Down)
+    with pytest.raises(LLMUnavailableError, match="not reachable"):
+        await probe_local_llm_server("mlx", "http://127.0.0.1:8080/v1")
+    try:
+        await probe_local_llm_server("mlx", "http://127.0.0.1:8080/v1")
+    except LLMUnavailableError as exc:
+        assert "mlx_lm.server" in exc.message

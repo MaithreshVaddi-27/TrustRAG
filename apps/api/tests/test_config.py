@@ -152,6 +152,40 @@ class TestModelConfig:
         # Spec: prevent infinite loops — must be a small positive number
         assert 0 < cfg.max_recovery_attempts <= 10
 
+    def test_mlx_model_for_prefers_yaml_default(self, monkeypatch) -> None:
+        """llm_model_for('mlx') resolves the yaml model_mlx default."""
+        monkeypatch.delenv("MLX_MODEL", raising=False)
+        cfg = self._make_config()
+        assert cfg.llm_model_for("mlx") == "mlx-community/Llama-3.2-1B-Instruct-4bit"
+        assert (
+            cfg.verification_model_for("mlx") == "mlx-community/Llama-3.2-1B-Instruct-4bit"
+        )
+
+    def test_mlx_model_for_env_override_wins(self, monkeypatch) -> None:
+        """MLX_MODEL env beats the yaml default (exact id the server serves)."""
+        monkeypatch.setenv("MLX_MODEL", "mlx-community/LFM2.5-1.2B-Instruct-4bit")
+        cfg = self._make_config()
+        assert cfg.llm_model_for("mlx") == "mlx-community/LFM2.5-1.2B-Instruct-4bit"
+        assert (
+            cfg.verification_model_for("mlx")
+            == "mlx-community/LFM2.5-1.2B-Instruct-4bit"
+        )
+
+    def test_mlx_base_url_default_and_env(self, monkeypatch) -> None:
+        """MLX uses dedicated port 8090; env overrides it."""
+        from app.core.config import get_settings, reload_settings
+
+        # get_settings() is an lru_cached singleton — reload between env states.
+        try:
+            monkeypatch.delenv("MLX_BASE_URL", raising=False)
+            reload_settings()
+            assert get_settings().mlx_base_url == "http://127.0.0.1:8090/v1"
+            monkeypatch.setenv("MLX_BASE_URL", "http://127.0.0.1:8091/v1")
+            reload_settings()
+            assert get_settings().mlx_base_url == "http://127.0.0.1:8091/v1"
+        finally:
+            reload_settings()
+
 
 # ─── Settings tests ───────────────────────────────────────────────────────────
 
@@ -268,6 +302,24 @@ class TestAnalysisModelPolicy:
             llm_model="huggingface/SmolLM3-3B-GGUF:Q4_K_M",
         )
         assert request.llm_model == "huggingface/SmolLM3-3B-GGUF:Q4_K_M"
+
+    def test_runtime_discovered_mlx_model_is_allowed(self, monkeypatch) -> None:
+        """MLX weights served by mlx_lm.server must be selectable per request."""
+        from app.api.v1.schemas.analysis import AnalysisCreate
+
+        discovered = {"mlx-community/LFM2.5-1.2B-Instruct-4bit"}
+        monkeypatch.setattr(
+            "app.core.local_llm.get_discovered_llms",
+            lambda provider: frozenset(discovered) if provider == "mlx" else frozenset(),
+        )
+
+        request = AnalysisCreate(
+            knowledge_base_id="64ee39d09c6292376e191983",
+            query="Analyze using the MLX model",
+            llm_provider="mlx",
+            llm_model="mlx-community/LFM2.5-1.2B-Instruct-4bit",
+        )
+        assert request.llm_model == "mlx-community/LFM2.5-1.2B-Instruct-4bit"
 
     def test_non_discovered_model_still_rejected_with_empty_caches(self) -> None:
         """Without discovery or static allowlist matches, requests stay rejected."""

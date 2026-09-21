@@ -280,13 +280,16 @@ async def create_analysis(
     # llama-server burns minutes of 120s timeouts across ~9 sequential calls
     # before the pipeline abstains or fails. Raises LLMUnavailableError → 503
     # with the exact start command so the UI can alert instead of hanging.
-    if effective_llm_provider in ("ollama", "llama_cpp", "llamacpp"):
+    if effective_llm_provider in ("ollama", "llama_cpp", "llamacpp", "mlx"):
         from app.core.local_llm import probe_local_llm_server
 
         settings = get_settings()
         if effective_llm_provider == "ollama":
             llm_base_url = settings.ollama_base_url
             probe_provider = "ollama"
+        elif effective_llm_provider == "mlx":
+            llm_base_url = settings.mlx_base_url
+            probe_provider = "mlx"
         else:
             llm_base_url = settings.llamacpp_base_url
             probe_provider = "llama_cpp"
@@ -523,36 +526,13 @@ async def sse_event_generator(
         await _unsubscribe_from_analysis(analysis_id_str, queue)
 
 
-# Hardware-aware global concurrency limiter to protect system resources
-_analysis_semaphore: asyncio.Semaphore | None = None
-_semaphore_init_lock: asyncio.Lock | None = None
-
-
-def _get_semaphore_init_lock() -> asyncio.Lock:
-    """Return the module-level asyncio lock for semaphore initialization (lazy, event-loop-safe)."""
-    global _semaphore_init_lock
-    if _semaphore_init_lock is None:
-        _semaphore_init_lock = asyncio.Lock()
-    return _semaphore_init_lock
+# Shared global concurrency semaphore - managed by app.core.concurrency
+from app.core.concurrency import get_global_semaphore
 
 
 async def _get_concurrency_semaphore() -> asyncio.Semaphore:
-    """Return the global analysis semaphore, initializing it exactly once under a lock."""
-    global _analysis_semaphore
-    if _analysis_semaphore is not None:
-        return _analysis_semaphore
-    async with _get_semaphore_init_lock():
-        # Double-check after acquiring lock to handle concurrent waiters
-        if _analysis_semaphore is None:
-            try:
-                from app.core.hardware import detect_hardware_profile
-
-                profile = detect_hardware_profile()
-                max_conc = profile.get("recommendations", {}).get("max_concurrency", 2)
-            except Exception:
-                max_conc = 2
-            _analysis_semaphore = asyncio.Semaphore(max_conc)
-    return _analysis_semaphore
+    """Return the global concurrency semaphore from the shared module."""
+    return get_global_semaphore()
 
 
 async def run_analysis_pipeline(
@@ -775,6 +755,7 @@ async def run_analysis_pipeline(
             "Analysis background execution pipeline failed",
             analysis_id=analysis_id_str,
             error=str(exc),
+            exc_info=True,
         )
 
         err_str = str(exc).lower()

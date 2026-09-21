@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# TRUSTRAG — hardware-aware local LLM launcher.
+# TRUSTRAG — hardware-aware local LLM launcher (router server mode).
 #
-# Detects the host GPU (Metal on Apple Silicon, CUDA on NVIDIA) and boots
-# llama-server with full GPU offload plus memory-tier context/concurrency
-# budgets, so the model runs on the GPU without saturating unified memory.
+# Starts llama-server in router mode to serve multiple models from cache.
+# Models are loaded on-demand when selected from UI.
 #
 # Usage:
-#   ./scripts/start_local_llm.sh [model_repo[:quant]]
-#   Default model: repo's llama_cpp config default (see models.yaml).
+#   ./scripts/start_local_llm.sh [--max N] [--port PORT]
+#   --max N : maximum concurrent loaded models (default: 4)
+#   --port PORT : port to serve on (default: 8080)
+#   Default: serves all cached GGUF models from HuggingFace cache.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,24 +19,37 @@ if [ ! -x "$PY" ]; then
   exit 1
 fi
 
-# Resolve flags + default model via the API's hardware/config layer.
-# Two-line output: line 1 = flags (space-separated), line 2 = default model id.
-OUT="$(cd "$API_DIR" && "$PY" - <<'PYEOF'
-from app.core.config import get_model_config
+# Resolve hardware-specific launch flags.
+LAUNCH_FLAGS=($(cd "$API_DIR" && "$PY" -c "
 from app.core.hardware import get_llamacpp_launch_args
+print(' '.join(get_llamacpp_launch_args()))
+"))
 
-print(" ".join(get_llamacpp_launch_args()))
-print(get_model_config().llm_model_for("llama_cpp"))
-PYEOF
-)"
-LAUNCH_FLAGS=$(echo "$OUT" | sed -n '1p')
-DEFAULT_MODEL=$(echo "$OUT" | sed -n '2p')
-MODEL="${1:-$DEFAULT_MODEL}"
+# Parse args.
+MAX_MODELS=4
+PORT=8080
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --max) MAX_MODELS="${2:-4}"; shift 2 ;;
+    --port) PORT="${2:-8080}"; shift 2 ;;
+    *) echo "Unknown arg: $1" >&2; exit 1 ;;
+  esac
+done
 
-echo "[start_local_llm] model : $MODEL"
-echo "[start_local_llm] flags : $LAUNCH_FLAGS"
-echo "[start_local_llm] port  : 8080"
+# Models directory (HuggingFace cache where GGUF models are stored).
+MODELS_DIR="$HOME/.cache/huggingface/hub"
+if [ ! -d "$MODELS_DIR" ]; then
+  echo "ERROR: Models directory not found: $MODELS_DIR" >&2
+  exit 1
+fi
 
-# Split flags on whitespace into argv (words only, no globbing).
-# shellcheck disable=SC2086
-exec llama-server -hf "$MODEL" --port 8080 $LAUNCH_FLAGS
+echo "[start_local_llm] router mode: serving from $MODELS_DIR"
+echo "[start_local_llm] max concurrent models: $MAX_MODELS"
+echo "[start_local_llm] port : $PORT"
+
+exec llama-server \
+  --models-dir "$MODELS_DIR" \
+  --models-max "$MAX_MODELS" \
+  --models-autoload \
+  --port "$PORT" \
+  "${LAUNCH_FLAGS[@]}"

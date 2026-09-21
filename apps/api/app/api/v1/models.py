@@ -14,6 +14,7 @@ from app.core.config import get_model_config, get_ports, get_settings
 from app.core.hardware import get_cached_hardware_profile
 from app.core.local_llm import (
     check_llamacpp_status,
+    check_mlx_status,
     check_ollama_status,
 )
 from app.core.logging import get_logger
@@ -67,10 +68,11 @@ async def get_providers_endpoint(
     cfg = get_model_config()
 
     # Concurrent: each check retries once internally, so sequential awaits
-    # would double the worst-case latency of this 8 s-polled endpoint.
-    ollama_info, llamacpp_info = await asyncio.gather(
+    # would triple the worst-case latency of this 8 s-polled endpoint.
+    ollama_info, llamacpp_info, mlx_info = await asyncio.gather(
         _safe_provider_status(check_ollama_status, settings.ollama_base_url, "ollama"),
         _safe_provider_status(check_llamacpp_status, settings.llamacpp_base_url, "llama_cpp"),
+        _safe_provider_status(check_mlx_status, settings.mlx_base_url, "mlx"),
     )
 
     # Use only discovered models from the status checks — no hardcoded fallbacks.
@@ -128,6 +130,16 @@ async def get_providers_endpoint(
                 "cache_models": llamacpp_info.get("cache_models", []),
                 "error": llamacpp_info.get("error"),
             },
+            "mlx": {
+                "name": "MLX (Local, Apple Silicon)",
+                "type": "local",
+                "connected": mlx_info.get("connected", False),
+                "base_url": settings.mlx_base_url,
+                "default_model": mlx_info.get("default_model", ""),
+                "models": mlx_info.get("models", []),
+                "cache_models": mlx_info.get("cache_models", []),
+                "error": mlx_info.get("error"),
+            },
             "gemini": {
                 "name": "Google Gemini (Cloud)",
                 "type": "cloud",
@@ -145,11 +157,12 @@ async def get_providers_endpoint(
                 "name": "NVIDIA NIM (Cloud)",
                 "type": "cloud",
                 "connected": bool(settings.nvidia_api_key),
-                "default_model": "meta/llama-3.3-70b-instruct",
+                "default_model": "nvidia/nemotron-3.5-lightning-30b-a3b",
                 "models": [
-                    "meta/llama-3.3-70b-instruct",
-                    "mistralai/mistral-large-2-instruct",
-                    "nvidia/llama-3.1-nemotron-70b-instruct",
+                    "openai/gpt-oss-20b",
+                    "nvidia/nemotron-3.5-lightning-30b-a3b",
+                    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+                    "google/gemma-4-31b-it",
                 ],
             },
         },

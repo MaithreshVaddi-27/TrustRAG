@@ -69,13 +69,32 @@ if (echo > /dev/tcp/localhost/11434) 2>/dev/null; then
   echo "  • Ollama detected on :11434 (optional)"
 fi
 if (echo > /dev/tcp/127.0.0.1/8080) 2>/dev/null; then
-  echo "  • llama-server detected on :8080 (optional)"
+  if curl -sf http://127.0.0.1:8080/v1/models 2>/dev/null | grep -qi "mlx"; then
+    echo "  • MLX server detected on :8080 (should run on :8090 instead)"
+  else
+    echo "  • llama-server detected on :8080 (optional)"
+  fi
 else
-  echo "  • llama-server not running — start it before analyses: ./scripts/start_local_llm.sh"
+  echo "  • No local LLM on :8080"
+fi
+if (echo > /dev/tcp/127.0.0.1/8090) 2>/dev/null; then
+  if curl -sf http://127.0.0.1:8090/v1/models 2>/dev/null | grep -qi "mlx"; then
+    echo "  • MLX server detected on :8090 (Apple Silicon, optional)"
+  else
+    echo "  • Unknown server on :8090"
+  fi
+else
+  echo "  • No MLX server on :8090 — start it with:"
+  echo "      mlx_lm.server --model mlx-community/Llama-3.2-1B-Instruct-4bit --port 8090"
+fi
+if command -v mlx_lm.server >/dev/null 2>&1; then
+  ok "mlx_lm.server installed (Apple Silicon local inference)"
+else
+  echo "  • mlx_lm.server not installed (Apple Silicon only, optional: pip install mlx-lm)"
 fi
 
 echo "─ Ports ─"
-for port in 8000 5173; do
+for port in 8000 5173 8080 8090; do
   if (echo > /dev/tcp/localhost/$port) 2>/dev/null; then
     echo "  • :$port already in use (stop the other service or adjust config/ports.yaml)"
   else

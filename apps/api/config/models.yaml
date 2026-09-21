@@ -16,15 +16,16 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 runtime:
-  config_version: "1.15"
+  config_version: "1.17"
 
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
   framework: langchain
-  # Provider options: ollama, llama_cpp, google_genai, nvidia
+  # Provider options: ollama, llama_cpp, mlx (Apple Silicon), google_genai, nvidia
   provider: llama_cpp
   ollama_base_url: "http://localhost:11434"
   llamacpp_base_url: "http://127.0.0.1:8080/v1"
+  mlx_base_url: "http://127.0.0.1:8090/v1"
   # Supported local models (exactly what is installed):
   #   ollama (`ollama list`):
   #     - Impulse2000/smollm3:3b-q4_K_M
@@ -36,14 +37,22 @@ llm:
   #     - ggml-org/SmolLM3-3B-GGUF:Q4_K_M
   #     - bartowski/EXAONE-3.5-2.4B-Instruct-GGUF:Q4_K_S
   #     - ibm-granite/granite-4.0-h-1b-GGUF:Q4_K_M
+  #   mlx (`mlx_lm.server`, Apple Silicon only; exact id must match --model):
+  #     - mlx-community/Llama-3.2-1B-Instruct-4bit          # DEFAULT: 1B, 8GB-safe
+  #     - mlx-community/Llama-3.2-3B-Instruct-4bit          # 3B, 16GB+
+  #     - mlx-community/LFM2.5-1.2B-Instruct-4bit           # 1.2B LFM2.5, same family as llama_cpp default
+  #     - mlx-community/Qwen3-1.7B-MLX-8bit                 # 1.7B 8-bit, 16GB+
   model: LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
   # Per-provider yaml defaults (used when the env override is empty).
   model_ollama: gemma3:1b
   model_llamacpp: LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
+  model_mlx: mlx-community/Llama-3.2-1B-Instruct-4bit
+  # NVIDIA NIM (cloud) default model
+  model_nvidia: nvidia/nemotron-3.5-lightning-30b-a3b
   temperature: 0.2
   top_p: 0.9
   max_output_tokens: 1024
-  timeout_seconds: 120
+  timeout_seconds: 180
   max_retries: 1
 
 # ─── Embedding ────────────────────────────────────────────────────────────────
@@ -60,6 +69,9 @@ embedding:
   max_seq_length: 512
   # Increment this version when you change the embedding model.
   version: "1"
+  # Embedding Quantization (Phase 4.2) - Int8 quantized embeddings for RAM savings
+  quantization: false          # Enable int8 quantization (~500-1000MB RAM savings)
+  quantized_model_path: ""     # Path to pre-quantized model (auto-quantize if empty)
 
 # ─── Verification LLM ─────────────────────────────────────────────────────────
 # Used for claim-level NLI/structured verification.
@@ -70,12 +82,15 @@ verification:
   # Per-provider yaml defaults (used when the env override is empty).
   model_ollama: gemma3:1b
   model_llamacpp: LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
+  model_mlx: mlx-community/Llama-3.2-1B-Instruct-4bit
+  # NVIDIA NIM verification model
+  model_nvidia: nvidia/nemotron-3.5-lightning-30b-a3b
   temperature: 0.0          # Zero temperature for deterministic verification
   max_output_tokens: 512
-  timeout_seconds: 120
+  timeout_seconds: 180
   max_retries: 1
   # Circuit breaker: maximum time allowed for verification node execution
-  max_verification_time_seconds: 120
+  max_verification_time_seconds: 180
   # Fused decompose+verify: one structured call instead of decompose → batch.
   # Falls back to two-step automatically on total failure. Disable with
   # FUSED_DECOMPOSE_VERIFY=0 to restore the classic path unconditionally.
@@ -83,7 +98,7 @@ verification:
 
 # ─── Reranker ─────────────────────────────────────────────────────────────────
 reranker:
-  enabled: false            # Start disabled; enable after retrieval baseline
+  enabled: true             # Enabled by default for production quality
   provider: cross_encoder   # cross-encoder via sentence-transformers (free)
   model: cross-encoder/ms-marco-MiniLM-L-6-v2
   # Max candidates scored per query (cost bound). MUST stay >= fusion_top_k:
@@ -92,6 +107,17 @@ reranker:
   # torch-free Docker runtime — enabling in Docker is a silent no-op
   # (get_reranker returns None → RRF order) until the image carries torch.
   top_k: 20
+  # Batch size for CrossEncoder inference (CPU: 16, GPU: 64)
+  batch_size: 16
+  # Early termination confidence threshold
+  early_termination_confidence: 0.85
+  # Early termination score gap threshold
+  score_gap_threshold: 0.15
+  # ONNX quantization for reranker (int8 for 3-4x CPU speedup, torch-free)
+  use_onnx: true
+  onnx_model_path: ""  # Auto-generated if empty
+  # Result cache size for reranker (Phase 3.2) - avoids re-scoring same query-doc pairs
+  cache_size: 500
 
 # ─── Retrieval ────────────────────────────────────────────────────────────────
 retrieval:
@@ -101,7 +127,7 @@ retrieval:
   rrf_k: 60                 # RRF constant (standard default)
   fusion_top_k: 20
   max_context_chunks: 8     # Maximum evidence chunks sent to LLM
-  # Deterministic query router (no LLM): simple → 1 call; temporal → 1 call +
+  # Deterministic query router (no LLM call): simple → 1 call; temporal → 1 call +
   # reference_time; comparison/complex → bounded parallel fan-out merged by RRF.
   query_router:
     enabled: true
@@ -178,9 +204,9 @@ cost_controls:
   max_input_tokens: 100000          # Hard limit per LLM call AND pre-request query budget
   max_verification_claims: 8        # Small models choke on 20; 8 keeps NLI focused
   max_individual_nli_fallback: 8    # Must cover max_verification_claims (8): when
-                                      # batch NLI fails, every claim is still attempted
-                                      # individually instead of auto-NEUTRAL trailing
-                                      # claims that were never even tried.
+                                    # batch NLI fails, every claim is still attempted
+                                    # individually instead of auto-NEUTRAL trailing
+                                    # claims that were never even tried.
   max_claim_retrievals: 3             # Targeted-retrieval budget: at most this many
                                       # NEUTRAL claims get one extra retrieval + NLI each
   claim_retrieval_top_k: 5            # Candidate depth per targeted claim retrieval
@@ -188,7 +214,35 @@ cost_controls:
 
 # ─── Inference Acceleration & KV Cache Optimization ───────────────────────────
 optimization:
-  kv_cache_quantization: "q4_0"     # Options: q4_0, q8_0, fp16 (saves 50-75% context VRAM)
-  flash_attention: true             # Computes attention in SRAM tiles (O(N) memory)
-  prompt_caching: true              # Reuses KV cache for static system prompt prefixes
-  adaptive_top_k: true              # Selects top 3-4 chunks if retrieval confidence > 0.82
+  kv_cache_quantization: "q4_0"                 # Options: q4_0, q8_0, fp16 (saves 50-75% context VRAM)
+  flash_attention: true                         # Computes attention in SRAM tiles (O(N) memory)
+  prompt_caching: true                          # Reuses KV cache for static system prompt prefixes
+  adaptive_top_k: true                          # Selects top 3-4 chunks if retrieval confidence > 0.82
+  # Context Compression (Phase 2.4) — hierarchical summarization before LLM call
+  context_compression_enabled: true             # Enable/disable context compression
+  context_compression_target_reduction: 0.5     # Target: 50% of original size (40-60% range)
+  max_context_tokens: 8000                      # Hard token budget for context before LLM call
+
+# ─── Local LLM Inference Parameters ────────────────────────────────────────────
+# Applied to Ollama, llama.cpp, and MLX clients
+local_llm:
+  # Context window size (tokens). Must match or be <= llama-server -c / Ollama num_ctx
+  num_ctx: 4096
+  # Prompt processing batch size for llama.cpp (controls KV cache build parallelism)
+  num_batch: 512
+  # Release GPU memory after this idle period (Ollama: keep_alive; llama.cpp: auto-unload)
+  keep_alive: "5m"
+  # Speculative Decoding / Early Exit (Phase 2.5)
+  # Min-p sampling: only tokens with p >= min_p * p_max are considered
+  # 0.0 = disabled, 0.1 = aggressive filtering for speed
+  min_p: 0.0
+  # Top-k sampling: restrict to top K tokens. 0 = disabled (no limit)
+  top_k: 0
+  # Early stop on EOS token (n_predict streaming with early termination)
+  early_exit_eos: true
+  # Model Offloading (Phase 4.1) - Unload inactive models from memory
+  # Ollama: call /api/ps then /api/delete to unload unused models
+  # llama.cpp: auto-unload on idle (keep_alive) or restart server with new model
+  model_unload_enabled: true
+  model_unload_timeout: "5m"  # Time before considering a model idle for unloading
+  max_loaded_models: 1        # Max concurrent models in memory (1 for lowest RAM)

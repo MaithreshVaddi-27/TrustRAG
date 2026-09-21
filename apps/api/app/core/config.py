@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# ─── Paths ────────────────────────────────────────────────────────────────────
+# ─── Paths ────────────────────────────────────────────────────────────────
 
 # apps/api/ root (one level above app/)
 _API_ROOT = Path(__file__).resolve().parents[2]
@@ -72,9 +72,10 @@ def _load_ports_yaml() -> dict[str, int]:
 _PORTS_FALLBACK = _load_ports_yaml()
 _DEFAULT_OLLAMA_BASE_URL = f"http://localhost:{_PORTS_FALLBACK.get('ollama', 11434)}"
 _DEFAULT_LLAMACPP_BASE_URL = f"http://127.0.0.1:{_PORTS_FALLBACK.get('llamacpp', 8080)}/v1"
+_DEFAULT_MLX_BASE_URL = f"http://127.0.0.1:{_PORTS_FALLBACK.get('mlx', 8090)}/v1"
 
 
-# ─── Settings ─────────────────────────────────────────────────────────────────
+# ─── Settings ─────────────────────────────────────────────────────────────
 
 
 class Settings(BaseSettings):
@@ -138,12 +139,27 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("LLAMACPP_MODEL", "LLAMA_CPP_MODEL"),
         description="Override llama.cpp model identifier from models.yaml via env",
     )
+    mlx_base_url: str = Field(
+        default="http://127.0.0.1:8090/v1",
+        validation_alias=AliasChoices("MLX_BASE_URL"),
+        description="MLX server OpenAI-compatible base URL (Apple Silicon only)",
+    )
+    mlx_model: str = Field(
+        default="",
+        validation_alias=AliasChoices("MLX_MODEL"),
+        description="Override MLX model identifier from models.yaml via env",
+    )
 
     # ── NVIDIA NIM & Tavily Search ─────────────────────────────────────────────
     nvidia_api_key: str = Field(
         default="",
         validation_alias=AliasChoices("NVIDIA_API_KEY", "NIM_API_KEY"),
         description="NVIDIA NIM API key for Llama, Mistral, and Nemotron models",
+    )
+    nvidia_base_url: str = Field(
+        default="https://integrate.api.nvidia.com/v1",
+        validation_alias=AliasChoices("NVIDIA_BASE_URL"),
+        description="NVIDIA NIM API base URL",
     )
     tavily_api_key: str = Field(
         default="",
@@ -157,7 +173,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AI_PROVIDER", "LLM_PROVIDER"),
         description=(
             "Active AI generation & verification provider: 'ollama', "
-            "'llama_cpp', 'gemini', or 'nvidia'"
+            "'llama_cpp', 'mlx' (Apple Silicon), 'gemini', or 'nvidia'"
         ),
     )
     embedding_provider: str = Field(
@@ -175,7 +191,7 @@ class Settings(BaseSettings):
     mongodb_uri: str
     mongodb_database: str = "trustrag_db"
 
-    # ── Qdrant ────────────────────────────────────────────────────────────────
+    # ── Qdrant ─────────────────────────────────────────────────────────────────
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""  # Empty string = no auth (local dev)
 
@@ -257,7 +273,7 @@ class Settings(BaseSettings):
         return self.app_env == "development"
 
 
-# ─── Model config (from models.yaml) ─────────────────────────────────────────
+# ─── Model config (from models.yaml) ──────────────────────────────────────
 
 
 class ModelConfig:
@@ -283,12 +299,12 @@ class ModelConfig:
             node = node[key]
         return node
 
-    # ── Config version ────────────────────────────────────────────────────────
+    # ── Config version ─────────────────────────────────────────────────────
     @property
     def config_version(self) -> str:
         return str(self._get("runtime", "config_version"))
 
-    # ── LLM ──────────────────────────────────────────────────────────────────
+    # ── LLM ─────────────────────────────────────────────────────────────────
     @property
     def llm_provider(self) -> str:
         val = self._get("llm", "provider", required=False)
@@ -299,7 +315,6 @@ class ModelConfig:
 
     @property
     def llm_model(self) -> str:
-        self._get("llm")
         return self.llm_model_for(self.llm_provider)
 
     def llm_model_for(self, provider: str) -> str:
@@ -320,11 +335,22 @@ class ModelConfig:
                 or str(self._get("llm", "model_llamacpp", required=False) or "")
                 or str(self._get("llm", "model") or "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M")
             )
+        if p == "mlx":
+            env_model = os.environ.get("MLX_MODEL")
+            return (
+                env_model
+                or str(self._get("llm", "model_mlx", required=False) or "")
+                # Never fall back to llm.model here: it may be a GGUF id the
+                # MLX server cannot serve (exact-match routing → 404).
+                or "mlx-community/Llama-3.2-1B-Instruct-4bit"
+            )
         env_model = os.environ.get("LLM_MODEL") or os.environ.get("GEMINI_MODEL")
         if env_model:
             return env_model
-        if self.llm_provider in ("nvidia", "nim"):
-            return "meta/llama-3.3-70b-instruct"
+        if p in ("nvidia", "nim"):
+            return "nvidia/nemotron-3.5-lightning-30b-a3b"
+        if p in ("gemini", "google_genai"):
+            return "gemini-3.5-flash-lite"
         return str(self._get("llm", "model") or "gemini-3.5-flash-lite")
 
     @property
@@ -350,6 +376,17 @@ class ModelConfig:
         )
 
     @property
+    def mlx_base_url(self) -> str:
+        env_url = os.environ.get("MLX_BASE_URL")
+        if env_url:
+            return env_url
+        # Separate port (:8090) so llama-server (:8080) and mlx_lm.server (:8090)
+        # can run side-by-side. pydantic env > Field default > _DEFAULT_MLX_BASE_URL.
+        return str(
+            self._get("llm", "mlx_base_url", required=False) or _DEFAULT_MLX_BASE_URL
+        )
+
+    @property
     def llm_temperature(self) -> float:
         return float(self._get("llm", "temperature"))
 
@@ -369,7 +406,7 @@ class ModelConfig:
     def llm_max_retries(self) -> int:
         return int(self._get("llm", "max_retries"))
 
-    # ── Embedding ─────────────────────────────────────────────────────────────
+    # ── Embedding ─────────────────────────────────────────────────────────
     @property
     def embedding_provider(self) -> str:
         val = self._get("embedding", "provider", required=False)
@@ -407,7 +444,30 @@ class ModelConfig:
             return int(val)
         return 512  # Default for BGE-small
 
-    # ── Verification ──────────────────────────────────────────────────────────
+    # ── Embedding Quantization (Phase 4.2) ──────────────────────────────────────
+    @property
+    def embedding_quantization(self) -> bool:
+        """Enable int8 quantization for embedding model (~500-1000MB RAM savings)."""
+        value = self._get("embedding", "quantization", required=False)
+        env_val = os.environ.get("EMBEDDING_QUANTIZATION")
+        if env_val is not None:
+            return env_val.strip().lower() in ("1", "true", "yes", "on")
+        if value is None:
+            return False  # Default disabled, opt-in
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+    @property
+    def embedding_quantized_model_path(self) -> str:
+        """Path to pre-quantized embedding model (auto-quantize if empty)."""
+        value = self._get("embedding", "quantized_model_path", required=False)
+        env_val = os.environ.get("EMBEDDING_QUANTIZED_MODEL_PATH")
+        if env_val is not None:
+            return env_val
+        return str(value or "")
+
+    # ── Verification ──────────────────────────────────────────────────────
     @property
     def verification_provider(self) -> str:
         val = self._get("verification", "provider", required=False)
@@ -439,14 +499,24 @@ class ModelConfig:
                     self._get("verification", "model") or "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
                 )
             )
+        if p == "mlx":
+            env_model = os.environ.get("MLX_MODEL")
+            return (
+                env_model
+                or str(self._get("verification", "model_mlx", required=False) or "")
+                # Same no-GGUF-fallback rule as llm_model_for (exact-match routing).
+                or "mlx-community/Llama-3.2-1B-Instruct-4bit"
+            )
         val = self._get("verification", "model")
         env_model = os.environ.get("GEMINI_VERIFICATION_MODEL") or os.environ.get(
             "VERIFICATION_MODEL"
         )
         if env_model:
             return env_model
-        if self.verification_provider in ("nvidia", "nim"):
-            return "meta/llama-3.3-70b-instruct"
+        if p in ("nvidia", "nim"):
+            return "nvidia/nemotron-3.5-lightning-30b-a3b"
+        if p in ("gemini", "google_genai"):
+            return "gemini-3.5-flash-lite"
         return str(val or "gemini-3.5-flash-lite")
 
     @property
@@ -477,7 +547,7 @@ class ModelConfig:
     def max_verification_time_seconds(self) -> int:
         return int(self._get("verification", "max_verification_time_seconds"))
 
-    # ── Reranker ─────────────────────────────────────────────────────────────
+    # ── Reranker ─────────────────────────────────────────────────────────
     @property
     def reranker_enabled(self) -> bool:
         return bool(self._get("reranker", "enabled"))
@@ -490,7 +560,46 @@ class ModelConfig:
     def reranker_top_k(self) -> int:
         return int(self._get("reranker", "top_k"))
 
-    # ── Retrieval ─────────────────────────────────────────────────────────────
+    @property
+    def reranker_batch_size(self) -> int:
+        return int(self._get("reranker", "batch_size"))
+
+    @property
+    def reranker_early_termination_confidence(self) -> float:
+        return float(self._get("reranker", "early_termination_confidence"))
+
+    @property
+    def reranker_score_gap_threshold(self) -> float:
+        return float(self._get("reranker", "score_gap_threshold"))
+
+    @property
+    def reranker_use_onnx(self) -> bool:
+        val = self._get("reranker", "use_onnx", required=False)
+        env_val = os.environ.get("RERANKER_USE_ONNX")
+        if env_val is not None:
+            return env_val.strip().lower() in ("1", "true", "yes", "on")
+        if val is None:
+            return True  # Default to ONNX for speed
+        if isinstance(val, bool):
+            return val
+        return str(val).strip().lower() in ("1", "true", "yes", "on")
+
+    @property
+    def reranker_onnx_model_path(self) -> str:
+        val = self._get("reranker", "onnx_model_path", required=False)
+        env_val = os.environ.get("RERANKER_ONNX_MODEL_PATH")
+        if env_val is not None:
+            return env_val
+        return str(val or "")
+
+    @property
+    def reranker_cache_size(self) -> int:
+        """Maximum number of query-document pairs to cache for reranker."""
+        value = self._get("reranker", "cache_size", required=False)
+        env_val = os.environ.get("RERANKER_CACHE_SIZE")
+        return int(env_val) if env_val is not None else int(value or 500)
+
+    # ── Retrieval ─────────────────────────────────────────────────────────
     @property
     def dense_top_k(self) -> int:
         return int(self._get("retrieval", "dense_top_k"))
@@ -536,7 +645,7 @@ class ModelConfig:
         value = self._get("retrieval", "query_router", "max_sub_queries", required=False)
         return int(value) if value is not None else 3
 
-    # ── Ingestion ─────────────────────────────────────────────────────────────
+    # ── Ingestion ─────────────────────────────────────────────────────────
     @property
     def chunk_size(self) -> int:
         return int(self._get("ingestion", "chunk_size"))
@@ -574,7 +683,7 @@ class ModelConfig:
     def ocr_store_page_images(self) -> bool:
         return bool(self._get("ingestion", "ocr", "store_page_images", required=False) is not False)
 
-    # ── Reliability ──────────────────────────────────────────────────────────
+    # ── Reliability ──────────────────────────────────────────────────────
     @property
     def minimum_evidence_coverage(self) -> float:
         return float(self._get("reliability", "minimum_evidence_coverage"))
@@ -587,7 +696,7 @@ class ModelConfig:
     def abstain_below(self) -> float:
         return float(self._get("reliability", "abstain_below"))
 
-    # ── Recovery ─────────────────────────────────────────────────────────────
+    # ── Recovery ─────────────────────────────────────────────────────────
     @property
     def max_recovery_attempts(self) -> int:
         return int(self._get("recovery", "max_recovery_attempts"))
@@ -608,7 +717,7 @@ class ModelConfig:
     def max_recovery_latency_seconds(self) -> int:
         return int(self._get("recovery", "max_recovery_latency_seconds", required=False) or 180)
 
-    # ── Observability (Phase 10) ──────────────────────────────────────────
+    # ── Observability (Phase 10) ─────────────────────────────────────────
     @property
     def metrics_enabled(self) -> bool:
         return bool(self._get("observability", "metrics_enabled", required=False) is not False)
@@ -620,7 +729,7 @@ class ModelConfig:
             is not False
         )
 
-    # ── Cost controls ─────────────────────────────────────────────────────────
+    # ── Cost controls ─────────────────────────────────────────────────────
     @property
     def max_input_tokens(self) -> int:
         return int(self._get("cost_controls", "max_input_tokens"))
@@ -643,6 +752,156 @@ class ModelConfig:
     def claim_retrieval_top_k(self) -> int:
         value = self._get("cost_controls", "claim_retrieval_top_k", required=False)
         return int(value) if value is not None else 5
+
+    # ── Local LLM Inference Parameters ────────────────────────────────────────
+    @property
+    def local_llm_num_ctx(self) -> int:
+        value = self._get("local_llm", "num_ctx", required=False)
+        env_val = os.environ.get("LOCAL_LLM_NUM_CTX")
+        return int(env_val) if env_val is not None else int(value or 4096)
+
+    @property
+    def local_llm_num_batch(self) -> int:
+        value = self._get("local_llm", "num_batch", required=False)
+        env_val = os.environ.get("LOCAL_LLM_NUM_BATCH")
+        return int(env_val) if env_val is not None else int(value or 512)
+
+    @property
+    def local_llm_keep_alive(self) -> str:
+        value = self._get("local_llm", "keep_alive", required=False)
+        env_val = os.environ.get("LOCAL_LLM_KEEP_ALIVE")
+        return env_val if env_val is not None else str(value or "5m")
+
+    # ── Speculative Decoding / Early Exit (Phase 2.5) ──────────────────────
+    @property
+    def local_llm_min_p(self) -> float:
+        """Min-p sampling: only tokens with p >= min_p * p_max are considered.
+        0.0 = disabled, 0.1 = aggressive filtering for speed."""
+        value = self._get("local_llm", "min_p", required=False)
+        env_val = os.environ.get("LOCAL_LLM_MIN_P")
+        return float(env_val) if env_val is not None else float(value or 0.0)
+
+    @property
+    def local_llm_top_k(self) -> int:
+        """Top-k sampling: restrict to top K tokens. 0 = disabled (no limit)."""
+        value = self._get("local_llm", "top_k", required=False)
+        env_val = os.environ.get("LOCAL_LLM_TOP_K")
+        return int(env_val) if env_val is not None else int(value or 0)
+
+    @property
+    def local_llm_early_exit_eos(self) -> bool:
+        """Early stop on EOS token (n_predict streaming with early termination)."""
+        value = self._get("local_llm", "early_exit_eos", required=False)
+        env_val = os.environ.get("LOCAL_LLM_EARLY_EXIT_EOS")
+        if env_val is not None:
+            return env_val.strip().lower() in ("1", "true", "yes", "on")
+        if value is None:
+            return True  # Default enabled for speed
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+    # ── Model Offloading (Phase 4.1) ────────────────────────────────────────────
+    @property
+    def local_llm_model_unload_enabled(self) -> bool:
+        """Enable auto-unloading of inactive models from memory."""
+        value = self._get("local_llm", "model_unload_enabled", required=False)
+        env_val = os.environ.get("LOCAL_LLM_MODEL_UNLOAD_ENABLED")
+        if env_val is not None:
+            return env_val.strip().lower() in ("1", "true", "yes", "on")
+        if value is None:
+            return True  # Default enabled for low RAM
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+    @property
+    def local_llm_model_unload_timeout(self) -> str:
+        """Time before considering a model idle for unloading."""
+        value = self._get("local_llm", "model_unload_timeout", required=False)
+        env_val = os.environ.get("LOCAL_LLM_MODEL_UNLOAD_TIMEOUT")
+        return env_val if env_val is not None else str(value or "5m")
+
+    @property
+    def local_llm_max_loaded_models(self) -> int:
+        """Max concurrent models in memory (1 for lowest RAM)."""
+        value = self._get("local_llm", "max_loaded_models", required=False)
+        env_val = os.environ.get("LOCAL_LLM_MAX_LOADED_MODELS")
+        return int(env_val) if env_val is not None else int(value or 1)
+
+    # ── Inference Acceleration & KV Cache Optimization ────────────────────────
+    @property
+    def kv_cache_quantization(self) -> str:
+        value = self._get("optimization", "kv_cache_quantization", required=False)
+        env_val = os.environ.get("KV_CACHE_QUANTIZATION")
+        return env_val if env_val is not None else str(value or "q4_0")
+
+    @property
+    def flash_attention(self) -> bool:
+        value = self._get("optimization", "flash_attention", required=False)
+        env_val = os.environ.get("FLASH_ATTENTION")
+        if env_val is not None:
+            return env_val.strip().lower() in ("1", "true", "yes", "on")
+        if value is None:
+            return True
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+    @property
+    def prompt_caching(self) -> bool:
+        value = self._get("optimization", "prompt_caching", required=False)
+        env_val = os.environ.get("PROMPT_CACHING")
+        if env_val is not None:
+            return env_val.strip().lower() in ("1", "true", "yes", "on")
+        if value is None:
+            return True
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+    @property
+    def adaptive_top_k(self) -> bool:
+        value = self._get("optimization", "adaptive_top_k", required=False)
+        env_val = os.environ.get("ADAPTIVE_TOP_K")
+        if env_val is not None:
+            return env_val.strip().lower() in ("1", "true", "yes", "on")
+        if value is None:
+            return True
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+    # ── Context Compression (Phase 2.4) ─────────────────────────────────────────
+    @property
+    def context_compression_enabled(self) -> bool:
+        value = self._get("optimization", "context_compression_enabled", required=False)
+        env_val = os.environ.get("CONTEXT_COMPRESSION_ENABLED")
+        if env_val is not None:
+            return env_val.strip().lower() in ("1", "true", "yes", "on")
+        if value is None:
+            return True  # Default enabled for RAM savings
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+    @property
+    def context_compression_target_reduction(self) -> float:
+        """Target compression ratio (e.g., 0.5 = 50% of original size)."""
+        value = self._get("optimization", "context_compression_target_reduction", required=False)
+        env_val = os.environ.get("CONTEXT_COMPRESSION_TARGET_REDUCTION")
+        if env_val is not None:
+            return float(env_val)
+        return float(value or 0.5)
+
+    @property
+    def max_context_tokens(self) -> int:
+        """Hard token budget for context before LLM call (separate from chunk count)."""
+        value = self._get("optimization", "max_context_tokens", required=False)
+        env_val = os.environ.get("MAX_CONTEXT_TOKENS")
+        if env_val is not None:
+            return int(env_val)
+        return int(value or 8000)  # Generous default, actual limit from num_ctx
 
     def as_snapshot(self) -> dict[str, Any]:
         """Return a flat dict for recording with each analysis run."""
@@ -673,7 +932,7 @@ class ModelConfig:
         }
 
 
-# ─── Singletons ───────────────────────────────────────────────────────────────
+# ─── Singletons ───────────────────────────────────────────────────────────
 
 
 @lru_cache(maxsize=1)

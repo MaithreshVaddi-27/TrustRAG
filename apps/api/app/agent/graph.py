@@ -586,8 +586,9 @@ async def retrieval_node(state: AgentState) -> AgentState:
         # max_context_chunks. Stuffing 16-32 chunks into a 2k-context local LLM
         # overflows num_ctx and yields truncated stubs (e.g. answer "The").
         gen_cap = cfg.max_context_chunks
-        if len(state["chunks"]) > gen_cap:
-            dropped = len(state["chunks"]) - gen_cap
+        chunk_count = len(state["chunks"])
+        if chunk_count > gen_cap:
+            dropped = chunk_count - gen_cap
             state["chunks"] = state["chunks"][:gen_cap]
             await add_trace_event(
                 state["analysis_id"],
