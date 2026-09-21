@@ -133,6 +133,9 @@ brew services start mongodb-community
 ollama serve &
 ollama pull gemma3:1b        # lightweight default (or: ollama pull llama3)
 
+# llama.cpp (local GGUF models) — hardware-aware launcher
+./scripts/start_local_llm.sh   # auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
+
 # MLX (Apple Silicon only, optional) — see [MLX Setup Guide](docs/MLX_SETUP.md)
 pipx install mlx-lm
 mlx_lm.server --model mlx-community/Llama-3.2-1B-Instruct-4bit --port 8090
@@ -172,6 +175,9 @@ sudo systemctl enable --now mongod
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull gemma3:1b        # or: ollama pull llama3
 
+# llama.cpp (local GGUF models) — hardware-aware launcher
+./scripts/start_local_llm.sh   # auto-detects CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
+
 # Backend (terminal 1)
 cd apps/api
 python3.11 -m venv .venv && source .venv/bin/activate
@@ -196,6 +202,12 @@ winget install Git.Git
 # Close and reopen PowerShell, then:
 net start MongoDB
 ollama pull gemma3:1b
+```
+
+```powershell
+# llama.cpp (local GGUF models) — use the provided startup script or run llama-server directly
+# For now, use WSL2 for llama.cpp on Windows (see Linux instructions)
+# Start: wsl ./scripts/start_local_llm.sh
 ```
 
 ```powershell
