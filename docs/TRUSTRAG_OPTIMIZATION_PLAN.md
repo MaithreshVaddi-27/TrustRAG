@@ -281,7 +281,7 @@ Future enhancements could include:
 - GPU-accelerated embedding quantization (OpenVINO already supported)
 - More sophisticated context compression with sliding window attention
 
-## Configuration Options (models.yaml v1.17)
+## Configuration Options (models.yaml v1.18)
 
 ```yaml
 optimization:
@@ -297,10 +297,21 @@ local_llm:
   num_ctx: 4096                                 # Context window (tokens)
   num_batch: 512                                # Prompt processing batch size
   keep_alive: "5m"                              # Model keep-alive duration
+  min_p: 0.0                                    # Min-p sampling (0 = disabled)
+  top_k: 0                                      # Top-k sampling (0 = disabled)
+  early_exit_eos: true                          # Early stop on EOS token
+  model_unload_enabled: true                    # Auto-unload inactive models
+  model_unload_timeout: "5m"                    # Idle timeout before unload
+  max_loaded_models: 1                          # Max concurrent models in memory
 
 reranker:
   use_onnx: true                                # Enable ONNX int8 acceleration
   onnx_model_path: ""                           # Auto-generated if empty
+  cache_size: 500                               # LRU cache size for query-doc pairs
+
+embedding:
+  quantization: false                           # Enable int8 quantization
+  quantized_model_path: ""                      # Path to pre-quantized model
 ```
 
 ## Environment Variable Overrides

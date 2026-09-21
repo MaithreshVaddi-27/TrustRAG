@@ -66,6 +66,19 @@ def _load_ports_yaml() -> dict[str, int]:
         return {}
 
 
+def _blank_as_none(name: str) -> str | None:
+    """Return env var value, treating missing/blank as None.
+
+    Docker/`.env` files often carry empty entries (e.g. `LOCAL_LLM_NUM_CTX=`),
+    which must fall back to the yaml default instead of crashing
+    `int("")`/`float("")`.
+    """
+    val = os.environ.get(name)
+    if val is None or not val.strip():
+        return None
+    return val
+
+
 # Local LLM base URLs derived once from the canonical port registry so a fresh
 # checkout works with zero provider config — explicit env vars still win
 # (pydantic env > Field default), and models.yaml stays the ID source.
@@ -382,9 +395,7 @@ class ModelConfig:
             return env_url
         # Separate port (:8090) so llama-server (:8080) and mlx_lm.server (:8090)
         # can run side-by-side. pydantic env > Field default > _DEFAULT_MLX_BASE_URL.
-        return str(
-            self._get("llm", "mlx_base_url", required=False) or _DEFAULT_MLX_BASE_URL
-        )
+        return str(self._get("llm", "mlx_base_url", required=False) or _DEFAULT_MLX_BASE_URL)
 
     @property
     def llm_temperature(self) -> float:
@@ -426,7 +437,7 @@ class ModelConfig:
     @property
     def embedding_dimensionality(self) -> int:
         val = int(self._get("embedding", "output_dimensionality"))
-        env_dim = os.environ.get("EMBEDDING_DIM") or os.environ.get("EMBEDDING_DIMENSIONALITY")
+        env_dim = _blank_as_none("EMBEDDING_DIM") or _blank_as_none("EMBEDDING_DIMENSIONALITY")
         return int(env_dim) if env_dim is not None else val
 
     @property
@@ -596,7 +607,7 @@ class ModelConfig:
     def reranker_cache_size(self) -> int:
         """Maximum number of query-document pairs to cache for reranker."""
         value = self._get("reranker", "cache_size", required=False)
-        env_val = os.environ.get("RERANKER_CACHE_SIZE")
+        env_val = _blank_as_none("RERANKER_CACHE_SIZE")
         return int(env_val) if env_val is not None else int(value or 500)
 
     # ── Retrieval ─────────────────────────────────────────────────────────
@@ -757,19 +768,19 @@ class ModelConfig:
     @property
     def local_llm_num_ctx(self) -> int:
         value = self._get("local_llm", "num_ctx", required=False)
-        env_val = os.environ.get("LOCAL_LLM_NUM_CTX")
+        env_val = _blank_as_none("LOCAL_LLM_NUM_CTX")
         return int(env_val) if env_val is not None else int(value or 4096)
 
     @property
     def local_llm_num_batch(self) -> int:
         value = self._get("local_llm", "num_batch", required=False)
-        env_val = os.environ.get("LOCAL_LLM_NUM_BATCH")
+        env_val = _blank_as_none("LOCAL_LLM_NUM_BATCH")
         return int(env_val) if env_val is not None else int(value or 512)
 
     @property
     def local_llm_keep_alive(self) -> str:
         value = self._get("local_llm", "keep_alive", required=False)
-        env_val = os.environ.get("LOCAL_LLM_KEEP_ALIVE")
+        env_val = _blank_as_none("LOCAL_LLM_KEEP_ALIVE")
         return env_val if env_val is not None else str(value or "5m")
 
     # ── Speculative Decoding / Early Exit (Phase 2.5) ──────────────────────
@@ -778,14 +789,14 @@ class ModelConfig:
         """Min-p sampling: only tokens with p >= min_p * p_max are considered.
         0.0 = disabled, 0.1 = aggressive filtering for speed."""
         value = self._get("local_llm", "min_p", required=False)
-        env_val = os.environ.get("LOCAL_LLM_MIN_P")
+        env_val = _blank_as_none("LOCAL_LLM_MIN_P")
         return float(env_val) if env_val is not None else float(value or 0.0)
 
     @property
     def local_llm_top_k(self) -> int:
         """Top-k sampling: restrict to top K tokens. 0 = disabled (no limit)."""
         value = self._get("local_llm", "top_k", required=False)
-        env_val = os.environ.get("LOCAL_LLM_TOP_K")
+        env_val = _blank_as_none("LOCAL_LLM_TOP_K")
         return int(env_val) if env_val is not None else int(value or 0)
 
     @property
@@ -819,14 +830,14 @@ class ModelConfig:
     def local_llm_model_unload_timeout(self) -> str:
         """Time before considering a model idle for unloading."""
         value = self._get("local_llm", "model_unload_timeout", required=False)
-        env_val = os.environ.get("LOCAL_LLM_MODEL_UNLOAD_TIMEOUT")
+        env_val = _blank_as_none("LOCAL_LLM_MODEL_UNLOAD_TIMEOUT")
         return env_val if env_val is not None else str(value or "5m")
 
     @property
     def local_llm_max_loaded_models(self) -> int:
         """Max concurrent models in memory (1 for lowest RAM)."""
         value = self._get("local_llm", "max_loaded_models", required=False)
-        env_val = os.environ.get("LOCAL_LLM_MAX_LOADED_MODELS")
+        env_val = _blank_as_none("LOCAL_LLM_MAX_LOADED_MODELS")
         return int(env_val) if env_val is not None else int(value or 1)
 
     # ── Inference Acceleration & KV Cache Optimization ────────────────────────
@@ -889,7 +900,7 @@ class ModelConfig:
     def context_compression_target_reduction(self) -> float:
         """Target compression ratio (e.g., 0.5 = 50% of original size)."""
         value = self._get("optimization", "context_compression_target_reduction", required=False)
-        env_val = os.environ.get("CONTEXT_COMPRESSION_TARGET_REDUCTION")
+        env_val = _blank_as_none("CONTEXT_COMPRESSION_TARGET_REDUCTION")
         if env_val is not None:
             return float(env_val)
         return float(value or 0.5)
@@ -898,7 +909,7 @@ class ModelConfig:
     def max_context_tokens(self) -> int:
         """Hard token budget for context before LLM call (separate from chunk count)."""
         value = self._get("optimization", "max_context_tokens", required=False)
-        env_val = os.environ.get("MAX_CONTEXT_TOKENS")
+        env_val = _blank_as_none("MAX_CONTEXT_TOKENS")
         if env_val is not None:
             return int(env_val)
         return int(value or 8000)  # Generous default, actual limit from num_ctx

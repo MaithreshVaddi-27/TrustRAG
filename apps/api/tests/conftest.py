@@ -23,6 +23,7 @@ os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 # Clear global caches between tests to avoid cross-test pollution
 import pytest
 
+
 @pytest.fixture(autouse=True)
 def clear_global_caches():
     """Clear global caches before each test."""

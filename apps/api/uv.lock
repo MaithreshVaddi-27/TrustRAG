@@ -4824,6 +4824,7 @@ dependencies = [
     { name = "slowapi" },
     { name = "structlog" },
     { name = "tavily-python" },
+    { name = "tiktoken" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "xxhash" },
 ]
@@ -4888,6 +4889,7 @@ requires-dist = [
     { name = "slowapi", specifier = ">=0.1.9" },
     { name = "structlog", specifier = ">=24.1.0" },
     { name = "tavily-python", specifier = ">=0.8.0" },
+    { name = "tiktoken", specifier = ">=0.8.0" },
     { name = "types-passlib", marker = "extra == 'dev'" },
     { name = "types-python-jose", marker = "extra == 'dev'" },
     { name = "types-pyyaml", marker = "extra == 'dev'" },

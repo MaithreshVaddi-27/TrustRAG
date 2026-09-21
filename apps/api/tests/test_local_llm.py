@@ -431,18 +431,38 @@ async def test_llamacpp_connected_lists_only_loaded_model(monkeypatch):
 def test_discover_mlx_cache_models_filters_non_mlx(monkeypatch, tmp_path):
     """HF-cache scan returns MLX weights only — GGUFs and unrelated models excluded."""
 
-    (tmp_path / ".cache" / "huggingface" / "hub" / "models--mlx-community--Llama-3.2-1B-Instruct-4bit").mkdir(
-        parents=True
+    path1 = (
+        tmp_path
+        / ".cache"
+        / "huggingface"
+        / "hub"
+        / "models--mlx-community--Llama-3.2-1B-Instruct-4bit"
     )
-    (tmp_path / ".cache" / "huggingface" / "hub" / "models--mlx-community--Qwen3-1.7B-MLX-8bit").mkdir(
-        parents=True
+    path1.mkdir(parents=True)
+    path2 = (
+        tmp_path
+        / ".cache"
+        / "huggingface"
+        / "hub"
+        / "models--mlx-community--Qwen3-1.7B-MLX-8bit"
     )
-    (tmp_path / ".cache" / "huggingface" / "hub" / "models--bartowski--Model-GGUF").mkdir(
-        parents=True
+    path2.mkdir(parents=True)
+    path3 = (
+        tmp_path
+        / ".cache"
+        / "huggingface"
+        / "hub"
+        / "models--bartowski--Model-GGUF"
     )
-    (tmp_path / ".cache" / "huggingface" / "hub" / "models--BAAI--bge-small-en-v1.5").mkdir(
-        parents=True
+    path3.mkdir(parents=True)
+    path4 = (
+        tmp_path
+        / ".cache"
+        / "huggingface"
+        / "hub"
+        / "models--BAAI--bge-small-en-v1.5"
     )
+    path4.mkdir(parents=True)
     monkeypatch.setattr(_llm_mod.Path, "home", lambda: tmp_path)
 
     found = _llm_mod.discover_mlx_cache_models()

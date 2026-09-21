@@ -7,7 +7,6 @@ abstention rules when context is insufficient.
 
 from __future__ import annotations
 
-import os
 import re
 from typing import Any
 
@@ -16,10 +15,47 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.core.config import get_model_config
 from app.core.llm_utils import normalize_llm_content
+from app.core.local_llm import LOCAL_LLM_PROVIDERS, local_cap_kwargs
 from app.core.logging import get_logger
 from app.core.model_registry import get_llm
 
 logger = get_logger(__name__)
+
+# ─── Provider-aware invoke kwargs ────────────────────────────────────────────
+# Local-only params (num_ctx, num_batch/n_batch, keep_alive, max_tokens) must
+# never reach cloud chat models: Gemini's GenerateContentConfig rejects
+# unknown fields (num_ctx/keep_alive → ValidationError) and ignores
+# max_tokens (it reads max_output_tokens), while NVIDIA forwards extras into
+# the API payload. Same discipline as verifier.py / graph.py via
+# local_cap_kwargs.
+
+
+def _invoke_kwargs_for_provider(
+    provider: str | None,
+    max_tokens: int,
+    *,
+    num_ctx: int | None = None,
+    num_batch: int | None = None,
+    keep_alive: str | None = None,
+) -> dict[str, Any]:
+    """Build per-call LLM kwargs with the correct param names per provider."""
+    norm = (provider or "").strip().lower()
+    if norm in LOCAL_LLM_PROVIDERS:
+        kwargs: dict[str, Any] = dict(local_cap_kwargs(provider, max_tokens))
+        if num_ctx is not None:
+            kwargs["num_ctx"] = num_ctx
+        if num_batch is not None:
+            # Both spellings: Ollama reads num_batch, llama.cpp reads n_batch.
+            kwargs["num_batch"] = num_batch
+            kwargs["n_batch"] = num_batch
+        if keep_alive is not None:
+            kwargs["keep_alive"] = keep_alive
+        return kwargs
+    if norm in ("gemini", "google_genai"):
+        return {"max_output_tokens": int(max_tokens)}
+    # nvidia/nim (OpenAI-style) and any future provider: max_tokens.
+    return {"max_tokens": int(max_tokens)}
+
 
 # ─── Token Counting Utilities ──────────────────────────────────────────────────
 
@@ -93,7 +129,7 @@ def calculate_dynamic_num_ctx(
         "llama_cpp": cfg.local_llm_num_ctx,
         "mlx": cfg.local_llm_num_ctx,
         "gemini": 1000000,  # Large context window
-        "nvidia": 128000,   # Nemotron context
+        "nvidia": 128000,  # Nemotron context
     }
 
     # Get the active provider if not specified
@@ -102,8 +138,16 @@ def calculate_dynamic_num_ctx(
 
     max_ctx = provider_limits.get(provider.lower(), cfg.local_llm_num_ctx)
 
-    # Clamp to provider max, but ensure minimum for basic functionality
+    # Clamp to provider max, but ensure minimum for basic functionality.
+    # Loud when the request overflows: clamping silently truncates evidence.
     optimal_ctx = min(max(required_ctx, 1024), max_ctx)
+    if required_ctx > max_ctx:
+        logger.warning(
+            "Context overflows provider window; evidence will be truncated",
+            required_ctx=required_ctx,
+            provider_max=max_ctx,
+            provider=provider,
+        )
 
     logger.debug(
         "Dynamic num_ctx calculated",
@@ -164,22 +208,22 @@ Strict Constraints:
 # ─── Context Compression (Phase 2.4) ───────────────────────────────────────────
 
 # Compression prompt for summarizing context before main generation
-CONTEXT_COMPRESSION_PROMPT = """You are a context compression assistant. Your task is to summarize the provided text segments while preserving ALL factual information relevant to the query.
-
-Query: {query}
-
-Context Segments:
-{context}
-
-Instructions:
-1. Extract and condense ALL information relevant to answering the query.
-2. Remove redundant, boilerplate, or tangential content.
-3. Preserve specific facts, numbers, names, dates, and technical details.
-4. Maintain traceability: reference the original segment numbers [Segment N] for key facts.
-5. Output a compressed version that is 40-60% of the original length.
-6. Do NOT answer the query - only compress the context for downstream use.
-
-Compressed Context:"""
+CONTEXT_COMPRESSION_PROMPT = (
+    "You are a context compression assistant. Your task is to summarize the "
+    "provided text segments while preserving ALL factual information relevant "
+    "to the query.\n\n"
+    "Query: {query}\n\n"
+    "Context Segments:\n{context}\n\n"
+    "Instructions:\n"
+    "1. Extract and condense ALL information relevant to answering the query.\n"
+    "2. Remove redundant, boilerplate, or tangential content.\n"
+    "3. Preserve specific facts, numbers, names, dates, and technical details.\n"
+    "4. Maintain traceability: reference the original segment numbers "
+    "[Segment N] for key facts.\n"
+    "5. Output a compressed version that is 40-60% of the original length.\n"
+    "6. Do NOT answer the query - only compress the context for downstream use.\n\n"
+    "Compressed Context:"
+)
 
 
 async def compress_context(
@@ -188,12 +232,13 @@ async def compress_context(
     provider: str | None = None,
     model: str | None = None,
     target_reduction: float = 0.5,
+    preformatted: tuple[str, list[int]] | None = None,
 ) -> tuple[str, list[int]]:
     """
     Compress context using a smaller/faster model before main generation.
 
     This implements hierarchical summarization:
-    1. Format chunks with segment indices
+    1. Format chunks with segment indices (or reuse the caller's formatting)
     2. Use a fast model to compress while preserving key facts
     3. Return compressed context with original chunk indices for citation mapping
 
@@ -203,9 +248,14 @@ async def compress_context(
         provider: LLM provider for compression (can use faster/smaller model)
         model: Specific model for compression
         target_reduction: Target size reduction ratio (0.5 = 50% size)
+        preformatted: Optional (context_str, chunk_indices) already built by the
+            caller — reused as-is so the context is formatted exactly once.
 
     Returns:
-        Tuple of (compressed_context_str, original_chunk_indices)
+        Tuple of (compressed_context_str, surviving_chunk_indices). The
+        surviving list is parsed from the [Segment N] refs kept in the
+        summary; when the summary carries no refs it falls back to the
+        original indices.
     """
     if not chunks:
         return "No context segments available.", []
@@ -217,8 +267,11 @@ async def compress_context(
     compression_provider = provider or cfg.llm_provider
     compression_model = model or cfg.llm_model_for(compression_provider)
 
-    # Format context with segment indices first
-    context_str, chunk_indices = format_context_with_chunk_indices(chunks)
+    # Format context with segment indices first (once — reuse caller's work).
+    if preformatted is not None:
+        context_str, chunk_indices = preformatted
+    else:
+        context_str, chunk_indices = format_context_with_chunk_indices(chunks)
 
     # Check if compression is worthwhile (context is large enough)
     context_tokens = count_tokens(context_str, compression_model)
@@ -253,7 +306,10 @@ async def compress_context(
 
         response = await llm.ainvoke(
             messages,
-            max_tokens=target_tokens,
+            # Provider-aware caps: local gets max_tokens, Gemini gets
+            # max_output_tokens, NVIDIA gets max_tokens. temperature is
+            # universal. Never send num_ctx/keep_alive to cloud models.
+            **_invoke_kwargs_for_provider(compression_provider, target_tokens),
             temperature=0.1,  # Low temperature for faithful compression
         )
 
@@ -272,8 +328,21 @@ async def compress_context(
             reduction_ratio=round(compressed_tokens / context_tokens, 2),
         )
 
-        # Return compressed context with ORIGINAL chunk indices
-        # The segment headers in compressed text will reference original segment numbers
+        # Return compressed context with SURVIVING chunk indices: the summary
+        # keeps [Segment N] refs for the segments it preserved, so map those
+        # display numbers back onto the original chunk positions. A summary
+        # with no refs falls back to the full original mapping.
+        surviving = extract_citations(compressed)
+        if surviving:
+            by_display = dict(enumerate(chunk_indices, start=1))
+            mapped = [by_display[n] for n in surviving if n in by_display]
+            if mapped:
+                return compressed, mapped
+            logger.warning(
+                "Compressed summary cites unknown segments; keeping original mapping",
+                cited=surviving,
+                served=len(chunk_indices),
+            )
         return compressed, chunk_indices
 
     except Exception as exc:
@@ -552,7 +621,8 @@ async def generate_grounded_answer(
         # citation validity range for the post-check after generation)
         context_str, chunk_indices = format_context_with_chunk_indices(chunks)
 
-        # Phase 2.4: Context Compression - compress large contexts before LLM call
+        # Phase 2.4: Context Compression - compress large contexts before LLM call.
+        # Pass the already-formatted context so chunks are formatted exactly once.
         if cfg.context_compression_enabled:
             context_str, chunk_indices = await compress_context(
                 query=query,
@@ -560,6 +630,7 @@ async def generate_grounded_answer(
                 provider=resolved_provider,
                 model=resolved_model,
                 target_reduction=cfg.context_compression_target_reduction,
+                preformatted=(context_str, chunk_indices),
             )
 
         # Dynamic context sizing: calculate optimal num_ctx based on actual token counts
@@ -588,13 +659,19 @@ async def generate_grounded_answer(
             max_output_tokens=max_output_tokens,
         )
 
-        # Pass dynamic num_ctx and other local LLM params via kwargs
+        # Provider-aware invoke kwargs: local providers get dynamic num_ctx
+        # plus batch/keep_alive tuning; Gemini gets max_output_tokens and
+        # NVIDIA gets max_tokens. Local-only keys must never reach cloud
+        # models (Gemini rejects them, NVIDIA forwards them to the API).
         response = await llm.ainvoke(
             messages,
-            num_ctx=dynamic_num_ctx,
-            max_tokens=max_output_tokens,
-            n_batch=cfg.local_llm_num_batch,
-            keep_alive=cfg.local_llm_keep_alive,
+            **_invoke_kwargs_for_provider(
+                resolved_provider,
+                max_output_tokens,
+                num_ctx=dynamic_num_ctx,
+                num_batch=cfg.local_llm_num_batch,
+                keep_alive=cfg.local_llm_keep_alive,
+            ),
         )
 
         # Standardize result (guard: None content must not become "None")

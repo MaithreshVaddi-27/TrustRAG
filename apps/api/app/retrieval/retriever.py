@@ -396,18 +396,6 @@ async def apply_temporal_filtering(
     return filtered_results
 
 
-async def apply_temporal_filtering_batched(
-    results: list[dict[str, Any]], reference_time: datetime | None = None
-) -> list[dict[str, Any]]:
-    """
-    Optimized version of apply_temporal_filtering that fetches document metadata
-    in a single batched query instead of individual lookups.
-
-    This is an alias for apply_temporal_filtering which already uses batched queries.
-    """
-    return await apply_temporal_filtering(results, reference_time)
-
-
 async def retrieve_hybrid_chunks(
     query: str,
     kb_id: str,
@@ -490,13 +478,16 @@ async def retrieve_hybrid_chunks(
     filtered = await apply_temporal_filtering(fused, reference_time)
 
     # Adaptive Top-K: Reduce fusion_top_k when retrieval confidence is high
-    # This reduces context sent to LLM, saving tokens and latency
+    # This reduces context sent to LLM, saving tokens and latency.
+    # NOTE: RRF scores live on a tiny scale (with rrf_k=60 the max for a
+    # result ranked #1 in both legs is 2/61 ≈ 0.033), so the threshold must
+    # sit in RRF units — 0.82 here would be dead code.
     fusion_top_k = cfg.fusion_top_k
     if adaptive_enabled and filtered:
         # Check if top result has high confidence (dense_score + sparse_score / RRF)
         top_rrf = filtered[0].get("rrf_score", 0.0)
-        # Threshold from config or sensible default (0.82 as mentioned in models.yaml comment)
-        if top_rrf >= 0.82:
+        # High RRF ≈ top result ranked near #1 in both dense and sparse legs.
+        if top_rrf >= 0.02:
             # High confidence: cap at 4 instead of full fusion_top_k
             adaptive_k = min(4, fusion_top_k)
             logger.debug(

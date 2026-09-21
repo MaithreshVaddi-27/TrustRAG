@@ -45,21 +45,38 @@ _MAX_LLM_INSTANCES = 2  # Reduced from 4 for ultra-low RAM usage (8GB systems)
 _LLM_REGISTRY: OrderedDict[str, BaseChatModel] = OrderedDict()
 _LLM_REGISTRY_LOCK = threading.RLock()
 _LLM_REGISTRY_CLOSED = False
+# TTL cache for get_max_llm_instances() (see below).
+_MAX_INSTANCES_CACHE: dict[str, float] = {}
 
 
 def get_max_llm_instances() -> int:
-    """Get the maximum number of LLM instances based on available RAM."""
+    """Get the maximum number of LLM instances based on available RAM.
+
+    Cached for 60 s: the value changes ~never, and every uncached call costs
+    a psutil syscall on the LLM-construction path.
+    """
+    now = time.monotonic()
+    with _LLM_REGISTRY_LOCK:
+        cached = _MAX_INSTANCES_CACHE.get("value")
+        cached_at = _MAX_INSTANCES_CACHE.get("at", 0.0)
+        if cached is not None and (now - cached_at) < 60.0:
+            return int(cached)
     try:
-        import psutil
-        total_ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+        import psutil as _psutil
+
+        total_ram_gb = _psutil.virtual_memory().total / (1024**3)
         if total_ram_gb <= 8:
-            return 1  # Ultra-aggressive for 8GB systems
+            resolved = 1  # Ultra-aggressive for 8GB systems
         elif total_ram_gb <= 16:
-            return 2  # Conservative for 16GB systems
+            resolved = 2  # Conservative for 16GB systems
         else:
-            return 4  # Standard for 32GB+ systems
+            resolved = 4  # Standard for 32GB+ systems
     except ImportError:
-        return _MAX_LLM_INSTANCES  # Default fallback
+        resolved = _MAX_LLM_INSTANCES  # Default fallback
+    with _LLM_REGISTRY_LOCK:
+        _MAX_INSTANCES_CACHE["value"] = resolved
+        _MAX_INSTANCES_CACHE["at"] = now
+    return resolved
 
 
 def _llm_registry_key(provider: str, model: str | None) -> str:
@@ -105,21 +122,31 @@ def put_llm_instance(provider: str, model: str | None, llm: BaseChatModel) -> No
         if len(_LLM_REGISTRY) >= max_instances and key not in _LLM_REGISTRY:
             evicted_key, evicted_llm = _LLM_REGISTRY.popitem(last=False)
             _close_llm_instance(evicted_llm)
-            logger.debug("Evicted LLM from registry", evicted=evicted_key, max_instances=max_instances)
+            logger.debug(
+                "Evicted LLM from registry", evicted=evicted_key, max_instances=max_instances
+            )
 
         _LLM_REGISTRY[key] = llm
         _LLM_REGISTRY.move_to_end(key)
 
 
-def close_all_llm_instances() -> None:
-    """Close all LLM instances and prevent new registrations."""
+def close_all_llm_instances(seal: bool = False) -> None:
+    """Close all LLM instances; seal the registry only on app shutdown.
+
+    Args:
+        seal: When True, prevent new registrations (shutdown path).
+            `clear_model_caches()` passes False so the registry reopens.
+    """
     global _LLM_REGISTRY_CLOSED
     with _LLM_REGISTRY_LOCK:
-        _LLM_REGISTRY_CLOSED = True
+        _LLM_REGISTRY_CLOSED = seal
         for llm in _LLM_REGISTRY.values():
             _close_llm_instance(llm)
         _LLM_REGISTRY.clear()
-        logger.info("Closed all LLM instances and sealed registry")
+        if seal:
+            logger.info("Closed all LLM instances and sealed registry")
+        else:
+            logger.info("Closed all LLM instances (registry reopened)")
 
 
 # ─── Generation-scoped LLM Response Cache (TTL + bounded) ───────────────────────────
@@ -185,8 +212,8 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
       - gemini: ChatGoogleGenerativeAI via langchain-google-genai
       - nvidia: ChatNVIDIA via langchain-nvidia-ai-endpoints
 
-    Uses bounded registry (max 4 instances) with LRU eviction to prevent
-    RAM/GPU leak from user-controlled model strings.
+    Uses bounded registry (max instances scale with RAM: 1/2/4) with LRU
+    eviction to prevent RAM/GPU leak from user-controlled model strings.
     """
     settings = get_settings()
     cfg: ModelConfig = get_model_config()
@@ -715,19 +742,30 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
         # Phase 4.2: Embedding Quantization (int8) for RAM savings
         if cfg.embedding_quantization:
             try:
-                from optimum.intel import OVModelForFeatureExtraction
-                # Use OpenVINO for int8 quantization if available
-                model_kwargs["quantization_config"] = "int8"
-                logger.info("Int8 quantization enabled for embedding model")
+                import importlib.util
+
+                if importlib.util.find_spec("optimum.intel") is not None:
+                    # Use OpenVINO for int8 quantization if available
+                    model_kwargs["quantization_config"] = "int8"
+                    logger.info("Int8 quantization enabled for embedding model")
+                else:
+                    raise ImportError("optimum-intel not available")
             except ImportError:
-                logger.warning("Optimum-Intel not available, skipping int8 quantization. Install 'optimum-intel' for CPU int8.")
+                logger.warning(
+                    "Optimum-Intel not available, skipping int8 quantization. "
+                    "Install 'optimum-intel' for CPU int8."
+                )
                 # Fallback: try torch int8 quantization
                 try:
-                    import torch
-                    if hasattr(torch, 'quantization') and opt_device == "cpu":
-                        logger.info("Using PyTorch dynamic int8 quantization for embeddings")
+                    import importlib.util
+
+                    if importlib.util.find_spec("torch") is not None and opt_device == "cpu":
+                        import torch
+
+                        if hasattr(torch, "quantization"):
+                            logger.info("Using PyTorch dynamic int8 quantization for embeddings")
                 except Exception:
-                    pass
+                    logger.debug("PyTorch dynamic quantization not available")
 
         # Fast-path 1: Check local Hugging Face Hub snapshots directory
         hf_hub_name = "models--" + active_model.replace("/", "--")
@@ -811,6 +849,7 @@ def get_reranker():  # type: ignore[return]
     if cfg.reranker_use_onnx:
         try:
             from app.core.onnx_reranker import ONNXCrossEncoder
+
             logger.info("Initializing ONNX reranker", model=cfg.reranker_model)
 
             # Determine ONNX model path
@@ -825,24 +864,39 @@ def get_reranker():  # type: ignore[return]
             if not Path(onnx_path).exists():
                 logger.info("ONNX model not found, will export from PyTorch", path=str(onnx_path))
                 try:
-                    from sentence_transformers import CrossEncoder
-                    import torch
-                    model = CrossEncoder(cfg.reranker_model)
-                    # Export to ONNX
-                    from app.core.onnx_reranker import export_crossencoder_to_onnx
-                    export_crossencoder_to_onnx(model, str(onnx_path))
-                    logger.info("Successfully exported reranker to ONNX", path=str(onnx_path))
+                    import importlib.util
+
+                    if importlib.util.find_spec("torch") is not None:
+                        # Import torch locally for export
+                        import torch  # noqa: F401 - used by CrossEncoder internally
+                        from sentence_transformers import CrossEncoder
+
+                        model = CrossEncoder(cfg.reranker_model)
+                        # Export to ONNX
+                        from app.core.onnx_reranker import export_crossencoder_to_onnx
+
+                        export_crossencoder_to_onnx(
+                            model, str(onnx_path), tokenizer_name=cfg.reranker_model
+                        )
+                        logger.info("Successfully exported reranker to ONNX", path=str(onnx_path))
+                    else:
+                        raise ImportError("torch not available")
                 except Exception as export_exc:
-                    logger.warning("Failed to export reranker to ONNX, falling back to PyTorch", error=str(export_exc))
+                    logger.warning(
+                        "Failed to export reranker to ONNX, falling back to PyTorch",
+                        error=str(export_exc),
+                    )
 
             if Path(onnx_path).exists():
-                return ONNXCrossEncoder(str(onnx_path))
+                return ONNXCrossEncoder(str(onnx_path), tokenizer_name=cfg.reranker_model)
             else:
                 logger.warning("ONNX export failed, falling back to PyTorch CrossEncoder")
         except ImportError:
             logger.warning("ONNX runtime not available for reranker, falling back to PyTorch")
         except Exception as exc:
-            logger.warning("ONNX reranker initialization failed, falling back to PyTorch", error=str(exc))
+            logger.warning(
+                "ONNX reranker initialization failed, falling back to PyTorch", error=str(exc)
+            )
 
     # Fallback to PyTorch CrossEncoder
     try:

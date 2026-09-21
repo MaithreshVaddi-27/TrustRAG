@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
 import threading
+import time
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, TypeVar
@@ -39,6 +39,7 @@ logger = get_logger(__name__)
 _HTTP_CLIENTS: dict[tuple[str, float, int], httpx.AsyncClient] = {}
 _HTTP_CLIENTS_LOCK = threading.Lock()
 
+
 # Shared global semaphore for local LLM inference.
 # Managed by app.core.concurrency.get_global_semaphore() - hardware-aware
 # (2/4/8 based on RAM) with LOCAL_LLM_MAX_CONCURRENCY env override.
@@ -58,7 +59,11 @@ def _shared_http_client(base_url: str, timeout: float) -> httpx.AsyncClient:
         client = _HTTP_CLIENTS.get(key)
         if client is None or client.is_closed:
             # Connection pooling: keep-alive for local inference servers
-            limits = httpx.Limits(max_keepalive_connections=5, max_connections=10, keepalive_expiry=30.0)
+            limits = httpx.Limits(
+                max_keepalive_connections=5,
+                max_connections=10,
+                keepalive_expiry=30.0,
+            )
             client = httpx.AsyncClient(
                 timeout=timeout,
                 limits=limits,
@@ -88,7 +93,9 @@ async def close_local_llm_clients() -> None:
 # llama.cpp: auto-unload on idle (keep_alive) or restart server with new model
 
 
-async def unload_ollama_inactive_models(base_url: str, keep_model: str | None = None) -> dict[str, Any]:
+async def unload_ollama_inactive_models(
+    base_url: str, keep_model: str | None = None
+) -> dict[str, Any]:
     """
     Unload inactive models from Ollama to free memory.
 
@@ -121,19 +128,29 @@ async def unload_ollama_inactive_models(base_url: str, keep_model: str | None = 
                 to_unload.append(model_name)
 
         if not to_unload:
-            return {"status": "no_action_needed", "loaded": [m.get("name") for m in loaded_models], "unloaded": []}
+            loaded_names = [m.get("name") for m in loaded_models]
+            return {"status": "no_action_needed", "loaded": loaded_names, "unloaded": []}
 
-        # Unload each model via /api/delete
+        # Unload each model from VRAM via keep_alive=0.
+        # NOTE: Ollama's /api/delete PERMANENTLY DELETES the model blob from
+        # disk — never use it for memory offloading. POST /api/generate with
+        # keep_alive=0 unloads the model from memory while keeping it on disk.
         unloaded = []
         for model_name in to_unload:
             try:
-                delete_payload = {"model": model_name}
-                del_res = await client.delete(f"{base_url.rstrip('/')}/api/delete", json=delete_payload)
-                if del_res.is_success:
+                unload_payload = {"model": model_name, "keep_alive": 0}
+                unload_res = await client.post(
+                    f"{base_url.rstrip('/')}/api/generate", json=unload_payload
+                )
+                if unload_res.is_success:
                     unloaded.append(model_name)
                     logger.info("Unloaded inactive Ollama model", model=model_name)
                 else:
-                    logger.warning("Failed to unload Ollama model", model=model_name, status=del_res.status_code)
+                    logger.warning(
+                        "Failed to unload Ollama model",
+                        model=model_name,
+                        status=unload_res.status_code,
+                    )
             except Exception as exc:
                 logger.warning("Error unloading Ollama model", model=model_name, error=str(exc))
 
@@ -144,7 +161,9 @@ async def unload_ollama_inactive_models(base_url: str, keep_model: str | None = 
         return {"status": "error", "message": str(exc), "unloaded": []}
 
 
-async def unload_llamacpp_inactive_models(base_url: str, keep_model: str | None = None) -> dict[str, Any]:
+async def unload_llamacpp_inactive_models(
+    base_url: str, keep_model: str | None = None
+) -> dict[str, Any]:
     """
     Unload inactive models from llama.cpp server.
 
@@ -184,7 +203,7 @@ async def unload_llamacpp_inactive_models(base_url: str, keep_model: str | None 
             "status": "info_only",
             "current_model": current_model,
             "note": "llama.cpp serves one model at a time. Restart server to change model.",
-            "keep_model": keep_model
+            "keep_model": keep_model,
         }
 
     except Exception as exc:
@@ -193,9 +212,7 @@ async def unload_llamacpp_inactive_models(base_url: str, keep_model: str | None 
 
 
 async def unload_inactive_models_for_provider(
-    provider: str,
-    base_url: str,
-    keep_model: str | None = None
+    provider: str, base_url: str, keep_model: str | None = None
 ) -> dict[str, Any]:
     """
     Unified function to unload inactive models for a provider.
@@ -222,7 +239,9 @@ _LAST_UNLOAD_CHECK: dict[str, float] = {}
 _UNLOAD_CHECK_LOCK = threading.Lock()
 
 
-async def maybe_unload_inactive_models(provider: str, base_url: str, current_model: str | None = None) -> dict[str, Any] | None:
+async def maybe_unload_inactive_models(
+    provider: str, base_url: str, current_model: str | None = None
+) -> dict[str, Any] | None:
     """
     Check if it's time to unload inactive models and do so if needed.
     Rate-limited to once per model_unload_timeout period.
@@ -400,8 +419,9 @@ class ChatOllamaClient(BaseChatModel):
             "num_ctx": kwargs.get("num_ctx", default_num_ctx),
             "num_predict": kwargs.get("max_tokens", 1024),
             "repeat_penalty": kwargs.get("repeat_penalty", self.repeat_penalty),
-            # Batch size for prompt processing (Ollama uses num_batch)
-            "num_batch": kwargs.get("num_batch", default_num_batch),
+            # Batch size for prompt processing (Ollama uses num_batch;
+            # accept n_batch alias since callers may use llama.cpp naming).
+            "num_batch": kwargs.get("num_batch", kwargs.get("n_batch", default_num_batch)),
             # Min-p sampling: only tokens with p >= min_p * p_max are considered
             "min_p": min_p if min_p > 0.0 else None,
             # Top-k sampling: restrict to top K tokens
@@ -414,11 +434,16 @@ class ChatOllamaClient(BaseChatModel):
         if use_prompt_cache:
             options["num_keep"] = kwargs.get("num_keep", -1)
         # Early exit on EOS for Ollama (speculative decoding / early exit - Phase 2.5)
+        # Union with caller-provided stops instead of overwriting (P1-1 fix).
+        _ollama_stops: list[str] = []
         if early_exit_eos:
             # Add common EOS tokens for early termination
-            options["stop"] = options.get("stop", []) + ["<|endoftext|>", "<|eot_id|>", "\n\n"]
+            _ollama_stops.extend(["<|endoftext|>", "<|eot_id|>", "\n\n"])
         if stop:
-            options["stop"] = stop
+            _ollama_stops.extend(stop)
+        if _ollama_stops:
+            seen = set()
+            options["stop"] = [s for s in _ollama_stops if not (s in seen or seen.add(s))]
 
         requested_model = kwargs.get("model", self.model)
         target_model = requested_model
@@ -428,7 +453,8 @@ class ChatOllamaClient(BaseChatModel):
             "messages": dict_messages,
             "stream": False,
             "options": options,
-            "keep_alive": kwargs.get("keep_alive", default_keep_alive),  # Release GPU memory after idle period
+            # Release GPU memory after idle period
+            "keep_alive": kwargs.get("keep_alive", default_keep_alive),
         }
 
         requested_format = kwargs.get("format", self.format)
@@ -541,7 +567,6 @@ class ChatLlamaCppClient(BaseChatModel):
         cfg = get_model_config()
         # Use config values with env override, fallback to hardcoded defaults
         default_num_batch = cfg.local_llm_num_batch
-        default_keep_alive = cfg.local_llm_keep_alive  # Note: llama.cpp uses different mechanism (auto-unload)
 
         # Optimization flags from models.yaml (Phase 1: wire existing flags)
         kv_cache_quant = cfg.kv_cache_quantization
@@ -553,6 +578,27 @@ class ChatLlamaCppClient(BaseChatModel):
         top_k = cfg.local_llm_top_k
         early_exit_eos = cfg.local_llm_early_exit_eos
 
+        # num_ctx is advisory for llama.cpp/MLX: the server context is fixed at
+        # startup (-c). Log when the request needs more than the server offers.
+        requested_num_ctx = kwargs.get("num_ctx", kwargs.get("n_ctx"))
+        if requested_num_ctx is not None and int(requested_num_ctx) > cfg.local_llm_num_ctx:
+            logger.warning(
+                "Requested num_ctx exceeds configured server context",
+                requested=requested_num_ctx,
+                server_ctx=cfg.local_llm_num_ctx,
+            )
+
+        # n_batch / num_batch alias: callers may use either naming.
+        requested_batch = kwargs.get("n_batch", kwargs.get("num_batch", default_num_batch))
+
+        # Union early-exit EOS stops with caller-provided stops (P1-1 fix).
+        _llama_stops: list[str] = []
+        if early_exit_eos:
+            _llama_stops.extend(["<|endoftext|>", "<|im_end|>", "</s>"])
+        if stop:
+            _llama_stops.extend(stop)
+        _llama_stops = list(dict.fromkeys(_llama_stops)) or None  # type: ignore[assignment]
+
         payload: dict[str, Any] = {
             "model": kwargs.get("model", self.model),
             "messages": dict_messages,
@@ -563,7 +609,7 @@ class ChatLlamaCppClient(BaseChatModel):
             "cache_prompt": use_prompt_cache,
             "repeat_penalty": kwargs.get("repeat_penalty", self.repeat_penalty),
             # llama.cpp-specific: prompt processing batch size (controls KV cache build parallelism)
-            "n_batch": kwargs.get("n_batch", default_num_batch),
+            "n_batch": requested_batch,
             # KV cache quantization: q4_0, q8_0, fp16 (saves 50-75% context VRAM)
             "cache_type_k": kv_cache_quant,
             "cache_type_v": kv_cache_quant,
@@ -574,12 +620,10 @@ class ChatLlamaCppClient(BaseChatModel):
             # Top-k sampling: restrict to top K tokens
             "top_k": top_k if top_k > 0 else None,
             # Early exit on EOS for n_predict streaming
-            "stop": ["<|endoftext|>", "<|im_end|>", "</s>"] if early_exit_eos else None,
+            "stop": _llama_stops,
         }
         # Clean up None values
         payload = {k: v for k, v in payload.items() if v is not None}
-        if stop:
-            payload["stop"] = stop
 
         if kwargs.get("format") == "json" or kwargs.get("response_format"):
             payload["response_format"] = {"type": "json_object"}
@@ -773,7 +817,10 @@ def save_discovery_snapshot() -> None:
         }
     try:
         _DISCOVERY_SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _DISCOVERY_SNAPSHOT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        # Atomic write (tmp + rename) so concurrent seeders never interleave.
+        tmp_path = _DISCOVERY_SNAPSHOT_PATH.with_suffix(".json.tmp")
+        tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        tmp_path.replace(_DISCOVERY_SNAPSHOT_PATH)
         logger.debug("Persisted model discovery snapshot", path=str(_DISCOVERY_SNAPSHOT_PATH))
     except Exception as exc:
         logger.debug("Failed to persist model discovery snapshot", error=str(exc))
@@ -819,9 +866,7 @@ async def seed_local_model_discovery() -> dict[str, list[str]]:
     llamacpp_models = [
         m for m in await discover_llamacpp_cache_models() if not _is_embedding_model_name(m)
     ]
-    mlx_models = [
-        m for m in discover_mlx_cache_models() if not _is_embedding_model_name(m)
-    ]
+    mlx_models = [m for m in discover_mlx_cache_models() if not _is_embedding_model_name(m)]
 
     merge_discovered_llms("ollama", ollama_models)
     merge_discovered_llms("llama_cpp", llamacpp_models)
@@ -1033,7 +1078,9 @@ async def check_llamacpp_status(base_url: str = "http://127.0.0.1:8080/v1") -> d
     }
 
 
-async def check_mlx_status(base_url: str = "http://127.0.0.1:8090/v1", max_ports: int = 5) -> dict[str, Any]:
+async def check_mlx_status(
+    base_url: str = "http://127.0.0.1:8090/v1", max_ports: int = 5
+) -> dict[str, Any]:
     """
     Discover MLX status and GENERATIVE models by checking multiple MLX server ports.
     MLX only supports 1 model per server, so we check ports 8090, 8091, 8092...
@@ -1046,7 +1093,8 @@ async def check_mlx_status(base_url: str = "http://127.0.0.1:8090/v1", max_ports
 
     # Check consecutive ports starting from base_url port
     import re
-    base_port_match = re.search(r':(\d+)', base_url)
+
+    base_port_match = re.search(r":(\d+)", base_url)
     start_port = int(base_port_match.group(1)) if base_port_match else 8090
 
     for port_offset in range(max_ports):

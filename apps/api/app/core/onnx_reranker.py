@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -49,11 +48,11 @@ class ONNXCrossEncoder:
         """Initialize ONNX session and tokenizer."""
         try:
             import onnxruntime as ort
-        except ImportError:
+        except ImportError as err:
             raise RuntimeError(
                 "onnxruntime is required for ONNXCrossEncoder. "
                 "Install with: pip install onnxruntime"
-            )
+            ) from err
 
         # Configure ONNX Runtime for CPU inference
         sess_options = ort.SessionOptions()
@@ -75,6 +74,7 @@ class ONNXCrossEncoder:
         # Load tokenizer
         try:
             from transformers import AutoTokenizer
+
             self._tokenizer = AutoTokenizer.from_pretrained(
                 self.tokenizer_name,
                 use_fast=True,
@@ -85,7 +85,9 @@ class ONNXCrossEncoder:
             logger.warning("Failed to load tokenizer, using fallback", error=str(exc))
             raise
 
-    def predict(self, pairs: list[tuple[str, str]], batch_size: int | None = None, **kwargs) -> np.ndarray:
+    def predict(
+        self, pairs: list[tuple[str, str]], batch_size: int | None = None, **kwargs
+    ) -> np.ndarray:
         """
         Predict relevance scores for query-document pairs.
 
@@ -113,13 +115,15 @@ class ONNXCrossEncoder:
             return_tensors="np",
         )
 
-        # Run ONNX inference
-        inputs = {
-            "input_ids": encoded["input_ids"].astype(np.int64),
-            "attention_mask": encoded["attention_mask"].astype(np.int64),
-        }
-
-        if "token_type_ids" in encoded:
+        # Run ONNX inference — feed only the inputs the exported graph expects
+        # (token_type_ids exists only when the export included it).
+        session_inputs = {i.name for i in self._session.get_inputs()}
+        inputs: dict[str, np.ndarray] = {}
+        if "input_ids" in session_inputs:
+            inputs["input_ids"] = encoded["input_ids"].astype(np.int64)
+        if "attention_mask" in session_inputs:
+            inputs["attention_mask"] = encoded["attention_mask"].astype(np.int64)
+        if "token_type_ids" in session_inputs and "token_type_ids" in encoded:
             inputs["token_type_ids"] = encoded["token_type_ids"].astype(np.int64)
 
         outputs = self._session.run(None, inputs)
@@ -167,9 +171,12 @@ def export_crossencoder_to_onnx(
 
     logger.info("Exporting CrossEncoder to ONNX", output_path=output_path, quantize=quantize_int8)
 
-    # Prepare model for export
-    model.eval()
-    model.to("cpu")
+    # Prepare model for export — trace the inner HF module, not the
+    # sentence-transformers wrapper (which has no (input_ids, attention_mask)
+    # forward). CrossEncoder stores it as `.model`.
+    inner = getattr(model, "model", model)
+    inner.eval()
+    inner.to("cpu")
 
     # Get tokenizer for dummy input
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=True)
@@ -187,19 +194,22 @@ def export_crossencoder_to_onnx(
         return_tensors="pt",
     )
 
-    # Export to ONNX
+    # Export to ONNX — include token_type_ids so graphs for BERT-style
+    # encoders match what predict() feeds at inference time.
+    dummy_inputs = (encoded["input_ids"], encoded["attention_mask"], encoded["token_type_ids"])
     torch.onnx.export(
-        model,
-        (encoded["input_ids"], encoded["attention_mask"]),
+        inner,
+        dummy_inputs,
         output_path,
         export_params=True,
         opset_version=opset_version,
         do_constant_folding=True,
-        input_names=["input_ids", "attention_mask"],
+        input_names=["input_ids", "attention_mask", "token_type_ids"],
         output_names=["logits"],
         dynamic_axes={
             "input_ids": {0: "batch_size", 1: "sequence_length"},
             "attention_mask": {0: "batch_size", 1: "sequence_length"},
+            "token_type_ids": {0: "batch_size", 1: "sequence_length"},
             "logits": {0: "batch_size"},
         },
     )
@@ -208,7 +218,7 @@ def export_crossencoder_to_onnx(
 
     if quantize_int8:
         try:
-            from onnxruntime.quantization import quantize_dynamic, QuantType
+            from onnxruntime.quantization import QuantType, quantize_dynamic
 
             quantized_path = output_path.replace(".onnx", "_int8.onnx")
             quantize_dynamic(
@@ -222,6 +232,7 @@ def export_crossencoder_to_onnx(
 
             # Replace original with quantized version
             import shutil
+
             shutil.move(quantized_path, output_path)
             logger.info("Int8 quantization complete", path=output_path)
         except Exception as exc:

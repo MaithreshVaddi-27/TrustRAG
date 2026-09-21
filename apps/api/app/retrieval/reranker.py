@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import threading
 from collections import OrderedDict
 from typing import Any
 
@@ -27,15 +28,18 @@ logger = get_logger(__name__)
 # Early termination configuration (fallback defaults; actual values from models.yaml via config)
 EARLY_TERMINATION_MIN_BATCH = 16  # Minimum candidates before early termination check
 
+
 # Reranker result cache (LRU, in-memory)
 # Key: hash of (query + document_text), Value: score
 # Cache size configurable via models.yaml
 class _RerankerCache:
-    """Thread-safe LRU cache for reranker scores."""
+    """LRU cache for reranker scores (guarded by a lock: _rerank_sync runs
+    in worker threads via asyncio.to_thread)."""
 
     def __init__(self, max_size: int = 500):
         self._cache: OrderedDict[str, float] = OrderedDict()
         self._max_size = max_size
+        self._lock = threading.Lock()
         self._hits = 0
         self._misses = 0
 
@@ -47,39 +51,43 @@ class _RerankerCache:
     def get(self, query: str, doc_text: str) -> float | None:
         """Get cached score for query-document pair."""
         key = self._make_key(query, doc_text)
-        if key in self._cache:
-            self._cache.move_to_end(key)  # Mark as recently used
-            self._hits += 1
-            return self._cache[key]
-        self._misses += 1
-        return None
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)  # Mark as recently used
+                self._hits += 1
+                return self._cache[key]
+            self._misses += 1
+            return None
 
     def set(self, query: str, doc_text: str, score: float) -> None:
         """Cache score for query-document pair."""
         key = self._make_key(query, doc_text)
-        if key in self._cache:
-            self._cache.move_to_end(key)
-        elif len(self._cache) >= self._max_size:
-            self._cache.popitem(last=False)  # Remove least recently used
-        self._cache[key] = score
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+            elif len(self._cache) >= self._max_size:
+                self._cache.popitem(last=False)  # Remove least recently used
+            self._cache[key] = score
 
     def get_stats(self) -> dict[str, int]:
         """Return cache statistics."""
-        total = self._hits + self._misses
-        hit_rate = (self._hits / total * 100) if total > 0 else 0
-        return {
-            "size": len(self._cache),
-            "max_size": self._max_size,
-            "hits": self._hits,
-            "misses": self._misses,
-            "hit_rate_percent": round(hit_rate, 1),
-        }
+        with self._lock:
+            total = self._hits + self._misses
+            hit_rate = (self._hits / total * 100) if total > 0 else 0
+            return {
+                "size": len(self._cache),
+                "max_size": self._max_size,
+                "hits": self._hits,
+                "misses": self._misses,
+                "hit_rate_percent": round(hit_rate, 1),
+            }
 
     def clear(self) -> None:
         """Clear the cache."""
-        self._cache.clear()
-        self._hits = 0
-        self._misses = 0
+        with self._lock:
+            self._cache.clear()
+            self._hits = 0
+            self._misses = 0
 
 
 # Global cache instance (initialized lazily)
@@ -91,7 +99,7 @@ def _get_reranker_cache() -> _RerankerCache:
     global _reranker_cache
     if _reranker_cache is None:
         cfg = get_model_config()
-        max_size = cfg.reranker_cache_size if hasattr(cfg, 'reranker_cache_size') else 500
+        max_size = cfg.reranker_cache_size if hasattr(cfg, "reranker_cache_size") else 500
         _reranker_cache = _RerankerCache(max_size=max_size)
     return _reranker_cache
 
@@ -176,7 +184,8 @@ def _rerank_sync(
 
         if uncached_pairs:
             batch_size = min(cfg.reranker_batch_size, len(uncached_pairs))
-            model = get_reranker()
+            # Reuse the model resolved above (get_reranker is lru_cached, but a
+            # second lookup per query is pure waste).
             if model is None:
                 logger.warning("Reranker model factory returned None, skipping rerank")
                 if len(chunks) > 3 and chunks[0].get("dense_score", 0.0) >= 0.78:
@@ -184,8 +193,10 @@ def _rerank_sync(
                 return chunks[:max_context]
 
             logger.info(
-                "Running cross-encoder reranking", model=cfg.reranker_model,
-                count=len(uncached_pairs), cached=len(cached_scores)
+                "Running cross-encoder reranking",
+                model=cfg.reranker_model,
+                count=len(uncached_pairs),
+                cached=len(cached_scores),
             )
 
             uncached_scores: list[float] = []

@@ -217,7 +217,7 @@ optimization:
   kv_cache_quantization: "q4_0"                 # Options: q4_0, q8_0, fp16 (saves 50-75% context VRAM)
   flash_attention: true                         # Computes attention in SRAM tiles (O(N) memory)
   prompt_caching: true                          # Reuses KV cache for static system prompt prefixes
-  adaptive_top_k: true                          # Selects top 3-4 chunks if retrieval confidence > 0.82
+  adaptive_top_k: true                          # Caps fused candidates at 4 on high RRF confidence (>= 0.02)
   # Context Compression (Phase 2.4) — hierarchical summarization before LLM call
   context_compression_enabled: true             # Enable/disable context compression
   context_compression_target_reduction: 0.5     # Target: 50% of original size (40-60% range)
@@ -241,7 +241,7 @@ local_llm:
   # Early stop on EOS token (n_predict streaming with early termination)
   early_exit_eos: true
   # Model Offloading (Phase 4.1) - Unload inactive models from memory
-  # Ollama: call /api/ps then /api/delete to unload unused models
+  # Ollama: POST /api/generate with keep_alive=0 (never /api/delete: it erases the blob)
   # llama.cpp: auto-unload on idle (keep_alive) or restart server with new model
   model_unload_enabled: true
   model_unload_timeout: "5m"  # Time before considering a model idle for unloading

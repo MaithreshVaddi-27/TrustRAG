@@ -21,6 +21,7 @@ from app.api.v1.schemas.analysis import (
     ReliabilitySummary,
     TraceEventResponse,
 )
+from app.core.concurrency import get_global_semaphore
 from app.core.config import get_model_config, get_settings
 from app.core.exceptions import AuthorizationError, InputValidationError, NotFoundError
 from app.core.logging import get_logger
@@ -524,10 +525,6 @@ async def sse_event_generator(
                     }
     finally:
         await _unsubscribe_from_analysis(analysis_id_str, queue)
-
-
-# Shared global concurrency semaphore - managed by app.core.concurrency
-from app.core.concurrency import get_global_semaphore
 
 
 async def _get_concurrency_semaphore() -> asyncio.Semaphore:

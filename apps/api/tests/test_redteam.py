@@ -384,8 +384,8 @@ def test_max_total_tokens_per_doc_config_exists():
     cfg = get_model_config()
     assert cfg.max_input_tokens > 0
     # also ensure ingestion token cap present in models.yaml
-    from pathlib import Path
     import os
+    from pathlib import Path
 
     import yaml
 
