@@ -655,7 +655,21 @@ async def generate_grounded_answer(
 
         # Phase 2.4: Context Compression - compress large contexts before LLM call.
         # Pass the already-formatted context so chunks are formatted exactly once.
-        if cfg.context_compression_enabled:
+        # Gate: only compress for cloud providers (gemini, nvidia) to avoid
+        # doubling local LLM cost (compression call ≈ generation call on 1.2B).
+        provider_for_compression = cfg.context_compression_provider
+        should_compress = cfg.context_compression_enabled and (
+            provider_for_compression == "off"
+            or (
+                provider_for_compression == "cloud"
+                and resolved_provider in ("gemini", "google_genai", "nvidia", "nim")
+            )
+            or (
+                provider_for_compression == "local"
+                and resolved_provider in ("ollama", "llama_cpp", "mlx")
+            )
+        )
+        if should_compress:
             context_str, chunk_indices = await compress_context(
                 query=query,
                 chunks=chunks,

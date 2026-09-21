@@ -754,15 +754,6 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
         os.environ["HUGGING_FACE_HUB_TOKEN"] = settings.hf_token
 
     try:
-        try:
-            import torch
-
-            torch.set_num_threads(1)
-        except ImportError:
-            pass
-        except Exception as exc:
-            logger.debug("Could not limit torch thread count", error=str(exc))
-
         from app.core.hardware import get_optimal_torch_device
 
         opt_device = get_optimal_torch_device()

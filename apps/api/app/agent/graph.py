@@ -194,11 +194,17 @@ async def retrieval_node(state: AgentState) -> AgentState:
         # 1. Hybrid Retrieval
         top_k_override = None
         max_context_override = None
+
+        # Get tier-aware caps based on provider
+        provider = state.get("llm_provider", cfg.llm_provider)
+        caps = cfg.tier_caps(provider)
+        max_context_chunks = caps["max_context_chunks"]
+
         if state["recovery_strategy"] == "re_retrieve":
             # Second layer (see recovery_node downgrade): only widen search when
             # evidence is actually thin — doubling on top of sufficient chunks
             # just burns embedding/rerank compute and overflows small contexts.
-            if len(state.get("chunks") or []) >= cfg.max_context_chunks:
+            if len(state.get("chunks") or []) >= max_context_chunks:
                 await add_trace_event(
                     state["analysis_id"],
                     "recovery.re_retrieve_skipped",
@@ -209,10 +215,10 @@ async def retrieval_node(state: AgentState) -> AgentState:
                 )
             else:
                 # OPT (local-LLM load): cap widened retrieval so recovery does
-                # not pay 2x Qdrant/rerank/Mongo for chunks the 8-chunk
-                # generation cap throws away anyway.
-                top_k_override = min(cfg.dense_top_k * 2, cfg.max_context_chunks + 16)
-                max_context_override = min(cfg.max_context_chunks * 2, cfg.max_context_chunks + 4)
+                # not pay 2x Qdrant/rerank/Mongo for chunks the generation cap
+                # throws away anyway.
+                top_k_override = min(cfg.dense_top_k * 2, max_context_chunks + 16)
+                max_context_override = min(max_context_chunks * 2, max_context_chunks + 4)
                 logger.info(
                     "Recovery: expanded search retrieval size triggered",
                     top_k=top_k_override,
@@ -583,9 +589,11 @@ async def retrieval_node(state: AgentState) -> AgentState:
 
         # PERF/SPIRAL GUARD 2026-09-06: expanded recovery retrieval widens the
         # CANDIDATE pool (top_k=40), but generation must never exceed
-        # max_context_chunks. Stuffing 16-32 chunks into a 2k-context local LLM
-        # overflows num_ctx and yields truncated stubs (e.g. answer "The").
-        gen_cap = cfg.max_context_chunks
+        # tier-aware max_context_chunks. Stuffing 16-32 chunks into a 2k-context
+        # local LLM overflows num_ctx and yields truncated stubs.
+        provider = state.get("llm_provider", cfg.llm_provider)
+        caps = cfg.tier_caps(provider)
+        gen_cap = caps["max_context_chunks"]
         chunk_count = len(state["chunks"])
         if chunk_count > gen_cap:
             dropped = chunk_count - gen_cap
@@ -1232,7 +1240,10 @@ async def _execute_re_retrieve(state: AgentState, prior_answer: str | None, cfg)
     # burns embedding/rerank/compute on a small local model. Retry
     # generation on the saved chunks instead (retrieval_node short-
     # circuits on the "regenerate" strategy).
-    if len(state.get("chunks") or []) >= cfg.max_context_chunks:
+    provider = state.get("llm_provider", cfg.llm_provider)
+    caps = cfg.tier_caps(provider)
+    max_context_chunks = caps["max_context_chunks"]
+    if len(state.get("chunks") or []) >= max_context_chunks:
         state["recovery_strategy"] = "regenerate"
         logger.info(
             "Recovery downgraded re_retrieve → regenerate (evidence sufficient)",

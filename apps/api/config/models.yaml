@@ -212,9 +212,25 @@ cost_controls:
                                     # individually instead of auto-NEUTRAL trailing
                                     # claims that were never even tried.
   max_claim_retrievals: 3             # Targeted-retrieval budget: at most this many
-                                      # NEUTRAL claims get one extra retrieval + NLI each
+                                        # NEUTRAL claims get one extra retrieval + NLI each
   claim_retrieval_top_k: 5            # Candidate depth per targeted claim retrieval
   enable_response_caching: true     # Semantic response caching enabled
+  # Per-tier caps (provider-aware override in graph.py/verifier.py)
+  # Lean 8GB: local models only
+  lean_tier:
+    max_verification_claims: 5
+    max_context_chunks: 5
+    max_claim_retrievals: 2
+  # Balanced 16GB: local models with more headroom
+  balanced_tier:
+    max_verification_claims: 8
+    max_context_chunks: 8
+    max_claim_retrievals: 3
+  # Quality / cloud: full caps
+  cloud_tier:
+    max_verification_claims: 8
+    max_context_chunks: 8
+    max_claim_retrievals: 3
 
 # ─── Inference Acceleration & KV Cache Optimization ───────────────────────────
 optimization:
@@ -223,7 +239,8 @@ optimization:
   prompt_caching: true                          # Reuses KV cache for static system prompt prefixes
   adaptive_top_k: true                          # Caps fused candidates at 4 on high RRF confidence (>= 0.02)
   # Context Compression (Phase 2.4) — hierarchical summarization before LLM call
-  context_compression_enabled: true             # Enable/disable context compression
+  context_compression_enabled: true             # Enable/disable context compression globally
+  context_compression_provider: "cloud"         # "cloud" | "local" | "off" — compression only for cloud providers (gemini, nvidia)
   context_compression_target_reduction: 0.5     # Target: 50% of original size (40-60% range)
   max_context_tokens: 8000                      # Hard token budget for context before LLM call
 

@@ -962,7 +962,9 @@ async def execute_claim_verification(
     from app.generation.generator import format_context_with_chunk_indices
 
     cfg = get_model_config()
-    max_claims = cfg.max_verification_claims or 15
+    # Use tier-aware caps based on provider
+    caps = cfg.tier_caps(provider)
+    max_claims = caps["max_verification_claims"]
     context_str, context_chunk_indices = format_context_with_chunk_indices(chunks)
 
     claims_texts: list[str] = []
@@ -1077,7 +1079,7 @@ async def execute_claim_verification(
                 )
 
     # 2b. Targeted retrieval for NEUTRAL claims (missing evidence). Bounded by
-    # cost_controls.max_claim_retrievals; CONTRADICTED claims are excluded —
+    # tier-aware cost_controls.max_claim_retrievals; CONTRADICTED claims are excluded —
     # existing evidence already refutes them, and re-searching for support
     # would cherry-pick. Each targeted claim costs at most 1 retrieval + 1 NLI.
     claim_evidence_ids: dict[int, list[ObjectId]] = {}
@@ -1087,7 +1089,7 @@ async def execute_claim_verification(
             for i in range(1, len(claims_texts) + 1)
             if str(results_map.get(i, {}).get("verdict", "")).upper() == "NEUTRAL"
         ]
-        retrieval_budget = min(max(0, int(cfg.max_claim_retrievals or 0)), len(neutral_positions))
+        retrieval_budget = min(max(0, caps["max_claim_retrievals"]), len(neutral_positions))
         if retrieval_budget:
             from app.generation.generator import format_context_with_chunk_indices as _fmt
 

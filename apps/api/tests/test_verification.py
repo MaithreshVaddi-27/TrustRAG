@@ -252,6 +252,7 @@ async def test_individual_nli_fallback_is_capped(
             answer=" ".join(sentences),
             chunks=[{"text": "Refunds are permitted within thirty days."}],
             evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
+            provider="gemini",  # cloud tier → caps = 8
         )
 
     assert len(claims) == 8

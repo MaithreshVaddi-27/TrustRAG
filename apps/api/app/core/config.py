@@ -363,15 +363,11 @@ class ModelConfig:
         if p in ("nvidia", "nim"):
             # Never fall back to llm.model here: it is a local GGUF id the
             # cloud endpoint cannot serve (same rule as the mlx branch).
-            return str(
-                self._get("llm", "model_nvidia", required=False) or "openai/gpt-oss-20b"
-            )
+            return str(self._get("llm", "model_nvidia", required=False) or "openai/gpt-oss-20b")
         if p in ("gemini", "google_genai"):
             # Never fall back to llm.model here: it is a local GGUF id, not a
             # Gemini model id. Override via LLM_MODEL env or model_gemini yaml.
-            return str(
-                self._get("llm", "model_gemini", required=False) or "gemini-3.5-flash-lite"
-            )
+            return str(self._get("llm", "model_gemini", required=False) or "gemini-3.5-flash-lite")
         return str(self._get("llm", "model") or "gemini-3.5-flash-lite")
 
     @property
@@ -407,7 +403,30 @@ class ModelConfig:
 
     @property
     def llm_temperature(self) -> float:
+        """Default temperature for generation."""
         return float(self._get("llm", "temperature"))
+
+    def temperature_for(self, provider: str, purpose: str = "generation") -> float:
+        """Get temperature for a specific provider and purpose.
+
+        Args:
+            provider: The LLM provider (ollama, llama_cpp, mlx, gemini, nvidia)
+            purpose: "generation" (default), "verification", or "factual"
+
+        Returns:
+            Temperature value. For factual/verification with local models, returns 0.0
+            to reduce hallucination.
+        """
+        base = float(self._get("llm", "temperature") or 0.2)
+        prov = provider.lower()
+        if purpose in ("verification", "factual") and prov in (
+            "ollama",
+            "llama_cpp",
+            "llamacpp",
+            "mlx",
+        ):
+            return 0.0
+        return base
 
     @property
     def llm_top_p(self) -> float:
@@ -931,6 +950,44 @@ class ModelConfig:
         if env_val is not None:
             return int(env_val)
         return int(value or 8000)  # Generous default, actual limit from num_ctx
+
+    @property
+    def context_compression_provider(self) -> str:
+        """Which providers should use context compression: 'cloud' (gemini, nvidia),
+        'local' (ollama, llama_cpp, mlx), or 'off' (disabled)."""
+        value = self._get("optimization", "context_compression_provider", required=False)
+        env_val = os.environ.get("CONTEXT_COMPRESSION_PROVIDER")
+        return (env_val or value or "cloud").lower()
+
+    def tier_caps(self, provider: str | None = None) -> dict[str, int]:
+        """Return cost-control caps for the current provider tier.
+
+        Args:
+            provider: Explicit provider to get caps for. If None, uses llm_provider.
+
+        Returns:
+            Dict with max_verification_claims, max_context_chunks, max_claim_retrievals
+        """
+        prov = (provider or self.llm_provider).lower()
+        is_cloud = prov in ("gemini", "google_genai", "nvidia", "nim")
+        is_mlx = prov == "mlx"
+
+        if is_cloud:
+            tier = "cloud_tier"
+        elif is_mlx or prov in ("ollama", "llama_cpp", "llamacpp"):
+            # Detect lean vs balanced by available RAM (proxy via num_ctx)
+            num_ctx = self.local_llm_num_ctx
+            tier = "balanced_tier" if num_ctx >= 8192 else "lean_tier"
+        else:
+            tier = "cloud_tier"  # fallback
+
+        tier_config = self._get("cost_controls", tier, required=False) or {}
+        defaults = {
+            "max_verification_claims": 8,
+            "max_context_chunks": 8,
+            "max_claim_retrievals": 3,
+        }
+        return {k: int(tier_config.get(k, v)) for k, v in defaults.items()}
 
     def as_snapshot(self) -> dict[str, Any]:
         """Return a flat dict for recording with each analysis run."""
