@@ -171,6 +171,8 @@ MCP_TOOLS: list[dict[str, Any]] = [
 
 async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Execute an MCP tool call and return structured tool content."""
+    from app.core.exceptions import AuthenticationError
+    from app.core.security import decode_service_token
     from app.services.search_service import duckduckgo_search, execute_web_search, tavily_search
 
     def _clamp_results(value: Any, default: int = 5) -> int:
@@ -179,17 +181,33 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
         except (TypeError, ValueError):
             return default
 
+    def _require_service_token(arguments: dict[str, Any]) -> str:
+        """Extract and validate service token from arguments."""
+        token = arguments.get("service_token")
+        if not token:
+            raise AuthenticationError(
+                "Service token required", detail="MCP tool requires service_token parameter"
+            )
+        try:
+            payload = decode_service_token(token)
+            return payload.get("sub", "unknown")
+        except AuthenticationError as exc:
+            raise AuthenticationError("Invalid service token", detail=str(exc))
+
     if tool_name == "tavily_search":
+        _require_service_token(arguments)
         count = _clamp_results(arguments.get("max_results", 5))
         res = await tavily_search(arguments["query"], max_results=count)
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
     elif tool_name == "duckduckgo_search":
+        _require_service_token(arguments)
         count = _clamp_results(arguments.get("max_results", 5))
         res = await duckduckgo_search(arguments["query"], max_results=count)
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
     elif tool_name == "hybrid_web_search":
+        _require_service_token(arguments)
         count = _clamp_results(arguments.get("max_results", 5))
         res = await execute_web_search(
             arguments["query"],
@@ -198,6 +216,7 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
         )
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
     if tool_name == "trustrag_search":
+        _require_service_token(arguments)
         kb_id = arguments["kb_id"]
         query = arguments["query"]
         # Clamp client-supplied depth: retrieve_hybrid_chunks fans out to
@@ -234,6 +253,7 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
         return {"content": [{"type": "text", "text": json.dumps(results, indent=2)}]}
 
     elif tool_name == "trustrag_verify_claim":
+        _require_service_token(arguments)
         claims = arguments["claims"][:20]
         evidence_texts = [t[:4000] for t in arguments["evidence_texts"][:20]]
         fake_chunks = [
@@ -243,6 +263,7 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
         return {"content": [{"type": "text", "text": json.dumps(verdicts, indent=2)}]}
 
     elif tool_name == "trustrag_list_kbs":
+        _require_service_token(arguments)
         coll = get_collection(Collections.KNOWLEDGE_BASES)
         cursor = coll.find({}, {"name": 1, "description": 1, "document_count": 1})
         kbs = []
@@ -258,6 +279,7 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
         return {"content": [{"type": "text", "text": json.dumps(kbs, indent=2)}]}
 
     elif tool_name == "local_llm_chat":
+        _require_service_token(arguments)
         from app.core.model_registry import get_llm
 
         provider = arguments.get("provider", "ollama")
@@ -269,6 +291,7 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
         return {"content": [{"type": "text", "text": text}]}
 
     elif tool_name == "local_llm_status":
+        _require_service_token(arguments)
         from app.core.config import get_settings
         from app.core.local_llm import check_llamacpp_status, check_ollama_status
 

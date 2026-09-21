@@ -64,28 +64,58 @@ async def register_user(schema: UserRegister) -> UserResponse:
         ) from exc
 
 
-# ─── Login lockout (in-memory; per-process) ─────────────────────────────────
+# ─── Login lockout (Mongo TTL collection; works across replicas) ───────────────
+# Collection: failed_logins
+# Document: { _id: "<email>", count: int, attempts: [epoch_ts], window_expires: datetime }
+# TTL index on window_expires auto-cleans expired docs.
 
-_FAILED_LOGINS: dict[str, list[float]] = {}  # email -> list of epoch seconds
+
+async def _get_failed_logins_coll():
+    """Get or create the failed_logins collection with TTL index."""
+    from app.db.mongodb import get_database
+
+    db = await get_database()
+    coll = db["failed_logins"]
+    # Create TTL index once (idempotent)
+    await coll.create_index("window_expires", expireAfterSeconds=0, name="ttl_window_expires")
+    return coll
 
 
-def _is_locked_out(email: str) -> bool:
+async def _is_locked_out(email: str) -> bool:
     settings = get_settings()
-    now = _time.monotonic()
+    now_dt = datetime.now(UTC)
     window = settings.login_lockout_seconds
-    attempts = _FAILED_LOGINS.get(email, [])
-    # prune old entries
-    attempts = [t for t in attempts if now - t < window]
-    _FAILED_LOGINS[email] = attempts
-    return len(attempts) >= settings.login_max_attempts
+    coll = await _get_failed_logins_coll()
+    doc = await coll.find_one({"_id": email})
+    if not doc:
+        return False
+    # If window expired, TTL will clean it; but double-check
+    if doc.get("window_expires") and doc["window_expires"] < now_dt:
+        await coll.delete_one({"_id": email})
+        return False
+    return doc.get("count", 0) >= settings.login_max_attempts
 
 
-def _record_failed_login(email: str) -> None:
-    _FAILED_LOGINS.setdefault(email, []).append(_time.monotonic())
+async def _record_failed_login(email: str) -> None:
+    settings = get_settings()
+    now_dt = datetime.now(UTC)
+    window = settings.login_lockout_seconds
+    window_expires = datetime.fromtimestamp(now_dt.timestamp() + window, tz=UTC)
+    coll = await _get_failed_logins_coll()
+    await coll.update_one(
+        {"_id": email},
+        {
+            "$inc": {"count": 1},
+            "$push": {"attempts": now_dt},
+            "$set": {"window_expires": window_expires},
+        },
+        upsert=True,
+    )
 
 
-def _clear_failed_logins(email: str) -> None:
-    _FAILED_LOGINS.pop(email, None)
+async def _clear_failed_logins(email: str) -> None:
+    coll = await _get_failed_logins_coll()
+    await coll.delete_one({"_id": email})
 
 
 async def authenticate_user(email: str, password: str) -> tuple[str, UserResponse]:
@@ -96,7 +126,7 @@ async def authenticate_user(email: str, password: str) -> tuple[str, UserRespons
     """
     email_clean = email.strip().lower()
 
-    if _is_locked_out(email_clean):
+    if await _is_locked_out(email_clean):
         raise AuthenticationError(
             "Too many failed attempts",
             detail="Account temporarily locked. Try again later.",
@@ -111,17 +141,17 @@ async def authenticate_user(email: str, password: str) -> tuple[str, UserRespons
         # A malformed dummy hash would make bcrypt fail fast instead of doing the full
         # cost-12 computation, reopening the exact timing side-channel this guards against.
         verify_password(password, "$2b$12$Fhvxd2NUDtaI9Np/Ct9Tn.jCLcGFUPgwN5oMcPCk8PlX36lOm2iFO")
-        _record_failed_login(email_clean)
+        await _record_failed_login(email_clean)
         raise AuthenticationError("Authentication failed", detail="Invalid email or password")
 
     if not verify_password(password, user["hashed_password"]):
-        _record_failed_login(email_clean)
+        await _record_failed_login(email_clean)
         raise AuthenticationError("Authentication failed", detail="Invalid email or password")
 
     if not user.get("is_active", True):
         raise AuthenticationError("Authentication failed", detail="Account is deactivated")
 
-    _clear_failed_logins(email_clean)
+    await _clear_failed_logins(email_clean)
     # Generate token
     token = create_access_token(str(user["_id"]))
     return token, serialize_user(user)

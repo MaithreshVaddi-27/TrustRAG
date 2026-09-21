@@ -30,19 +30,30 @@ def mock_user_doc():
 @patch("app.db.mongodb.create_indexes")
 def test_register_user_success(mock_create_indexes, mock_connect, mock_user_doc):
     # Mock database insert
-    mock_collection = MagicMock()
-    mock_collection.insert_one = AsyncMock(
+    mock_users_collection = MagicMock()
+    mock_users_collection.insert_one = AsyncMock(
         return_value=MagicMock(inserted_id="64ee39d09c6292376e191981")
     )
 
-    with patch("app.services.auth_service.get_collection", return_value=mock_collection):
-        payload = {
-            "email": "test@example.com",
-            "password": "StrongPass123!",
-            "full_name": "Test User",
-        }
-        # Bypass startup database ping in tests by patching startup hook or connection checks
+    # Mock failed_logins collection
+    mock_failed_logins_collection = MagicMock()
+    mock_failed_logins_collection.find_one = AsyncMock(return_value=None)
+    mock_failed_logins_collection.update_one = AsyncMock()
+    mock_failed_logins_collection.delete_one = AsyncMock()
+    mock_failed_logins_collection.create_index = AsyncMock()
+
+    def get_collection_side_effect(name):
+        if name == "failed_logins":
+            return mock_failed_logins_collection
+        return mock_users_collection
+
+    with patch("app.services.auth_service.get_collection", side_effect=get_collection_side_effect):
         with patch("app.db.mongodb.health_check", return_value=True):
+            payload = {
+                "email": "test@example.com",
+                "password": "StrongPass123!",
+                "full_name": "Test User",
+            }
             response = client.post("/api/v1/auth/register", json=payload)
             assert response.status_code == 201
             data = response.json()
@@ -55,7 +66,7 @@ def test_register_user_success(mock_create_indexes, mock_connect, mock_user_doc)
 @patch("app.db.mongodb.create_indexes")
 def test_login_user_success(mock_create_indexes, mock_connect, mock_user_doc):
     # Mock find_one for login
-    mock_collection = MagicMock()
+    mock_users_collection = MagicMock()
 
     # Hash password correctly so check passes
     from app.core.security import hash_password
@@ -63,16 +74,29 @@ def test_login_user_success(mock_create_indexes, mock_connect, mock_user_doc):
     mock_user_doc_hashed = dict(mock_user_doc)
     mock_user_doc_hashed["hashed_password"] = hash_password("StrongPass123!")
 
-    mock_collection.find_one = AsyncMock(return_value=mock_user_doc_hashed)
+    mock_users_collection.find_one = AsyncMock(return_value=mock_user_doc_hashed)
+    
+    # Mock failed_logins collection (new lockout mechanism)
+    mock_failed_logins_collection = MagicMock()
+    mock_failed_logins_collection.find_one = AsyncMock(return_value=None)
+    mock_failed_logins_collection.update_one = AsyncMock()
+    mock_failed_logins_collection.delete_one = AsyncMock()
+    mock_failed_logins_collection.create_index = AsyncMock()
 
-    with patch("app.services.auth_service.get_collection", return_value=mock_collection):
-        payload = {"email": "test@example.com", "password": "StrongPass123!"}
-        response = client.post("/api/v1/auth/login", json=payload)
-        assert response.status_code == 200
-        data = response.json()
-        assert "access_token" in data
-        assert data["token_type"] == "bearer"
-        assert data["user"]["email"] == "test@example.com"
+    def get_collection_side_effect(name):
+        if name == "failed_logins":
+            return mock_failed_logins_collection
+        return mock_users_collection
+
+    with patch("app.services.auth_service.get_collection", side_effect=get_collection_side_effect):
+        with patch("app.db.mongodb.health_check", return_value=True):
+            payload = {"email": "test@example.com", "password": "StrongPass123!"}
+            response = client.post("/api/v1/auth/login", json=payload)
+            assert response.status_code == 200
+            data = response.json()
+            assert "access_token" in data
+            assert data["token_type"] == "bearer"
+            assert data["user"]["email"] == "test@example.com"
 
 
 @patch("app.db.mongodb.connect_db")
@@ -84,12 +108,18 @@ def test_get_me_protected_route(mock_create_indexes, mock_connect, mock_user_doc
     mock_user_with_oid = dict(mock_user_doc)
     mock_user_with_oid["_id"] = ObjectId("64ee39d09c6292376e191981")
 
-    mock_collection = MagicMock()
-    # First find_one is the revocation denylist check (returns None = not revoked),
-    # second is the user lookup.
-    mock_collection.find_one = AsyncMock(side_effect=[None, mock_user_with_oid])
+    mock_revoked_collection = MagicMock()
+    mock_revoked_collection.find_one = AsyncMock(return_value=None)
+    
+    mock_users_collection = MagicMock()
+    mock_users_collection.find_one = AsyncMock(return_value=mock_user_with_oid)
 
-    with patch("app.api.deps.get_collection", return_value=mock_collection):
+    def get_collection_side_effect(name):
+        if name == "revoked_tokens":
+            return mock_revoked_collection
+        return mock_users_collection
+
+    with patch("app.api.deps.get_collection", side_effect=get_collection_side_effect):
         # Create a valid token
         from app.core.security import create_access_token
 
