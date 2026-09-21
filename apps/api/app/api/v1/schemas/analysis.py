@@ -29,8 +29,7 @@ class AnalysisCreate(BaseModel):
     llm_provider: str | None = Field(
         default=None,
         description=(
-            "Active LLM provider override "
-            "('ollama', 'llama_cpp', 'mlx', 'gemini', 'nvidia')"
+            "Active LLM provider override ('ollama', 'llama_cpp', 'mlx', 'gemini', 'nvidia')"
         ),
     )
     llm_model: str | None = Field(
@@ -88,9 +87,9 @@ class AnalysisCreate(BaseModel):
                 "gemini-2.5-pro",
             },
             "nvidia": {
+                # Verified live 2026-09-21: only these answer (lightning
+                # stalls, nano-omni 503s, everything else 404-not-entitled).
                 "openai/gpt-oss-20b",
-                "nvidia/nemotron-3.5-lightning-30b-a3b",
-                "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
                 "google/gemma-4-31b-it",
             },
         }
@@ -120,11 +119,7 @@ class AnalysisCreate(BaseModel):
         requested_llm_model = (
             self.llm_model
             or operator_llm_overrides.get(provider)
-            or (
-                cfg.llm_model_for(provider)
-                if provider in ("ollama", "llama_cpp", "mlx")
-                else None
-            )
+            or (cfg.llm_model_for(provider) if provider in ("ollama", "llama_cpp", "mlx") else None)
         )
         if requested_llm_model and requested_llm_model not in allowed_llms[provider]:
             raise ValueError(f"Model is not enabled for provider '{provider}'")

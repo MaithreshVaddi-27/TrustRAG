@@ -157,11 +157,11 @@ async def get_providers_endpoint(
                 "name": "NVIDIA NIM (Cloud)",
                 "type": "cloud",
                 "connected": bool(settings.nvidia_api_key),
-                "default_model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+                # Verified live 2026-09-21: only these two answer on this
+                # account (lightning stalls, nano-omni 503s, rest 404).
+                "default_model": "openai/gpt-oss-20b",
                 "models": [
                     "openai/gpt-oss-20b",
-                    "nvidia/nemotron-3.5-lightning-30b-a3b",
-                    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
                     "google/gemma-4-31b-it",
                 ],
             },

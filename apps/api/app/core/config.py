@@ -361,7 +361,7 @@ class ModelConfig:
         if env_model:
             return env_model
         if p in ("nvidia", "nim"):
-            return "nvidia/nemotron-3.5-lightning-30b-a3b"
+            return "openai/gpt-oss-20b"
         if p in ("gemini", "google_genai"):
             return "gemini-3.5-flash-lite"
         return str(self._get("llm", "model") or "gemini-3.5-flash-lite")
@@ -525,7 +525,7 @@ class ModelConfig:
         if env_model:
             return env_model
         if p in ("nvidia", "nim"):
-            return "nvidia/nemotron-3.5-lightning-30b-a3b"
+            return "openai/gpt-oss-20b"
         if p in ("gemini", "google_genai"):
             return "gemini-3.5-flash-lite"
         return str(val or "gemini-3.5-flash-lite")

@@ -281,7 +281,7 @@ Future enhancements could include:
 - GPU-accelerated embedding quantization (OpenVINO already supported)
 - More sophisticated context compression with sliding window attention
 
-## Configuration Options (models.yaml v1.18)
+## Configuration Options (models.yaml v1.19)
 
 ```yaml
 optimization:
@@ -333,5 +333,5 @@ All config options support env overrides:
 ---
 
 **Last Updated:** 2026-09-21  
-**Config Version:** 1.18  
+**Config Version:** 1.19  
 **Test Status:** 390 tests passing
