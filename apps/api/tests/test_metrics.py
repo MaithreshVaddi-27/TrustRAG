@@ -153,6 +153,9 @@ async def test_pre_request_budget_disabled_allows_large_query():
         patch.object(analysis_service, "get_collection", return_value=mock_coll),
         patch.object(analysis_service, "add_trace_event", AsyncMock()),
         patch.object(analysis_service, "serialize_analysis", return_value=MagicMock()),
+        # Cloud preflight probe (no network in unit tests) — mirrors the
+        # probe_local_llm_server mock pattern in test_analyses.py.
+        patch("app.core.local_llm.probe_cloud_llm", AsyncMock(return_value=None)),
     ):
         schema = MagicMock()
         schema.knowledge_base_id = str(ObjectId())

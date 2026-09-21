@@ -42,6 +42,13 @@ Status: FIXED → registry passes `max_completion_tokens` + `timeout`
 (verified `client.timeout == 180.0`, `max_tokens == 1024` in payload);
 new `probe_cloud_llm()` (60s tiny completion) hooked into `create_analysis`
 preflight for nvidia/nim/gemini/google_genai → fast 503 with retry guidance.
+Follow-up FIXED: vendor `UserWarning: ... type is unknown and inference may
+fail` (emitted on every ChatNVIDIA construction) suppressed at both
+construction sites via `_suppress_nvidia_unknown_type_warning()` + debug log;
+cloud preflight in `create_analysis` broke
+`test_pre_request_budget_disabled_allows_large_query` (mocked config never
+reaches a real constructor) → test now mocks `probe_cloud_llm` per the
+`probe_local_llm_server` pattern. Suite: 390 passed.
 
 ## P1 — serious (wrong behavior / crash / race)
 

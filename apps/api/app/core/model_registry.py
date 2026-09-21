@@ -17,7 +17,9 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
+import warnings
 from collections import OrderedDict
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -37,6 +39,27 @@ if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
 logger = get_logger(__name__)
+
+
+@contextmanager
+def _suppress_nvidia_unknown_type_warning(model: str):
+    """Silence the vendor 'type is unknown' UserWarning on ChatNVIDIA init.
+
+    langchain-nvidia-ai-endpoints warns (with a venv path) on every
+    construction for models it can't classify — observed for
+    nvidia/nemotron-3.5-lightning-30b-a3b. Nothing app-side avoids it short
+    of switching models; liveness is covered by probe_cloud_llm, so the raw
+    warning is noise. A debug line keeps the signal.
+    """
+    logger.debug("Constructing ChatNVIDIA client (type-check warning suppressed)", model=model)
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=".*but type is unknown and inference may fail.*",
+            category=UserWarning,
+        )
+        yield
+
 
 # ─── Bounded LLM Registry (replaces lru_cache on get_llm/get_verification_model) ────
 # Limits concurrent model instances to prevent RAM/GPU leak from user-controlled keys.
@@ -300,13 +323,14 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
             # and takes timeout via client kwargs; both are silently ignored
             # otherwise (extra='ignore'), leaving the OpenAI-client default
             # (~600s) per attempt — a stalled model then hangs with no response.
-            llm = ChatNVIDIA(
-                model=active_model,
-                api_key=settings.nvidia_api_key,
-                temperature=cfg.llm_temperature,
-                max_completion_tokens=cfg.llm_max_output_tokens,
-                timeout=float(cfg.llm_timeout_seconds),
-            )
+            with _suppress_nvidia_unknown_type_warning(active_model):
+                llm = ChatNVIDIA(
+                    model=active_model,
+                    api_key=settings.nvidia_api_key,
+                    temperature=cfg.llm_temperature,
+                    max_completion_tokens=cfg.llm_max_output_tokens,
+                    timeout=float(cfg.llm_timeout_seconds),
+                )
             put_llm_instance(active_provider, active_model, llm)
             return llm
 
@@ -422,13 +446,14 @@ def get_verification_model(provider: str | None = None, model: str | None = None
 
             # Same ChatNVIDIA field rule as get_llm: max_completion_tokens +
             # client timeout (max_tokens/timeout are silently ignored).
-            llm = ChatNVIDIA(
-                model=active_model,
-                api_key=settings.nvidia_api_key,
-                temperature=0.0,
-                max_completion_tokens=cfg.verification_max_output_tokens,
-                timeout=float(cfg.verification_timeout_seconds),
-            )
+            with _suppress_nvidia_unknown_type_warning(active_model):
+                llm = ChatNVIDIA(
+                    model=active_model,
+                    api_key=settings.nvidia_api_key,
+                    temperature=0.0,
+                    max_completion_tokens=cfg.verification_max_output_tokens,
+                    timeout=float(cfg.verification_timeout_seconds),
+                )
             put_llm_instance(f"verify:{active_provider}", active_model, llm)
             return llm
 
