@@ -23,6 +23,9 @@ CACHE_DIR = os.getenv(
 )
 DB_PATH = os.path.join(CACHE_DIR, "embedding_cache.db")
 
+# TTL for cache entries (default: 30 days). Set to 0 to disable TTL.
+CACHE_TTL_SECONDS = int(os.getenv("EMBEDDING_CACHE_TTL_SECONDS", str(30 * 24 * 3600)))
+
 
 def _get_connection() -> sqlite3.Connection:
     os.makedirs(CACHE_DIR, exist_ok=True)
@@ -38,8 +41,39 @@ def _get_connection() -> sqlite3.Connection:
             created_at REAL NOT NULL
         )
     """)
+    # Add created_at index for TTL cleanup if not exists
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_embedding_cache_created_at ON embedding_cache(created_at)"
+    )
     conn.commit()
     return conn
+
+
+def _cleanup_expired_entries() -> int:
+    """Delete cache entries older than CACHE_TTL_SECONDS. Returns count deleted."""
+    if CACHE_TTL_SECONDS <= 0:
+        return 0
+    conn = None
+    try:
+        conn = _get_connection()
+        cutoff = time.time() - CACHE_TTL_SECONDS
+        cur = conn.cursor()
+        cur.execute("DELETE FROM embedding_cache WHERE created_at < ?", (cutoff,))
+        deleted = cur.rowcount
+        conn.commit()
+        if deleted > 0:
+            # Run VACUUM periodically to reclaim space (cheap when few deletions)
+            # Use a simple heuristic: VACUUM every 100 deletions
+            if deleted >= 100:
+                conn.execute("VACUUM")
+        logger.debug("Embedding cache TTL cleanup", deleted=deleted, ttl_seconds=CACHE_TTL_SECONDS)
+        return deleted
+    except Exception as exc:
+        logger.debug("Cache TTL cleanup error", error=str(exc))
+        return 0
+    finally:
+        if conn:
+            conn.close()
 
 
 def _make_key(text: str, model: str) -> str:
@@ -174,3 +208,29 @@ def set_cached_embeddings_batch(
     finally:
         if conn:
             conn.close()
+
+
+# Module-level cleanup trigger (called from main.py startup or periodically)
+_last_cleanup_ts: float = 0.0
+CLEANUP_INTERVAL_SECONDS = int(
+    os.getenv("EMBEDDING_CACHE_CLEANUP_INTERVAL", str(6 * 3600))
+)  # default 6 hours
+
+
+def maybe_cleanup_cache() -> None:
+    """Call periodically (e.g., on startup or via background task) to expire old entries."""
+    global _last_cleanup_ts
+    now = time.time()
+    if now - _last_cleanup_ts >= CLEANUP_INTERVAL_SECONDS:
+        _last_cleanup_ts = now
+        _cleanup_expired_entries()
+
+
+__all__ = [
+    "get_cached_embedding",
+    "set_cached_embedding",
+    "get_cached_embeddings_batch",
+    "set_cached_embeddings_batch",
+    "maybe_cleanup_cache",
+    "_cleanup_expired_entries",
+]

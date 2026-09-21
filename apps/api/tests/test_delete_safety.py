@@ -102,7 +102,7 @@ async def test_delete_kb_drops_vectors_before_metadata():
         patch.object(kb_service, "get_collection", return_value=mock_coll),
         patch.object(kb_service, "get_qdrant_client", return_value=mock_qdrant),
         patch("app.db.qdrant.get_qdrant_client", return_value=mock_qdrant),
-        patch("app.core.semantic_cache.invalidate_semantic_cache"),
+        patch("app.core.semantic_cache.invalidate_kb_cache"),
     ):
         await kb_service.delete_kb(KB_ID, USER_ID)
 
@@ -128,7 +128,7 @@ async def test_delete_kb_qdrant_failure_keeps_all_metadata():
         patch.object(kb_service, "get_collection", return_value=mock_coll),
         patch.object(kb_service, "get_qdrant_client", return_value=mock_qdrant),
         patch("app.db.qdrant.get_qdrant_client", return_value=mock_qdrant),
-        patch("app.core.semantic_cache.invalidate_semantic_cache"),
+        patch("app.core.semantic_cache.invalidate_kb_cache"),
     ):
         with pytest.raises(Exception, match="Failed to drop"):
             await kb_service.delete_kb(KB_ID, USER_ID)

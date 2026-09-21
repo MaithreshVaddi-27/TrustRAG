@@ -9,9 +9,9 @@ from bson import ObjectId
 import app.core.semantic_cache as semantic_cache
 from app.core.semantic_cache import (
     check_semantic_cache,
-    clear_semantic_cache,
+    clear_all_cache,
     cosine_similarity,
-    invalidate_semantic_cache,
+    invalidate_kb_cache,
     prune_context_tokens,
     store_semantic_cache,
 )
@@ -66,7 +66,8 @@ def test_semantic_cache_sanitizes_object_ids_for_persistence(tmp_path, monkeypat
     """BSON values must not make periodic disk persistence fail silently."""
     cache_file = tmp_path / "semantic_cache.json"
     monkeypatch.setattr(semantic_cache, "PERSISTENCE_FILE", cache_file)
-    clear_semantic_cache()
+    # Clear any pre-existing in-memory cache
+    semantic_cache.clear_all_cache()
     try:
         store_semantic_cache(
             "cached audit question",
@@ -80,18 +81,19 @@ def test_semantic_cache_sanitizes_object_ids_for_persistence(tmp_path, monkeypat
         assert persisted[0]["response"]["answer"] == "Verified answer."
         assert isinstance(persisted[0]["response"]["legacy_object_id"], str)
     finally:
-        clear_semantic_cache()
+        semantic_cache.clear_all_cache()
 
 
 def test_semantic_cache_invalidates_only_target_kb_and_persists(tmp_path, monkeypatch):
     cache_file = tmp_path / "semantic_cache.json"
     monkeypatch.setattr(semantic_cache, "PERSISTENCE_FILE", cache_file)
-    clear_semantic_cache()
+    # Clear any pre-existing in-memory cache
+    semantic_cache.clear_all_cache()
     try:
         store_semantic_cache("target question", "kb_to_remove", [1.0, 0.0], {"answer": "old"})
         store_semantic_cache("other question", "kb_to_keep", [0.0, 1.0], {"answer": "keep"})
 
-        removed = invalidate_semantic_cache("kb_to_remove")
+        removed = invalidate_kb_cache("kb_to_remove")
 
         assert removed == 1
         assert check_semantic_cache("target question", "kb_to_remove", [1.0, 0.0]) is None
@@ -99,7 +101,7 @@ def test_semantic_cache_invalidates_only_target_kb_and_persists(tmp_path, monkey
         persisted = json.loads(cache_file.read_text(encoding="utf-8"))
         assert [entry["kb_id"] for entry in persisted] == ["kb_to_keep"]
     finally:
-        clear_semantic_cache()
+        semantic_cache.clear_all_cache()
 
 
 def test_prune_context_tokens():

@@ -161,9 +161,9 @@ async def delete_kb(kb_id_str: str, user_id_str: str) -> None:
     delete_kb_page_images(kb_id_str)
 
     # Cached answers must never outlive the evidence that produced them.
-    from app.core.semantic_cache import invalidate_semantic_cache
+    from app.core.semantic_cache import invalidate_kb_cache
 
-    invalidate_semantic_cache(kb_id_str)
+    invalidate_kb_cache(kb_id_str)
     logger.info(
         "KB permanently deleted with all associated data",
         kb_id=kb_id_str,
@@ -212,9 +212,9 @@ async def add_document(
         doc_doc["_id"] = result.inserted_id
 
         # New evidence can change the best answer for an already cached query.
-        from app.core.semantic_cache import invalidate_semantic_cache
+        from app.core.semantic_cache import invalidate_kb_cache
 
-        invalidate_semantic_cache(kb_id_str)
+        invalidate_kb_cache(kb_id_str)
         return serialize_doc(doc_doc)
     except pymongo.errors.DuplicateKeyError as exc:
         if "doc_kb_content_hash_unique" in str(exc):
@@ -503,10 +503,10 @@ async def rollback_kb_to_snapshot(
     )
 
     # 3. Cached answers for both identities are stale after a rollback.
-    from app.core.semantic_cache import invalidate_semantic_cache
+    from app.core.semantic_cache import invalidate_kb_cache
 
-    invalidate_semantic_cache(kb_id_str)
-    invalidate_semantic_cache(snapshot_kb_id_str)
+    invalidate_kb_cache(kb_id_str)
+    invalidate_kb_cache(snapshot_kb_id_str)
 
     # 4. Return the restored (formerly snapshot) KB.
     return await get_kb(snapshot_kb_id_str, user_id_str)
@@ -576,7 +576,7 @@ async def delete_document(doc_id_str: str, user_id_str: str) -> None:
 
     delete_doc_page_images(kb_id_str, doc_id_str)
 
-    from app.core.semantic_cache import invalidate_semantic_cache
+    from app.core.semantic_cache import invalidate_kb_cache
 
-    invalidate_semantic_cache(kb_id_str)
+    invalidate_kb_cache(kb_id_str)
     logger.info("Document deleted successfully", doc_id=doc_id_str, kb_id=kb_id_str)
