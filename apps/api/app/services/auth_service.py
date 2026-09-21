@@ -74,7 +74,7 @@ async def _get_failed_logins_coll():
     """Get or create the failed_logins collection with TTL index."""
     from app.db.mongodb import get_database
 
-    db = await get_database()
+    db = get_database()
     coll = db["failed_logins"]
     # Create TTL index once (idempotent)
     await coll.create_index("window_expires", expireAfterSeconds=0, name="ttl_window_expires")

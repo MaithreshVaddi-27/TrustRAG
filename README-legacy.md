@@ -13,13 +13,11 @@ TrustRAG adds a verification layer between your LLM and your data: answers are s
 
 **Repository:** <https://github.com/MaithreshVaddi-27/TrustRAG> · **Version:** 0.1.0 · **License:** MIT ([LICENSE](LICENSE))
 
----
-
 ## Table of Contents
-
 - [Overview](#overview)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
   - [macOS](#macos)
@@ -30,12 +28,10 @@ TrustRAG adds a verification layer between your LLM and your data: answers are s
 - [Usage](#usage)
   - [End-to-end via API](#end-to-end-via-api)
   - [Via the Playground UI](#via-the-playground-ui)
-- [Supported LLM Providers](#supported-llm-providers)
 - [API Reference](#api-reference)
 - [Testing](#testing)
 - [Deployment](#deployment)
 - [Optimization](#optimization)
-- [Security](#security)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [Note](#note)
@@ -92,6 +88,39 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 | **Reranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` via PyTorch or ONNX Runtime (int8) |
 | **Storage** | Qdrant (vectors) + MongoDB 7 (documents, async `motor`) |
 | **Quality gates** | Ruff, ESLint, pytest, Vitest, Playwright, k6 |
+
+---
+
+## Project Structure
+
+```
+TrustRAG/
+├── apps/
+│   ├── api/                 # FastAPI backend (Python 3.11+)
+│   │   ├── app/
+│   │   │   ├── agent/       # LangGraph self-heal loop + query router
+│   │   │   ├── api/v1/      # REST routes (auth, KBs, analyses, claims, …)
+│   │   │   ├── core/        # config, security, LLM, embeddings, metrics
+│   │   │   ├── db/          # MongoDB + Qdrant clients
+│   │   │   ├── generation/  # grounded answer generator
+│   │   │   ├── ingestion/   # parsers, chunkers, OCR fallback
+│   │   │   ├── mcp/         # MCP tool server (JSON-RPC 2.0)
+│   │   │   ├── retrieval/   # hybrid retriever + reranker
+│   │   │   ├── services/    # analysis, KB, auth, experiment services
+│   │   │   └── verification/# NLI verifier + SHA-256 integrity audit
+│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.19)
+│   │   ├── tests/           # backend suite (35 files)
+│   │   └── pyproject.toml
+│   └── web/                 # React frontend (Node 22+)
+│       ├── src/{pages,components,services,lib,store,hooks,layouts,styles}/
+│       └── e2e/             # Playwright specs
+├── config/ports.yaml        # canonical port registry
+├── scripts/                 # setup.sh, start_local_llm.sh, apply_ports.py, eval tools
+├── docs/                    # specs, architecture, ADRs, evaluation, deployment
+├── load-test/smoke.js       # k6 smoke test
+├── docker-compose.yml       # api + web + qdrant
+└── .env.example             # documented env template (copy to .env)
+```
 
 ---
 
@@ -187,6 +216,8 @@ npm install && npm run dev   # http://localhost:5173
 
 ### 2c. Windows (PowerShell)
 
+Run installs as Administrator, then use a regular window afterwards.
+
 ```powershell
 winget install Python.Python.3.11
 winget install OpenJS.NodeJS.LTS
@@ -242,10 +273,10 @@ curl http://localhost:8000/api/v1/health   # → {"status":"ok"}
 > ```bash
 > # Terminal 1: llama.cpp on :8080
 > ./scripts/start_local_llm.sh
->
+> 
 > # Terminal 2: MLX on :8090
 > mlx_lm.server --model mlx-community/Llama-3.2-3B-Instruct-4bit --port 8090
->
+> 
 > # Terminal 3: Backend (auto-detects both)
 > cd apps/api && source .venv/bin/activate && uvicorn app.main:app --reload --port 8000
 > ```
@@ -272,7 +303,7 @@ MONGODB_DATABASE=trustrag_db
 LLM_PROVIDER=llama_cpp            # ollama | llama_cpp | mlx | gemini | nvidia
 LLM_MODEL=LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
 MLX_MODEL=mlx-community/Llama-3.2-1B-Instruct-4bit   # Apple Silicon only
-EMBEDDING_PROVIDER=onnx           # onnx (torch-free, low RAM) | huggingface
+EMBEDDING_PROVIDER=huggingface    # huggingface (torch) | onnx (torch-free, low RAM)
 QDRANT_URL=local                  # local (embedded) | http://localhost:6335 (Docker) | cloud URL
 TAVILY_API_KEY=                   # empty → DuckDuckGo fallback for web grounding
 VITE_API_URL=http://localhost:8000
@@ -323,32 +354,6 @@ On Windows PowerShell, use `Invoke-RestMethod` / `Invoke-WebRequest` against the
 ### Via the Playground UI
 
 Open <http://localhost:5173/playground> → pick a knowledge base → ask a question → inspect the answer side-by-side with per-claim verdicts, evidence cards, reliability badges, conflict flags, and the full LangGraph trace. Other pages: `/dashboard`, `/knowledge-bases`, `/evidence`, `/claims`, `/conflicts`, `/experiments`, `/traces/:id`, `/settings`.
-
----
-
-## Supported LLM Providers
-
-TrustRAG supports multiple LLM providers interchangeably. Switch via `LLM_PROVIDER` env var or per-request `llm_provider` parameter.
-
-| Provider | Models | RAM | Notes |
-|----------|--------|-----|-------|
-| **llama_cpp** | LFM2.5-1.2B, Granite-4.2-3B, SmolLM3-3B, EXAONE-2.4B, SmolLM2-1.7B | 2–4 GB | Default. Hardware-aware `scripts/start_local_llm.sh` auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 concurrent model on 8 GB |
-| **ollama** | gemma3:1b, qwen3:1.7b, llama3 | 1–3 GB | `ollama serve` + `ollama pull <model>`. Set `OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1` for 8 GB RAM |
-| **mlx** | Llama-3.2-1B-4bit, Llama-3.2-3B-4bit, LFM2.5-1.2B-4bit | 1–3 GB | Apple Silicon only. `mlx_lm.server --model <id> --port 8090`. Runs alongside llama.cpp on :8080 |
-| **gemini** | gemini-3.5-flash-lite | Cloud | Requires `GEMINI_API_KEY`. Fast, cheap, supports structured output natively |
-| **nvidia** | openai/gpt-oss-20b | Cloud | Requires `NVIDIA_API_KEY`. NVIDIA NIM endpoint. Verified live 2026-09-21 |
-
-### Per-tier caps (auto-selected by provider + RAM)
-
-| Tier | `max_verification_claims` | `max_context_chunks` | `max_claim_retrievals` |
-|------|---------------------------|----------------------|------------------------|
-| Lean (≤8 GB) | 5 | 5 | 2 |
-| Balanced (≤16 GB) | 8 | 8 | 3 |
-| Cloud | 8 | 8 | 3 |
-
-### Provider-aware temperature
-
-For factual/verification queries with local models, temperature is automatically set to **0.0** to minimize hallucination. Generation uses 0.2 by default.
 
 ---
 
@@ -431,11 +436,10 @@ TrustRAG implements extensive inference acceleration and memory optimization tec
 | **Dynamic Context Sizing** | Token-aware `num_ctx` per request using tiktoken | `local_llm.num_ctx` (base) | `4096` |
 | **Aggressive Model Eviction** | Registry limits instances by RAM: 1 (≤8GB) / 2 (≤16GB) / 4 (32GB+) | Internal | Dynamic |
 | **ONNX Reranker (int8)** | 3-4x CPU speedup, torch-free inference | `reranker.use_onnx` | `true` |
-| **ONNX Embeddings** | Torch-free embedding runtime, ~500-1000 MB RAM saved | `embedding.provider=onnx` | `onnx` |
+| **ONNX Embeddings (optional)** | Torch-free embedding runtime, ~500-1000 MB RAM saved | `embedding.provider=onnx` | `huggingface` |
 | **Context Compression** | Hierarchical summarization before LLM call (50% reduction target) | `optimization.context_compression_enabled`, `optimization.context_compression_target_reduction` | `true`, `0.5` |
-| **Adaptive Top-K** | Reduces retrieval when confidence high (RRF > 0.02) | `optimization.adaptive_top_k` | `true` |
+| **Adaptive Top-K** | Reduces retrieval when confidence high (RRF > 0.82) | `optimization.adaptive_top_k` | `true` |
 | **Reranker Result Caching** | LRU cache for query-document scores | `reranker.cache_size` | `500` |
-| **Cache TTL + VACUUM** | Embedding & semantic caches auto-expire & reclaim disk | `EMBEDDING_CACHE_TTL_SECONDS`, `SEMANTIC_CACHE_TTL_SECONDS` | 24h, 24h |
 
 ### Environment Variable Overrides
 
@@ -451,35 +455,12 @@ All config options support env overrides:
 | Local LLM Params | `LOCAL_LLM_NUM_CTX`, `LOCAL_LLM_NUM_BATCH`, `LOCAL_LLM_KEEP_ALIVE`, `LOCAL_LLM_MIN_P`, `LOCAL_LLM_TOP_K`, `LOCAL_LLM_EARLY_EXIT_EOS` |
 | Reranker | `RERANKER_USE_ONNX`, `RERANKER_ONNX_MODEL_PATH`, `RERANKER_CACHE_SIZE` |
 | Embedding Provider | `EMBEDDING_PROVIDER` |
-| Cache TTL | `EMBEDDING_CACHE_TTL_SECONDS`, `SEMANTIC_CACHE_TTL_SECONDS`, `EMBEDDING_CACHE_CLEANUP_INTERVAL` |
-
----
-
-## Security
-
-- **JWT** — HS256, `iss`/`aud` validation, JTI revocation denylist, 60 min expiry
-- **Passwords** — bcrypt cost 12, timing-safe comparison
-- **Login lockout** — MongoDB TTL collection (`failed_logins`), configurable attempts/window
-- **Rate limiting** — SlowAPI with Redis backend (prod) or in-memory (dev), per-endpoint caps
-- **SSRF protection** — URL validation with DNS allowlist, IP pinning, host-header guard
-- **MCP auth** — Service token required for all tools, prompt/model caps
-- **CORS** — Origins from `CORS_ORIGINS`, credentials allowed
-- **Input validation** — Pydantic v2, filename sanitization, size limits, charset detection on sample
 
 ---
 
 ## Troubleshooting
 
-| Issue | Fix |
-|-------|-----|
-| `LLM_UNAVAILABLE` (llama.cpp) | Start `scripts/start_local_llm.sh --max 1` |
-| `LLM_UNAVAILABLE` (ollama) | `ollama serve` + `ollama pull <model>` |
-| `LLM_UNAVAILABLE` (gemini/nvidia) | Check API key, retry, or switch provider |
-| `LLM_UNAVAILABLE` (MLX) | `mlx_lm.server --model <id> --port 8090` (Apple Silicon) |
-| `Database not initialized` | Ensure MongoDB running; check `MONGODB_URI` |
-| `503 Service Unavailable` | DB not connected; check `connect_db()` in lifespan |
-| OOM on 8 GB | `export OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1 OLLAMA_MAX_LOADED_MODELS=1` |
-| `test_indexing_pipeline_execution` fail | Stale mock — see UPGRADE.md §6 |
+*No specific troubleshooting entries yet. Refer to issues or consult the community.*
 
 ---
 
@@ -504,7 +485,3 @@ cd apps/web && npm run lint && npm test
 - MLX is Apple‑Silicon only; ensure you have the appropriate hardware and follow the [MLX Setup Guide](docs/MLX_SETUP.md) if you wish to use it alongside Ollama or llama.cpp.
 
 ---
-
-## Legacy Content
-
-Detailed historical notes, legacy configuration examples, and deprecated workflows are preserved in [README-legacy.md](README-legacy.md).

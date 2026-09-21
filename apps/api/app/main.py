@@ -141,6 +141,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await connect_db()
     await create_indexes()
 
+    # Load semantic cache from disk (lazy-loaded at import, now explicit)
+    from app.core.semantic_cache import load_cache
+    loaded = load_cache()
+    logger.info("Semantic cache loaded", entries=loaded)
+
     # Seed the local-model discovery cache from the persisted snapshot so a
     # pre-run `scripts/discover_local_models.py` (or any earlier process) is
     # honored before the server answers its first request.

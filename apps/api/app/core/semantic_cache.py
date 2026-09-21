@@ -370,6 +370,16 @@ def invalidate_kb_cache(kb_id: str, persist: bool = True) -> int:
     return removed
 
 
+def load_cache() -> int:
+    """Load semantic cache from disk. Call explicitly at application startup.
+    
+    Returns:
+        Number of entries loaded.
+    """
+    _load_persisted_cache()
+    return len(_SEMANTIC_CACHE)
+
+
 def clear_all_cache(persist: bool = True) -> int:
     """Clear the entire semantic cache (for testing).
     
@@ -385,6 +395,21 @@ def clear_all_cache(persist: bool = True) -> int:
     if persist:
         _persist_cache()
     return removed
+
+
+def reset_module_state() -> None:
+    """Completely reset module state for test isolation.
+    
+    Clears in-memory cache, matrix, and persists empty state to disk.
+    Use in test fixtures for complete isolation between tests.
+    """
+    global _SEMANTIC_CACHE, _MATRIX_CACHE, _MATRIX_DIRTY, _last_persist_time
+    with _CACHE_LOCK:
+        _SEMANTIC_CACHE = deque(maxlen=_MAX_CACHE_ENTRIES)
+        _MATRIX_CACHE = None
+        _MATRIX_DIRTY = True
+        _last_persist_time = 0.0
+    _persist_cache()
 
 
 def prune_context_tokens(context: str, max_chars: int = 6000) -> str:
@@ -433,5 +458,5 @@ def prune_context_tokens(context: str, max_chars: int = 6000) -> str:
     return pruned
 
 
-# Load persisted cache on module import
-_load_persisted_cache()
+# Module-level cache is lazy-loaded; call load_cache() explicitly at startup
+# _load_persisted_cache()  # Disabled at import time for test isolation
