@@ -413,6 +413,10 @@ class ChatOllamaClient(BaseChatModel):
         # -1 = keep all (full prompt caching), 0 = disable, N = keep first N tokens
         if use_prompt_cache:
             options["num_keep"] = kwargs.get("num_keep", -1)
+        # Early exit on EOS for Ollama (speculative decoding / early exit - Phase 2.5)
+        if early_exit_eos:
+            # Add common EOS tokens for early termination
+            options["stop"] = options.get("stop", []) + ["<|endoftext|>", "<|eot_id|>", "\n\n"]
         if stop:
             options["stop"] = stop
 
