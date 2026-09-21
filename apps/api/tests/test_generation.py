@@ -14,6 +14,7 @@ from app.generation.generator import (
     format_context_with_chunk_indices,
     generate_grounded_answer,
     strip_stray_abstain,
+    strip_think_blocks,
 )
 
 
@@ -139,6 +140,22 @@ def test_strip_stray_abstain_matrix():
     )
     # Nothing substantive left behind the token means genuine refusal.
     assert strip_stray_abstain("ABSTAIN\nsee above") == "ABSTAIN"
+
+
+def test_strip_think_blocks_matrix():
+    """Thinking traces must never reach decomposition/NLI or the UI."""
+    answer = "The capital is Paris [Segment 1]."
+    assert strip_think_blocks(f"<think>Let me reason.</think>\n\n{answer}") == f"\n\n{answer}"
+    assert strip_think_blocks(f"{answer}\n<thinking>hmm</thinking>") == f"{answer}\n"
+    # Unclosed trailing opener (cut mid-thought): drop it and everything after.
+    assert strip_think_blocks(f"{answer}\n<think>unfinished") == f"{answer}\n"
+    # Case-insensitive + attributes.
+    assert strip_think_blocks('<THINK name="x">t</THINK>' + answer) == answer
+    # No markers: byte-identical passthrough.
+    assert strip_think_blocks(answer) == answer
+    assert strip_think_blocks("") == ""
+    # Prose mentioning "think" without tags survives.
+    assert strip_think_blocks("I think this is right.") == "I think this is right."
 
 
 def test_format_dedupes_punctuation_variants():

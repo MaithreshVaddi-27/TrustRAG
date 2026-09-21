@@ -310,9 +310,20 @@ def local_cap_kwargs(provider: str | None, max_tokens: int) -> dict[str, int]:
 
 # Model ids whose thinking trace shares the completion budget with the
 # answer (observed live: muse-glimmer-30b spends ~475 tokens reasoning about
-# trivia). Verification caps sized for direct-answer models truncate their
-# verdict JSON → false NEUTRALs → failed reliability checks.
-REASONING_MODEL_KEYWORDS = ("glimmer", "gpt-oss", "reasoning", "deepseek-r1", "r1-")
+# trivia; qwen3:1.7b on Ollama burns small num_predict budgets entirely in
+# the thinking trace → empty content → ABSTAIN). Verification caps sized
+# for direct-answer models truncate their verdict JSON → false NEUTRALs →
+# failed reliability checks.
+REASONING_MODEL_KEYWORDS = (
+    "glimmer",
+    "gpt-oss",
+    "reasoning",
+    "deepseek-r1",
+    "r1-",
+    "qwen3",
+    "qwq",
+    "think",
+)
 
 
 def is_reasoning_model(model: str | None) -> bool:
@@ -326,20 +337,21 @@ def verification_cap_kwargs(
 ) -> dict[str, int]:
     """Task-sized output caps for verification calls on any provider.
 
-    Local providers keep the lean KV-saving caps (identical to
-    local_cap_kwargs). Non-reasoning cloud models keep instance defaults
-    ({} — the registry already sets tight max_output_tokens). Reasoning
-    cloud models get 2x headroom with the provider-correct param name,
-    because their thinking trace consumes the same budget the verdict
-    JSON needs; without it, batch NLI truncates and every claim degrades
-    to NEUTRAL (reliability FAILED on grounded answers).
+    Direct-answer local models keep the lean KV-saving caps. Thinking
+    models (local or cloud) get 2x headroom: their thinking trace consumes
+    the same budget the verdict JSON needs, and a starved call returns
+    empty (rewrite) or truncated JSON (NLI) — both costlier than the extra
+    tokens, since they trigger the retry spiral. Non-reasoning cloud
+    models keep instance defaults ({} — the registry already sets tight
+    max_output_tokens). Reasoning cloud models get 2x with the
+    provider-correct param name.
     """
     norm = (provider or "").strip().lower()
+    roomy = int(max_tokens) * 2 if is_reasoning_model(model) else int(max_tokens)
     if norm in LOCAL_LLM_PROVIDERS:
-        return {"max_tokens": int(max_tokens)}
+        return {"max_tokens": roomy}
     if not is_reasoning_model(model):
         return {}
-    roomy = int(max_tokens) * 2
     if norm in ("gemini", "google_genai"):
         return {"max_output_tokens": roomy}
     return {"max_tokens": roomy}
@@ -472,10 +484,15 @@ class ChatOllamaClient(BaseChatModel):
             options["num_keep"] = kwargs.get("num_keep", -1)
         # Early exit on EOS for Ollama (speculative decoding / early exit - Phase 2.5)
         # Union with caller-provided stops instead of overwriting (P1-1 fix).
+        # NOTE: never add "\n\n" here — thinking models (qwen3, deepseek-r1)
+        # open with "<think>\n\n", so a blank-line stop decapitates every
+        # answer to a stub (observed live: qwen3:1.7b → empty content →
+        # deterministic ABSTAIN across all recovery retries). It also
+        # truncates ordinary multi-paragraph answers mid-way.
         _ollama_stops: list[str] = []
         if early_exit_eos:
-            # Add common EOS tokens for early termination
-            _ollama_stops.extend(["<|endoftext|>", "<|eot_id|>", "\n\n"])
+            # Real end-of-sequence tokens only.
+            _ollama_stops.extend(["<|endoftext|>", "<|eot_id|>"])
         if stop:
             _ollama_stops.extend(stop)
         if _ollama_stops:

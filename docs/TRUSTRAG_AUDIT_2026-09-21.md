@@ -191,6 +191,24 @@ Root causes + fixes (all provider-agnostic, local behavior unchanged):
    Live batch re-run: 3/3 SUPPORTED with correct segments (was 2/3).
    Suite: 392 passed (2 new unit tests).
 
+## Refinement pass 2 — thinking local models abstain (qwen3:1.7b)
+
+Symptom (playground screenshot): same evidence answers on gemma3:1b but
+qwen3:1.7b ABSTAINs after 4 identical regeneration retries. Reproduced
+live: our client returned 0 chars. Root cause: the Phase 2.5 Ollama
+`"\n\n"` stop token — thinking models open with `<think>\n\n`, so every
+answer was decapitated to a stub (and ordinary multi-paragraph answers
+were truncated mid-way). Compounding it, small num_predict budgets get
+eaten by the thinking trace (rewrite cap 128 → empty rewrite, matching
+the "Empty rewrite on already-refused evidence" timeline).
+Fixes: dropped `"\n\n"` (real EOS tokens only); new
+`strip_think_blocks()` wired into generation + compression;
+`verification_cap_kwargs` now gives thinking models 2x headroom on
+local providers too (qwen3/qwq/deepseek-r1 keywords).
+Live: 0 chars → 1449-char 3-paragraph answer, no think leakage;
+grounded summary path returns 2374 cited chars (was ABSTAIN).
+Suite: 395 passed (3 new unit tests).
+
 ## Follow-ups (not in this pass)
 
 1. Sigmoid-normalize reranker logits before `0.80` cutoff (P2-1 remainder).

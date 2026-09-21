@@ -2,7 +2,10 @@
 Tests for local LLM clients (Ollama and llama.cpp).
 """
 
+from unittest.mock import patch
+
 import pytest
+from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
 import app.core.local_llm as _llm_mod
@@ -274,10 +277,48 @@ def test_is_reasoning_model_detection():
     assert _llm_mod.is_reasoning_model("meta/muse-glimmer-30b") is True
     assert _llm_mod.is_reasoning_model("openai/gpt-oss-20b") is True
     assert _llm_mod.is_reasoning_model("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning") is True
+    assert _llm_mod.is_reasoning_model("qwen3:1.7b") is True
     assert _llm_mod.is_reasoning_model("google/gemma-4-31b-it") is False
     assert _llm_mod.is_reasoning_model("gemma3:1b") is False
     assert _llm_mod.is_reasoning_model(None) is False
     assert _llm_mod.is_reasoning_model("") is False
+
+
+def test_verification_caps_cover_local_thinking_models():
+    """Thinking traces share the budget on local servers too: qwen3 with a
+    128-token rewrite cap returns empty → retry spiral. 2x headroom."""
+    assert _llm_mod.verification_cap_kwargs("ollama", "qwen3:1.7b", 128) == {"max_tokens": 256}
+    assert _llm_mod.verification_cap_kwargs("ollama", "gemma3:1b", 128) == {"max_tokens": 128}
+
+
+@pytest.mark.asyncio
+async def test_ollama_stops_never_include_blank_line():
+    """Regression: a '\\n\\n' stop decapitates thinking models (<think>\\n\\n)
+    and truncates multi-paragraph answers. Only real EOS tokens allowed."""
+
+    captured: dict = {}
+
+    class _FakeResp:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict:
+            return {"message": {"content": "Paris."}}
+
+    class _FakeClient:
+        async def post(self, url: str, json: dict | None = None) -> _FakeResp:
+            captured.update(json or {})
+            return _FakeResp()
+
+    with patch.object(_llm_mod, "_shared_http_client", return_value=_FakeClient()):
+        client = ChatOllamaClient(base_url="http://localhost:11434", model="x", temperature=0.0)
+        out = await client.ainvoke([HumanMessage(content="hi")])
+    assert out.content == "Paris."
+    stops = (captured.get("options", {}) or {}).get("stop") or []
+    assert "\n\n" not in stops
+    assert "<|endoftext|>" in stops  # early-exit EOS still active
 
 
 # ─── Local-server preflight probe + discovery replace tests ───────────────────

@@ -319,6 +319,7 @@ async def compress_context(
             return context_str, chunk_indices
 
         compressed = compressed.strip()
+        compressed = strip_think_blocks(compressed).strip()
         compressed_tokens = count_tokens(compressed, compression_model)
 
         logger.info(
@@ -348,6 +349,34 @@ async def compress_context(
     except Exception as exc:
         logger.error("Context compression failed, using original", error=str(exc))
         return context_str, chunk_indices
+
+
+# Thinking traces thinking models leak into content (<think>, <thinking>,
+# <thought> — DeepSeek-R1, Qwen3, QwQ; some servers inline them into
+# message.content instead of a separate field). A trace must never reach
+# decomposition/NLI (it spawns meta-claims → 0 supported claims) or the UI.
+_THINK_BLOCK_RE = re.compile(
+    r"<\s*(think|thinking|thought|reasoning)\b[^>]*>.*?<\s*/\s*\1\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+_THINK_OPEN_RE = re.compile(r"<\s*(think|thinking|thought|reasoning)\b[^>]*>", re.IGNORECASE)
+
+
+def strip_think_blocks(answer: str) -> str:
+    """Remove <think>…</think>-style reasoning traces from model output.
+
+    Handles closed blocks anywhere, plus a trailing unclosed opener (the
+    model was cut mid-thought — everything from the opener on is trace).
+    Returns the input unchanged when no markers exist.
+    """
+    if not answer or "<" not in answer:
+        return answer
+    cleaned = _THINK_BLOCK_RE.sub("", answer)
+    # Unclosed trailing opener: drop it and everything after it.
+    match = _THINK_OPEN_RE.search(cleaned)
+    if match:
+        cleaned = cleaned[: match.start()]
+    return cleaned
 
 
 def strip_stray_abstain(answer: str) -> str:
@@ -693,6 +722,18 @@ async def generate_grounded_answer(
                 clean_len=len(extracted),
             )
             answer = extracted
+
+        # Peel thinking traces (<think>…</think>) thinking models inline
+        # into content — they spawn meta-claims downstream and must never
+        # reach decomposition, NLI, or the UI.
+        no_think = strip_think_blocks(answer).strip()
+        if no_think != answer:
+            logger.info(
+                "Stripped think blocks from generation",
+                raw_len=len(answer),
+                clean_len=len(no_think),
+            )
+            answer = no_think
 
         # Peel a stray trailing ABSTAIN token small models append to real
         # answers (instruction-following failure, not a refusal).
