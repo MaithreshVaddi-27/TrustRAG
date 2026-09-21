@@ -251,25 +251,30 @@ def test_local_cap_kwargs_only_for_local_providers():
 
 
 def test_verification_cap_kwargs_reasoning_headroom():
-    """Verification caps: local stays lean, reasoning cloud models get 2x
-    headroom with the provider-correct param name (thinking traces share
-    the completion budget — without this, verdict JSON truncates)."""
-    # Local: identical to local_cap_kwargs (KV-saving, unchanged).
+    """Verification caps: local stays lean, reasoning models get headroom
+    (2x with a 1024 floor — live probes show ~475 reasoning tokens on
+    trivia and a starved 256-token rewrite returning empty). Provider-
+    correct param names throughout (thinking traces share the completion
+    budget — without this, verdict JSON truncates)."""
+    # Local direct-answer: identical to local_cap_kwargs (KV-saving, unchanged).
     assert _llm_mod.verification_cap_kwargs("ollama", "gemma3:1b", 384) == {"max_tokens": 384}
     assert _llm_mod.verification_cap_kwargs("llama_cpp", "any-model", 768) == {"max_tokens": 768}
     # Non-reasoning cloud: instance defaults ({}).
     assert _llm_mod.verification_cap_kwargs("nvidia", "google/gemma-4-31b-it", 384) == {}
     assert _llm_mod.verification_cap_kwargs("gemini", "gemini-3.5-flash-lite", 384) == {}
     assert _llm_mod.verification_cap_kwargs("nvidia", None, 384) == {}
-    # Reasoning cloud: 2x with provider-correct names.
+    # Reasoning: 2x with 1024 floor, provider-correct names.
     assert _llm_mod.verification_cap_kwargs("nvidia", "meta/muse-glimmer-30b", 384) == {
-        "max_tokens": 768
+        "max_tokens": 1024
     }
     assert _llm_mod.verification_cap_kwargs("nvidia", "openai/gpt-oss-20b", 512) == {
         "max_tokens": 1024
     }
+    assert _llm_mod.verification_cap_kwargs("nvidia", "openai/gpt-oss-20b", 768) == {
+        "max_tokens": 1536
+    }
     assert _llm_mod.verification_cap_kwargs("gemini", "some-reasoning-model", 384) == {
-        "max_output_tokens": 768
+        "max_output_tokens": 1024
     }
 
 
@@ -286,8 +291,8 @@ def test_is_reasoning_model_detection():
 
 def test_verification_caps_cover_local_thinking_models():
     """Thinking traces share the budget on local servers too: qwen3 with a
-    128-token rewrite cap returns empty → retry spiral. 2x headroom."""
-    assert _llm_mod.verification_cap_kwargs("ollama", "qwen3:1.7b", 128) == {"max_tokens": 256}
+    128-token rewrite cap returns empty → retry spiral. 1024 floor."""
+    assert _llm_mod.verification_cap_kwargs("ollama", "qwen3:1.7b", 128) == {"max_tokens": 1024}
     assert _llm_mod.verification_cap_kwargs("ollama", "gemma3:1b", 128) == {"max_tokens": 128}
 
 

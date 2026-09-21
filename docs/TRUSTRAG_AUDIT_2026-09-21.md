@@ -209,6 +209,20 @@ Live: 0 chars → 1449-char 3-paragraph answer, no think leakage;
 grounded summary path returns 2374 cited chars (was ABSTAIN).
 Suite: 395 passed (3 new unit tests).
 
+## Refinement pass 3 — reasoning-model verification endgame (muse-glimmer)
+
+Symptom (playground screenshot): summary query, 8 chunks, 0 assertions,
+ABSTAIN after 4 recoveries, "Empty rewrite on already-refused evidence".
+Reproduced live, three stacked bugs:
+1. Fused decompose+verify truncates mid-JSON even at 2048 budget
+   (reasoning overflow) → None → wasted call + latency. Fix: reasoning
+   models skip fused, go two-step directly (designed path, with debug log).
+2. Rewrite starves at 256 (reasoning ate it all; 512+ succeeds). Fix:
+   `verification_cap_kwargs` floor raised to 1024 for thinking models
+   (local and cloud) — verified rewrite returns 37 chars via helper.
+3. (Prior pass) prompt-based JSON transport for nvidia.
+Suite: 395 passed.
+
 ## Follow-ups (not in this pass)
 
 1. Sigmoid-normalize reranker logits before `0.80` cutoff (P2-1 remainder).

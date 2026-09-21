@@ -17,7 +17,7 @@ from bson import ObjectId
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.config import get_model_config
-from app.core.local_llm import verification_cap_kwargs
+from app.core.local_llm import is_reasoning_model, verification_cap_kwargs
 from app.core.logging import get_logger
 from app.core.model_registry import get_verification_model
 from app.db.mongodb import Collections, get_collection
@@ -973,10 +973,17 @@ async def execute_claim_verification(
     # (verification.fused_decompose_verify / FUSED_DECOMPOSE_VERIFY=0) restores
     # the classic two-step path. Any total failure (None) or empty result falls
     # through to two-step below, so worst case costs one extra call.
+    # Reasoning models skip fused outright: the fused payload (claims AND
+    # verdicts) is the largest structured output, and thinking traces overflow
+    # even doubled caps (verified live: truncated mid-JSON at 2048 budget).
+    # Skipping saves a doomed call plus its latency; two-step is the designed
+    # path, not a fallback, for these models.
     fused_enabled = getattr(cfg, "fused_decompose_verify", True)
     if isinstance(fused_enabled, str):
         fused_enabled = fused_enabled.strip().lower() in ("1", "true", "yes", "on")
-    if fused_enabled and answer and not is_refusal_answer(answer):
+    if is_reasoning_model(model):
+        logger.debug("Skipping fused path for reasoning model (two-step directly)", model=model)
+    if fused_enabled and answer and not is_refusal_answer(answer) and not is_reasoning_model(model):
         fused_items = await fused_decompose_verify(
             answer, chunks, provider=provider, model=model, context_str=context_str
         )

@@ -338,23 +338,25 @@ def verification_cap_kwargs(
     """Task-sized output caps for verification calls on any provider.
 
     Direct-answer local models keep the lean KV-saving caps. Thinking
-    models (local or cloud) get 2x headroom: their thinking trace consumes
-    the same budget the verdict JSON needs, and a starved call returns
-    empty (rewrite) or truncated JSON (NLI) — both costlier than the extra
-    tokens, since they trigger the retry spiral. Non-reasoning cloud
-    models keep instance defaults ({} — the registry already sets tight
-    max_output_tokens). Reasoning cloud models get 2x with the
-    provider-correct param name.
+    models (local or cloud) get headroom with a 1024-token floor: live
+    probes show muse-glimmer-30b spending ~475 tokens reasoning about
+    trivia and starving a 256-token rewrite to empty, while 512+ succeeds
+    — a starved call costs a full retry spiral, dwarfing the extra tokens.
+    Non-reasoning cloud models keep instance defaults ({} — the registry
+    already sets tight max_output_tokens). Reasoning cloud models get the
+    headroom with the provider-correct param name.
     """
     norm = (provider or "").strip().lower()
-    roomy = int(max_tokens) * 2 if is_reasoning_model(model) else int(max_tokens)
-    if norm in LOCAL_LLM_PROVIDERS:
+    if is_reasoning_model(model):
+        roomy = max(int(max_tokens) * 2, 1024)
+        if norm in LOCAL_LLM_PROVIDERS:
+            return {"max_tokens": roomy}
+        if norm in ("gemini", "google_genai"):
+            return {"max_output_tokens": roomy}
         return {"max_tokens": roomy}
-    if not is_reasoning_model(model):
-        return {}
-    if norm in ("gemini", "google_genai"):
-        return {"max_output_tokens": roomy}
-    return {"max_tokens": roomy}
+    if norm in LOCAL_LLM_PROVIDERS:
+        return {"max_tokens": int(max_tokens)}
+    return {}
 
 
 def _convert_messages_to_dict(messages: list[Any]) -> list[dict[str, str]]:
