@@ -14,6 +14,7 @@ import tiktoken
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.core.config import get_model_config
+from app.core.exceptions import ConfigurationError, LLMUnavailableError
 from app.core.llm_utils import normalize_llm_content
 from app.core.local_llm import LOCAL_LLM_PROVIDERS, local_cap_kwargs
 from app.core.logging import get_logger
@@ -68,19 +69,21 @@ def _get_tiktoken_encoder(model_name: str | None = None) -> tiktoken.Encoding:
     Get a tiktoken encoder for the given model.
 
     Falls back to cl100k_base for unknown models (covers GPT-3.5/4, Llama, etc.).
+    Cache key is normalized so distinct GGUF ids share one entry (unbounded
+    per-string keys duplicated cl100k_base for every ?model= value).
     """
     if model_name is None:
         model_name = "cl100k_base"
 
-    if model_name not in _ENCODER_CACHE:
-        try:
-            _ENCODER_CACHE[model_name] = tiktoken.encoding_for_model(model_name)
-        except KeyError:
-            # Fallback to cl100k_base for models not in tiktoken's registry
-            # This covers Llama, Mistral, Gemma, and most open models
-            _ENCODER_CACHE[model_name] = tiktoken.get_encoding("cl100k_base")
+    try:
+        cache_key = tiktoken.encoding_name_for_model(model_name)
+    except KeyError:
+        cache_key = "cl100k_base"
 
-    return _ENCODER_CACHE[model_name]
+    if cache_key not in _ENCODER_CACHE:
+        _ENCODER_CACHE[cache_key] = tiktoken.get_encoding(cache_key)
+
+    return _ENCODER_CACHE[cache_key]
 
 
 def count_tokens(text: str, model_name: str | None = None) -> int:
@@ -762,7 +765,10 @@ async def generate_grounded_answer(
         )
         return answer
 
+    except (ConfigurationError, LLMUnavailableError):
+        raise
     except Exception as exc:
         logger.error("Grounded generation failed", error=str(exc))
         # Default to ABSTAIN on runtime exception to ensure reliability
+        # (config/outage errors re-raise above so ABSTAIN never masks them).
         return "ABSTAIN"

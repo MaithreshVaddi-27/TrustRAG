@@ -81,31 +81,36 @@ class ONNXBGEEmbeddings(Embeddings):
         self._query_instruction = "Represent this sentence for searching relevant passages: "
 
     def _encode_batch(self, texts: list[str], is_query: bool = False) -> np.ndarray:
-        """Encode a batch of texts to embeddings."""
+        """Encode a batch of texts to embeddings (internally chunked ≤32 to bound RAM)."""
         if is_query and self._is_bge:
             texts = [
                 self._query_instruction + t if not t.startswith(self._query_instruction) else t
                 for t in texts
             ]
 
-        # Tokenize
-        encoded = self.tokenizer(
-            texts,
-            padding=True,
-            truncation=True,
-            max_length=self.max_seq_length,
-            return_tensors="np",
-        )
+        import numpy as _np
 
-        # Run ONNX inference
-        ort_inputs = {
-            "input_ids": encoded["input_ids"],
-            "attention_mask": encoded["attention_mask"],
-        }
-        ort_outputs = self.session.run(self.output_names, ort_inputs)
-        embeddings = ort_outputs[0]  # Already L2 normalized by the model
+        out: list[np.ndarray] = []
+        for start in range(0, len(texts), 32):
+            sub = texts[start : start + 32]
+            # Tokenize
+            encoded = self.tokenizer(
+                sub,
+                padding=True,
+                truncation=True,
+                max_length=self.max_seq_length,
+                return_tensors="np",
+            )
 
-        return embeddings
+            # Run ONNX inference
+            ort_inputs = {
+                "input_ids": encoded["input_ids"],
+                "attention_mask": encoded["attention_mask"],
+            }
+            ort_outputs = self.session.run(self.output_names, ort_inputs)
+            embeddings = ort_outputs[0]  # Already L2 normalized by the model
+            out.append(embeddings)
+        return _np.concatenate(out, axis=0) if out else _np.zeros((0, 384), dtype=_np.float32)
 
     def embed_query(self, text: str) -> list[float]:
         """Embed a single query text."""

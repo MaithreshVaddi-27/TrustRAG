@@ -96,9 +96,11 @@ async def init_kb_collection(kb_id: str) -> None:
       - Sparse vector parameters: BM25-style TF client vectors + server-side
         IDF (Modifier.IDF). Qdrant derives IDF from collection statistics.
 
-    Collections created before the IDF sparse config are deleted and recreated
-    empty — their TF-only vectors are scoring-incompatible with IDF weighting.
-    Operators must re-upload the KB's documents afterwards (re-index).
+    Collections created before the IDF sparse config need re-indexing —
+    their TF-only vectors are scoring-incompatible with IDF weighting.
+    NEVER auto-delete in the request path: deleting drops all vectors.
+    Set ALLOW_QDRANT_RECREATE=1 explicitly to allow recreation, otherwise
+    raise and require the operator to re-upload into a NEW KB.
     """
     client = await get_qdrant_client()
     collection_name = get_collection_name(kb_id)
@@ -110,12 +112,21 @@ async def init_kb_collection(kb_id: str) -> None:
         if exists:
             idf_enabled = await _sparse_idf_enabled(client, collection_name)
             if idf_enabled is False:
-                logger.warning(
-                    "Recreating Qdrant collection with IDF sparse config; "
-                    "re-upload this KB's documents to re-index",
-                    collection=collection_name,
-                )
-                await client.delete_collection(collection_name)
+                import os
+
+                if os.environ.get("ALLOW_QDRANT_RECREATE", "").strip() == "1":
+                    logger.warning(
+                        "Recreating Qdrant collection with IDF sparse config; "
+                        "re-upload this KB's documents to re-index",
+                        collection=collection_name,
+                    )
+                    await client.delete_collection(collection_name)
+                else:
+                    raise VectorStoreError(
+                        f"Qdrant collection '{collection_name}' needs re-index "
+                        "(pre-IDF sparse config). Re-upload into a NEW KB, or set "
+                        "ALLOW_QDRANT_RECREATE=1 to recreate empty."
+                    )
             else:
                 logger.debug("Qdrant collection already exists", collection=collection_name)
                 return

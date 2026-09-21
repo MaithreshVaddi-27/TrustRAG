@@ -52,22 +52,25 @@ def get_llamacpp_launch_args() -> list[str]:
         smi = shutil.which("nvidia-smi")
         if smi:
             try:
-                subprocess.run(  # noqa: S603 — resolved binary path, fixed argv
+                probe = subprocess.run(  # noqa: S603 — resolved binary path, fixed argv
                     [smi],
                     check=False,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     timeout=5,
                 )
-                args += [
-                    "-ngl",
-                    "all",
-                    "--flash-attn",
-                    "on",
-                    *kv_quant_flags,
-                    "--split-mode",
-                    "layer",
-                ]
+                if probe.returncode != 0:
+                    logger.debug("nvidia-smi probe failed; no GPU flags")
+                else:
+                    args += [
+                        "-ngl",
+                        "all",
+                        "--flash-attn",
+                        "on",
+                        *kv_quant_flags,
+                        "--split-mode",
+                        "layer",
+                    ]
             except Exception as exc:
                 logger.debug("nvidia-smi probe failed; no GPU flags", error=str(exc))
     # else: CPU-only — no GPU flags.

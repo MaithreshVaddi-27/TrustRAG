@@ -173,18 +173,24 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
     """Execute an MCP tool call and return structured tool content."""
     from app.services.search_service import duckduckgo_search, execute_web_search, tavily_search
 
+    def _clamp_results(value: Any, default: int = 5) -> int:
+        try:
+            return max(1, min(int(value), 10))
+        except (TypeError, ValueError):
+            return default
+
     if tool_name == "tavily_search":
-        count = arguments.get("max_results", 5)
+        count = _clamp_results(arguments.get("max_results", 5))
         res = await tavily_search(arguments["query"], max_results=count)
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
     elif tool_name == "duckduckgo_search":
-        count = arguments.get("max_results", 5)
+        count = _clamp_results(arguments.get("max_results", 5))
         res = await duckduckgo_search(arguments["query"], max_results=count)
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
     elif tool_name == "hybrid_web_search":
-        count = arguments.get("max_results", 5)
+        count = _clamp_results(arguments.get("max_results", 5))
         res = await execute_web_search(
             arguments["query"],
             provider=arguments.get("provider", "both"),
@@ -228,8 +234,8 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
         return {"content": [{"type": "text", "text": json.dumps(results, indent=2)}]}
 
     elif tool_name == "trustrag_verify_claim":
-        claims = arguments["claims"]
-        evidence_texts = arguments["evidence_texts"]
+        claims = arguments["claims"][:20]
+        evidence_texts = [t[:4000] for t in arguments["evidence_texts"][:20]]
         fake_chunks = [
             {"chunk_id": f"ev_{idx}", "text": text} for idx, text in enumerate(evidence_texts)
         ]
@@ -256,7 +262,7 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
 
         provider = arguments.get("provider", "ollama")
         model = arguments.get("model")
-        prompt = arguments["prompt"]
+        prompt = str(arguments["prompt"])[:8000]
         llm = get_llm(provider=provider, model=model)
         res = await llm.ainvoke(prompt)
         text = res.content if hasattr(res, "content") else str(res)

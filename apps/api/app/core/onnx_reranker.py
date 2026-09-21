@@ -56,7 +56,9 @@ class ONNXCrossEncoder:
 
         # Configure ONNX Runtime for CPU inference
         sess_options = ort.SessionOptions()
-        sess_options.intra_op_num_threads = int(os.environ.get("OMP_NUM_THREADS", "1"))
+        sess_options.intra_op_num_threads = int(
+            os.environ.get("OMP_NUM_THREADS", str(os.cpu_count() or 4))
+        )
         sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         sess_options.enable_cpu_mem_arena = True
         sess_options.enable_mem_pattern = True
@@ -71,14 +73,16 @@ class ONNXCrossEncoder:
             providers=providers,
         )
 
-        # Load tokenizer
+        # Load tokenizer — prefer local cache when offline (HF_HUB_OFFLINE=1
+        # set in app/main.py); otherwise allow download on first cold start.
         try:
             from transformers import AutoTokenizer
 
+            _offline = os.environ.get("HF_HUB_OFFLINE", "").strip() == "1"
             self._tokenizer = AutoTokenizer.from_pretrained(
                 self.tokenizer_name,
                 use_fast=True,
-                local_files_only=False,
+                local_files_only=_offline,
             )
             logger.debug("Loaded tokenizer", name=self.tokenizer_name)
         except Exception as exc:
@@ -101,46 +105,56 @@ class ONNXCrossEncoder:
         if not pairs:
             return np.array([], dtype=np.float32)
 
-        # Tokenize all pairs
-        queries = [p[0] for p in pairs]
-        docs = [p[1] for p in pairs]
-
-        # Tokenize with CrossEncoder format: [CLS] query [SEP] doc [SEP]
-        encoded = self._tokenizer(
-            queries,
-            docs,
-            padding=True,
-            truncation="longest_first",
-            max_length=self.max_seq_length,
-            return_tensors="np",
-        )
-
-        # Run ONNX inference — feed only the inputs the exported graph expects
-        # (token_type_ids exists only when the export included it).
+        # Batch loop: tokenizing + inferring all pairs at once spikes RAM and
+        # latency (20 candidates x fan-out 3). Respect batch_size (default 16).
+        effective_batch = int(batch_size or int(os.environ.get("RERANKER_BATCH_SIZE", "16")) or 16)
         session_inputs = {i.name for i in self._session.get_inputs()}
-        inputs: dict[str, np.ndarray] = {}
-        if "input_ids" in session_inputs:
-            inputs["input_ids"] = encoded["input_ids"].astype(np.int64)
-        if "attention_mask" in session_inputs:
-            inputs["attention_mask"] = encoded["attention_mask"].astype(np.int64)
-        if "token_type_ids" in session_inputs and "token_type_ids" in encoded:
-            inputs["token_type_ids"] = encoded["token_type_ids"].astype(np.int64)
+        all_scores: list[np.ndarray] = []
+        for start in range(0, len(pairs), effective_batch):
+            batch = pairs[start : start + effective_batch]
+            queries = [p[0] for p in batch]
+            docs = [p[1] for p in batch]
 
-        outputs = self._session.run(None, inputs)
+            # Tokenize with CrossEncoder format: [CLS] query [SEP] doc [SEP]
+            encoded = self._tokenizer(
+                queries,
+                docs,
+                padding=True,
+                truncation="longest_first",
+                max_length=self.max_seq_length,
+                return_tensors="np",
+            )
 
-        # Extract logits/scores (typically first output)
-        logits = outputs[0]
+            # Run ONNX inference — feed only the inputs the exported graph expects
+            # (token_type_ids exists only when the export included it).
+            inputs: dict[str, np.ndarray] = {}
+            if "input_ids" in session_inputs:
+                inputs["input_ids"] = encoded["input_ids"].astype(np.int64)
+            if "attention_mask" in session_inputs:
+                inputs["attention_mask"] = encoded["attention_mask"].astype(np.int64)
+            if "token_type_ids" in session_inputs and "token_type_ids" in encoded:
+                inputs["token_type_ids"] = encoded["token_type_ids"].astype(np.int64)
 
-        # CrossEncoder typically outputs single logit per pair
-        if logits.ndim == 2 and logits.shape[1] == 1:
-            scores = logits[:, 0]
-        elif logits.ndim == 1:
-            scores = logits
-        else:
-            # For classification heads, take the positive class (usually index 1)
-            scores = logits[:, 1] if logits.shape[1] > 1 else logits[:, 0]
+            outputs = self._session.run(None, inputs)
 
-        return scores.astype(np.float32)
+            # Extract logits/scores (typically first output)
+            logits = outputs[0]
+
+            # CrossEncoder typically outputs single logit per pair
+            if logits.ndim == 2 and logits.shape[1] == 1:
+                scores = logits[:, 0]
+            elif logits.ndim == 1:
+                scores = logits
+            else:
+                # For classification heads, take the positive class (usually index 1)
+                scores = logits[:, 1] if logits.shape[1] > 1 else logits[:, 0]
+            all_scores.append(scores.astype(np.float32))
+
+        return (
+            np.concatenate(all_scores).astype(np.float32)
+            if all_scores
+            else np.array([], dtype=np.float32)
+        )
 
     def __call__(self, *args: Any, **kwargs: Any) -> np.ndarray:
         """Allow calling like a function."""

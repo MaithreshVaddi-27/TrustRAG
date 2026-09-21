@@ -200,6 +200,7 @@ def _rerank_sync(
             )
 
             uncached_scores: list[float] = []
+            scored_count = 0
 
             for i in range(0, len(uncached_pairs), batch_size):
                 batch_pairs = uncached_pairs[i : i + batch_size]
@@ -208,6 +209,7 @@ def _rerank_sync(
 
                 # Early termination check after processing enough candidates
                 processed = i + len(batch_scores)
+                scored_count = processed
                 if processed >= EARLY_TERMINATION_MIN_BATCH:
                     # Check if top result is confidently better than rest
                     # We need to check against ALL scores (cached + uncached so far)
@@ -235,12 +237,15 @@ def _rerank_sync(
                             uncached_scores.extend([0.0] * remaining)
                             break
 
-            # Map uncached scores back to original indices and cache them
+            # Map uncached scores back to original indices.
+            # Never cache early-exit padding (0.0 for unscored tail) — it would
+            # poison future identical query-doc lookups with fake scores.
+            # Padding still fills all_scores for this request's ranking only.
             for local_idx, orig_idx in enumerate(uncached_indices):
                 score = uncached_scores[local_idx]
                 all_scores[orig_idx] = score
-                # Cache the new score
-                cache.set(query, pairs[orig_idx][1], score)
+                if local_idx < scored_count:
+                    cache.set(query, pairs[orig_idx][1], score)
 
         # Update scores inside chunks
         for i, score in enumerate(all_scores):

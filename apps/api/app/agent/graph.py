@@ -485,7 +485,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                             "rrf_score": float(w.get("score", 0.8)),
                             "rerank_score": float(w.get("score", 0.8)),
                             "method": f"mcp_{w.get('source', search_prov)}",
-                            "integrity_status": "VERIFIED",
+                            "integrity_status": "EXTERNAL_UNAUDITED",
                             "page": 1,
                         }
                         audited_chunks.append(w_chunk)

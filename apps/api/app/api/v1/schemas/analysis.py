@@ -128,16 +128,20 @@ class AnalysisCreate(BaseModel):
         embedding_provider = (self.embedding_provider or cfg.embedding_provider).lower()
         if embedding_provider == "local":
             embedding_provider = "huggingface"
-        allowed_embedding_providers = {"huggingface"}
+        allowed_embedding_providers = {"huggingface", "onnx"}
         if embedding_provider not in allowed_embedding_providers:
             raise ValueError(
                 "Unsupported embedding provider: "
                 f"{embedding_provider} (embeddings are local-only; "
-                "re-upload documents to re-index with 'huggingface')"
+                "re-upload documents to re-index with 'huggingface' or 'onnx')"
             )
 
         allowed_embeddings = {
             "huggingface": {
+                "BAAI/bge-small-en-v1.5",
+                "sentence-transformers/all-MiniLM-L6-v2",
+            },
+            "onnx": {
                 "BAAI/bge-small-en-v1.5",
                 "sentence-transformers/all-MiniLM-L6-v2",
             },

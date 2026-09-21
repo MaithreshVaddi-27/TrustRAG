@@ -88,6 +88,18 @@ async def get_current_service(
 
     try:
         payload = decode_service_token(token)
+        # SEC: service tokens are denylist-checked like user tokens (24h TTL
+        # would otherwise be the compromise window).
+        revoked = await get_collection(Collections.REVOKED_TOKENS).find_one(
+            {"_id": jti_key(payload)}
+        )
+        if revoked:
+            raise AuthenticationError("Token has been revoked", detail="Service token revoked")
+        permissions = payload.get("permissions", [])
+        if not isinstance(permissions, list) or not all(isinstance(p, str) for p in permissions):
+            raise AuthenticationError(
+                "Invalid token format", detail="permissions must be list[str]"
+            )
         return payload
     except AuthenticationError as exc:
         raise HTTPException(

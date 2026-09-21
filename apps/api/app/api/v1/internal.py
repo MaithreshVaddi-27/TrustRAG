@@ -195,6 +195,10 @@ async def internal_search(
     from app.retrieval.retriever import retrieve_hybrid_chunks
 
     try:
+        top_k = max(1, min(int(top_k), 50))
+    except (TypeError, ValueError):
+        top_k = 10
+    try:
         results = await retrieve_hybrid_chunks(query=query, kb_id=kb_id, top_k_override=top_k)
     except RetrievalOutageError as exc:
         return {
@@ -228,6 +232,9 @@ async def internal_verify_claims(
     """
     from app.verification.verifier import batch_verify_claims_nli
 
+    # Cost-DoS guard: unbounded lists fan out to LLM calls.
+    claims = claims[:20]
+    evidence_texts = [t[:4000] for t in evidence_texts[:20]]
     fake_chunks = [
         {"chunk_id": f"ev_{idx}", "text": text} for idx, text in enumerate(evidence_texts)
     ]

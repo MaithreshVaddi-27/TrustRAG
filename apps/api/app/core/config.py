@@ -361,9 +361,17 @@ class ModelConfig:
         if env_model:
             return env_model
         if p in ("nvidia", "nim"):
-            return "openai/gpt-oss-20b"
+            # Never fall back to llm.model here: it is a local GGUF id the
+            # cloud endpoint cannot serve (same rule as the mlx branch).
+            return str(
+                self._get("llm", "model_nvidia", required=False) or "openai/gpt-oss-20b"
+            )
         if p in ("gemini", "google_genai"):
-            return "gemini-3.5-flash-lite"
+            # Never fall back to llm.model here: it is a local GGUF id, not a
+            # Gemini model id. Override via LLM_MODEL env or model_gemini yaml.
+            return str(
+                self._get("llm", "model_gemini", required=False) or "gemini-3.5-flash-lite"
+            )
         return str(self._get("llm", "model") or "gemini-3.5-flash-lite")
 
     @property
@@ -525,9 +533,19 @@ class ModelConfig:
         if env_model:
             return env_model
         if p in ("nvidia", "nim"):
-            return "openai/gpt-oss-20b"
+            # Never fall back to verification.model / llm.model (local GGUF ids).
+            return str(
+                self._get("verification", "model_nvidia", required=False)
+                or self._get("llm", "model_nvidia", required=False)
+                or "openai/gpt-oss-20b"
+            )
         if p in ("gemini", "google_genai"):
-            return "gemini-3.5-flash-lite"
+            # Never fall back to verification.model / llm.model (local GGUF ids).
+            return str(
+                self._get("verification", "model_gemini", required=False)
+                or self._get("llm", "model_gemini", required=False)
+                or "gemini-3.5-flash-lite"
+            )
         return str(val or "gemini-3.5-flash-lite")
 
     @property

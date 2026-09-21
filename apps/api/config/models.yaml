@@ -51,6 +51,8 @@ llm:
   # entitlement with a responding endpoint (gpt-oss-20b ~3s; gemma-4-31b-it
   # ~8s). nemotron-3.5-lightning-30b-a3b stalls with zero bytes.
   model_nvidia: openai/gpt-oss-20b
+  # Gemini (cloud) default model — override with LLM_MODEL env or this key.
+  model_gemini: gemini-3.5-flash-lite
   temperature: 0.2
   top_p: 0.9
   max_output_tokens: 1024
@@ -63,7 +65,7 @@ embedding:
   # Local HuggingFace BGE — offline default, zero API cost. Embeddings are
   # local-only: cloud options were removed, and ollama / llama.cpp are
   # LLM-only — never embedding providers.
-  provider: huggingface
+  provider: onnx
   model: BAAI/bge-small-en-v1.5
   # 384 dimensions matches Qdrant collection configuration via Matryoshka embeddings.
   output_dimensionality: 384
@@ -167,7 +169,7 @@ ingestion:
     enabled: true
     engine: rapidocr-onnx
     min_native_chars: 50
-    dpi: 300
+    dpi: 200
     min_confidence: 0.5
     # Persist the exact page renders the OCR engine read (Phase 7 chain:
     # Answer → chunk → page → image). Native pages render nothing (no cost);

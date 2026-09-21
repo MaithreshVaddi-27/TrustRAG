@@ -112,9 +112,12 @@ async def _index_parsed_chunks(
                 page_image_refs[pg] = ref
 
         # Store chunks in MongoDB for future integrity audits
+        # Dedup on retry/re-ingest: Qdrant upsert is idempotent (deterministic
+        # point IDs) but Mongo insert_many is not — clear this doc's chunks first.
         import hashlib
 
         chunks_coll = get_collection(Collections.DOCUMENT_CHUNKS)
+        await chunks_coll.delete_many({"document_id": doc_id})
         mongo_chunks = []
         for c in chunks:
             mongo_chunks.append(
@@ -144,6 +147,19 @@ async def _index_parsed_chunks(
         # 3. Load embedding model (cached)
         embed_model = get_embedding_model()
         cfg = get_model_config()
+
+        # Pin check BEFORE embed+upsert: never mix embedding spaces in one
+        # collection (retriever would truncate/pad garbage). Fail loudly so the
+        # operator re-uploads into a NEW KB instead of corrupting this one.
+        _kb_coll = get_collection(Collections.KNOWLEDGE_BASES)
+        _existing_kb = await _kb_coll.find_one({"_id": ObjectId(kb_id_str)})
+        if _existing_kb and _existing_kb.get("embedding_model"):
+            if _existing_kb.get("embedding_model") != cfg.embedding_model:
+                raise RuntimeError(
+                    f"Embedding model mismatch: KB pinned to "
+                    f"{_existing_kb.get('embedding_model')} but current is "
+                    f"{cfg.embedding_model}. Re-upload into a NEW KB to migrate."
+                )
 
         # Zero-Cost Contextual Prefixing (Anthropic SOTA pattern):
         # Prepend document filename and zone to resolve chunk ambiguity without extra LLM cost
@@ -192,9 +208,10 @@ async def _index_parsed_chunks(
         # 4. Construct Qdrant points
         points = []
         for i, chunk in enumerate(chunks):
-            # Compute sparse TF vector with zone weighting over contextual text
+            # Sparse TF over RAW text only: the [file | ZONE] prefix is for
+            # dense (Anthropic contextual) — filename terms would dominate BM25.
             chunk_zone = chunk.get("zone", "body")
-            sparse_vec = generate_sparse_vector(contextual_texts[i], zone=chunk_zone)
+            sparse_vec = generate_sparse_vector(chunk["text"], zone=chunk_zone)
 
             # Unique deterministic ID for Qdrant point (based on doc ID and chunk index)
             point_id = hashlib_qdrant_id(doc_id_str, chunk["chunk_index"])
