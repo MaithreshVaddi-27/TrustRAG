@@ -91,6 +91,7 @@ class AnalysisCreate(BaseModel):
                 # stalls, nano-omni 503s, everything else 404-not-entitled).
                 "openai/gpt-oss-20b",
                 "google/gemma-4-31b-it",
+                "meta/muse-glimmer-30b",
             },
         }
         operator_llm_overrides = {

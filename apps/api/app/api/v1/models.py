@@ -157,12 +157,15 @@ async def get_providers_endpoint(
                 "name": "NVIDIA NIM (Cloud)",
                 "type": "cloud",
                 "connected": bool(settings.nvidia_api_key),
-                # Verified live 2026-09-21: only these two answer on this
+                # Verified live 2026-09-21: only these three answer on this
                 # account (lightning stalls, nano-omni 503s, rest 404).
+                # Reasoning models (gpt-oss, muse-glimmer) need headroom:
+                # reasoning shares the max_tokens budget with the answer.
                 "default_model": "openai/gpt-oss-20b",
                 "models": [
                     "openai/gpt-oss-20b",
                     "google/gemma-4-31b-it",
+                    "meta/muse-glimmer-30b",
                 ],
             },
         },
