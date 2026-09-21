@@ -776,6 +776,68 @@ async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 
         ) from exc
 
 
+# ─── Cloud-model preflight ──────────────────────────────────────────────────
+# A stalled cloud model (observed: nvidia/nemotron-3.5-lightning-30b-a3b
+# returning zero bytes indefinitely) otherwise burns the full per-call
+# timeout across every sequential pipeline call before abstaining. One tiny
+# completion up front converts that into a fast 503 with an actionable
+# message. Gemini answers the same probe in seconds.
+CLOUD_PROBE_TIMEOUT_SECONDS = 60.0
+
+
+async def probe_cloud_llm(
+    provider: str, model: str | None, timeout: float = CLOUD_PROBE_TIMEOUT_SECONDS
+) -> None:
+    """Fail fast when a cloud chat model (nvidia, gemini) is not responding.
+
+    Sends a minimal 8-token completion bounded by ``timeout``. Raises
+    LLMUnavailableError (→ 503) on stall/unreachable; lets ConfigurationError
+    (missing API key) propagate unchanged — it already names the fix.
+
+    Args:
+        provider: 'nvidia'/'nim' or 'gemini'/'google_genai'.
+        model: Explicit model id (already resolved by the caller).
+        timeout: Probe budget in seconds. 60s distinguishes a dead endpoint
+            (no first byte) from a merely slow one.
+    """
+    from app.core.model_registry import get_llm  # lazy: avoids import cycle
+
+    norm = (provider or "").strip().lower()
+    hint = (
+        "The model endpoint may be capacity-limited — retry in a few minutes, "
+        "or switch provider (gemini, ollama, llama_cpp)."
+    )
+    try:
+        llm = get_llm(provider=norm, model=model)
+    except ConfigurationError:
+        raise
+    except Exception as exc:
+        logger.warning("Cloud LLM probe: model init failed", provider=norm, model=model)
+        raise LLMUnavailableError(
+            f"Cloud LLM '{norm}' model '{model}' could not be initialized. {hint}"
+        ) from exc
+
+    # Provider-correct output cap (mirrors generator._invoke_kwargs_for_provider).
+    cap = {"max_output_tokens": 8} if norm in ("gemini", "google_genai") else {"max_tokens": 8}
+    try:
+        await asyncio.wait_for(llm.ainvoke("Reply with the word OK.", **cap), timeout=timeout)
+    except TimeoutError as exc:  # asyncio.wait_for raises builtin TimeoutError (3.11+)
+        logger.warning("Cloud LLM probe timed out", provider=norm, model=model, timeout=timeout)
+        raise LLMUnavailableError(
+            f"Cloud LLM '{norm}' model '{model}' is not responding "
+            f"(no output after {timeout:g}s). {hint}"
+        ) from exc
+    except LLMUnavailableError:
+        raise
+    except ConfigurationError:
+        raise
+    except Exception as exc:
+        logger.warning("Cloud LLM probe failed", provider=norm, model=model)
+        raise LLMUnavailableError(
+            f"Cloud LLM '{norm}' model '{model}' is not reachable. {hint}"
+        ) from exc
+
+
 def get_discovered_llms(provider: str) -> frozenset[str]:
     """Return cached live-discovered model ids for a provider (empty if unknown)."""
     with _DISCOVERED_LLMS_LOCK:

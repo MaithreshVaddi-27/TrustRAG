@@ -296,12 +296,16 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
             if not settings.nvidia_api_key:
                 raise ConfigurationError("NVIDIA_API_KEY must be set when AI_PROVIDER is 'nvidia'")
 
+            # NOTE: ChatNVIDIA declares max_completion_tokens (not max_tokens)
+            # and takes timeout via client kwargs; both are silently ignored
+            # otherwise (extra='ignore'), leaving the OpenAI-client default
+            # (~600s) per attempt — a stalled model then hangs with no response.
             llm = ChatNVIDIA(
                 model=active_model,
                 api_key=settings.nvidia_api_key,
                 temperature=cfg.llm_temperature,
-                max_tokens=cfg.llm_max_output_tokens,
-                timeout=cfg.llm_timeout_seconds,
+                max_completion_tokens=cfg.llm_max_output_tokens,
+                timeout=float(cfg.llm_timeout_seconds),
             )
             put_llm_instance(active_provider, active_model, llm)
             return llm
@@ -416,12 +420,14 @@ def get_verification_model(provider: str | None = None, model: str | None = None
             if not settings.nvidia_api_key:
                 raise ConfigurationError("NVIDIA_API_KEY must be set when AI_PROVIDER is 'nvidia'")
 
+            # Same ChatNVIDIA field rule as get_llm: max_completion_tokens +
+            # client timeout (max_tokens/timeout are silently ignored).
             llm = ChatNVIDIA(
                 model=active_model,
                 api_key=settings.nvidia_api_key,
                 temperature=0.0,
-                max_tokens=cfg.verification_max_output_tokens,
-                timeout=cfg.verification_timeout_seconds,
+                max_completion_tokens=cfg.verification_max_output_tokens,
+                timeout=float(cfg.verification_timeout_seconds),
             )
             put_llm_instance(f"verify:{active_provider}", active_model, llm)
             return llm

@@ -295,6 +295,14 @@ async def create_analysis(
             llm_base_url = settings.llamacpp_base_url
             probe_provider = "llama_cpp"
         await probe_local_llm_server(probe_provider, llm_base_url)
+    # CLOUD PREFLIGHT: a stalled cloud model (observed: NVIDIA endpoints
+    # returning zero bytes indefinitely while auth/metadata stay healthy)
+    # otherwise burns the full per-call timeout on every sequential pipeline
+    # call. One tiny completion up front fails fast → 503 with retry guidance.
+    elif effective_llm_provider in ("nvidia", "nim", "gemini", "google_genai"):
+        from app.core.local_llm import probe_cloud_llm
+
+        await probe_cloud_llm(effective_llm_provider, effective_llm_model)
     analysis_doc = {
         "user_id": ObjectId(user_id_str),
         "knowledge_base_id": ObjectId(schema.knowledge_base_id),

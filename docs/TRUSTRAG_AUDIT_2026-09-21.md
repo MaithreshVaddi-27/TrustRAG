@@ -28,6 +28,21 @@ Status: FIXED → export `model.model`, include `token_type_ids` in dummy
 inputs/names/axes; `predict()` truncates to session inputs; tokenizer pinned
 to `cfg.reranker_model` at both export and load call sites.
 
+### P0-3 NVIDIA client timeout/cap silently ignored + stalled default model
+Live probe (2026-09-21, `langchain-nvidia-ai-endpoints 1.4.3`): `ChatNVIDIA`
+declares `max_completion_tokens` (not `max_tokens`) and takes `timeout` via
+client kwargs with `extra='ignore'` — the registry's `max_tokens=`/`timeout=`
+were both dropped, leaving the OpenAI-client default (~600s) per attempt and
+no output cap. Meanwhile `nvidia/nemotron-3.5-lightning-30b-a3b` returns zero
+bytes indefinitely (streaming and non-streaming; auth + `/models` healthy at
+0.1s; sibling models 404-not-entitled or 503-capacity; only
+`openai/gpt-oss-20b` answers, in 44s). Net effect: each call hangs minutes,
+pipeline burns N× that, user sees "much time but no response".
+Status: FIXED → registry passes `max_completion_tokens` + `timeout`
+(verified `client.timeout == 180.0`, `max_tokens == 1024` in payload);
+new `probe_cloud_llm()` (60s tiny completion) hooked into `create_analysis`
+preflight for nvidia/nim/gemini/google_genai → fast 503 with retry guidance.
+
 ## P1 — serious (wrong behavior / crash / race)
 
 ### P1-0 Local-only kwargs leaked to Gemini/NVIDIA — `generator.py`
