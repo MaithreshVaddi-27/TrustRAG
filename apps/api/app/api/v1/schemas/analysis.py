@@ -81,18 +81,11 @@ class AnalysisCreate(BaseModel):
             "ollama": set(get_discovered_llms("ollama")),
             "llama_cpp": set(get_discovered_llms("llama_cpp")),
             "mlx": set(get_discovered_llms("mlx")),
-            "gemini": {
-                "gemini-3.5-flash-lite",
-                "gemini-2.5-flash",
-                "gemini-2.5-pro",
-            },
-            "nvidia": {
-                # Verified live 2026-09-21: only these answer (lightning
-                # stalls, nano-omni 503s, everything else 404-not-entitled).
-                "openai/gpt-oss-20b",
-                "google/gemma-4-31b-it",
-                "meta/muse-glimmer-30b",
-            },
+            # Cloud allowlists live in models.yaml (single source of truth) —
+            # never hardcode model IDs here, or the next model release 422s
+            # again (cf. gemini-3.8-flash).
+            "gemini": set(cfg.supported_gemini_models),
+            "nvidia": set(cfg.supported_nvidia_models),
         }
         operator_llm_overrides = {
             "ollama": settings.ollama_model,

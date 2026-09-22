@@ -492,7 +492,7 @@ Production checklist: `APP_ENV=production` (+ `QDRANT_API_KEY`), `CORS_ORIGINS` 
 
 ## Optimization
 
-TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.19**) with environment variable overrides.
+TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.20**) with environment variable overrides.
 
 ### Inference Acceleration
 

@@ -335,6 +335,40 @@ class TestAnalysisModelPolicy:
                 llm_model="attacker/arbitrary-model",
             )
 
+    def test_current_gemini_model_is_allowed(self) -> None:
+        """Cloud allowlists come from models.yaml, not a hardcoded set.
+
+        Regression for: gemini-3.8-flash (shipped in models.yaml +
+        recent Gemini releases) was rejected with "Model is not enabled
+        for provider 'gemini'" because the schema hardcoded the previous
+        generation's model IDs.
+        """
+        from app.api.v1.schemas.analysis import AnalysisCreate
+        from app.core.config import get_model_config
+
+        assert "gemini-3.8-flash" in get_model_config().supported_gemini_models
+        request = AnalysisCreate(
+            knowledge_base_id="64ee39d09c6292376e191983",
+            query="Describe the knowledge base and its contents",
+            llm_provider="gemini",
+            llm_model="gemini-3.8-flash",
+        )
+        assert request.llm_model == "gemini-3.8-flash"
+
+    def test_unknown_gemini_model_still_rejected(self) -> None:
+        """The yaml-driven allowlist must still block arbitrary cloud models."""
+        from pydantic import ValidationError
+
+        from app.api.v1.schemas.analysis import AnalysisCreate
+
+        with pytest.raises(ValidationError, match="not enabled"):
+            AnalysisCreate(
+                knowledge_base_id="64ee39d09c6292376e191983",
+                query="This must stay blocked",
+                llm_provider="gemini",
+                llm_model="gemini-99-ultra",
+            )
+
     def test_merge_discovered_llms_filters_embedding_models(self) -> None:
         from app.core.local_llm import get_discovered_llms, merge_discovered_llms
 

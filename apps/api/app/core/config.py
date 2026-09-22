@@ -568,6 +568,23 @@ class ModelConfig:
         return str(val or "gemini-3.5-flash-lite")
 
     @property
+    def supported_gemini_models(self) -> list[str]:
+        """Cloud allowlist: models API callers may select for gemini."""
+        val = self._get("llm", "supported_models_gemini", required=False)
+        if isinstance(val, list) and val:
+            return [str(m) for m in val]
+        # Fallback mirrors the last hardcoded set (pre-1.20 configs).
+        return ["gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"]
+
+    @property
+    def supported_nvidia_models(self) -> list[str]:
+        """Cloud allowlist: models API callers may select for nvidia."""
+        val = self._get("llm", "supported_models_nvidia", required=False)
+        if isinstance(val, list) and val:
+            return [str(m) for m in val]
+        return ["openai/gpt-oss-20b", "google/gemma-4-31b-it", "meta/muse-glimmer-30b"]
+
+    @property
     def verification_temperature(self) -> float:
         return float(self._get("verification", "temperature"))
 
