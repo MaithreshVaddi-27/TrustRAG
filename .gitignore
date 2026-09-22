@@ -171,6 +171,8 @@ data/
 apps/api/data/
 
 # ─── ML / Model cache (sentence-transformers, HuggingFace Hub, GGUF) ──────────
+# Model weights are NEVER committed — every machine fetches them once via
+# scripts/bootstrap.py into apps/api/.model_cache/ (override: MODEL_CACHE_DIR).
 .cache/
 .cache/huggingface/
 .model_cache/
@@ -223,6 +225,7 @@ uv.lock
 *.tmp
 *.bak
 *.orig
+*.rej
 test.txt
 test_*.txt
 .superpowers/

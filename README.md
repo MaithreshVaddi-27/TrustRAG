@@ -113,7 +113,7 @@ TrustRAG/
 │   │   │   ├── retrieval/      # hybrid retriever + reranker
 │   │   │   ├── services/       # analysis, KB, auth, experiment services
 │   │   │   └── verification/   # NLI verifier + SHA-256 integrity audit
-│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.19)
+│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.20)
 │   │   ├── tests/              # backend suite (mocked, no live services)
 │   │   └── pyproject.toml
 │   └── web/                    # React frontend (Node 22+)
@@ -174,7 +174,7 @@ ollama pull gemma3:1b        # lightweight default (or: ollama pull llama3)
 # llama.cpp (local GGUF models) — hardware-aware launcher
 ./scripts/start_local_llm.sh   # auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
 
-# MLX (Apple Silicon only, optional) — see [MLX Setup Guide](docs/MLX_SETUP.md)
+# MLX (Apple Silicon only, optional) — see [MLX on Mac](docs/PERFORMANCE-GUIDE.md#4-mlx-on-mac-apple-silicon-free-fastest-toks-per-watt)
 pipx install mlx-lm
 mlx_lm.server --model mlx-community/Llama-3.2-1B-Instruct-4bit --port 8090
 
@@ -560,9 +560,9 @@ All config options support env overrides:
 | `Database not initialized` | Ensure MongoDB running; check `MONGODB_URI` |
 | `503 Service Unavailable` | DB not connected; check `connect_db()` in lifespan |
 | OOM on 8 GB | `export OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1 OLLAMA_MAX_LOADED_MODELS=1` |
-| `test_indexing_pipeline_execution` fail | Stale mock — see UPGRADE.md §6 |
+| `test_indexing_pipeline_execution` fail | Stale mock — see [docs/UPGRADE.md §6](docs/UPGRADE.md#6-tests-why-stale--rewrite-order-do-not-rely-on-current-scripts) |
 | ONNX weights missing / stale after `git pull` | `apps/api/.venv/bin/python scripts/bootstrap.py` (`--verify` to check, `--force` to rebuild) |
-| ONNX export fails (`No module named 'onnxscript'` / `torch` / `optimum`) | Reinstall export deps: `cd apps/api && .venv/bin/pip install -e ".[local-models]"`, then re-run bootstrap |
+| ONNX export fails (`No module named 'onnxscript'` / `torch` / `onnx`) | Reinstall export deps: `cd apps/api && .venv/bin/pip install -e ".[local-models]"`, then re-run bootstrap |
 
 ---
 
@@ -584,4 +584,4 @@ cd apps/web && npm run lint && npm test
 - For **Linux**, ensure MongoDB service is enabled and started; Ollama service can be managed via systemd if preferred.
 - For **Windows**, PowerShell execution policy may need adjustment; using WSL2 is recommended for a native Linux-like experience.
 - Docker setup simplifies evaluation but expects MongoDB and LLM on the host; adjust `.env` for production secrets and external services.
-- MLX is Apple‑Silicon only; ensure you have the appropriate hardware and follow the [MLX Setup Guide](docs/MLX_SETUP.md) if you wish to use it alongside Ollama or llama.cpp.
+- MLX is Apple‑Silicon only; ensure you have the appropriate hardware and follow the [MLX on Mac guide](docs/PERFORMANCE-GUIDE.md#4-mlx-on-mac-apple-silicon-free-fastest-toks-per-watt) if you wish to use it alongside Ollama or llama.cpp.

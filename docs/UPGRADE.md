@@ -16,7 +16,7 @@
 | 6 | Generator re-raise + `EXTERNAL_UNAUDITED` + tiktoken key norm | ✅ DONE | `generation/generator.py`, `verification/integrity.py`, `agent/graph.py` |
 | 7 | Internal caps + MCP caps + service `jti` denylist + `nvidia-smi` returncode | ✅ DONE | `api/v1/internal.py`, `mcp/server.py`, `api/deps.py`, `core/hardware.py` |
 | 8 | ONNX embed chunk ≤32 + OCR dpi 300→200 | ✅ DONE | `core/onnx_embeddings.py`, `config/models.yaml` |
-| 9 | Verify: `ruff check app/ tests/` clean; `test_config` 33 passed; auth/rate/retrieval/citations/verification 64 passed; `test_ingestion::test_indexing_pipeline_execution` still fails (stale mock — needs `delete_many` AsyncMock + new pin-check, see §6) | ⚠️ PARTIAL | tests |
+| 9 | Verify: `ruff check app/ tests/` clean; backend 397 passed (incl. `test_indexing_pipeline_execution` — stale mock fixed with `delete_many` AsyncMock, see §6) | ✅ DONE | tests |
 
 ## 0.1 Manual testing status (2026-09-21)
 

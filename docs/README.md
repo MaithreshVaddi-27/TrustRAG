@@ -2,7 +2,7 @@
 
 Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench. This directory is organized by domain: product specification, architecture, security, evaluation methodology, and deployment.
 
-> **Note:** Point-in-time audit reports (`docs/audits/`, `PHASE_AUDIT_*.md`) and the stale agent work-plan (`docs/superpowers/`) were removed during cleanup. Their history remains in git (`git log -- docs/audits docs/PHASE_AUDIT_*.md docs/superpowers`).
+> **Note:** Point-in-time audit reports (`docs/audits/`, `PHASE_AUDIT_*.md`, `TRUSTRAG_AUDIT_2026-09-21.md`, `SESSION_SUMMARY_2026-09-21.md`, `TRUSTRAG_OPTIMIZATION_PLAN.md`) and the stale agent work-plan (`docs/superpowers/`) were removed during cleanup. Their history remains in git (e.g. `git log -- docs/TRUSTRAG_AUDIT_2026-09-21.md`).
 
 ---
 
@@ -14,9 +14,9 @@ docs/
 ├── TRUSTRAG_specs.md                # Full product specification (source of truth)
 ├── TRUSTRAG-IMPLEMENTATION-PLAN.md  # Phase-by-phase plan, verified against code
 ├── TRUSTRAG-UPGRADE-PLAN.md         # Original upgrade plan with per-phase status
+├── UPGRADE.md                       # Live upgrade status tracker (updated as fixes land)
 ├── ROADMAP.md                       # Product vision, milestones, phase tracking
 ├── PERFORMANCE-GUIDE.md             # Free speed/RAM tuning + MLX on Mac
-├── TRUSTRAG_OPTIMIZATION_PLAN.md    # Ultra-low RAM & high-speed inference plan
 ├── architecture/
 │   ├── architecture.md              # End-to-end system design, MCP tools, LangGraph loop, data flow
 │   ├── RAG_ARCHITECTURE.md          # RAG pipeline technical reference
@@ -41,9 +41,9 @@ docs/
 - [**Specification (`TRUSTRAG_specs.md`)**](TRUSTRAG_specs.md): product definition, engineering principles, stack, architecture, config, ingestion → recovery pipeline, API, testing, acceptance criteria. Read this first before contributing.
 - [**Implementation Plan (`TRUSTRAG-IMPLEMENTATION-PLAN.md`)**](TRUSTRAG-IMPLEMENTATION-PLAN.md): phase order, per-phase files/changes/tests, evaluation gates, production risks — verified file-by-file against the repo.
 - [**Upgrade Plan (`TRUSTRAG-UPGRADE-PLAN.md`)**](TRUSTRAG-UPGRADE-PLAN.md): original goal-by-phase plan with frozen status notes per phase.
+- [**Upgrade Status (`UPGRADE.md`)**](UPGRADE.md): live checklist, updated as fixes land (sibling of the frozen plan above).
 - [**Roadmap (`ROADMAP.md`)**](ROADMAP.md): completed phases, pre-deployment checklist, and prioritized upcoming work.
 - [**Performance Guide (`PERFORMANCE-GUIDE.md`)**](PERFORMANCE-GUIDE.md): free efficiency changes (config-only speed/RAM wins) plus MLX local inference on Apple Silicon.
-- [**Optimization Plan (`TRUSTRAG_OPTIMIZATION_PLAN.md`)**](TRUSTRAG_OPTIMIZATION_PLAN.md): ultra-low RAM & high-speed inference optimization plan with phased implementation status (config v1.17).
 
 ### 2. Architecture & Design
 
