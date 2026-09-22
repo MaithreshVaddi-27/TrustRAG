@@ -227,7 +227,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.core.model_registry import close_all_llm_instances
 
     await close_local_llm_clients()
-    close_all_llm_instances(seal=True)
+    await close_all_llm_instances(seal=True)
     await disconnect_db()
 
 

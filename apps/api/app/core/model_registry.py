@@ -210,15 +210,14 @@ def _create_llm(
     return llm
 
 
-def _close_llm_instance(llm: BaseChatModel) -> None:
+async def _close_llm_instance(llm: BaseChatModel) -> None:
     """Best-effort close for LLM instances that support it."""
     try:
-        # ChatOllamaClient and ChatLlamaCppClient may have close methods
-        if hasattr(llm, "close"):
+        # Prefer async close if available
+        if hasattr(llm, "aclose"):
+            await llm.aclose()
+        elif hasattr(llm, "close"):
             llm.close()
-        elif hasattr(llm, "aclose"):
-            # Can't await in sync context; log and skip
-            logger.debug("LLM instance has async close; skipping sync close")
     except Exception as exc:
         logger.debug("Error closing LLM instance", error=str(exc))
 
@@ -234,12 +233,12 @@ def get_llm_instance(provider: str, model: str | None) -> BaseChatModel | None:
     return None
 
 
-def put_llm_instance(provider: str, model: str | None, llm: BaseChatModel) -> None:
+async def put_llm_instance(provider: str, model: str | None, llm: BaseChatModel) -> None:
     """Put LLM instance into bounded registry with LRU eviction."""
     global _LLM_REGISTRY_CLOSED
     if _LLM_REGISTRY_CLOSED:
         # If registry is closed, close the new instance immediately
-        _close_llm_instance(llm)
+        await _close_llm_instance(llm)
         return
 
     key = _llm_registry_key(provider, model)
@@ -248,7 +247,7 @@ def put_llm_instance(provider: str, model: str | None, llm: BaseChatModel) -> No
         # Evict LRU if at capacity
         if len(_LLM_REGISTRY) >= max_instances and key not in _LLM_REGISTRY:
             evicted_key, evicted_llm = _LLM_REGISTRY.popitem(last=False)
-            _close_llm_instance(evicted_llm)
+            await _close_llm_instance(evicted_llm)
             logger.debug(
                 "Evicted LLM from registry", evicted=evicted_key, max_instances=max_instances
             )
@@ -257,7 +256,7 @@ def put_llm_instance(provider: str, model: str | None, llm: BaseChatModel) -> No
         _LLM_REGISTRY.move_to_end(key)
 
 
-def close_all_llm_instances(seal: bool = False) -> None:
+async def close_all_llm_instances(seal: bool = False) -> None:
     """Close all LLM instances; seal the registry only on app shutdown.
 
     Args:
@@ -268,7 +267,7 @@ def close_all_llm_instances(seal: bool = False) -> None:
     with _LLM_REGISTRY_LOCK:
         _LLM_REGISTRY_CLOSED = seal
         for llm in _LLM_REGISTRY.values():
-            _close_llm_instance(llm)
+            await _close_llm_instance(llm)
         _LLM_REGISTRY.clear()
         if seal:
             logger.info("Closed all LLM instances and sealed registry")
