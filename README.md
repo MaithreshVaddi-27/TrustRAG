@@ -89,8 +89,8 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 | **Frontend** | React 18, Vite 6, Tailwind CSS 3, TanStack Query 5, React Router 7 |
 | **Backend** | FastAPI 0.115, Python 3.11+, Pydantic v2, LangGraph, LangChain |
 | **LLM** | Ollama / llama.cpp / **MLX** (local, default) · Gemini / NVIDIA NIM (optional cloud) |
-| **Embeddings** | `BAAI/bge-small-en-v1.5` via PyTorch or ONNX Runtime |
-| **Reranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` via PyTorch or ONNX Runtime (int8) |
+| **Embeddings** | `BAAI/bge-small-en-v1.5` via ONNX Runtime (torch-free, default) |
+| **Reranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` via ONNX Runtime (int8) |
 | **Storage** | Qdrant (vectors) + MongoDB 7 (documents, async `motor`) |
 | **Quality gates** | Ruff, ESLint, pytest, Vitest, Playwright, k6 |
 

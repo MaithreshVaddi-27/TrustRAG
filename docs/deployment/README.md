@@ -105,7 +105,7 @@ npm ci
 npm run dev
 ```
 
-> **Embeddings:** TRUSTRAG runs local BGE (384d) embeddings — zero cloud cost, zero keys. `EMBEDDING_PROVIDER=huggingface` (PyTorch, via the `local-models` extra) or `onnx` (torch-free ONNX Runtime; one-time fetch with `apps/api/.venv/bin/python scripts/bootstrap.py`, then `EMBEDDING_PROVIDER=onnx`). Cloud embeddings were removed. (`EMBEDDING_MODEL` selects between BGE and MiniLM.)
+> **Embeddings:** TRUSTRAG runs local BGE (384d) embeddings — zero cloud cost, zero keys. `EMBEDDING_PROVIDER=onnx` (torch-free ONNX Runtime; one-time fetch with `apps/api/.venv/bin/python scripts/bootstrap.py`, then `EMBEDDING_PROVIDER=onnx`). Cloud embeddings were removed. (`EMBEDDING_MODEL` selects between BGE and MiniLM.)
 >
 > **OCR:** scanned/image PDF pages fall back to local RapidOCR-ONNX (`rapidocr-onnxruntime`, a default `pyproject.toml` dependency reusing the shipped `onnxruntime` — no Dockerfile change, no system binaries). Models download once to `~/.onnx` on the first scanned page and are cached afterwards: **pre-warm on deploy** (ingest one scanned PDF) or the first scanned upload stalls on the download. Disable per-deploy with `ingestion.ocr.enabled: false` in `models.yaml` if scanned input is out of scope.
 >
