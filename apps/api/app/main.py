@@ -107,10 +107,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 cache_dir = _Path(__file__).resolve().parent.parent / cache_dir
             has_weights = hub_snapshot.exists() or (
                 cache_dir.exists()
-                and any(
-                    cache_dir.rglob(p)
-                    for p in ("*.safetensors", "*.bin", "*.pt", "*.onnx")
-                )
+                and any(cache_dir.rglob(p) for p in ("*.safetensors", "*.bin", "*.pt", "*.onnx"))
             )
             if has_weights:
                 _model_cached = True
@@ -151,11 +148,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Load semantic cache from disk (lazy-loaded at import, now explicit)
     from app.core.semantic_cache import load_cache
+
     loaded = load_cache()
     logger.info("Semantic cache loaded", entries=loaded)
 
     # Seed the local-model discovery cache from the persisted snapshot so a
-    # pre-run `scripts/discover_local_models.py` (or any earlier process) is
+    # pre-run `scripts/bootstrap.py` (or any earlier process) is
     # honored before the server answers its first request.
     from app.core.local_llm import load_discovery_snapshot, seed_local_model_discovery
 

@@ -75,7 +75,7 @@ def test_login_user_success(mock_create_indexes, mock_connect, mock_user_doc):
     mock_user_doc_hashed["hashed_password"] = hash_password("StrongPass123!")
 
     mock_users_collection.find_one = AsyncMock(return_value=mock_user_doc_hashed)
-    
+
     # Mock failed_logins collection (new lockout mechanism)
     mock_failed_logins_collection = MagicMock()
     mock_failed_logins_collection.find_one = AsyncMock(return_value=None)
@@ -110,7 +110,7 @@ def test_get_me_protected_route(mock_create_indexes, mock_connect, mock_user_doc
 
     mock_revoked_collection = MagicMock()
     mock_revoked_collection.find_one = AsyncMock(return_value=None)
-    
+
     mock_users_collection = MagicMock()
     mock_users_collection.find_one = AsyncMock(return_value=mock_user_with_oid)
 

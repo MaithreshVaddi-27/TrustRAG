@@ -30,6 +30,9 @@ def test_auth_login_rate_limit_returns_429():
         mock_collection = MagicMock()
         # find_one returns None → authenticate_user rejects with 401 (no user).
         mock_collection.find_one = AsyncMock(return_value=None)
+        # Lockout bookkeeping is async (update_one/delete_one are awaited).
+        mock_collection.update_one = AsyncMock()
+        mock_collection.delete_one = AsyncMock()
 
         with patch("app.services.auth_service.get_collection", return_value=mock_collection):
             headers = {"X-Forwarded-For": "203.0.113.50"}
@@ -57,6 +60,8 @@ def test_rate_limit_not_hit_below_ceiling():
     try:
         mock_collection = MagicMock()
         mock_collection.find_one = AsyncMock(return_value=None)
+        mock_collection.update_one = AsyncMock()
+        mock_collection.delete_one = AsyncMock()
 
         with patch("app.services.auth_service.get_collection", return_value=mock_collection):
             headers = {"X-Forwarded-For": "203.0.113.60"}

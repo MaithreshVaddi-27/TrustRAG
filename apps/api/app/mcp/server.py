@@ -192,7 +192,7 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
             payload = decode_service_token(token)
             return payload.get("sub", "unknown")
         except AuthenticationError as exc:
-            raise AuthenticationError("Invalid service token", detail=str(exc))
+            raise AuthenticationError("Invalid service token", detail=str(exc)) from exc
 
     if tool_name == "tavily_search":
         _require_service_token(arguments)

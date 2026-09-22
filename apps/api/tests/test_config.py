@@ -157,19 +157,14 @@ class TestModelConfig:
         monkeypatch.delenv("MLX_MODEL", raising=False)
         cfg = self._make_config()
         assert cfg.llm_model_for("mlx") == "mlx-community/Llama-3.2-1B-Instruct-4bit"
-        assert (
-            cfg.verification_model_for("mlx") == "mlx-community/Llama-3.2-1B-Instruct-4bit"
-        )
+        assert cfg.verification_model_for("mlx") == "mlx-community/Llama-3.2-1B-Instruct-4bit"
 
     def test_mlx_model_for_env_override_wins(self, monkeypatch) -> None:
         """MLX_MODEL env beats the yaml default (exact id the server serves)."""
         monkeypatch.setenv("MLX_MODEL", "mlx-community/LFM2.5-1.2B-Instruct-4bit")
         cfg = self._make_config()
         assert cfg.llm_model_for("mlx") == "mlx-community/LFM2.5-1.2B-Instruct-4bit"
-        assert (
-            cfg.verification_model_for("mlx")
-            == "mlx-community/LFM2.5-1.2B-Instruct-4bit"
-        )
+        assert cfg.verification_model_for("mlx") == "mlx-community/LFM2.5-1.2B-Instruct-4bit"
 
     def test_mlx_base_url_default_and_env(self, monkeypatch) -> None:
         """MLX uses dedicated port 8090; env overrides it."""

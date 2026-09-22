@@ -980,9 +980,9 @@ async def execute_claim_verification(
     # even doubled caps (verified live: truncated mid-JSON at 2048 budget).
     # Skipping saves a doomed call plus its latency; two-step is the designed
     # path, not a fallback, for these models.
-    fused_enabled = getattr(cfg, "fused_decompose_verify", True)
-    if isinstance(fused_enabled, str):
-        fused_enabled = fused_enabled.strip().lower() in ("1", "true", "yes", "on")
+    # cfg.fused_decompose_verify is a typed bool property (config.py) —
+    # no str-parsing needed (getattr default only guards foreign configs).
+    fused_enabled = bool(getattr(cfg, "fused_decompose_verify", True))
     if is_reasoning_model(model):
         logger.debug("Skipping fused path for reasoning model (two-step directly)", model=model)
     if fused_enabled and answer and not is_refusal_answer(answer) and not is_reasoning_model(model):

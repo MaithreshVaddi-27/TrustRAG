@@ -222,6 +222,7 @@ async def test_pipeline_payload_carries_ocr_provenance():
         }
     )
     mock_collection.update_one = AsyncMock()
+    mock_collection.delete_many = AsyncMock()
     mock_collection.insert_many = AsyncMock()
     mock_embeddings = MagicMock()
     mock_embeddings.aembed_documents = AsyncMock(return_value=[[0.1] * 384])
@@ -276,6 +277,7 @@ async def test_pipeline_saves_page_image_once_per_page(tmp_path, monkeypatch):
         }
     )
     mock_collection.update_one = AsyncMock()
+    mock_collection.delete_many = AsyncMock()
     mock_collection.insert_many = AsyncMock()
     mock_embeddings = MagicMock()
     mock_embeddings.aembed_documents = AsyncMock(return_value=[[0.1] * 384] * 2)
@@ -339,7 +341,7 @@ def test_ocr_config_defaults():
     cfg = get_model_config()
     assert cfg.ocr_enabled is True
     assert cfg.ocr_min_native_chars == 50
-    assert cfg.ocr_dpi == 300
+    assert cfg.ocr_dpi == 200  # lowered from 300 for render cost (see models.yaml)
     assert cfg.ocr_min_confidence == 0.5
     assert cfg.ocr_store_page_images is True
     assert cfg.as_snapshot()["ocr_enabled"] is True

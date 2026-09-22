@@ -902,7 +902,7 @@ def get_discovered_llms(provider: str) -> frozenset[str]:
 
 # ─── Discovery snapshot (cross-process seeding) ──────────────────────────────
 # The discovery cache above is in-memory per process. A process started later
-# (e.g. the backend after scripts/discover_local_models.py) re-seeds from this
+# (e.g. the backend after scripts/bootstrap.py) re-seeds from this
 # JSON snapshot so a pre-run discovery script actually warms the server.
 _DISCOVERY_SNAPSHOT_PATH = Path(__file__).resolve().parents[2] / "data" / "discovered_models.json"
 
@@ -974,7 +974,7 @@ async def seed_local_model_discovery() -> dict[str, list[str]]:
 
     Loads any previously-persisted snapshot, refreshes the in-process cache from
     the live CLIs, then persists the result so a backend started later seeds
-    identically. Runs at API startup and standalone via scripts/discover_local_models.py.
+    identically. Runs at API startup and standalone via scripts/bootstrap.py.
     """
     load_discovery_snapshot()
 

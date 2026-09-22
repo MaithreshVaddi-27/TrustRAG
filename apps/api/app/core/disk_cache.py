@@ -227,10 +227,10 @@ def maybe_cleanup_cache() -> None:
 
 
 __all__ = [
-    "get_cached_embedding",
-    "set_cached_embedding",
-    "get_cached_embeddings_batch",
-    "set_cached_embeddings_batch",
-    "maybe_cleanup_cache",
     "_cleanup_expired_entries",
+    "get_cached_embedding",
+    "get_cached_embeddings_batch",
+    "maybe_cleanup_cache",
+    "set_cached_embedding",
+    "set_cached_embeddings_batch",
 ]

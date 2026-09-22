@@ -67,13 +67,13 @@ docs/
 
 ---
 
-## Current Stack (`models.yaml` v1.17, verified against code)
+## Current Stack (`models.yaml` v1.20, verified against code)
 
 - **LLM**: llama.cpp default (`LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`), Ollama (`gemma3:1b`), MLX (`mlx-community/Llama-3.2-1B-Instruct-4bit` Apple Silicon), Gemini, NVIDIA NIM — selectable per request.
-- **Embeddings**: local-only `BAAI/bge-small-en-v1.5` (384d) — `huggingface` (torch, default) or `onnx` (torch-free; export via `scripts/export_bge_onnx.py`).
+- **Embeddings**: local-only `BAAI/bge-small-en-v1.5` (384d) — `onnx` (torch-free, default; fetch via `scripts/bootstrap.py`) or `huggingface` (torch, opt-in).
 - **Retrieval**: dense BGE + BM25-TF sparse with Qdrant server-side IDF + RRF (`rrf_k=60`, `fusion_top_k=20` enforced); `sparse_top_k: 0` disables the sparse leg (current default — set `20` for full hybrid); deterministic router (simple/temporal/comparison/complex, fan-out ≤3); reranker enabled by default with ONNX int8 quantization (depth cap `top_k: 20`, early termination, result caching).
 - **Ingestion**: newline-preserving normalization; `chunking_strategy` (`sliding_window` default, 512/64); RapidOCR-ONNX per-page fallback (default on; models download to `~/.onnx` on first scanned page — pre-warm on deploy).
-- **Verification**: fused decompose+verify fast path with classic two-step fallback; tolerant parsing of small-model near-miss JSON; inline `[Segment N]` citations with invalid-ref strip; NEUTRAL-only targeted claim retrieval (≤3/analysis).
+- **Verification**: fused decompose+verify fast path with classic two-step fallback; tolerant parsing of small-model near-miss JSON; inline `[Segment N]` citations with invalid-ref strip; NEUTRAL-only targeted claim retrieval (tier-capped: lean 2, balanced/cloud 3).
 - **Lifecycle**: KB snapshots + rollback (returns a NEW live id; 409 on vector-less snapshots); deletes purge Mongo + Qdrant.
 - **Recovery**: diagnose-then-act (retrieval→rewrite, coverage/conflict→expand, verification/generation→regenerate), ≤2 attempts, token (2000) + latency (180s) budgets, abstain on exhaustion.
 - **Security**: JWT `iss`/`aud` on both token types, JTI revocation, service-token KB/user binding, login lockout (5/900s), EICAR + best-effort clamd upload AV, 24-test red-team suite.

@@ -43,8 +43,12 @@ PERSISTENCE_FILE = CACHE_DIR / "semantic_cache.json"
 
 # Configurable limits (via env vars for lean/prod tiers)
 _MAX_CACHE_ENTRIES = int(os.getenv("SEMANTIC_CACHE_MAX_ENTRIES", "500"))
-_SEMANTIC_CACHE_TTL_SECONDS = int(os.getenv("SEMANTIC_CACHE_TTL_SECONDS", str(24 * 3600)))  # 24h default
-_MAX_RESPONSE_SIZE_CHARS = int(os.getenv("SEMANTIC_CACHE_MAX_RESPONSE_CHARS", "20000"))  # cap response payload
+_SEMANTIC_CACHE_TTL_SECONDS = int(
+    os.getenv("SEMANTIC_CACHE_TTL_SECONDS", str(24 * 3600))  # 24h default
+)
+_MAX_RESPONSE_SIZE_CHARS = int(
+    os.getenv("SEMANTIC_CACHE_MAX_RESPONSE_CHARS", "20000")  # cap response payload
+)
 
 # In-memory fast semantic cache storage using deque for O(1) FIFO eviction
 # Each entry: {"kb_id", "query", "vector", "response", "timestamp"} -- see insert()
@@ -176,7 +180,11 @@ def _cleanup_expired_entries() -> int:
         removed = original_len - len(_SEMANTIC_CACHE)
         if removed > 0:
             _MATRIX_DIRTY = True
-            logger.debug("Semantic cache TTL cleanup", removed=removed, ttl_seconds=_SEMANTIC_CACHE_TTL_SECONDS)
+            logger.debug(
+                "Semantic cache TTL cleanup",
+                removed=removed,
+                ttl_seconds=_SEMANTIC_CACHE_TTL_SECONDS,
+            )
         return removed
 
 
@@ -195,32 +203,6 @@ def cosine_similarity(v1: list[float] | np.ndarray, v2: list[float] | np.ndarray
         return 0.0
 
     return float(np.dot(v1_arr, v2_arr) / (norm_a * norm_b))
-
-
-def _vectorized_cosine(query_vector: np.ndarray) -> np.ndarray:
-    """
-    Compute cosine similarity of query vector vs all cached vectors (vectorized).
-
-    Returns array of similarity scores (one per cache entry).
-    """
-    global _MATRIX_CACHE, _MATRIX_DIRTY
-
-    if _MATRIX_DIRTY:
-        _rebuild_matrix()
-
-    if _MATRIX_CACHE is None or _MATRIX_CACHE.size == 0:
-        return np.array([])
-
-    # Normalize query vector
-    query_norm = np.linalg.norm(query_vector)
-    if query_norm == 0.0:
-        return np.zeros(_MATRIX_CACHE.shape[0], dtype=np.float32)
-
-    query_normalized = query_vector / query_norm
-
-    # Vectorized cosine similarity: matrix @ query_vector
-    similarities = _MATRIX_CACHE @ query_normalized
-    return similarities
 
 
 def check_semantic_cache(
@@ -345,14 +327,14 @@ def store_semantic_cache(
             "embedding_model": (embedding_model or "").strip().lower(),
         }
         _SEMANTIC_CACHE.append(entry)
-        _MATRIX_DIRTY = True
+        _MATRIX_DIRTY = True  # noqa: N806 — module-level cache flag, UPPER by convention
 
     _maybe_persist()
 
 
 def invalidate_kb_cache(kb_id: str, persist: bool = True) -> int:
     """Remove all cached answers for a knowledge base and persist the removal.
-    
+
     Returns:
         Number of entries removed.
     """
@@ -372,7 +354,7 @@ def invalidate_kb_cache(kb_id: str, persist: bool = True) -> int:
 
 def load_cache() -> int:
     """Load semantic cache from disk. Call explicitly at application startup.
-    
+
     Returns:
         Number of entries loaded.
     """
@@ -382,7 +364,7 @@ def load_cache() -> int:
 
 def clear_all_cache(persist: bool = True) -> int:
     """Clear the entire semantic cache (for testing).
-    
+
     Returns:
         Number of entries removed.
     """
@@ -399,7 +381,7 @@ def clear_all_cache(persist: bool = True) -> int:
 
 def reset_module_state() -> None:
     """Completely reset module state for test isolation.
-    
+
     Clears in-memory cache, matrix, and persists empty state to disk.
     Use in test fixtures for complete isolation between tests.
     """

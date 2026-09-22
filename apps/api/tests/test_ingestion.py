@@ -117,6 +117,7 @@ async def test_indexing_pipeline_execution(mock_create_indexes, mock_connect, mo
         }
     )
     mock_collection.update_one = AsyncMock()
+    mock_collection.delete_many = AsyncMock()
     mock_collection.insert_many = AsyncMock()
 
     with (

@@ -151,8 +151,14 @@ async def test_claim_retrieval_budget_caps_hybrid_calls():
         )
     assert len(claims) == 5
     assert all(c["state"] == "NEUTRAL" for c in claims)
-    # models.yaml: cost_controls.max_claim_retrievals == 3
-    assert hybrid_mock.await_count == 3
+    # Budget is tier-aware (tier_caps override cost_controls.max_claim_retrievals:
+    # lean local tier == 2, balanced/cloud == 3) — 5 neutral claims must still
+    # be capped, never re-retrieved one-by-one.
+    from app.core.config import get_model_config
+
+    expected_budget = get_model_config().tier_caps()["max_claim_retrievals"]
+    assert hybrid_mock.await_count == expected_budget
+    assert hybrid_mock.await_count < len(claims)
 
 
 @pytest.mark.asyncio
@@ -244,6 +250,7 @@ async def test_inline_answer_citations_union_into_evidence_ids():
 
 def test_dead_reliability_weights_removed_from_models_yaml():
     import os
+
     config_path = os.path.join(os.path.dirname(__file__), "..", "config", "models.yaml")
     with open(config_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)

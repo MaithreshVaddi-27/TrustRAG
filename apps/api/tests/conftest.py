@@ -29,6 +29,7 @@ def clear_global_caches():
     """Clear global caches before each test."""
     # Clear reranker cache
     from app.retrieval.reranker import _reranker_cache
+
     if _reranker_cache is not None:
         _reranker_cache.clear()
     yield

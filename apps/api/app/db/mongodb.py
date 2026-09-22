@@ -59,6 +59,7 @@ class Collections:
     FEEDBACK = "feedback"
     REVOKED_TOKENS = "revoked_tokens"
     STREAM_TICKETS = "stream_tickets"
+    FAILED_LOGINS = "failed_logins"
 
 
 # ─── Client singleton ─────────────────────────────────────────────────────────
@@ -397,6 +398,18 @@ async def create_indexes() -> None:
         db[Collections.STREAM_TICKETS].create_index(
             [("expires_at", pymongo.ASCENDING)],
             name="stream_ticket_ttl",
+            expireAfterSeconds=0,
+        )
+    )
+
+    # ── failed_logins ──────────────────────────────────────────────────
+    # Login-lockout counters. Server double-checks window_expires at read
+    # time; TTL is the janitor for abandoned docs. Created here (once at
+    # startup) instead of per-request inside auth_service.
+    index_tasks.append(
+        db[Collections.FAILED_LOGINS].create_index(
+            [("window_expires", pymongo.ASCENDING)],
+            name="ttl_window_expires",
             expireAfterSeconds=0,
         )
     )

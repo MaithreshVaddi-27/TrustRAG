@@ -133,8 +133,3 @@ def require_service_permission(permission: str):
         return service_payload
 
     return permission_checker
-
-
-async def get_service_name(service_payload: dict = Depends(get_current_service)) -> str:
-    """Extract service name from validated service token."""
-    return service_payload.get("sub", "unknown")

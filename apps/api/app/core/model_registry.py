@@ -172,55 +172,6 @@ def close_all_llm_instances(seal: bool = False) -> None:
             logger.info("Closed all LLM instances (registry reopened)")
 
 
-# ─── Generation-scoped LLM Response Cache (TTL + bounded) ───────────────────────────
-# Replaces global unbounded InMemoryCache. Scoped to generation calls only,
-# keyed on (query_hash, chunk_hash) with TTL to prevent NLI-prompt bloat.
-_GEN_CACHE: OrderedDict[str, tuple[float, Any]] = OrderedDict()  # key -> (expires_at, value)
-_GEN_CACHE_LOCK = threading.RLock()
-_GEN_CACHE_MAX_SIZE = 256
-_GEN_CACHE_TTL_SECONDS = 300  # 5 minutes
-
-
-def _gen_cache_key(query: str, chunk_hash: str) -> str:
-    import hashlib
-
-    return hashlib.sha256(f"{query}:{chunk_hash}".encode()).hexdigest()[:32]
-
-
-def gen_cache_get(query: str, chunk_hash: str) -> Any | None:
-    """Get cached generation result if not expired."""
-    key = _gen_cache_key(query, chunk_hash)
-    now = time.time()
-    with _GEN_CACHE_LOCK:
-        entry = _GEN_CACHE.get(key)
-        if entry is None:
-            return None
-        expires_at, value = entry
-        if now > expires_at:
-            _GEN_CACHE.pop(key, None)
-            return None
-        _GEN_CACHE.move_to_end(key)
-        return value
-
-
-def gen_cache_set(query: str, chunk_hash: str, value: Any) -> None:
-    """Set generation result in cache with TTL."""
-    key = _gen_cache_key(query, chunk_hash)
-    now = time.time()
-    with _GEN_CACHE_LOCK:
-        # Evict LRU if at capacity
-        if len(_GEN_CACHE) >= _GEN_CACHE_MAX_SIZE and key not in _GEN_CACHE:
-            _GEN_CACHE.popitem(last=False)
-        _GEN_CACHE[key] = (now + _GEN_CACHE_TTL_SECONDS, value)
-        _GEN_CACHE.move_to_end(key)
-
-
-def gen_cache_clear() -> None:
-    """Clear generation cache."""
-    with _GEN_CACHE_LOCK:
-        _GEN_CACHE.clear()
-
-
 # ─── LLM ─────────────────────────────────────────────────────────────────────
 
 
@@ -471,7 +422,7 @@ def get_verification_model(provider: str | None = None, model: str | None = None
             temperature=cfg.verification_temperature,
             max_output_tokens=cfg.verification_max_output_tokens,
             timeout=cfg.verification_timeout_seconds,
-            max_retries=cfg.llm_max_retries,
+            max_retries=cfg.verification_max_retries,
         )
         put_llm_instance(f"verify:{active_provider}", active_model, llm)
         return llm
@@ -984,7 +935,6 @@ def clear_model_caches() -> None:
     """Clear cached model singletons so updated API keys or model configs take effect."""
     get_embedding_model.cache_clear()
     get_reranker.cache_clear()
-    # Clear new bounded registry and generation cache
+    # Clear the bounded LLM registry (reopened unless sealed at shutdown)
     close_all_llm_instances()
-    gen_cache_clear()
     logger.info("Cleared all model registry caches")

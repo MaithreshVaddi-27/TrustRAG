@@ -4,7 +4,6 @@ TRUSTRAG — Authentication business logic service.
 
 from __future__ import annotations
 
-import time as _time
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -70,22 +69,20 @@ async def register_user(schema: UserRegister) -> UserResponse:
 # TTL index on window_expires auto-cleans expired docs.
 
 
-async def _get_failed_logins_coll():
-    """Get or create the failed_logins collection with TTL index."""
-    from app.db.mongodb import get_database
+def _get_failed_logins_coll():
+    """Return the failed_logins collection.
 
-    db = get_database()
-    coll = db["failed_logins"]
-    # Create TTL index once (idempotent)
-    await coll.create_index("window_expires", expireAfterSeconds=0, name="ttl_window_expires")
-    return coll
+    Goes through get_collection (like every other collection) so callers
+    stay mockable, and relies on the TTL index created once at startup
+    (see create_indexes) instead of re-creating it per request.
+    """
+    return get_collection(Collections.FAILED_LOGINS)
 
 
 async def _is_locked_out(email: str) -> bool:
     settings = get_settings()
     now_dt = datetime.now(UTC)
-    window = settings.login_lockout_seconds
-    coll = await _get_failed_logins_coll()
+    coll = _get_failed_logins_coll()
     doc = await coll.find_one({"_id": email})
     if not doc:
         return False
@@ -101,7 +98,7 @@ async def _record_failed_login(email: str) -> None:
     now_dt = datetime.now(UTC)
     window = settings.login_lockout_seconds
     window_expires = datetime.fromtimestamp(now_dt.timestamp() + window, tz=UTC)
-    coll = await _get_failed_logins_coll()
+    coll = _get_failed_logins_coll()
     await coll.update_one(
         {"_id": email},
         {
@@ -114,7 +111,7 @@ async def _record_failed_login(email: str) -> None:
 
 
 async def _clear_failed_logins(email: str) -> None:
-    coll = await _get_failed_logins_coll()
+    coll = _get_failed_logins_coll()
     await coll.delete_one({"_id": email})
 
 

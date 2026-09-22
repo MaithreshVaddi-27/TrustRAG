@@ -210,12 +210,6 @@ def get_cached_hardware_profile() -> dict[str, Any]:
     return profile
 
 
-def clear_hardware_profile_cache() -> None:
-    """Clear the hardware profile cache (e.g., on admin request)."""
-    global _hardware_profile_cache
-    _hardware_profile_cache = None
-
-
 def detect_hardware_profile() -> dict[str, Any]:
     """
     Introspect full system hardware topology, accelerator capabilities, and memory.

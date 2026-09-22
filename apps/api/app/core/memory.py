@@ -72,14 +72,6 @@ def get_memory_usage_mb() -> float:
         return 0.0
 
 
-def idle_trim_memory() -> None:
-    """
-    Proactive idle-time memory trim: GC + malloc_trim.
-    Call after ingestion batches, analysis completion, or on a periodic timer.
-    """
-    trim_memory()
-
-
 def check_and_enforce_memory_guard(max_rss_mb: float = 3000.0) -> dict[str, Any]:
     """
     Check current process memory RSS and system pressure.

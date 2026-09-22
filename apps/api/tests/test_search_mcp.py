@@ -110,11 +110,16 @@ async def test_execute_web_search_deduplication():
 
 @pytest.mark.asyncio
 async def test_mcp_tool_execution():
+    from app.core.security import create_service_token
+
+    token = create_service_token("test-service")
     with patch(
         "app.services.search_service.duckduckgo_search",
         AsyncMock(return_value=[{"title": "MCP DDG", "url": "https://mcp.com", "content": "MCP"}]),
     ):
-        res = await handle_tool_call("duckduckgo_search", {"query": "mcp query"})
+        res = await handle_tool_call(
+            "duckduckgo_search", {"query": "mcp query", "service_token": token}
+        )
         assert "content" in res
         assert "MCP DDG" in res["content"][0]["text"]
 
@@ -305,8 +310,11 @@ async def test_search_service_timeout_fallback():
 
 @pytest.mark.asyncio
 async def test_local_llm_mcp_tools():
+    from app.core.security import create_service_token
+
+    token = create_service_token("test-service")
     # Test local_llm_status tool
-    res = await handle_tool_call("local_llm_status", {"provider": "both"})
+    res = await handle_tool_call("local_llm_status", {"provider": "both", "service_token": token})
     assert "content" in res
     assert len(res["content"]) > 0
     data = json.loads(res["content"][0]["text"])
@@ -319,7 +327,12 @@ async def test_local_llm_mcp_tools():
     with patch("app.core.model_registry.get_llm", return_value=mock_llm):
         chat_res = await handle_tool_call(
             "local_llm_chat",
-            {"prompt": "Hello local LLM", "provider": "ollama", "model": "granite4.2:3b-q4_K_M"},
+            {
+                "prompt": "Hello local LLM",
+                "provider": "ollama",
+                "model": "granite4.2:3b-q4_K_M",
+                "service_token": token,
+            },
         )
         assert "content" in chat_res
         assert chat_res["content"][0]["text"] == "Mocked response from local LLM"

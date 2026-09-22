@@ -79,6 +79,19 @@ def _blank_as_none(name: str) -> str | None:
     return val
 
 
+def _parse_bool(value: Any, default: bool = False) -> bool:
+    """Coerce a yaml/env flag to bool (single place for truthy-string parsing).
+
+    Accepts real bools, None (→ default), and the common truthy strings
+    1/true/yes/on (case-insensitive, whitespace-tolerant).
+    """
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
 # Local LLM base URLs derived once from the canonical port registry so a fresh
 # checkout works with zero provider config — explicit env vars still win
 # (pydantic env > Field default), and models.yaml stays the ID source.
@@ -406,28 +419,6 @@ class ModelConfig:
         """Default temperature for generation."""
         return float(self._get("llm", "temperature"))
 
-    def temperature_for(self, provider: str, purpose: str = "generation") -> float:
-        """Get temperature for a specific provider and purpose.
-
-        Args:
-            provider: The LLM provider (ollama, llama_cpp, mlx, gemini, nvidia)
-            purpose: "generation" (default), "verification", or "factual"
-
-        Returns:
-            Temperature value. For factual/verification with local models, returns 0.0
-            to reduce hallucination.
-        """
-        base = float(self._get("llm", "temperature") or 0.2)
-        prov = provider.lower()
-        if purpose in ("verification", "factual") and prov in (
-            "ollama",
-            "llama_cpp",
-            "llamacpp",
-            "mlx",
-        ):
-            return 0.0
-        return base
-
     @property
     def llm_top_p(self) -> float:
         return float(self._get("llm", "top_p"))
@@ -473,6 +464,13 @@ class ModelConfig:
 
     @property
     def embedding_cache_dir(self) -> str:
+        # MODEL_CACHE_DIR wins so the backend reads the same directory that
+        # scripts/bootstrap.py writes (see ensure_onnx_models._cache_dir).
+        # NOTE: CACHE_DIR is intentionally NOT honored here — at runtime it
+        # means the SQLite disk cache (disk_cache.py), not model weights.
+        env_dir = os.environ.get("MODEL_CACHE_DIR")
+        if env_dir and env_dir.strip():
+            return env_dir
         return str(self._get("embedding", "cache_dir", required=False) or ".model_cache")
 
     @property
@@ -489,21 +487,8 @@ class ModelConfig:
         value = self._get("embedding", "quantization", required=False)
         env_val = os.environ.get("EMBEDDING_QUANTIZATION")
         if env_val is not None:
-            return env_val.strip().lower() in ("1", "true", "yes", "on")
-        if value is None:
-            return False  # Default disabled, opt-in
-        if isinstance(value, bool):
-            return value
-        return str(value).strip().lower() in ("1", "true", "yes", "on")
-
-    @property
-    def embedding_quantized_model_path(self) -> str:
-        """Path to pre-quantized embedding model (auto-quantize if empty)."""
-        value = self._get("embedding", "quantized_model_path", required=False)
-        env_val = os.environ.get("EMBEDDING_QUANTIZED_MODEL_PATH")
-        if env_val is not None:
-            return env_val
-        return str(value or "")
+            return _parse_bool(env_val)
+        return _parse_bool(value, False)  # Default disabled, opt-in
 
     # ── Verification ──────────────────────────────────────────────────────
     @property
@@ -601,16 +586,23 @@ class ModelConfig:
         val = self._get("verification", "fused_decompose_verify", required=False)
         env_val = os.environ.get("FUSED_DECOMPOSE_VERIFY")
         if env_val is not None:
-            return env_val.strip().lower() in ("1", "true", "yes", "on")
-        if val is None:
-            return True
-        if isinstance(val, bool):
-            return val
-        return str(val).strip().lower() in ("1", "true", "yes", "on")
+            return _parse_bool(env_val)
+        return _parse_bool(val, True)
 
     @property
     def max_verification_time_seconds(self) -> int:
         return int(self._get("verification", "max_verification_time_seconds"))
+
+    @property
+    def verification_max_retries(self) -> int:
+        """Retry budget for verification LLM calls (models.yaml: verification.max_retries)."""
+        val = self._get("verification", "max_retries", required=False)
+        env_val = os.environ.get("VERIFICATION_MAX_RETRIES")
+        if env_val is not None:
+            return int(env_val)
+        if val is None:
+            return int(self._get("llm", "max_retries"))
+        return int(val)
 
     # ── Reranker ─────────────────────────────────────────────────────────
     @property
@@ -642,12 +634,8 @@ class ModelConfig:
         val = self._get("reranker", "use_onnx", required=False)
         env_val = os.environ.get("RERANKER_USE_ONNX")
         if env_val is not None:
-            return env_val.strip().lower() in ("1", "true", "yes", "on")
-        if val is None:
-            return True  # Default to ONNX for speed
-        if isinstance(val, bool):
-            return val
-        return str(val).strip().lower() in ("1", "true", "yes", "on")
+            return _parse_bool(env_val)
+        return _parse_bool(val, True)  # Default to ONNX for speed
 
     @property
     def reranker_onnx_model_path(self) -> str:
@@ -727,6 +715,11 @@ class ModelConfig:
     def max_file_size_mb(self) -> int:
         return int(self._get("ingestion", "max_file_size_mb"))
 
+    @property
+    def chunking_strategy(self) -> str:
+        """Chunking strategy name (models.yaml: ingestion.chunking_strategy)."""
+        return str(self._get("ingestion", "chunking_strategy", required=False) or "sliding_window")
+
     # ── OCR fallback ─────────────────────────────────────────────────────
     @property
     def ocr_enabled(self) -> bool:
@@ -783,10 +776,6 @@ class ModelConfig:
         return int(self._get("recovery", "max_recovery_latency_seconds", required=False) or 180)
 
     # ── Observability (Phase 10) ─────────────────────────────────────────
-    @property
-    def metrics_enabled(self) -> bool:
-        return bool(self._get("observability", "metrics_enabled", required=False) is not False)
-
     @property
     def pre_request_budget_enforcement(self) -> bool:
         return bool(
@@ -859,12 +848,8 @@ class ModelConfig:
         value = self._get("local_llm", "early_exit_eos", required=False)
         env_val = os.environ.get("LOCAL_LLM_EARLY_EXIT_EOS")
         if env_val is not None:
-            return env_val.strip().lower() in ("1", "true", "yes", "on")
-        if value is None:
-            return True  # Default enabled for speed
-        if isinstance(value, bool):
-            return value
-        return str(value).strip().lower() in ("1", "true", "yes", "on")
+            return _parse_bool(env_val)
+        return _parse_bool(value, True)  # Default enabled for speed
 
     # ── Model Offloading (Phase 4.1) ────────────────────────────────────────────
     @property
@@ -873,12 +858,8 @@ class ModelConfig:
         value = self._get("local_llm", "model_unload_enabled", required=False)
         env_val = os.environ.get("LOCAL_LLM_MODEL_UNLOAD_ENABLED")
         if env_val is not None:
-            return env_val.strip().lower() in ("1", "true", "yes", "on")
-        if value is None:
-            return True  # Default enabled for low RAM
-        if isinstance(value, bool):
-            return value
-        return str(value).strip().lower() in ("1", "true", "yes", "on")
+            return _parse_bool(env_val)
+        return _parse_bool(value, True)  # Default enabled for low RAM
 
     @property
     def local_llm_model_unload_timeout(self) -> str:
@@ -886,13 +867,6 @@ class ModelConfig:
         value = self._get("local_llm", "model_unload_timeout", required=False)
         env_val = _blank_as_none("LOCAL_LLM_MODEL_UNLOAD_TIMEOUT")
         return env_val if env_val is not None else str(value or "5m")
-
-    @property
-    def local_llm_max_loaded_models(self) -> int:
-        """Max concurrent models in memory (1 for lowest RAM)."""
-        value = self._get("local_llm", "max_loaded_models", required=False)
-        env_val = _blank_as_none("LOCAL_LLM_MAX_LOADED_MODELS")
-        return int(env_val) if env_val is not None else int(value or 1)
 
     # ── Inference Acceleration & KV Cache Optimization ────────────────────────
     @property
@@ -906,36 +880,24 @@ class ModelConfig:
         value = self._get("optimization", "flash_attention", required=False)
         env_val = os.environ.get("FLASH_ATTENTION")
         if env_val is not None:
-            return env_val.strip().lower() in ("1", "true", "yes", "on")
-        if value is None:
-            return True
-        if isinstance(value, bool):
-            return value
-        return str(value).strip().lower() in ("1", "true", "yes", "on")
+            return _parse_bool(env_val)
+        return _parse_bool(value, True)
 
     @property
     def prompt_caching(self) -> bool:
         value = self._get("optimization", "prompt_caching", required=False)
         env_val = os.environ.get("PROMPT_CACHING")
         if env_val is not None:
-            return env_val.strip().lower() in ("1", "true", "yes", "on")
-        if value is None:
-            return True
-        if isinstance(value, bool):
-            return value
-        return str(value).strip().lower() in ("1", "true", "yes", "on")
+            return _parse_bool(env_val)
+        return _parse_bool(value, True)
 
     @property
     def adaptive_top_k(self) -> bool:
         value = self._get("optimization", "adaptive_top_k", required=False)
         env_val = os.environ.get("ADAPTIVE_TOP_K")
         if env_val is not None:
-            return env_val.strip().lower() in ("1", "true", "yes", "on")
-        if value is None:
-            return True
-        if isinstance(value, bool):
-            return value
-        return str(value).strip().lower() in ("1", "true", "yes", "on")
+            return _parse_bool(env_val)
+        return _parse_bool(value, True)
 
     # ── Context Compression (Phase 2.4) ─────────────────────────────────────────
     @property
@@ -943,12 +905,8 @@ class ModelConfig:
         value = self._get("optimization", "context_compression_enabled", required=False)
         env_val = os.environ.get("CONTEXT_COMPRESSION_ENABLED")
         if env_val is not None:
-            return env_val.strip().lower() in ("1", "true", "yes", "on")
-        if value is None:
-            return True  # Default enabled for RAM savings
-        if isinstance(value, bool):
-            return value
-        return str(value).strip().lower() in ("1", "true", "yes", "on")
+            return _parse_bool(env_val)
+        return _parse_bool(value, True)  # Default enabled for RAM savings
 
     @property
     def context_compression_target_reduction(self) -> float:
@@ -958,15 +916,6 @@ class ModelConfig:
         if env_val is not None:
             return float(env_val)
         return float(value or 0.5)
-
-    @property
-    def max_context_tokens(self) -> int:
-        """Hard token budget for context before LLM call (separate from chunk count)."""
-        value = self._get("optimization", "max_context_tokens", required=False)
-        env_val = _blank_as_none("MAX_CONTEXT_TOKENS")
-        if env_val is not None:
-            return int(env_val)
-        return int(value or 8000)  # Generous default, actual limit from num_ctx
 
     @property
     def context_compression_provider(self) -> str:

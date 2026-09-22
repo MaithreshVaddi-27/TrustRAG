@@ -8,7 +8,6 @@ import api from '@/lib/api'
 // ── Knowledge Bases ───────────────────────────────────────────────────────
 export const kbService = {
   list: ()       => api.get('/api/v1/knowledge-bases').then(r => r.data),
-  get:  (id)     => api.get(`/api/v1/knowledge-bases/${id}`).then(r => r.data),
   create: (body) => api.post('/api/v1/knowledge-bases', body).then(r => r.data),
   delete: (id)   => api.delete(`/api/v1/knowledge-bases/${id}`).then(r => r.data),
 
@@ -41,7 +40,6 @@ export const analysisService = {
 // ── Experiments ───────────────────────────────────────────────────────────
 export const experimentService = {
   list:   ()     => api.get('/api/v1/experiments').then(r => r.data),
-  get:    (id)   => api.get(`/api/v1/experiments/${id}`).then(r => r.data),
   create: (body) => api.post('/api/v1/experiments', body).then(r => r.data),
 }
 
@@ -63,12 +61,10 @@ export const conflictService = {
 // ── Health & Diagnostics ──────────────────────────────────────────────────
 export const healthService = {
   get: () => api.get('/api/v1/health/detailed').then(r => r.data),
-  getPublic: () => api.get('/api/v1/health').then(r => r.data),
 }
 
 // ── Models & AI Providers ──────────────────────────────────────────────────
 export const modelService = {
   getProviders: () => api.get('/api/v1/models/providers').then(r => r.data),
-  getHardware:  () => api.get('/api/v1/models/hardware').then(r => r.data),
   trimMemory:   () => api.post('/api/v1/models/memory/trim').then(r => r.data),
 }

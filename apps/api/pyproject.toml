@@ -72,10 +72,12 @@ dependencies = [
 local-models = [
     "sentence-transformers>=3.0.0",
     "langchain-huggingface>=0.1.0",
-    # One-time ONNX export (scripts/bootstrap.py / ensure_onnx_models.py).
-    # Runtime stays torch-free via onnxruntime (main dependencies).
-    "optimum[onnxruntime]>=1.21.0",
+    # One-time ONNX export (scripts/bootstrap.py / ensure_onnx_models.py /
+    # export_bge_onnx.py). Runtime stays torch-free via onnxruntime (main
+    # dependencies); `onnx` + `onnxscript` are only needed to run
+    # torch.onnx.export + checker.
     "onnx>=1.16.0",
+    "onnxscript>=0.1.0",
 ]
 dev = [
     "pytest>=8.2.0",

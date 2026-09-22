@@ -65,21 +65,26 @@ def setup_dependency_override(mock_user_doc):
 @patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
-def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
+def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeypatch):
     # Mock kb ownership check inside analysis_service (real get_kb returns KBResponse)
-    # Patch discovered models so the default model is allowed
+    # Patch discovered models so the default model is allowed.
+    # monkeypatch (not manual assignment) so a mid-test failure cannot leak
+    # the stub into later tests (global-state pollution).
     import app.core.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
 
-    _orig_get_discovered = _llm_mod.get_discovered_llms
-    _llm_mod.get_discovered_llms = lambda provider: frozenset(
-        ["granite4.2:3b-q4_K_M", "gemma3:1b"]
-        if provider == "ollama"
-        else [
-            "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
-            "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
-            "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
-        ]
+    monkeypatch.setattr(
+        _llm_mod,
+        "get_discovered_llms",
+        lambda provider: frozenset(
+            ["granite4.2:3b-q4_K_M", "gemma3:1b"]
+            if provider == "ollama"
+            else [
+                "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+                "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
+                "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
+            ]
+        ),
     )
 
     mock_kb = KBResponse(
@@ -123,29 +128,29 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc):
             assert call_kwargs["event"] == "analysis.started"
             assert call_kwargs["data"]["message"] == "Analysis run initiated"
 
-    # Restore original
-    _llm_mod.get_discovered_llms = _orig_get_discovered
-
 
 @patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
 def test_create_analysis_rejects_retired_cloud_embedding(
-    mock_create_indexes, mock_connect, mock_kb_doc, mock_user_doc
+    mock_create_indexes, mock_connect, mock_kb_doc, mock_user_doc, monkeypatch
 ):
     """Cloud embeddings are gone: requesting one fails closed with guidance."""
     import app.core.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
 
-    _orig_get_discovered = _llm_mod.get_discovered_llms
-    _llm_mod.get_discovered_llms = lambda provider: frozenset(
-        ["granite4.2:3b-q4_K_M", "gemma3:1b"]
-        if provider == "ollama"
-        else [
-            "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
-            "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
-            "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
-        ]
+    monkeypatch.setattr(
+        _llm_mod,
+        "get_discovered_llms",
+        lambda provider: frozenset(
+            ["granite4.2:3b-q4_K_M", "gemma3:1b"]
+            if provider == "ollama"
+            else [
+                "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+                "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
+                "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
+            ]
+        ),
     )
 
     mock_kb = KBResponse(
@@ -166,7 +171,6 @@ def test_create_analysis_rejects_retired_cloud_embedding(
             "embedding_model": "models/gemini-embedding-001",
         }
         response = client.post("/api/v1/analyses", json=payload)
-        _llm_mod.get_discovered_llms = _orig_get_discovered
         assert response.status_code == 422
 
 
@@ -174,18 +178,21 @@ def test_create_analysis_rejects_retired_cloud_embedding(
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
 def test_create_analysis_fails_fast_when_local_llm_down(
-    mock_create_indexes, mock_connect, mock_kb_doc
+    mock_create_indexes, mock_connect, mock_kb_doc, monkeypatch
 ):
     """Stopped ollama/llama-server → synchronous 503 alert, not a silent burn."""
     import app.core.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
     from app.core.exceptions import LLMUnavailableError
 
-    _orig_get_discovered = _llm_mod.get_discovered_llms
-    _llm_mod.get_discovered_llms = lambda provider: frozenset(
-        ["LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M", "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"]
-        if provider == "llama_cpp"
-        else frozenset()
+    monkeypatch.setattr(
+        _llm_mod,
+        "get_discovered_llms",
+        lambda provider: frozenset(
+            ["LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M", "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"]
+            if provider == "llama_cpp"
+            else frozenset()
+        ),
     )
 
     mock_kb = KBResponse(
@@ -214,7 +221,6 @@ def test_create_analysis_fails_fast_when_local_llm_down(
             "llm_provider": "llama_cpp",
         }
         response = client.post("/api/v1/analyses", json=payload)
-        _llm_mod.get_discovered_llms = _orig_get_discovered
         assert response.status_code == 503
         body = response.json()
         assert body["error"]["code"] == "LLM_UNAVAILABLE"
@@ -225,21 +231,24 @@ def test_create_analysis_fails_fast_when_local_llm_down(
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
 def test_create_analysis_rejects_embedding_mismatch(
-    mock_create_indexes, mock_connect, mock_kb_doc, mock_user_doc
+    mock_create_indexes, mock_connect, mock_kb_doc, mock_user_doc, monkeypatch
 ):
     """A KB pinned to one embedding space must reject analyses requesting another."""
     import app.core.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
 
-    _orig_get_discovered = _llm_mod.get_discovered_llms
-    _llm_mod.get_discovered_llms = lambda provider: frozenset(
-        ["granite4.2:3b-q4_K_M", "gemma3:1b"]
-        if provider == "ollama"
-        else [
-            "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
-            "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
-            "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
-        ]
+    monkeypatch.setattr(
+        _llm_mod,
+        "get_discovered_llms",
+        lambda provider: frozenset(
+            ["granite4.2:3b-q4_K_M", "gemma3:1b"]
+            if provider == "ollama"
+            else [
+                "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
+                "occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M",
+                "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
+            ]
+        ),
     )
 
     app.dependency_overrides[get_current_user] = lambda: mock_user_doc
@@ -258,6 +267,9 @@ def test_create_analysis_rejects_embedding_mismatch(
         payload = {
             "knowledge_base_id": "64ee39d09c6292376e191982",
             "query": "Is there a 45 days policy?",
+            # Explicit provider so the request clears schema validation and
+            # reaches the service-level embedding-space guard under test.
+            "embedding_provider": "huggingface",
             "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
         }
         response = client.post("/api/v1/analyses", json=payload)
@@ -270,7 +282,6 @@ def test_create_analysis_rejects_embedding_mismatch(
             assert any("Embedding mismatch" in str(d.get("msg", "")) for d in resp["detail"])
         else:
             assert "Embedding mismatch" in str(resp.get("detail", resp.get("message", "")))
-    _llm_mod.get_discovered_llms = _orig_get_discovered
     app.dependency_overrides.clear()
 
 
@@ -438,20 +449,18 @@ def test_list_analyses_with_pagination(mock_create_indexes, mock_connect, mock_a
 
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
-def test_create_analysis_guides_new_user_without_models(mock_create_indexes, mock_connect):
+def test_create_analysis_guides_new_user_without_models(
+    mock_create_indexes, mock_connect, monkeypatch
+):
     """Empty discovery → 422 with install instructions, not a bare rejection."""
     import app.core.local_llm as _llm_mod
 
-    _orig_get_discovered = _llm_mod.get_discovered_llms
-    _llm_mod.get_discovered_llms = lambda provider: frozenset()
-    try:
-        payload = {
-            "knowledge_base_id": "64ee39d09c6292376e191982",
-            "query": "Is there a 45 days policy?",
-            "llm_provider": "llama_cpp",
-        }
-        response = client.post("/api/v1/analyses", json=payload)
-        assert response.status_code == 422
-        assert "No llama_cpp models discovered" in response.text
-    finally:
-        _llm_mod.get_discovered_llms = _orig_get_discovered
+    monkeypatch.setattr(_llm_mod, "get_discovered_llms", lambda provider: frozenset())
+    payload = {
+        "knowledge_base_id": "64ee39d09c6292376e191982",
+        "query": "Is there a 45 days policy?",
+        "llm_provider": "llama_cpp",
+    }
+    response = client.post("/api/v1/analyses", json=payload)
+    assert response.status_code == 422
+    assert "No llama_cpp models discovered" in response.text

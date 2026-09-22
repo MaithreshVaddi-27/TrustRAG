@@ -105,7 +105,7 @@ npm ci
 npm run dev
 ```
 
-> **Embeddings:** TRUSTRAG runs local BGE (384d) embeddings — zero cloud cost, zero keys. `EMBEDDING_PROVIDER=huggingface` (PyTorch, via the `local-models` extra) or `onnx` (torch-free ONNX Runtime; one-time export with `python scripts/export_bge_onnx.py`, then `EMBEDDING_PROVIDER=onnx`). Cloud embeddings were removed. (`EMBEDDING_MODEL` selects between BGE and MiniLM.)
+> **Embeddings:** TRUSTRAG runs local BGE (384d) embeddings — zero cloud cost, zero keys. `EMBEDDING_PROVIDER=huggingface` (PyTorch, via the `local-models` extra) or `onnx` (torch-free ONNX Runtime; one-time fetch with `apps/api/.venv/bin/python scripts/bootstrap.py`, then `EMBEDDING_PROVIDER=onnx`). Cloud embeddings were removed. (`EMBEDDING_MODEL` selects between BGE and MiniLM.)
 >
 > **OCR:** scanned/image PDF pages fall back to local RapidOCR-ONNX (`rapidocr-onnxruntime`, a default `pyproject.toml` dependency reusing the shipped `onnxruntime` — no Dockerfile change, no system binaries). Models download once to `~/.onnx` on the first scanned page and are cached afterwards: **pre-warm on deploy** (ingest one scanned PDF) or the first scanned upload stalls on the download. Disable per-deploy with `ingestion.ocr.enabled: false` in `models.yaml` if scanned input is out of scope.
 >
@@ -361,9 +361,8 @@ By default TRUSTRAG uses local HuggingFace BGE (`BAAI/bge-small-en-v1.5`, 384d) 
 For sub-16GB hosts or to remove PyTorch from the API process entirely (~500–1000 MB RSS savings), switch to torch-free ONNX Runtime embeddings:
 
 ```bash
-# One-time export (needs torch + sentence-transformers locally)
-python scripts/export_bge_onnx.py
-cp apps/api/data/models/bge-small-en-v1.5.onnx apps/api/.model_cache/
+# One-time fetch/export (needs the backend venv + network, once)
+apps/api/.venv/bin/python scripts/bootstrap.py
 
 # Enable in .env
 EMBEDDING_PROVIDER=onnx

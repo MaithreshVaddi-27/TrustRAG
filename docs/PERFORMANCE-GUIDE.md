@@ -54,9 +54,8 @@ Ordered by impact per minute of effort. All are config-only.
 The torch process RSS floor dominates small hosts. The ONNX path is numerically identical (parity verified, max diff 0.000000).
 
 ```bash
-# One-time export (needs torch locally, once)
-python scripts/export_bge_onnx.py
-cp apps/api/data/models/bge-small-en-v1.5.onnx apps/api/.model_cache/
+# One-time fetch/export (needs the backend venv + network, once)
+apps/api/.venv/bin/python scripts/bootstrap.py
 ```
 
 ```bash
@@ -64,7 +63,7 @@ cp apps/api/data/models/bge-small-en-v1.5.onnx apps/api/.model_cache/
 EMBEDDING_PROVIDER=onnx
 ```
 
-Files: `scripts/export_bge_onnx.py`, `apps/api/app/core/onnx_embeddings.py`, `apps/api/app/core/model_registry.py` (`onnx` branch). In Docker this is mandatory anyway (the image ships `onnxruntime` but no torch).
+Files: `scripts/bootstrap.py` (+ `ensure_onnx_models.py`), `apps/api/app/core/onnx_embeddings.py`, `apps/api/app/core/model_registry.py` (`onnx` branch). In Docker this is mandatory anyway (the image ships `onnxruntime` but no torch — export on the host, then `docker cp` into the container).
 
 ### 2.2 Keep both caches ON (they already are — don't turn them off)
 

@@ -5,18 +5,14 @@ Tests for semantic caching and context pruning.
 import json
 
 import pytest
-
 from bson import ObjectId
 
 import app.core.semantic_cache as semantic_cache
 from app.core.semantic_cache import (
     check_semantic_cache,
-    clear_all_cache,
     cosine_similarity,
     invalidate_kb_cache,
-    load_cache,
     prune_context_tokens,
-    reset_module_state,
     store_semantic_cache,
 )
 

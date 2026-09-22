@@ -363,8 +363,9 @@ output across all local LLM providers.
 
 **Decision:** Add an `onnx` embedding provider (`EMBEDDING_PROVIDER=onnx`) that runs
 `BAAI/bge-small-en-v1.5` via ONNX Runtime instead of PyTorch/sentence-transformers.
-The model is exported once (`scripts/export_bge_onnx.py`: transformer + mean pooling +
-L2 norm, dynamic batch/sequence axes, single 128 MB file) and served from
+The model is exported once (`scripts/export_bge_onnx.py`: transformer + CLS pooling +
+L2 norm [correction 2026-09-22: CLS, not mean — BGE uses `pooling_mode="cls"`],
+dynamic batch/sequence axes, single 128 MB file) and served from
 `apps/api/.model_cache/bge-small-en-v1.5.onnx` with the same two-tier cache
 (memory LRU + SQLite disk) and BGE query prefixing as the torch path.
 

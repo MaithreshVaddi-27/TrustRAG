@@ -344,12 +344,7 @@ def _get_strategy_from_config() -> str:
     """Retrieve the chunking strategy name from models.yaml config."""
     from app.core.config import get_model_config
 
-    cfg = get_model_config()
-    strategy = getattr(cfg, "_chunking_strategy", None)
-    if strategy is None:
-        raw = cfg._data.get("ingestion", {})
-        strategy = raw.get("chunking_strategy", "sliding_window")
-    return strategy
+    return get_model_config().chunking_strategy
 
 
 def _create_strategy(strategy_name: str) -> ChunkingStrategy:

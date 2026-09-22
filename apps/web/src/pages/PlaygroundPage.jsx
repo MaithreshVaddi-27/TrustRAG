@@ -26,18 +26,12 @@ export default function PlaygroundPage() {
   const userTouchedEmbeddingRef = useRef(false)
 
   useEffect(() => {
-    let timer = null
-    if (loading) {
-      setElapsedSec(0)
-      timer = setInterval(() => {
-        setElapsedSec(prev => +(prev + 0.1).toFixed(1))
-      }, 100)
-    } else {
-      if (timer) clearInterval(timer)
-    }
-    return () => {
-      if (timer) clearInterval(timer)
-    }
+    if (!loading) return undefined
+    setElapsedSec(0)
+    const timer = setInterval(() => {
+      setElapsedSec(prev => +(prev + 0.1).toFixed(1))
+    }, 100)
+    return () => clearInterval(timer)
   }, [loading])
 
   const { data: knowledgeBases } = useQuery({
@@ -60,7 +54,7 @@ export default function PlaygroundPage() {
     queryKey: ['model-providers'],
     queryFn: modelService.getProviders,
     // Re-poll every 8s so a model installed while the page is open (e.g. after
-    // running scripts/discover_local_models.py or pulling a new GGUF) shows up
+    // running scripts/bootstrap.py or pulling a new GGUF) shows up
     // in the dropdown without a page reload.
     refetchInterval: 8000,
   })

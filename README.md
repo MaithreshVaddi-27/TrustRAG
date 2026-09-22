@@ -562,6 +562,7 @@ All config options support env overrides:
 | OOM on 8 GB | `export OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1 OLLAMA_MAX_LOADED_MODELS=1` |
 | `test_indexing_pipeline_execution` fail | Stale mock — see UPGRADE.md §6 |
 | ONNX weights missing / stale after `git pull` | `apps/api/.venv/bin/python scripts/bootstrap.py` (`--verify` to check, `--force` to rebuild) |
+| ONNX export fails (`No module named 'onnxscript'` / `torch` / `optimum`) | Reinstall export deps: `cd apps/api && .venv/bin/pip install -e ".[local-models]"`, then re-run bootstrap |
 
 ---
 

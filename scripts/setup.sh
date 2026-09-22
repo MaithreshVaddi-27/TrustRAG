@@ -114,6 +114,6 @@ if [ "$FAIL" -eq 0 ]; then
   echo "  1. ./scripts/start_local_llm.sh        # boot the local model server"
   echo "  2. cd apps/api && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
   echo "  3. cd apps/web && npm run dev          # open http://localhost:5173"
-  echo "  Embeddings (BAAI/bge-small-en-v1.5, ~120MB) download automatically on first boot."
+  echo "  Model weights live in apps/api/.model_cache/ (via scripts/bootstrap.py) — never committed."
 fi
 exit "$FAIL"

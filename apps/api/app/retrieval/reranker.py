@@ -104,6 +104,17 @@ def _get_reranker_cache() -> _RerankerCache:
     return _reranker_cache
 
 
+def _adaptive_top_k_slice(chunks: list[dict[str, Any]], max_context: int) -> list[dict[str, Any]]:
+    """Adaptive Top-K: confident top chunks bound the window to 4.
+
+    Confidence signal: 4+ chunks with the top dense_score >= 0.78.
+    Single home for the slice so the threshold can't drift between call sites.
+    """
+    if len(chunks) > 3 and chunks[0].get("dense_score", 0.0) >= 0.78:
+        return chunks[: min(max_context, 4)]
+    return chunks[:max_context]
+
+
 def _rerank_sync(
     query: str, chunks: list[dict[str, Any]], max_context_override: int | None = None
 ) -> list[dict[str, Any]]:
@@ -126,24 +137,21 @@ def _rerank_sync(
     # Check if reranking is enabled
     if not cfg.reranker_enabled:
         logger.debug("Reranker disabled, returning candidates list directly", limit=max_context)
-        # Adaptive Top-K: If top chunks are confident, bound to top 4 to save model context load
-        if len(chunks) > 3 and chunks[0].get("dense_score", 0.0) >= 0.78:
-            return chunks[: min(max_context, 4)]
-        return chunks[:max_context]
+        return _adaptive_top_k_slice(chunks, max_context)
 
     # Bound scoring depth (models.yaml: reranker.top_k). The floor at
     # fusion_top_k is load-bearing: capping below the fused width would
     # discard candidates before scoring, defeating reranking entirely.
+    # Copy each dict: rerank_score assignment below must not leak into the
+    # caller's chunks (a list slice alone shares the dicts).
     depth_cap = max(cfg.reranker_top_k, cfg.fusion_top_k, max_context)
-    candidates = chunks[:depth_cap]
+    candidates = [dict(c) for c in chunks[:depth_cap]]
 
     try:
         model = get_reranker()
         if model is None:
             logger.warning("Reranker model factory returned None, skipping rerank")
-            if len(chunks) > 3 and chunks[0].get("dense_score", 0.0) >= 0.78:
-                return chunks[: min(max_context, 4)]
-            return chunks[:max_context]
+            return _adaptive_top_k_slice(chunks, max_context)
 
         logger.info(
             "Running cross-encoder reranking", model=cfg.reranker_model, count=len(candidates)
@@ -184,13 +192,8 @@ def _rerank_sync(
 
         if uncached_pairs:
             batch_size = min(cfg.reranker_batch_size, len(uncached_pairs))
-            # Reuse the model resolved above (get_reranker is lru_cached, but a
-            # second lookup per query is pure waste).
-            if model is None:
-                logger.warning("Reranker model factory returned None, skipping rerank")
-                if len(chunks) > 3 and chunks[0].get("dense_score", 0.0) >= 0.78:
-                    return chunks[: min(max_context, 4)]
-                return chunks[:max_context]
+            # NOTE: no second `model is None` check here — get_reranker() is
+            # lru_cached and None already returned above, so it is unreachable.
 
             logger.info(
                 "Running cross-encoder reranking",

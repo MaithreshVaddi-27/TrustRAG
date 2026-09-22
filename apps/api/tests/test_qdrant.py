@@ -64,7 +64,10 @@ async def test_existing_idf_collection_is_kept():
 
 
 @pytest.mark.asyncio
-async def test_legacy_collection_is_recreated_with_idf():
+async def test_legacy_collection_is_recreated_with_idf(monkeypatch):
+    # Recreation is fail-closed: requires explicit ALLOW_QDRANT_RECREATE=1
+    # so a legacy collection is never wiped by accident.
+    monkeypatch.setenv("ALLOW_QDRANT_RECREATE", "1")
     client = _mock_client(exists=True, modifier=None)
     await _run_init(client)
     client.delete_collection.assert_awaited_once()
