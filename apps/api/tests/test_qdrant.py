@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from qdrant_client.http import models
 
+from app.core.exceptions import VectorStoreError
 from app.db import qdrant as qdrant_module
 from app.db.qdrant import init_kb_collection
 
@@ -77,9 +78,12 @@ async def test_legacy_collection_is_recreated_with_idf(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_unreadable_config_fails_open():
-    """Unverifiable sparse config keeps the collection (never delete blind)."""
+async def test_unreadable_config_fails_closed():
+    """Unverifiable sparse config raises VectorStoreError (fail-closed)."""
     client = _mock_client(exists=True, modifier=None, get_collection_raises=True)
-    await _run_init(client)
+    with pytest.raises(VectorStoreError) as exc_info:
+        await _run_init(client)
+    assert "Could not verify Qdrant collection" in str(exc_info.value)
+    assert "ALLOW_QDRANT_RECREATE=1" in str(exc_info.value)
     client.delete_collection.assert_not_awaited()
     client.create_collection.assert_not_awaited()

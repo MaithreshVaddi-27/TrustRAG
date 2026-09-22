@@ -69,7 +69,8 @@ def get_collection_name(kb_id: str) -> str:
 async def _sparse_idf_enabled(client: AsyncQdrantClient, collection_name: str) -> bool | None:
     """Check whether the collection's sparse-text index uses Modifier.IDF.
 
-    Returns None when the config cannot be read (fail-open: keep old behavior).
+    Returns True if IDF is enabled, False if collection exists but IDF is not
+    enabled, raises if the config cannot be read (fail-closed).
     """
     try:
         info = await client.get_collection(collection_name)
@@ -79,12 +80,12 @@ async def _sparse_idf_enabled(client: AsyncQdrantClient, collection_name: str) -
         modifier = getattr(sparse_params, "modifier", None)
         return modifier is not None and str(modifier).lower() == "idf"
     except Exception as exc:
-        logger.warning(
-            "Could not verify sparse index config; keeping existing collection",
+        logger.error(
+            "Could not verify sparse index config; failing closed",
             collection=collection_name,
             error=str(exc),
         )
-        return None
+        raise
 
 
 async def init_kb_collection(kb_id: str) -> None:
@@ -110,7 +111,14 @@ async def init_kb_collection(kb_id: str) -> None:
         # Check if already exists
         exists = await client.collection_exists(collection_name)
         if exists:
-            idf_enabled = await _sparse_idf_enabled(client, collection_name)
+            try:
+                idf_enabled = await _sparse_idf_enabled(client, collection_name)
+            except Exception as exc:
+                raise VectorStoreError(
+                    f"Could not verify Qdrant collection '{collection_name}' sparse config: {exc}. "
+                    "Set ALLOW_QDRANT_RECREATE=1 to force recreation."
+                ) from exc
+
             if idf_enabled is False:
                 import os
 
