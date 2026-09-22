@@ -781,8 +781,11 @@ async def generate_grounded_answer(
 
     except (ConfigurationError, LLMUnavailableError):
         raise
-    except Exception as exc:
-        logger.error("Grounded generation failed", error=str(exc))
-        # Default to ABSTAIN on runtime exception to ensure reliability
-        # (config/outage errors re-raise above so ABSTAIN never masks them).
+    except (asyncio.TimeoutError, ConnectionError, TimeoutError, httpx.RequestError) as exc:
+        # Network/timeout errors: safe to ABSTAIN as they're transient
+        logger.error("Grounded generation failed (transient network error)", error=str(exc))
         return "ABSTAIN"
+    except Exception as exc:
+        # Unexpected errors: log and re-raise to avoid masking bugs
+        logger.error("Grounded generation failed (unexpected error)", error=str(exc), exc_info=True)
+        raise

@@ -43,6 +43,8 @@ async def _index_parsed_chunks(
     kb_id_str: str,
     chunks: list[dict[str, Any]] | None = None,
     strategy: ChunkingStrategy | None = None,
+    embedding_provider: str | None = None,
+    embedding_model: str | None = None,
 ) -> None:
     """
     Background task to generate embeddings and index chunks to Qdrant.
@@ -145,21 +147,48 @@ async def _index_parsed_chunks(
         await init_kb_collection(kb_id_str)
 
         # 3. Load embedding model (cached)
-        embed_model = get_embedding_model()
+        # 3. Load embedding model (cached) - use request params or KB pin or config default
         cfg = get_model_config()
-
+        
+        # Determine embedding provider/model: request params > KB pin > config default
+        effective_embedding_provider = embedding_provider or cfg.embedding_provider
+        effective_embedding_model = embedding_model or cfg.embedding_model
+        
         # Pin check BEFORE embed+upsert: never mix embedding spaces in one
         # collection (retriever would truncate/pad garbage). Fail loudly so the
         # operator re-uploads into a NEW KB instead of corrupting this one.
         _kb_coll = get_collection(Collections.KNOWLEDGE_BASES)
         _existing_kb = await _kb_coll.find_one({"_id": ObjectId(kb_id_str)})
         if _existing_kb and _existing_kb.get("embedding_model"):
-            if _existing_kb.get("embedding_model") != cfg.embedding_model:
+            if _existing_kb.get("embedding_model") != effective_embedding_model:
                 raise RuntimeError(
                     f"Embedding model mismatch: KB pinned to "
                     f"{_existing_kb.get('embedding_model')} but current is "
-                    f"{cfg.embedding_model}. Re-upload into a NEW KB to migrate."
+                    f"{effective_embedding_model}. Re-upload into a NEW KB to migrate."
                 )
+        # Pin the embedding model/provider for this KB if not already set
+        elif not _existing_kb.get("embedding_model"):
+            await _kb_coll.update_one(
+                {"_id": ObjectId(kb_id_str)},
+                {"$set": {
+                    "embedding_model": effective_embedding_model,
+                    "embedding_provider": effective_embedding_provider,
+                    "embedding_dim": cfg.embedding_dimensionality,
+                }}
+            )
+
+        # Pin the embedding model/provider for this KB if not already set
+        elif not _existing_kb.get("embedding_model"):
+            await _kb_coll.update_one(
+                {"_id": ObjectId(kb_id_str)},
+                {"$set": {
+                    "embedding_model": effective_embedding_model,
+                    "embedding_provider": effective_embedding_provider,
+                    "embedding_dim": cfg.embedding_dimensionality,
+                }}
+            )
+
+        embed_model = get_embedding_model(provider=effective_embedding_provider, model=effective_embedding_model)
 
         # Zero-Cost Contextual Prefixing (Anthropic SOTA pattern):
         # Prepend document filename and zone to resolve chunk ambiguity without extra LLM cost

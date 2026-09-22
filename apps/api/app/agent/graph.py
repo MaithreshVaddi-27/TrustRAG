@@ -495,7 +495,10 @@ async def retrieval_node(state: AgentState) -> AgentState:
                             "page": 1,
                         }
                         audited_chunks.append(w_chunk)
-                        verified_chunks.append(w_chunk)
+                        # Web chunks are NOT added to verified_chunks — they bypass
+                        # integrity audit and are tagged EXTERNAL_UNAUDITED. They are
+                        # available for citation but never marked VERIFIED.
+                        # verified_chunks.append(w_chunk)  # intentionally omitted
 
                     web_sources = [
                         {"title": w.get("title"), "url": w.get("url")} for w in web_items

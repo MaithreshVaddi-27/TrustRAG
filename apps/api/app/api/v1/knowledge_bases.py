@@ -15,6 +15,7 @@ from fastapi import (
     BackgroundTasks,
     Depends,
     File,
+    Form,
     HTTPException,
     Request,
     UploadFile,
@@ -144,6 +145,8 @@ async def upload_document_endpoint(
     kb_id: str,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    embedding_provider: str | None = Form(default=None),
+    embedding_model: str | None = Form(default=None),
     current_user: Mapping[str, Any] = Depends(get_current_user),
 ) -> DocResponse:
     """
@@ -218,7 +221,12 @@ async def upload_document_endpoint(
 
     # Trigger background indexing
     background_tasks.add_task(
-        index_parsed_chunks, doc_id_str=doc.id, kb_id_str=kb_id, chunks=chunks
+        index_parsed_chunks,
+        doc_id_str=doc.id,
+        kb_id_str=kb_id,
+        chunks=chunks,
+        embedding_provider=embedding_provider,
+        embedding_model=embedding_model,
     )
 
     return doc

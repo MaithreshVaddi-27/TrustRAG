@@ -247,6 +247,7 @@ async def create_indexes() -> None:
         db[Collections.DOCUMENT_CHUNKS].create_index(
             [("document_id", pymongo.ASCENDING), ("chunk_index", pymongo.ASCENDING)],
             name="chunk_doc_index",
+            unique=True,
         )
     )
     index_tasks.append(

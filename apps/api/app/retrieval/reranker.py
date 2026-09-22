@@ -243,12 +243,15 @@ def _rerank_sync(
             # Map uncached scores back to original indices.
             # Never cache early-exit padding (0.0 for unscored tail) — it would
             # poison future identical query-doc lookups with fake scores.
-            # Padding still fills all_scores for this request's ranking only.
+            # Only cache items that were actually scored (not padded with 0.0).
+            # scored_count = number of items actually scored (not padded).
             for local_idx, orig_idx in enumerate(uncached_indices):
                 score = uncached_scores[local_idx]
                 all_scores[orig_idx] = score
                 if local_idx < scored_count:
                     cache.set(query, pairs[orig_idx][1], score)
+            # Explicitly do NOT cache padded tail (local_idx >= scored_count)
+            # This prevents 0.0 padding from polluting the cache.
 
         # Update scores inside chunks
         for i, score in enumerate(all_scores):
