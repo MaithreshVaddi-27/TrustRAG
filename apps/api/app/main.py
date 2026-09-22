@@ -100,9 +100,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             )
             cache_dir = _Path(cfg_probe.embedding_cache_dir)
             # Real weight files only — a stray config.json must not count as cached.
+            # .onnx counts: the default provider is onnx, whose weights live as
+            # <cache>/bge-small-en-v1.5.onnx (see scripts/ensure_onnx_models.py).
+            # cache_dir may be relative (".model_cache") — anchor to apps/api.
+            if not cache_dir.is_absolute():
+                cache_dir = _Path(__file__).resolve().parent.parent / cache_dir
             has_weights = hub_snapshot.exists() or (
                 cache_dir.exists()
-                and any(cache_dir.rglob(p) for p in ("*.safetensors", "*.bin", "*.pt"))
+                and any(
+                    cache_dir.rglob(p)
+                    for p in ("*.safetensors", "*.bin", "*.pt", "*.onnx")
+                )
             )
             if has_weights:
                 _model_cached = True

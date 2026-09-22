@@ -60,8 +60,11 @@ services:
       - ./apps/api/config:/app/config:ro
       - ./apps/api/tests:/app/tests:ro
       # Named volume persists the HF/tokenizer cache + SQLite embedding cache.
-      # For EMBEDDING_PROVIDER=onnx in Docker, copy the exported model in once:
-      #   docker cp apps/api/.model_cache/bge-small-en-v1.5.onnx trustrag_api:/app/.model_cache/
+      # For EMBEDDING_PROVIDER=onnx (default) in Docker, export on the HOST once
+      # (host venv has the torch-based `local-models` extra; the image is
+      # torch-free by design, so in-container export cannot run):
+      #   python scripts/bootstrap.py   # writes apps/api/.model_cache/*.onnx
+      #   docker cp apps/api/.model_cache/. trustrag_api:/app/.model_cache/
       # (torch/sentence-transformers are NOT in the image by design; the
       # huggingface provider cannot load there — use onnx instead.)
       - model_cache:/app/.model_cache

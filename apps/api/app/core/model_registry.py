@@ -712,13 +712,16 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
         from app.core.onnx_embeddings import ONNXBGEEmbeddings, ONNXBGEEmbeddingsWrapper
 
         # Use the API directory as base for relative cache_dir to ensure consistency
+        # (Path.resolve() alone is CWD-dependent: repo-root vs apps/api runs
+        # would split the cache in two. Always anchor to api_base.)
         api_base = Path(__file__).parent.parent.parent
         cache_dir = (api_base / cfg.embedding_cache_dir).resolve()
         onnx_model_path = cache_dir / "bge-small-en-v1.5.onnx"
         if not onnx_model_path.exists():
             raise ConfigurationError(
                 f"ONNX model not found at {onnx_model_path}. "
-                "Run 'python scripts/export_bge_onnx.py' to export the model.",
+                "Run 'python scripts/bootstrap.py' (or "
+                "'python scripts/ensure_onnx_models.py') to download/export it.",
             )
 
         logger.info(
@@ -874,13 +877,16 @@ def get_reranker():  # type: ignore[return]
 
             logger.info("Initializing ONNX reranker", model=cfg.reranker_model)
 
-            # Determine ONNX model path
+            # Determine ONNX model path (canonical: reranker-<base>_int8.onnx,
+            # next to the embedding ONNX — see scripts/ensure_onnx_models.py).
+            # Anchored to api_base (not CWD) so repo-root and apps/api runs
+            # share one cache.
             onnx_path = cfg.reranker_onnx_model_path
             if not onnx_path:
-                # Auto-generate path: cache_dir/reranker-model.onnx
-                cache_dir = Path(cfg.embedding_cache_dir).resolve()
-                model_name = cfg.reranker_model.replace("/", "--")
-                onnx_path = cache_dir / f"reranker-{model_name}.onnx"
+                api_base = Path(__file__).parent.parent.parent
+                cache_dir = (api_base / cfg.embedding_cache_dir).resolve()
+                base = cfg.reranker_model.split("/")[-1].replace(".", "_")
+                onnx_path = cache_dir / f"reranker-{base}_int8.onnx"
 
             # If ONNX model doesn't exist, we'll fall back to PyTorch
             if not Path(onnx_path).exists():

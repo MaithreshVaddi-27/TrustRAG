@@ -43,13 +43,18 @@ else
   warn "apps/api/.venv missing" "Run: cd apps/api && python3 -m venv .venv && source .venv/bin/activate && pip install -e \".[dev,local-models]\""
 fi
 
-echo "─ Embeddings ─"
-if "$ROOT_DIR/apps/api/.venv/bin/python" -c "import sentence_transformers" 2>/dev/null; then
-  ok "torch embedding stack present (huggingface provider ready)"
-elif [ -f "$ROOT_DIR/apps/api/.model_cache/bge-small-en-v1.5.onnx" ]; then
+echo "─ Embeddings (default provider: onnx, torch-free) ─"
+if [ -f "$ROOT_DIR/apps/api/.model_cache/bge-small-en-v1.5.onnx" ]; then
   ok "ONNX embedding model present (onnx provider ready, torch-free)"
+elif "$ROOT_DIR/apps/api/.venv/bin/python" -c "import sentence_transformers" 2>/dev/null; then
+  ok "torch embedding stack present (huggingface provider ready; run python scripts/bootstrap.py for the default onnx path)"
 else
-  warn "no embedding stack" "Run: cd apps/api && source .venv/bin/activate && pip install -e \".[dev,local-models]\" (torch, ~2GB; also needed once for the optional ONNX export)"
+  warn "no embedding stack" "Run: apps/api/.venv/bin/python scripts/bootstrap.py  (downloads/exports ONNX weights into apps/api/.model_cache/; needs network once)"
+fi
+if "$ROOT_DIR/apps/api/.venv/bin/python" "$ROOT_DIR/scripts/ensure_onnx_models.py" --verify >/dev/null 2>&1; then
+  ok "ONNX cache verified (embedding + reranker)"
+else
+  warn "ONNX cache incomplete" "Run: apps/api/.venv/bin/python scripts/bootstrap.py"
 fi
 
 echo "─ Frontend deps ─"

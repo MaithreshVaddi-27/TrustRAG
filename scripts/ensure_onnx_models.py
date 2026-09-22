@@ -11,7 +11,8 @@ Usage:
   python scripts/ensure_onnx_models.py --docker     # Docker mode (bakes into image)
 
 Env vars:
-  CACHE_DIR                 # override cache directory (default: apps/api/.model_cache)
+  MODEL_CACHE_DIR           # preferred override (default: apps/api/.model_cache)
+  CACHE_DIR                 # legacy fallback (MODEL_CACHE_DIR wins)
   EMBEDDING_MODEL           # override embedding model (default: BAAI/bge-small-en-v1.5)
   RERANKER_MODEL            # override reranker model (default: cross-encoder/ms-marco-MiniLM-L-6-v2)
   HF_TOKEN                  # Hugging Face token for private models
@@ -46,7 +47,10 @@ except ImportError:
 
 def _cache_dir() -> Path:
     """Resolve cache directory (works in Docker and host)."""
-    env_dir = os.getenv("CACHE_DIR")
+    # MODEL_CACHE_DIR is preferred; CACHE_DIR kept as legacy fallback.
+    # (CACHE_DIR is also the runtime SQLite disk-cache var — for model
+    # weights prefer MODEL_CACHE_DIR to avoid collisions.)
+    env_dir = os.getenv("MODEL_CACHE_DIR") or os.getenv("CACHE_DIR")
     if env_dir:
         return Path(env_dir)
     # Default: apps/api/.model_cache (relative to repo root)
@@ -61,31 +65,39 @@ def _model_paths(cache: Path, cfg) -> tuple[Path, Path]:
     - dots to underscores: bge-small-en-v1_5.onnx (new convention)
     """
     emb_base = cfg.embedding_model.split("/")[-1]
-    rnk_base = cfg.reranker_model.split("/")[-1]
-    
-    # Embedding: check both conventions
-    emb_candidates = [
-        cache / f"{emb_base}.onnx",           # dots preserved (existing)
-        cache / f"{emb_base.replace('.', '_')}.onnx",  # dots to underscores
-    ]
-    emb_path = emb_candidates[0]  # default to dots-preserved
-    
-    # Reranker: int8 quantized
-    rnk_path = cache / f"{rnk_base.replace('.', '_')}_int8.onnx"
-    
+    rnk_base = cfg.reranker_model.split("/")[-1].replace(".", "_")
+
+    # Embedding: canonical <base>.onnx (dots preserved, e.g. bge-small-en-v1.5.onnx)
+    emb_path = cache / f"{emb_base}.onnx"
+
+    # Reranker: canonical reranker-<base>_int8.onnx — must match
+    # app/core/model_registry.py get_reranker() auto-generated path.
+    rnk_path = cache / f"reranker-{rnk_base}_int8.onnx"
+
     return (emb_path, rnk_path)
 
 
 def _find_existing_model(cache: Path, base_name: str) -> Path | None:
-    """Find existing model file with either naming convention."""
-    # Try dots-preserved first
-    preserved = cache / f"{base_name}.onnx"
-    if preserved.exists():
-        return preserved
-    # Try dots-to-underscores
-    underscored = cache / f"{base_name.replace('.', '_')}.onnx"
-    if underscored.exists():
-        return underscored
+    """Find existing model file (canonical first, legacy names accepted).
+
+    Legacy files are reused as-is (never re-downloaded); new exports always
+    use the canonical names from _model_paths().
+    """
+    candidates = [
+        cache / f"{base_name}.onnx",
+        cache / f"{base_name.replace('.', '_')}.onnx",
+        cache / f"reranker-{base_name}.onnx",
+        cache / f"reranker-{base_name.replace('.', '_')}.onnx",
+        cache / f"{base_name.replace('.', '_')}_int8.onnx",
+        cache / f"reranker-{base_name.replace('.', '_')}_int8.onnx",
+    ]
+    # Also match the registry's old auto-path (model with org, -- separator).
+    for extra in list(cache.glob("reranker-*.onnx")):
+        if extra not in candidates:
+            candidates.append(extra)
+    for cand in candidates:
+        if cand.exists():
+            return cand
     return None
 
 
@@ -98,7 +110,7 @@ def _file_sha256(path: Path) -> str:
 
 
 def _export_embedding_onnx(cfg, emb_path: Path) -> bool:
-    """Export embedding model to ONNX (reuses logic from export_bge_onnx.py)."""
+    """Export embedding model to ONNX via optimum (canonical .model_cache path)."""
     try:
         from optimum.onnxruntime import ORTModelForFeatureExtraction
         from transformers import AutoTokenizer
@@ -235,9 +247,9 @@ def main() -> int:
     print(f"[ensure_onnx] Embedding: {cfg.embedding_model} -> {emb_path}")
     print(f"[ensure_onnx] Reranker:  {cfg.reranker_model} -> {rnk_path}")
 
-    # Check existing (both naming conventions)
+    # Check existing (canonical first, all legacy names accepted)
     emb_existing = _find_existing_model(cache, cfg.embedding_model.split("/")[-1])
-    rnk_existing = _find_existing_model(cache, cfg.reranker_model.split("/")[-1] + "_int8")
+    rnk_existing = _find_existing_model(cache, cfg.reranker_model.split("/")[-1])
     emb_exists = emb_existing is not None
     rnk_exists = rnk_existing is not None
     # Use existing path if found, otherwise default
@@ -250,7 +262,6 @@ def main() -> int:
         if emb_exists and rnk_exists:
             print("[ensure_onnx] Both models present ✓")
             _verify_l2_norm(emb_path, cfg.embedding_dimensionality)
-            _verify_l2_norm(rnk_path, 1)  # reranker outputs single logit
             return 0
         else:
             missing = []
@@ -259,7 +270,7 @@ def main() -> int:
             if not rnk_exists:
                 missing.append("reranker")
             print(f"[ensure_onnx] Missing: {', '.join(missing)}", file=sys.stderr)
-            return 1 if args.docker else 0
+            return 1
 
     # Export missing
     if not emb_exists or args.force:
@@ -272,11 +283,19 @@ def main() -> int:
 
     if not rnk_exists or args.force:
         if not _export_reranker_onnx(cfg, rnk_path):
-            return 1
-        _verify_l2_norm(rnk_path, 1)
+            # Reranker is optional at runtime (get_reranker() falls back to
+            # PyTorch, then to RRF order) — warn, don't block the backend.
+            # Only --docker (bake-into-image) treats this as fatal.
+            print(
+                "[ensure_onnx] WARNING: reranker export failed; backend will "
+                "fall back to RRF order. To enable it: pip install "
+                "'optimum[onnxruntime]' onnx, then re-run.",
+                file=sys.stderr,
+            )
+            if args.docker:
+                return 1
     else:
         print(f"[ensure_onnx] Reranker already present: {rnk_path}")
-        _verify_l2_norm(rnk_path, 1)
 
     print("[ensure_onnx] All models ready ✓")
     return 0

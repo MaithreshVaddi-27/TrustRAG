@@ -20,6 +20,7 @@ TrustRAG adds a verification layer between your LLM and your data: answers are s
 - [Overview](#overview)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
   - [macOS](#macos)
@@ -95,6 +96,43 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 
 ---
 
+## Project Structure
+
+```
+TrustRAG/
+├── apps/
+│   ├── api/                    # FastAPI backend (Python 3.11+)
+│   │   ├── app/
+│   │   │   ├── agent/          # LangGraph self-heal loop + query router
+│   │   │   ├── api/v1/         # REST routes (auth, KBs, analyses, claims, …)
+│   │   │   ├── core/           # config, security, LLM, embeddings, metrics
+│   │   │   ├── db/             # MongoDB + Qdrant clients
+│   │   │   ├── generation/     # grounded answer generator
+│   │   │   ├── ingestion/      # parsers, chunkers, OCR fallback
+│   │   │   ├── mcp/            # MCP tool server (JSON-RPC 2.0)
+│   │   │   ├── retrieval/      # hybrid retriever + reranker
+│   │   │   ├── services/       # analysis, KB, auth, experiment services
+│   │   │   └── verification/   # NLI verifier + SHA-256 integrity audit
+│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.19)
+│   │   ├── tests/              # backend suite (mocked, no live services)
+│   │   └── pyproject.toml
+│   └── web/                    # React frontend (Node 22+)
+│       ├── src/{pages,components,services,lib,store,hooks,layouts,styles}/
+│       └── e2e/                # Playwright specs
+├── config/ports.yaml           # canonical port registry
+├── scripts/                    # bootstrap.py, setup.sh, start_local_llm.sh, apply_ports.py, …
+├── docs/                       # specs, architecture, ADRs, evaluation, deployment
+├── load-test/smoke.js          # k6 smoke test
+├── docker-compose.yml          # api + web + qdrant
+└── .env.example                # documented env template (copy to .env)
+```
+
+Model weights (`apps/api/.model_cache/*.onnx`, `*.gguf`, Hugging Face
+snapshots) are **never committed to git** — every machine fetches them once
+via `scripts/bootstrap.py` (see [Installation](#installation)).
+
+---
+
 ## Prerequisites
 
 | Requirement | Version | Purpose |
@@ -144,6 +182,7 @@ mlx_lm.server --model mlx-community/Llama-3.2-1B-Instruct-4bit --port 8090
 cd apps/api
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,local-models]"
+python ../../scripts/bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
 uvicorn app.main:app --reload --port 8000
 
 # Frontend (terminal 2)
@@ -182,6 +221,7 @@ ollama pull gemma3:1b        # or: ollama pull llama3
 cd apps/api
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,local-models]"
+python ../../scripts/bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
 uvicorn app.main:app --reload --port 8000
 
 # Frontend (terminal 2)
@@ -216,6 +256,7 @@ cd apps\api
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev,local-models]"
+python ..\..\scripts\bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -234,7 +275,11 @@ MongoDB and the LLM stay on the host; `api` reaches them via `host.docker.intern
 
 ```bash
 cp .env.example .env   # set JWT_SECRET (see step 1)
+# One-time on the HOST (the api image is torch-free and cannot export itself):
+apps/api/.venv/bin/python scripts/bootstrap.py
 docker compose up -d
+# One-time: copy the host-exported weights into the api container's cache volume:
+docker cp apps/api/.model_cache/. trustrag_api:/app/.model_cache/
 docker compose logs -f
 docker compose down        # stop (keeps volumes)
 docker compose down -v     # stop + fresh start
@@ -242,7 +287,31 @@ docker compose down -v     # stop + fresh start
 
 - Frontend: <http://localhost:5173> · API docs: <http://localhost:8000/docs> · Health: <http://localhost:8000/api/v1/health>
 
-### 3. Verify the install
+### 3. Fetch model weights (all platforms, one-time)
+
+Model weights are **never committed to git** — every machine (new clone or
+fresh `git pull`) fetches them once: ~120 MB ONNX embeddings + reranker.
+Multi-GB LLM blobs stay with ollama / llama-server and are never
+auto-downloaded.
+
+```bash
+# From the repo root, using the backend venv (macOS/Linux):
+apps/api/.venv/bin/python scripts/bootstrap.py
+# Check only, no downloads (also covered by ./scripts/setup.sh):
+apps/api/.venv/bin/python scripts/bootstrap.py --verify
+# Windows PowerShell:
+apps\api\.venv\Scripts\python.exe scripts\bootstrap.py
+```
+
+What it does: verifies `apps/api/.model_cache/` (canonical
+`bge-small-en-v1.5.onnx` + `reranker-ms-marco-MiniLM-L-6-v2_int8.onnx`),
+exports anything missing with ONNX as the default provider, and snapshots
+your installed local LLMs so the backend serves them from the first request.
+Already cached → exits in ~1 s. After `git pull`, re-run it: a changed
+`models.yaml` model ID is detected automatically and only the new weights are
+fetched (`--force` rebuilds everything).
+
+### 4. Verify the install
 
 ```bash
 ./scripts/setup.sh                          # prerequisite checker (prints fixes)
@@ -411,7 +480,7 @@ Lint: `cd apps/api && ruff check app/ tests/ && ruff format --check app/ tests/`
 | Component | Local dev | Docker Compose | Production |
 |-----------|-----------|----------------|------------|
 | **LLM** | Ollama / llama.cpp on host | Host via `host.docker.internal` | Self-hosted Ollama, Gemini, or NVIDIA NIM |
-| **Embeddings** | BGE-small (auto-download ~120 MB) | Pre-exported ONNX copied into image | Same as dev |
+| **Embeddings** | ONNX BGE-small via `scripts/bootstrap.py` (~120 MB, one-time) | Host-exported ONNX via `docker cp` into the cache volume | Same as dev |
 | **Vectors** | Qdrant embedded (`local`) | `qdrant` container + volume | Qdrant Cloud |
 | **Database** | Host MongoDB | Host via `host.docker.internal` | MongoDB Atlas |
 | **API** | `uvicorn … --reload` | `api` container (non-root, hot-reload) | Cloud Run / Render / Railway / Fly.io |
@@ -492,6 +561,7 @@ All config options support env overrides:
 | `503 Service Unavailable` | DB not connected; check `connect_db()` in lifespan |
 | OOM on 8 GB | `export OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1 OLLAMA_MAX_LOADED_MODELS=1` |
 | `test_indexing_pipeline_execution` fail | Stale mock — see UPGRADE.md §6 |
+| ONNX weights missing / stale after `git pull` | `apps/api/.venv/bin/python scripts/bootstrap.py` (`--verify` to check, `--force` to rebuild) |
 
 ---
 
@@ -514,9 +584,3 @@ cd apps/web && npm run lint && npm test
 - For **Windows**, PowerShell execution policy may need adjustment; using WSL2 is recommended for a native Linux-like experience.
 - Docker setup simplifies evaluation but expects MongoDB and LLM on the host; adjust `.env` for production secrets and external services.
 - MLX is Apple‑Silicon only; ensure you have the appropriate hardware and follow the [MLX Setup Guide](docs/MLX_SETUP.md) if you wish to use it alongside Ollama or llama.cpp.
-
----
-
-## Legacy Content
-
-Detailed historical notes, legacy configuration examples, and deprecated workflows are preserved in [README-legacy.md](README-legacy.md).
