@@ -6,7 +6,8 @@
 #
 # Usage:
 #   ./scripts/start_local_llm.sh [--max N] [--port PORT]
-#   --max N : maximum concurrent loaded models (default: 4)
+#   --max N : maximum concurrent loaded models (default: RAM-aware — 1 on
+#             ≤8 GB hosts, 2 on ≤16 GB, 4 above; an explicit --max always wins)
 #   --port PORT : port to serve on (default: 8080)
 #   Default: serves all cached GGUF models from HuggingFace cache.
 set -euo pipefail
@@ -26,7 +27,7 @@ print(' '.join(get_llamacpp_launch_args()))
 "))
 
 # Parse args.
-MAX_MODELS=4
+MAX_MODELS=""
 PORT=8080
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -35,6 +36,17 @@ while [ $# -gt 0 ]; do
     *) echo "Unknown arg: $1" >&2; exit 1 ;;
   esac
 done
+
+# Default --max follows host RAM (each resident GGUF + its KV cache is GBs;
+# on 8 GB hosts a second model means swap). Matches the -c/-np tiers in
+# app/core/hardware.py:get_llamacpp_launch_args.
+if [ -z "$MAX_MODELS" ]; then
+  MAX_MODELS=$(cd "$API_DIR" && "$PY" -c "
+from app.core.hardware import get_system_memory_info
+total = get_system_memory_info()['total_gb']
+print(1 if total <= 8.5 else (2 if total <= 16.5 else 4))
+")
+fi
 
 # Models directory (HuggingFace cache where GGUF models are stored).
 MODELS_DIR="$HOME/.cache/huggingface/hub"

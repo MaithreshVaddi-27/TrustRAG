@@ -56,8 +56,8 @@ async def tracing_middleware(request: Request, call_next: Callable[[Request], An
             from app.core.metrics import record_http_request
 
             record_http_request(method, path, response.status_code, duration_ms)
-        except Exception:  # noqa: S110
-            pass
+        except Exception:
+            logger.debug("Failed to record HTTP request metric")
 
         # Log trace context for slower requests (> 500ms)
         if duration_ms > 500 and not path.endswith("/metrics"):

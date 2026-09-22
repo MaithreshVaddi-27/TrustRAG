@@ -51,6 +51,7 @@ def _compute_concurrency() -> int:
             return 4
         return 8
     except Exception:
+        logger.debug("Failed to get global semaphore, using safe fallback")
         return 3  # Safe fallback
 
 

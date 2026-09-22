@@ -873,8 +873,8 @@ async def verification_node(state: AgentState) -> AgentState:
         from app.core.metrics import record_verification_claims
 
         record_verification_claims(supported, contradicted, neutral)
-    except Exception:  # noqa: S110
-        pass
+    except Exception:
+        logger.debug("Failed to record verification claims metrics")
 
     logger.info(
         "Unified verdict computed",
@@ -1376,6 +1376,7 @@ async def execute_agentic_rag_flow(
                 try:
                     q_vec = await emb_model.aembed_query(query)
                 except Exception:
+                    logger.debug("async embed_query failed, falling back to sync")
                     q_vec = await asyncio.to_thread(emb_model.embed_query, query)
                 _query_cache.set(cache_key, q_vec)
 

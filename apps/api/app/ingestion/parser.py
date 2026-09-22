@@ -377,16 +377,16 @@ def scan_for_malware(stream: BinaryIO) -> None:
                     result = cd.scan_stream(stream.read())
                     if result:
                         raise IngestionError("Malware detected by AV engine", detail=str(result))
-            except Exception:  # noqa: S110
-                pass  # AV daemon not available — fail-open
+            except Exception:
+                logger.debug("ClamAV daemon unavailable, skipping AV scan")
         except ImportError:
             pass
     finally:
         if pos is not None:
             try:
                 stream.seek(pos)
-            except Exception:  # noqa: S110
-                pass
+            except Exception:
+                logger.debug("Failed to restore stream position after AV scan")
 
 
 def parse_document(

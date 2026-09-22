@@ -14,11 +14,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import bcrypt
+import structlog
 from jose import jwt
 from jose.exceptions import ExpiredSignatureError, JWTError
 
 from app.core.config import get_settings
 from app.core.exceptions import AuthenticationError
+
+logger = structlog.get_logger(__name__)
 
 ALGORITHM = "HS256"
 
@@ -60,6 +63,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         pwd_bytes = plain_password.encode("utf-8")[:BCRYPT_MAX_PASSWORD_BYTES]
         return bcrypt.checkpw(pwd_bytes, hashed_password.encode("utf-8"))
     except Exception:
+        logger.debug("bcrypt checkpw failed, treating as invalid password")
         return False
 
 

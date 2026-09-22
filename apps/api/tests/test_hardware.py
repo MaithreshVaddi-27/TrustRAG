@@ -39,7 +39,7 @@ def test_llamacpp_launch_args_fit_host():
     assert args[-4] == "-c"
     assert int(args[-3]) in (4096, 8192, 16384)
     assert args[-2] == "-np"
-    assert int(args[-1]) in (2, 4)
+    assert int(args[-1]) in (1, 2, 4)
     # Full-GPU offload must be expressed as concrete tokens llama.cpp parses.
     if sys.platform == "darwin" and platform.machine() == "arm64":
         assert "-ngl" in args and "all" in args
@@ -64,7 +64,9 @@ def test_llamacpp_cpu_path_has_no_kv_quant_flags(monkeypatch):
     )
     args = hw.get_llamacpp_launch_args()
     assert "-ctk" not in args and "-ctv" not in args
-    assert args[-4:] == ["-c", "4096", "-np", "2"]
+    # 8 GB tier is single-slot: -np 2 would halve each slot to 2048 ctx while
+    # the backend sends num_ctx=4096 through one serial consumer (measured).
+    assert args[-4:] == ["-c", "4096", "-np", "1"]
 
 
 def test_detect_hardware_profile():

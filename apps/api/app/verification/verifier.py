@@ -861,6 +861,7 @@ def _safe_object_id(value: Any) -> ObjectId | None:
     try:
         return value if isinstance(value, ObjectId) else ObjectId(str(value))
     except Exception:
+        logger.debug("Invalid ObjectId format: %s", value)
         return None
 
 

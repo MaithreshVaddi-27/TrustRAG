@@ -77,8 +77,13 @@ def get_llamacpp_launch_args() -> list[str]:
 
     # Context + concurrency budget by available memory.
     # KV cache ~ n_embd(2048) x 2 (K/V) x n_ctx x 4B x slots; conservative.
+    # llama-server divides -c evenly across -np slots, and the backend sends
+    # num_ctx=4096 requests through a single serial consumer
+    # (LOCAL_LLM_MAX_CONCURRENCY=1). So -np must keep n_ctx_slot >= 4096:
+    # measured on 8 GB (LFM2.5-1.2B): -np 2 gives 2x2048 slots (backend
+    # contexts overflow the slot) while -np 1 gives 1x4096 at the same RSS.
     if total_gb <= 8.5:
-        args += ["-c", "4096", "-np", "2"]
+        args += ["-c", "4096", "-np", "1"]
     elif total_gb <= 16.5:
         args += ["-c", "8192", "-np", "2"]
     else:
@@ -144,6 +149,7 @@ def get_system_memory_info() -> dict[str, Any]:
                     speculative_pages = int(line.split(":")[1].strip().rstrip("."))
             free_bytes = (free_pages + speculative_pages) * v_page_size
         except Exception:
+            logger.debug("vm_stat failed, estimating free memory as 25% of total")
             free_bytes = int(total_bytes * 0.25)
     # Linux free memory via /proc/meminfo
     elif sys.platform.startswith("linux") and os.path.exists("/proc/meminfo"):
@@ -154,6 +160,7 @@ def get_system_memory_info() -> dict[str, Any]:
                         free_bytes = int(line.split()[1]) * 1024
                         break
         except Exception:
+            logger.debug("/proc/meminfo read failed, estimating free memory as 25% of total")
             free_bytes = int(total_bytes * 0.25)
     else:
         free_bytes = int(total_bytes * 0.3)
@@ -232,6 +239,7 @@ def detect_hardware_profile() -> dict[str, Any]:
             props = torch.cuda.get_device_properties(0)
             vram_gb = round(props.total_memory / (1024**3), 2)
         except Exception:
+            logger.debug("CUDA device query failed, using generic label")
             device_label = "NVIDIA CUDA GPU"
     elif device == "mps":
         device_label = "Apple Silicon GPU (Metal Performance Shaders)"

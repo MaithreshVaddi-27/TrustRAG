@@ -69,6 +69,7 @@ def get_memory_usage_mb() -> float:
             return round(usage / (1024 * 1024), 2)
         return round(usage / 1024, 2)
     except Exception:
+        logger.debug("psutil RSS read failed; falling back to resource")
         return 0.0
 
 

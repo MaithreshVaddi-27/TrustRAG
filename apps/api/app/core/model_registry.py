@@ -456,6 +456,7 @@ class BGEAwareHuggingFaceEmbeddings:
             with torch.inference_mode():
                 return self._base.embed_query(text)
         except Exception:
+            logger.debug("torch.inference_mode() failed for embed_query, falling back")
             return self._base.embed_query(text)
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
@@ -465,6 +466,7 @@ class BGEAwareHuggingFaceEmbeddings:
             with torch.inference_mode():
                 return self._base.embed_documents(texts)
         except Exception:
+            logger.debug("torch.inference_mode() failed for embed_documents, falling back")
             return self._base.embed_documents(texts)
 
     async def aembed_query(self, text: str) -> list[float]:

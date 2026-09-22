@@ -25,9 +25,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import structlog
 import xxhash
 
 from app.ingestion.preprocessor import ZONE_WEIGHT_BOOSTS, lexical_analyze
+
+logger = structlog.get_logger(__name__)
 
 VOCAB_SIZE_LIMIT = 1_000_000
 
@@ -54,6 +57,7 @@ def _sparse_params() -> tuple[float, float, int]:
         cfg = get_model_config()
         return (cfg.sparse_k1, cfg.sparse_b, cfg.sparse_avg_len_tokens)
     except Exception:
+        logger.debug("Failed to get BM25 config, using defaults")
         return (DEFAULT_SPARSE_K1, DEFAULT_SPARSE_B, DEFAULT_SPARSE_AVG_LEN_TOKENS)
 
 

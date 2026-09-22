@@ -16,10 +16,13 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import structlog
 import yaml
 from dotenv import load_dotenv
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = structlog.get_logger(__name__)
 
 # ─── Paths ────────────────────────────────────────────────────────────────
 
@@ -63,6 +66,7 @@ def _load_ports_yaml() -> dict[str, int]:
         ports = (data or {}).get("ports", {}) if isinstance(data, dict) else {}
         return {k: int(v) for k, v in ports.items() if isinstance(v, int)}
     except Exception:
+        logger.debug("Failed to load ports.yaml, using empty config")
         return {}
 
 
