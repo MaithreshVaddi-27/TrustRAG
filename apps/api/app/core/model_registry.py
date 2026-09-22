@@ -106,6 +106,110 @@ def _llm_registry_key(provider: str, model: str | None) -> str:
     return f"{provider}:{model or 'default'}"
 
 
+def _create_llm(
+    *,
+    provider: str,
+    model: str,
+    temperature: float,
+    max_tokens: int | None,
+    timeout: float,
+    top_p: float | None = None,
+    max_completion_tokens: int | None = None,
+    max_retries: int | None = None,
+    registry_prefix: str = "",
+) -> BaseChatModel:
+    """Unified LLM factory used by get_llm and get_verification_model."""
+    settings = get_settings()
+    cfg: ModelConfig = get_model_config()
+
+    logger.info(
+        "Initializing LLM",
+        provider=provider,
+        model=model,
+        temperature=temperature,
+        max_output_tokens=max_tokens,
+        max_completion_tokens=max_completion_tokens,
+        timeout=timeout,
+    )
+
+    if provider == "ollama":
+        from app.core.local_llm import ChatOllamaClient
+
+        llm = ChatOllamaClient(
+            base_url=settings.ollama_base_url,
+            model=model,
+            temperature=temperature,
+            top_p=top_p if top_p is not None else cfg.llm_top_p,
+            timeout=timeout,
+        )
+        return llm
+
+    if provider in ("llama_cpp", "llamacpp"):
+        from app.core.local_llm import ChatLlamaCppClient
+
+        llm = ChatLlamaCppClient(
+            base_url=settings.llamacpp_base_url,
+            model=model,
+            temperature=temperature,
+            top_p=top_p if top_p is not None else cfg.llm_top_p,
+            max_tokens=max_tokens if max_tokens is not None else cfg.llm_max_output_tokens,
+            max_completion_tokens=max_completion_tokens,
+            timeout=timeout,
+        )
+        return llm
+
+    if provider == "mlx":
+        from app.core.local_llm import ChatLlamaCppClient
+
+        llm = ChatLlamaCppClient(
+            base_url=settings.mlx_base_url,
+            model=model,
+            temperature=temperature,
+            top_p=top_p if top_p is not None else cfg.llm_top_p,
+            max_tokens=max_tokens if max_tokens is not None else cfg.llm_max_output_tokens,
+            max_completion_tokens=max_completion_tokens,
+            timeout=timeout,
+        )
+        return llm
+
+    if provider in ("nvidia", "nim"):
+        from langchain_nvidia_ai_endpoints import ChatNVIDIA
+
+        if not settings.nvidia_api_key:
+            raise ConfigurationError("NVIDIA_API_KEY must be set when AI_PROVIDER is 'nvidia'")
+
+        with _suppress_nvidia_unknown_type_warning(model):
+            llm = ChatNVIDIA(
+                model=model,
+                api_key=settings.nvidia_api_key,
+                temperature=temperature,
+                max_completion_tokens=(
+                    max_completion_tokens or max_tokens or cfg.llm_max_output_tokens
+                ),
+                timeout=timeout,
+            )
+        return llm
+
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    if not settings.gemini_api_key:
+        raise ConfigurationError(
+            "GEMINI_API_KEY must be set when using Google Gemini provider. "
+            "Switch to 'ollama' or 'llama_cpp' to run completely locally without an API key."
+        )
+
+    llm = ChatGoogleGenerativeAI(
+        model=model,
+        google_api_key=settings.gemini_api_key,
+        temperature=temperature,
+        top_p=top_p if top_p is not None else cfg.llm_top_p,
+        max_output_tokens=max_tokens if max_tokens is not None else cfg.llm_max_output_tokens,
+        timeout=timeout,
+        max_retries=max_retries if max_retries is not None else cfg.llm_max_retries,
+    )
+    return llm
+
+
 def _close_llm_instance(llm: BaseChatModel) -> None:
     """Best-effort close for LLM instances that support it."""
     try:
@@ -219,102 +323,73 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
         max_output_tokens=cfg.llm_max_output_tokens,
     )
 
-    try:
-        if active_provider == "ollama":
-            from app.core.local_llm import ChatOllamaClient
-
-            llm = ChatOllamaClient(
-                base_url=settings.ollama_base_url,
-                model=active_model or "granite4.2:3b-q4_K_M",
-                temperature=cfg.llm_temperature,
-                top_p=cfg.llm_top_p,
-                timeout=float(cfg.llm_timeout_seconds),
-            )
-            put_llm_instance(active_provider, active_model, llm)
-            return llm
-
-        if active_provider in ("llama_cpp", "llamacpp"):
-            from app.core.local_llm import ChatLlamaCppClient
-
-            llm = ChatLlamaCppClient(
-                base_url=settings.llamacpp_base_url,
-                model=active_model or "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
-                temperature=cfg.llm_temperature,
-                top_p=cfg.llm_top_p,
-                max_tokens=cfg.llm_max_output_tokens,
-                timeout=float(cfg.llm_timeout_seconds),
-            )
-            put_llm_instance(active_provider, active_model, llm)
-            return llm
-
-        if active_provider == "mlx":
-            # MLX speaks the same OpenAI-compatible protocol (mlx_lm.server),
-            # so the llama.cpp client is reused verbatim: task-sized caps,
-            # serial semaphore, and budgets all apply unchanged.
-            from app.core.local_llm import ChatLlamaCppClient
-
-            llm = ChatLlamaCppClient(
-                base_url=settings.mlx_base_url,
-                model=active_model or "mlx-community/Llama-3.2-1B-Instruct-4bit",
-                temperature=cfg.llm_temperature,
-                top_p=cfg.llm_top_p,
-                max_tokens=cfg.llm_max_output_tokens,
-                timeout=float(cfg.llm_timeout_seconds),
-            )
-            put_llm_instance(active_provider, active_model, llm)
-            return llm
-
-        if active_provider in ("nvidia", "nim"):
-            from langchain_nvidia_ai_endpoints import ChatNVIDIA
-
-            if not settings.nvidia_api_key:
-                raise ConfigurationError("NVIDIA_API_KEY must be set when AI_PROVIDER is 'nvidia'")
-
-            # NOTE: ChatNVIDIA declares max_completion_tokens (not max_tokens)
-            # and takes timeout via client kwargs; both are silently ignored
-            # otherwise (extra='ignore'), leaving the OpenAI-client default
-            # (~600s) per attempt — a stalled model then hangs with no response.
-            with _suppress_nvidia_unknown_type_warning(active_model):
-                llm = ChatNVIDIA(
-                    model=active_model,
-                    api_key=settings.nvidia_api_key,
-                    temperature=cfg.llm_temperature,
-                    max_completion_tokens=cfg.llm_max_output_tokens,
-                    timeout=float(cfg.llm_timeout_seconds),
-                )
-            put_llm_instance(active_provider, active_model, llm)
-            return llm
-
-        from langchain_google_genai import ChatGoogleGenerativeAI
-
-        if not settings.gemini_api_key:
-            raise ConfigurationError(
-                "GEMINI_API_KEY must be set when using Google Gemini provider. "
-                "Switch to 'ollama' or 'llama_cpp' to run completely locally without an API key."
-            )
-
-        llm = ChatGoogleGenerativeAI(
-            model=active_model,
-            google_api_key=settings.gemini_api_key,
-            temperature=cfg.llm_temperature,
-            top_p=cfg.llm_top_p,
-            max_output_tokens=cfg.llm_max_output_tokens,
-            timeout=cfg.llm_timeout_seconds,
-            max_retries=cfg.llm_max_retries,
-        )
-        put_llm_instance(active_provider, active_model, llm)
-        return llm
-    except Exception as exc:
-        raise ConfigurationError(
-            f"Failed to initialize LLM '{active_model}' (provider: {active_provider})",
-            detail=str(exc),
-        ) from exc
+    llm = _create_llm(
+        provider=active_provider,
+        model=active_model,
+        temperature=cfg.llm_temperature,
+        max_tokens=cfg.llm_max_output_tokens,
+        timeout=float(cfg.llm_timeout_seconds),
+        top_p=cfg.llm_top_p,
+        max_completion_tokens=cfg.llm_max_output_tokens,
+        max_retries=cfg.llm_max_retries,
+        registry_prefix="",
+    )
+    put_llm_instance(active_provider, active_model, llm)
+    return llm
 
 
 # ─── Verification LLM ─────────────────────────────────────────────────────────
 
 
 def get_verification_model(provider: str | None = None, model: str | None = None) -> BaseChatModel:
+    """
+    Return the verification LLM for claim-level structured verification.
+
+    Separate from the primary LLM to allow independent cost/quality tuning.
+    Temperature is forced to 0.0 for deterministic verification.
+
+    Uses bounded registry (max 4 instances) with LRU eviction.
+    """
+    settings = get_settings()
+    cfg: ModelConfig = get_model_config()
+
+    active_provider = (provider or cfg.verification_provider).lower()
+    # Same empty-override fallback as get_llm, per requested provider.
+    if active_provider == "ollama":
+        active_model = model or settings.ollama_model or cfg.verification_model_for("ollama")
+    elif active_provider in ("llama_cpp", "llamacpp"):
+        active_model = model or settings.llamacpp_model or cfg.verification_model_for("llama_cpp")
+    elif active_provider == "mlx":
+        active_model = model or settings.mlx_model or cfg.verification_model_for("mlx")
+    else:
+        active_model = model or cfg.verification_model_for(active_provider)
+
+    # Check registry first (use distinct key prefix for verification models)
+    cached = get_llm_instance(f"verify:{active_provider}", active_model)
+    if cached is not None:
+        logger.debug("Verification LLM cache hit", provider=active_provider, model=active_model)
+        return cached
+
+    logger.info(
+        "Initializing verification model",
+        provider=active_provider,
+        model=active_model,
+        temperature=0.0,
+    )
+
+    llm = _create_llm(
+        provider=active_provider,
+        model=active_model,
+        temperature=0.0,
+        max_tokens=cfg.verification_max_output_tokens,
+        timeout=float(cfg.verification_timeout_seconds),
+        top_p=cfg.llm_top_p,
+        max_completion_tokens=cfg.verification_max_output_tokens,
+        max_retries=cfg.verification_max_retries,
+        registry_prefix="verify:",
+    )
+    put_llm_instance(f"verify:{active_provider}", active_model, llm)
+    return llm
     """
     Return the verification LLM for claim-level structured verification.
 
