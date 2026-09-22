@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+import httpx
 import tiktoken
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -781,7 +782,7 @@ async def generate_grounded_answer(
 
     except (ConfigurationError, LLMUnavailableError):
         raise
-    except (asyncio.TimeoutError, ConnectionError, TimeoutError, httpx.RequestError) as exc:
+    except (ConnectionError, TimeoutError, httpx.RequestError) as exc:
         # Network/timeout errors: safe to ABSTAIN as they're transient
         logger.error("Grounded generation failed (transient network error)", error=str(exc))
         return "ABSTAIN"

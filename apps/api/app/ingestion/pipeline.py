@@ -149,11 +149,11 @@ async def _index_parsed_chunks(
         # 3. Load embedding model (cached)
         # 3. Load embedding model (cached) - use request params or KB pin or config default
         cfg = get_model_config()
-        
+
         # Determine embedding provider/model: request params > KB pin > config default
         effective_embedding_provider = embedding_provider or cfg.embedding_provider
         effective_embedding_model = embedding_model or cfg.embedding_model
-        
+
         # Pin check BEFORE embed+upsert: never mix embedding spaces in one
         # collection (retriever would truncate/pad garbage). Fail loudly so the
         # operator re-uploads into a NEW KB instead of corrupting this one.
@@ -170,25 +170,31 @@ async def _index_parsed_chunks(
         elif not _existing_kb.get("embedding_model"):
             await _kb_coll.update_one(
                 {"_id": ObjectId(kb_id_str)},
-                {"$set": {
-                    "embedding_model": effective_embedding_model,
-                    "embedding_provider": effective_embedding_provider,
-                    "embedding_dim": cfg.embedding_dimensionality,
-                }}
+                {
+                    "$set": {
+                        "embedding_model": effective_embedding_model,
+                        "embedding_provider": effective_embedding_provider,
+                        "embedding_dim": cfg.embedding_dimensionality,
+                    }
+                },
             )
 
         # Pin the embedding model/provider for this KB if not already set
         elif not _existing_kb.get("embedding_model"):
             await _kb_coll.update_one(
                 {"_id": ObjectId(kb_id_str)},
-                {"$set": {
-                    "embedding_model": effective_embedding_model,
-                    "embedding_provider": effective_embedding_provider,
-                    "embedding_dim": cfg.embedding_dimensionality,
-                }}
+                {
+                    "$set": {
+                        "embedding_model": effective_embedding_model,
+                        "embedding_provider": effective_embedding_provider,
+                        "embedding_dim": cfg.embedding_dimensionality,
+                    }
+                },
             )
 
-        embed_model = get_embedding_model(provider=effective_embedding_provider, model=effective_embedding_model)
+        embed_model = get_embedding_model(
+            provider=effective_embedding_provider, model=effective_embedding_model
+        )
 
         # Zero-Cost Contextual Prefixing (Anthropic SOTA pattern):
         # Prepend document filename and zone to resolve chunk ambiguity without extra LLM cost
