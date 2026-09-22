@@ -75,12 +75,17 @@ class ONNXCrossEncoder:
 
         # Load tokenizer — prefer local cache when offline (HF_HUB_OFFLINE=1
         # set in app/main.py); otherwise allow download on first cold start.
+        # Revision pinned for supply-chain security (Bandit B615).
+        from app.core.config import get_settings
+
         try:
             from transformers import AutoTokenizer
 
+            settings = get_settings()
             _offline = os.environ.get("HF_HUB_OFFLINE", "").strip() == "1"
             self._tokenizer = AutoTokenizer.from_pretrained(
                 self.tokenizer_name,
+                revision=settings.hf_tokenizer_revision,
                 use_fast=True,
                 local_files_only=_offline,
             )
@@ -192,8 +197,13 @@ def export_crossencoder_to_onnx(
     inner.eval()
     inner.to("cpu")
 
-    # Get tokenizer for dummy input
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=True)
+    # Get tokenizer for dummy input (revision pinned for supply-chain security, Bandit B615)
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    tokenizer = AutoTokenizer.from_pretrained(
+        tokenizer_name, use_fast=True, revision=settings.hf_tokenizer_revision
+    )
 
     # Create dummy inputs
     dummy_queries = ["What is the capital of France?"]

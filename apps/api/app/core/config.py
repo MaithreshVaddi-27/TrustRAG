@@ -141,6 +141,14 @@ class Settings(BaseSettings):
 
     # ── Hugging Face ──────────────────────────────────────────────────────────
     hf_token: str = ""  # Optional read-only token to prevent download rate-limits
+    hf_tokenizer_revision: str = Field(
+        default="5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
+        validation_alias=AliasChoices("HF_TOKENIZER_REVISION"),
+        description=(
+            "Pinned tokenizer revision for ONNX embeddings (Bandit B615 supply-chain "
+            "pin). Only change alongside a fresh `scripts/export_bge_onnx.py` run."
+        ),
+    )
 
     # ── Google Gemini (Optional if using local LLMs) ───────────────────────────
     gemini_api_key: str = ""

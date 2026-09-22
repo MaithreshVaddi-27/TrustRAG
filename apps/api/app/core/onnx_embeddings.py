@@ -12,6 +12,7 @@ import os
 from typing import Any
 
 import numpy as np
+import structlog
 
 try:
     import onnxruntime as ort
@@ -23,6 +24,8 @@ except ImportError:
 
 from langchain_core.embeddings import Embeddings
 
+logger = structlog.get_logger(__name__)
+
 # Pinned tokenizer revision (commit SHA of BAAI/bge-small-en-v1.5 on the Hub).
 # Bandit B615 requires revision pinning to block supply-chain substitution of
 # tokenizer files; override via HF_TOKENIZER_REVISION only to move forward
@@ -30,6 +33,19 @@ from langchain_core.embeddings import Embeddings
 _HF_TOKENIZER_REVISION = os.environ.get(
     "HF_TOKENIZER_REVISION", "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
 )
+
+
+def _get_tokenizer_revision() -> str:
+    """Get tokenizer revision from settings with fallback to environment variable."""
+    try:
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        if settings.hf_tokenizer_revision:
+            return settings.hf_tokenizer_revision
+    except Exception:
+        logger.debug("Failed to get tokenizer revision from settings, using env/default")
+    return os.environ.get("HF_TOKENIZER_REVISION", "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a")
 
 
 class ONNXBGEEmbeddings(Embeddings):
@@ -63,7 +79,7 @@ class ONNXBGEEmbeddings(Embeddings):
 
         self.tokenizer = AutoTokenizer.from_pretrained(
             tokenizer_name,
-            revision=_HF_TOKENIZER_REVISION,
+            revision=_get_tokenizer_revision(),
             trust_remote_code=False,
         )
 
