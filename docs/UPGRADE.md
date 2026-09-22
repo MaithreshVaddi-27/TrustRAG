@@ -84,7 +84,7 @@ Why: local 1.2B is 20–60 s/call and abstains/NEUTRALs often on multi-hop; 3B i
 
 ### P0 — data corruption / silent wrong answers
 - [ ] **Reranker early-exit poisons cache with fake 0.0** — `app/retrieval/reranker.py:233-243`: unscored tail padded `0.0` then ALL written to `_RerankerCache`. Future identical query-doc pairs return 0.0 unscored. Fix: only cache `uncached_indices[:processed]`.
-- [ ] **Cloud yaml dead** — `app/core/config.py:363-367,527-531` (see §1.2.2).
+- [✅ DONE] **Cloud yaml dead** — `app/core/config.py:363-367,527-531` was fixed; cloud model IDs now correctly read from `models.yaml` (verified: `llm_model_for('nvidia')` returns `openai/gpt-oss-20b` from yaml).
 - [✅ DONE] **Qdrant fail-open on unreadable config** — `app/db/qdrant.py:80-130` now raises `VectorStoreError` with actionable message; test updated to expect fail-closed.
 - [ ] **`init_kb_collection` deletes all vectors on upgrade** — `app/db/qdrant.py:110-118` auto `delete_collection` + recreate empty. Fix: raise `VectorStoreError("requires re-index")` behind `ALLOW_QDRANT_RECREATE=1`, never in request path.
 - [ ] **Ingest mixes embedding spaces** — `app/ingestion/pipeline.py:142-275` embeds+upserts THEN checks KB pin. Fix: move pin check before `aembed_documents`; reject 422 on mismatch. In `app/retrieval/retriever.py:145-167` replace truncate/pad with `raise RetrievalOutageError("embedding space mismatch")`.
@@ -97,7 +97,6 @@ Why: local 1.2B is 20–60 s/call and abstains/NEUTRALs often on multi-hop; 3B i
 ### P1 — performance / correctness
 - [✅ DONE] **Async singletons leak / break on reload** — LLM clients now implement `aclose()` and are awaited on eviction/shutdown via async `close_all_llm_instances(seal=True)`. ✅ DONE 2026-09-22: LLM registry now properly awaits `aclose()` on eviction/shutdown.
 
-### P1 — performance / correctness
 - [ ] **ONNX reranker ignores `batch_size`, single-threaded** — `app/core/onnx_reranker.py:59,88-116` tokenizes+infers all pairs at once; 20 candidates × fan-out 3 = seconds on CPU. Fix: loop `range(0,len(pairs),batch_size or 16)`; threads `os.cpu_count()` instead of default 1.
 - [ ] **Sparse leg embeds filename/zone prefix** — `app/ingestion/pipeline.py:150-152,197`: `[file | ZONE]` prefix is right for dense, wrong for BM25 (filename dominates). Fix: `generate_sparse_vector(chunk["text"])`.
 - [ ] **Verifier worst-case ~20 serial local calls vs 180 s node timeout** — `app/verification/verifier.py:1062-1174`, `app/agent/graph.py:767-782`: fused+decompose+batch×2+8 individual+3×(retrieval+NLI) on 1.2B exceeds `max_verification_time_seconds`. `wait_for` cancels mid-persist → recovery repeats. Fix: per-call (not whole-node) timeouts; §1.2.5 caps.
