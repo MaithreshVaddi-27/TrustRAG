@@ -12,9 +12,7 @@ Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench
 docs/
 ├── README.md                        # Master index (this file)
 ├── TRUSTRAG_specs.md                # Full product specification (source of truth)
-├── TRUSTRAG-IMPLEMENTATION-PLAN.md  # Phase-by-phase plan, verified against code
-├── TRUSTRAG-UPGRADE-PLAN.md         # Original upgrade plan with per-phase status
-├── UPGRADE.md                       # Live upgrade status tracker (updated as fixes land)
+├── ONBOARDING-TROUBLESHOOTING.md    # Per-OS setup guide + failure table + live verification backlog
 ├── ROADMAP.md                       # Product vision, milestones, phase tracking
 ├── PERFORMANCE-GUIDE.md             # Free speed/RAM tuning + MLX on Mac
 ├── architecture/
@@ -39,11 +37,9 @@ docs/
 ### 1. Product & Planning
 
 - [**Specification (`TRUSTRAG_specs.md`)**](TRUSTRAG_specs.md): product definition, engineering principles, stack, architecture, config, ingestion → recovery pipeline, API, testing, acceptance criteria. Read this first before contributing.
-- [**Implementation Plan (`TRUSTRAG-IMPLEMENTATION-PLAN.md`)**](TRUSTRAG-IMPLEMENTATION-PLAN.md): phase order, per-phase files/changes/tests, evaluation gates, production risks — verified file-by-file against the repo.
-- [**Upgrade Plan (`TRUSTRAG-UPGRADE-PLAN.md`)**](TRUSTRAG-UPGRADE-PLAN.md): original goal-by-phase plan with frozen status notes per phase.
-- [**Upgrade Status (`UPGRADE.md`)**](UPGRADE.md): live checklist, updated as fixes land (sibling of the frozen plan above).
 - [**Roadmap (`ROADMAP.md`)**](ROADMAP.md): completed phases, pre-deployment checklist, and prioritized upcoming work.
 - [**Performance Guide (`PERFORMANCE-GUIDE.md`)**](PERFORMANCE-GUIDE.md): free efficiency changes (config-only speed/RAM wins) plus MLX local inference on Apple Silicon.
+- [**Onboarding & Troubleshooting (`ONBOARDING-TROUBLESHOOTING.md`)**](ONBOARDING-TROUBLESHOOTING.md): per-OS setup guide, failure table, live verification backlog.
 
 ### 2. Architecture & Design
 
@@ -70,9 +66,6 @@ docs/
 ### 1. Product & Planning
 
 - [**Specification (`TRUSTRAG_specs.md`)**](TRUSTRAG_specs.md): product definition, engineering principles, stack, architecture, config, ingestion → recovery pipeline, API, testing, acceptance criteria. Read this first before contributing.
-- [**Implementation Plan (`TRUSTRAG-IMPLEMENTATION-PLAN.md`)**](TRUSTRAG-IMPLEMENTATION-PLAN.md): phase order, per-phase files/changes/tests, evaluation gates, production risks — verified file-by-file against the repo.
-- [**Upgrade Plan (`TRUSTRAG-UPGRADE-PLAN.md`)**](TRUSTRAG-UPGRADE-PLAN.md): original goal-by-phase plan with frozen status notes per phase.
-- [**Upgrade Status (`UPGRADE.md`)**](UPGRADE.md): live checklist, updated as fixes land (sibling of the frozen plan above).
 - [**Roadmap (`ROADMAP.md`)**](ROADMAP.md): completed phases, pre-deployment checklist, and prioritized upcoming work.
 - [**Performance Guide (`PERFORMANCE-GUIDE.md`)**](PERFORMANCE-GUIDE.md): free efficiency changes (config-only speed/RAM wins) plus MLX local inference on Apple Silicon.
 - **Retrieval**: dense BGE + BM25-TF sparse with Qdrant server-side IDF + RRF (`rrf_k=60`, `fusion_top_k=20` enforced); `sparse_top_k: 0` disables the sparse leg (current default — set `20` for full hybrid); deterministic router (simple/temporal/comparison/complex, fan-out ≤3); reranker enabled by default with ONNX int8 quantization (depth cap `top_k: 20`, early termination, result caching).
@@ -82,8 +75,8 @@ docs/
 - **Recovery**: diagnose-then-act (retrieval→rewrite, coverage/conflict→expand, verification/generation→regenerate), ≤2 attempts, token (2000) + latency (180s) budgets, abstain on exhaustion.
 - **Security**: JWT `iss`/`aud` on both token types, JTI revocation, service-token KB/user binding, login lockout (5/900s), EICAR + best-effort clamd upload AV, 24-test red-team suite.
 - **Observability**: public `GET /api/v1/metrics` (dependency-free Prometheus exposition), pre-request `max_input_tokens` enforcement (422, kill-switchable), per-analysis token accounting; k6 covers `/metrics` + `/analyses` reads.
-- **Inference Acceleration**: KV cache quantization (q4_0/q8_0/fp16), flash attention, prompt caching (llama.cpp `cache_prompt`, Ollama `num_keep`), speculative decoding (min_p/top_k/early EOS exit), context compression (hierarchical summarization), adaptive top-k retrieval, dynamic context sizing (tiktoken), ONNX reranker (int8, 3-4x CPU speedup), connection pooling (keepalive 30s).
-- **Memory Optimization**: Aggressive model registry eviction by RAM (≤8GB: 1 instance, ≤16GB: 2, 32GB+: 4), semantic response cache (500 entries, 5min TTL), reranker result caching (LRU, 500 entries).
+- **Inference Acceleration**: KV cache quantization (q8_0 default, honored by launcher), flash attention, prompt caching (llama.cpp `cache_prompt`, Ollama `num_keep`), sampling knobs (min_p/top_k disabled by default, early EOS exit), context compression (cloud-only by default), adaptive top-k retrieval (RRF units), dynamic context sizing (tiktoken), ONNX reranker (int8, batched), connection pooling (keepalive 30s, split timeouts).
+- **Memory Optimization**: Bounded LLM registry by RAM (≤8GB: 1 instance, ≤16GB: 2, 32GB+: 4), semantic response cache (500 entries, 24h TTL), reranker result caching (LRU, 500 entries, no-pad-cache).
 - **Local LLM server**: `./scripts/start_local_llm.sh` (auto GPU offload + KV budget) or `ollama serve`; MLX via `mlx_lm.server --port 8090`.
-- **Tests**: backend 390 collected, frontend 22 Vitest + 2 Playwright E2E; `ruff check` + `format` clean (verified 2026-09-21).
-- **Pending operator runs**: reranker-threshold calibration from Hybrid-vs-Hybrid+Rerank ablation; pre-IDF KBs need document re-upload; chunking/normalization change needs re-index; OCR models not pre-warmed.
+- **Tests**: backend 427, frontend 25 Vitest; `ruff check` clean (verified 2026-09-24).
+- **Pending operator runs**: pre-IDF KBs need document re-upload; chunking/normalization change needs re-index; OCR models not pre-warmed; live-model verification (Gemini/NVIDIA/MLX) + k6 + Playwright e2e — see `ONBOARDING-TROUBLESHOOTING.md §5`.

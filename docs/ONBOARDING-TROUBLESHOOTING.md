@@ -146,7 +146,19 @@ net start MongoDB
 
 ---
 
-## 5. Sanity checklist (should all be green)
+## 5. Live verification backlog (carried over from the retired `UPGRADE.md`)
+
+Mocked tests are green, but these need a running stack + human judgment:
+
+- **Providers never live-tested:** Gemini, NVIDIA NIM, MLX (`mlx_lm.server --port 8090`).
+- **qwen3:1.7b** hallucinated unrelated claims in manual testing — retry with
+  `temperature=0` before trusting it for verification.
+- **LFM2.5-1.2B** verification fixated on SHA-256 and missed NLI context —
+  may need a larger `max_output_tokens` cap.
+- **k6 smoke:** `k6 run load-test/smoke.js` against a live backend with seeded auth.
+- **Playwright e2e:** needs Mongo + Qdrant + LLM + web all running.
+
+## 6. Sanity checklist (should all be green)
 
 ```bash
 bash scripts/setup.sh                                        # prereqs + ports

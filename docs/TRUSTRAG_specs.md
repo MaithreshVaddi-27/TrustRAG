@@ -239,8 +239,7 @@ TRUSTRAG/
 │
 ├── docs/
 │   ├── TRUSTRAG_specs.md       # This file (source of truth)
-│   ├── TRUSTRAG-IMPLEMENTATION-PLAN.md
-│   ├── TRUSTRAG-UPGRADE-PLAN.md
+│   ├── ONBOARDING-TROUBLESHOOTING.md
 │   ├── ROADMAP.md
 │   ├── architecture/
 │   │   ├── architecture.md

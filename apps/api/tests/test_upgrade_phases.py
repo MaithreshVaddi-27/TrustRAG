@@ -1,9 +1,10 @@
 """
-Regression tests for UPGRADE.md follow-up phases (2026-09-23).
+Regression tests for hardening follow-ups (2026-09-23/24).
 
 Covers: RRF-unified adaptive thresholds, parser encoding slice + chunked AV
 scan, NLI per-call timeout helper, internal URL SSRF parity, query-cache
-dim-mismatch invalidation.
+dim-mismatch invalidation, MCP tenant enforcement, ONNX startup checks,
+semantic-cache matrix rebuild, negative ingestion cases.
 """
 
 from __future__ import annotations

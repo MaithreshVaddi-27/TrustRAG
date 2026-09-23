@@ -568,7 +568,6 @@ Full per-OS field guide (20-row failure table): [docs/ONBOARDING-TROUBLESHOOTING
 | `Database not initialized` | Ensure MongoDB running; check `MONGODB_URI` |
 | `503 Service Unavailable` | DB not connected; check `connect_db()` in lifespan |
 | OOM on 8 GB | `export OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1 OLLAMA_MAX_LOADED_MODELS=1` |
-| `test_indexing_pipeline_execution` fail | Stale mock — see [docs/UPGRADE.md §6](docs/UPGRADE.md#6-tests-why-stale--rewrite-order-do-not-rely-on-current-scripts) |
 | ONNX weights missing / stale after `git pull` | `apps/api/.venv/bin/python scripts/bootstrap.py` (`--verify` to check, `--force` to rebuild) |
 | ONNX export fails (`No module named 'onnxscript'` / `torch` / `onnx`) | Reinstall export deps: `cd apps/api && .venv/bin/pip install -e ".[local-models]"`, then re-run bootstrap |
 
