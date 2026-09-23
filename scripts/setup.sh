@@ -108,8 +108,10 @@ else
 fi
 if command -v mlx_lm.server >/dev/null 2>&1; then
   ok "mlx_lm.server installed (Apple Silicon local inference)"
-else
+elif python3 -c "import sys,platform; sys.exit(0 if sys.platform=='darwin' and platform.machine()=='arm64' else 1)" 2>/dev/null; then
   echo "  • mlx_lm.server not installed (Apple Silicon only, optional: pip install mlx-lm)"
+else
+  echo "  • mlx_lm.server not applicable here (Apple Silicon only — this host can't run it)"
 fi
 
 echo "─ Ports ─"

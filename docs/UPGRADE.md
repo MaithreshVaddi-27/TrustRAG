@@ -56,6 +56,11 @@
 | 46 | Semantic-cache matrix never rebuilt (dirty flag set, never consumed → vectorized path dead, all lookups paid scalar loop); rebuild on dirty at lookup start | ✅ DONE 2026-09-24 | `core/semantic_cache.py` |
 | 47 | Evidence shield fail-closed in UI: missing status renders UNVERIFIED (was shown as verified); `EXTERNAL_UNAUDITED` web chunks already amber + MCP-badged | ✅ DONE 2026-09-24 | `EvidenceViewer.jsx`, `EvidenceChunk.test.jsx` |
 | 48 | Verify: backend 420 passed, frontend lint clean + 25 passed | ✅ DONE 2026-09-24 | tests |
+| 49 | `QDRANT_URL` without scheme no longer mkdir'd as storage path (fail-loud `VectorStoreError`); Windows drive/UNC paths still embedded | ✅ DONE 2026-09-24 | `db/qdrant.py` |
+| 50 | `requires-python >=3.11,<3.13` (3.13+ breaks torch/onnxscript export); local-LLM HTTP split timeouts (connect/pool 10 s, read full budget) | ✅ DONE 2026-09-24 | `pyproject.toml`, `core/local_llm.py` |
+| 51 | `vm_stat` gets `timeout=5`; MongoDB final error names host + per-OS start command; `Settings.env_file` anchored (same files as `load_dotenv` from any CWD) | ✅ DONE 2026-09-24 | `core/hardware.py`, `db/mongodb.py`, `core/config.py` |
+| 52 | README gains llama.cpp install steps; `setup.sh` mlx note gated to Apple Silicon | ✅ DONE 2026-09-24 | `README.md`, `scripts/setup.sh` |
+| 53 | Verify: backend 422 passed | ✅ DONE 2026-09-24 | tests |
 
 ## 0.1 Manual testing status (2026-09-21)
 

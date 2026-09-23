@@ -173,6 +173,7 @@ ollama serve &
 ollama pull gemma3:1b        # lightweight default (or: ollama pull llama3)
 
 # llama.cpp (local GGUF models) — hardware-aware launcher
+brew install llama.cpp   # provides the `llama-server` binary used below
 ./scripts/start_local_llm.sh   # auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
 
 # MLX (Apple Silicon only, optional) — see [MLX on Mac](docs/PERFORMANCE-GUIDE.md#4-mlx-on-mac-apple-silicon-free-fastest-toks-per-watt)
@@ -218,6 +219,8 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama pull gemma3:1b        # or: ollama pull llama3
 
 # llama.cpp (local GGUF models) — hardware-aware launcher
+# Install the binary first: download a release from
+# https://github.com/ggerganov/llama.cpp/releases (needs `llama-server` on PATH)
 ./scripts/start_local_llm.sh   # auto-detects CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
 
 # Backend (terminal 1)

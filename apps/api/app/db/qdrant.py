@@ -28,20 +28,35 @@ async def get_qdrant_client() -> AsyncQdrantClient:
     if _client is None:
         settings = get_settings()
         logger.info("Initializing async Qdrant client", url=settings.qdrant_url)
+        # Embedded mode needs explicit markers. A typo'd URL (e.g.
+        # "localhost:6333" without a scheme) must fail loudly here — never be
+        # mkdir'd as a storage path.
+        raw_url = (settings.qdrant_url or "").strip()
+        is_server_url = raw_url.startswith(("http://", "https://"))
+        is_embedded = (
+            raw_url in ("local", ":memory:")
+            or raw_url.startswith(("./", "/"))
+            or raw_url.startswith("file://")
+            # Windows absolute paths (C:\..., C:/..., \\server\...) are storage
+            # paths, not URLs.
+            or (len(raw_url) > 2 and raw_url[1] == ":" and raw_url[0].isalpha())
+            or raw_url.startswith("\\\\")
+        )
+        if not raw_url or (not is_server_url and not is_embedded):
+            raise VectorStoreError(
+                "Invalid QDRANT_URL — use http(s)://host:port for server mode, "
+                "or 'local' / ':memory:' / a ./ or / path for embedded mode",
+                detail=f"got {raw_url!r}",
+            )
         try:
             # Support embedded local Qdrant directly via pip qdrant-client rust engine
-            if (
-                settings.qdrant_url in ("local", ":memory:")
-                or settings.qdrant_url.startswith("./")
-                or settings.qdrant_url.startswith("/")
-                or not settings.qdrant_url.startswith("http")
-            ):
-                if settings.qdrant_url == "local":
+            if is_embedded:
+                if raw_url == "local":
                     storage_path = API_ROOT / "data" / "qdrant"
-                elif settings.qdrant_url == ":memory:":
+                elif raw_url == ":memory:":
                     storage_path = ":memory:"
                 else:
-                    storage_path = Path(settings.qdrant_url)
+                    storage_path = Path(raw_url[7:] if raw_url.startswith("file://") else raw_url)
 
                 if isinstance(storage_path, Path):
                     storage_path.mkdir(parents=True, exist_ok=True)
@@ -49,11 +64,9 @@ async def get_qdrant_client() -> AsyncQdrantClient:
                 else:
                     _client = AsyncQdrantClient(location=str(storage_path))
             elif settings.qdrant_api_key:
-                _client = AsyncQdrantClient(
-                    url=settings.qdrant_url, api_key=settings.qdrant_api_key
-                )
+                _client = AsyncQdrantClient(url=raw_url, api_key=settings.qdrant_api_key)
             else:
-                _client = AsyncQdrantClient(url=settings.qdrant_url)
+                _client = AsyncQdrantClient(url=raw_url)
         except Exception as exc:
             raise VectorStoreError(
                 "Failed to initialize async Qdrant client", detail=str(exc)

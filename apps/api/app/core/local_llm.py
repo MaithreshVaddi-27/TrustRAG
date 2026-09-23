@@ -58,14 +58,16 @@ def _shared_http_client(base_url: str, timeout: float) -> httpx.AsyncClient:
     with _HTTP_CLIENTS_LOCK:
         client = _HTTP_CLIENTS.get(key)
         if client is None or client.is_closed:
-            # Connection pooling: keep-alive for local inference servers
+            # Connection pooling: keep-alive for local inference servers.
+            # Split timeouts: a hung connect/pool acquisition fails fast
+            # (10 s) while slow generations keep the full read budget.
             limits = httpx.Limits(
                 max_keepalive_connections=5,
                 max_connections=10,
                 keepalive_expiry=30.0,
             )
             client = httpx.AsyncClient(
-                timeout=timeout,
+                timeout=httpx.Timeout(timeout, connect=10.0, pool=10.0),
                 limits=limits,
                 follow_redirects=True,
             )

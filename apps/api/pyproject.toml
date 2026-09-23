@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "TRUSTRAG — AI Reliability Workbench backend"
 # readme intentionally omitted: README.md lives at the repo root,
 # not inside apps/api/ — hatchling would fail to find it in the Docker build context.
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 
 dependencies = [
     # ── Web framework ────────────────────────────────────────────────────────

@@ -338,6 +338,36 @@ def test_semantic_matrix_rebuilds_when_dirty():
         sc.reset_module_state()
 
 
+async def test_qdrant_rejects_schemeless_url_without_mkdir(tmp_path):
+    from unittest.mock import patch
+
+    import app.db.qdrant as qdrant_module
+    from app.core.exceptions import VectorStoreError
+
+    saved = qdrant_module._client
+    qdrant_module._client = None
+    bogus = tmp_path / "localhost:6333"
+    try:
+        settings = type("S", (), {"qdrant_url": "localhost:6333", "qdrant_api_key": ""})()
+        with patch.object(qdrant_module, "get_settings", return_value=settings):
+            with pytest.raises(VectorStoreError, match="Invalid QDRANT_URL"):
+                await qdrant_module.get_qdrant_client()
+        assert not bogus.exists()
+    finally:
+        qdrant_module._client = saved
+
+
+async def test_shared_http_client_splits_timeouts():
+    from app.core.local_llm import _shared_http_client, close_local_llm_clients
+
+    try:
+        client = _shared_http_client("http://127.0.0.1:9", 120.0)
+        assert float(client.timeout.connect) == 10.0
+        assert float(client.timeout.read) == 120.0
+    finally:
+        await close_local_llm_clients()
+
+
 def test_ports_registry_includes_mlx():
     import sys
     from pathlib import Path

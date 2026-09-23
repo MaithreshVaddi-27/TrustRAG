@@ -116,8 +116,20 @@ class Settings(BaseSettings):
     Model/AI configuration is read from models.yaml via model_config property.
     """
 
+    # pydantic-settings applies env files in order with LATER files winning,
+    # so list least-precedence first. Anchored entries last guarantee Settings
+    # reads the same files as the module-level load_dotenv() calls
+    # (repo-root .env, then apps/api/.env wins) no matter which directory
+    # uvicorn/pytest starts from. CWD-relative entries stay as fallback for
+    # exotic layouts. Missing files are skipped.
     model_config = SettingsConfigDict(
-        env_file=(".env", "../.env", "../../.env"),
+        env_file=(
+            "../../.env",
+            "../.env",
+            ".env",
+            str(_API_ROOT.parent.parent / ".env"),
+            str(_API_ROOT / ".env"),
+        ),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",

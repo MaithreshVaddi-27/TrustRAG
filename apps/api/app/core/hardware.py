@@ -150,7 +150,9 @@ def get_system_memory_info() -> dict[str, Any]:
     # macOS free memory calculation via vm_stat
     if sys.platform == "darwin":
         try:
-            vm = subprocess.check_output(["/usr/sbin/vm_stat"], stderr=subprocess.DEVNULL).decode()
+            vm = subprocess.check_output(
+                ["/usr/sbin/vm_stat"], stderr=subprocess.DEVNULL, timeout=5
+            ).decode()
             v_page_size = 4096
             free_pages = 0
             speculative_pages = 0

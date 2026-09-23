@@ -123,6 +123,9 @@ net start MongoDB
 | 18 | `pip install mlx-lm` fails on Intel Mac / Linux | MLX is Apple-Silicon-only | Skip MLX; use Ollama or llama.cpp |
 | 19 | First query slow (~minutes), then fast | Cold ONNX load + hardware probe + disk cache warmup (by design, non-blocking) | Wait for `Embedding model pre-warmed` in logs |
 | 20 | `Large diff` / OOM during export on 8 GB hosts | torch export + `/tmp` spikes on top of the ~8 GB note | Close browsers/IDEs, ensure ~4 GB free beyond the README figure |
+| 21 | `Invalid QDRANT_URL` at first KB op | URL without scheme (e.g. `localhost:6333`) — rejected instead of being mkdir'd | Use `http://localhost:6333`, `local`, `:memory:`, or a path |
+| 22 | `pip install -e .` fails on Python 3.13+ | `requires-python` now caps at `<3.13` (torch/onnxscript export incompatible) | Use Python 3.11 or 3.12 |
+| 23 | `mlx_lm.server not applicable here` from `setup.sh` | Host is not Apple Silicon (check is now platform-gated) | Expected — use Ollama or llama.cpp instead |
 
 ---
 

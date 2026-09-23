@@ -143,13 +143,23 @@ async def connect_db() -> None:
             await asyncio.sleep(backoff)
             backoff = min(backoff * 1.5, _CONNECT_MAX_BACKOFF_SECONDS)
 
+    from urllib.parse import urlsplit
+
+    try:
+        _uri = settings.mongodb_uri
+        _host_hint = urlsplit(_uri).hostname or _uri.split("@")[-1].split("/")[0][:60]
+    except Exception:
+        _host_hint = "unknown host"
     logger.error(
         "MongoDB connection failed after all retries",
         attempts=_CONNECT_MAX_ATTEMPTS,
         error=str(last_exc),
     )
     raise DatabaseError(
-        "Failed to connect to MongoDB after repeated retries",
+        f"Failed to connect to MongoDB at {_host_hint} after repeated retries. "
+        "Check MONGODB_URI and ensure mongod is running "
+        "(macOS: brew services start mongodb-community; "
+        "Linux: sudo systemctl enable --now mongod; Windows: net start MongoDB).",
         detail=str(last_exc),
     ) from last_exc
 
