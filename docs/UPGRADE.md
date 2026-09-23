@@ -17,6 +17,14 @@
 | 7 | Internal caps + MCP caps + service `jti` denylist + `nvidia-smi` returncode | ✅ DONE | `api/v1/internal.py`, `mcp/server.py`, `api/deps.py`, `core/hardware.py` |
 | 8 | ONNX embed chunk ≤32 + OCR dpi 300→200 | ✅ DONE | `core/onnx_embeddings.py`, `config/models.yaml` |
 | 9 | Verify: `ruff check app/ tests/` clean; backend 397 passed (incl. `test_indexing_pipeline_execution` — stale mock fixed with `delete_many` AsyncMock, see §6) | ✅ DONE | tests |
+| 10 | `mlx_base_url` from `ports.yaml` (was hardcoded) | ✅ DONE 2026-09-23 | `core/config.py:180-184` |
+| 11 | `internal_ingest_url` SSRF validation (parity with public from-url) | ✅ DONE 2026-09-23 | `api/v1/internal.py:151-180` |
+| 12 | CORS credentialed-wildcard: enumerate methods/headers | ✅ DONE 2026-09-23 | `main.py:419-430` |
+| 13 | Parser: chardet 100KB slice + PDF size/page caps + pixel-cap OCR + chunked AV scan | ✅ DONE 2026-09-23 | `ingestion/parser.py` |
+| 14 | Upload filename `[:255]` cap + allowlist doc drift (`api.github.com`) | ✅ DONE 2026-09-23 | `api/v1/knowledge_bases.py` |
+| 15 | Pipeline: pin-before-Mongo + remove duplicate pin blocks + effective-model dim stamp | ✅ DONE 2026-09-23 | `ingestion/pipeline.py` |
+| 16 | Mongo `create_index` batched ×5 (M0 throttle guard) | ✅ DONE 2026-09-23 | `db/mongodb.py` |
+| 17 | Verify: `ruff check apps/api/app/` clean; backend 397 passed | ✅ DONE 2026-09-23 | tests |
 
 ## 0.1 Manual testing status (2026-09-21)
 

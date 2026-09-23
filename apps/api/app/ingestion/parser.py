@@ -133,6 +133,22 @@ def extract_dates(text: str) -> tuple[datetime | None, datetime | None]:
     return eff_from, eff_until
 
 
+MAX_PDF_PAGES = 500
+MAX_RENDER_PIXELS = 25_000_000  # ~25MP cap per OCR render (RAM guard)
+
+_ENCODING_DETECT_SLICE = 100 * 1024
+
+
+def _detect_encoding(raw_bytes: bytes) -> str:
+    """Detect encoding from the first 100KB (not the full 20MB file)."""
+    if len(raw_bytes) > _ENCODING_DETECT_SLICE:
+        sample = raw_bytes[:_ENCODING_DETECT_SLICE]
+    else:
+        sample = raw_bytes
+    detected = chardet.detect(sample)
+    return detected.get("encoding") or "utf-8"
+
+
 def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
     """
     Parse a PDF file page-by-page.
@@ -152,7 +168,20 @@ def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
 
     cfg = get_model_config()
     try:
-        with fitz.open(stream=stream.read(), filetype="pdf") as doc:
+        raw = stream.read()
+        max_bytes = int(cfg.max_file_size_mb * 1024 * 1024)
+        if len(raw) > max_bytes:
+            size_mb = len(raw) / (1024 * 1024)
+            raise IngestionError(
+                "PDF exceeds size limit",
+                detail=f"PDF is {size_mb:.1f}MB, limit is {cfg.max_file_size_mb}MB",
+            )
+        with fitz.open(stream=raw, filetype="pdf") as doc:
+            if len(doc) > MAX_PDF_PAGES:
+                raise IngestionError(
+                    "PDF exceeds page limit",
+                    detail=f"PDF has {len(doc)} pages, limit is {MAX_PDF_PAGES}",
+                )
             pages = []
             for i, page in enumerate(doc):
                 native_text = page.get_text().strip()
@@ -162,6 +191,17 @@ def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
                 ):
                     try:
                         pix = page.get_pixmap(dpi=cfg.ocr_dpi)
+                        if pix.w * pix.h > MAX_RENDER_PIXELS:
+                            # Downscale render: huge pages (e.g. A0 at 300dpi)
+                            # would spike RAM. Halve DPI and re-render.
+                            pix = page.get_pixmap(dpi=max(72, cfg.ocr_dpi // 2))
+                            if pix.w * pix.h > MAX_RENDER_PIXELS:
+                                logger.warning(
+                                    "OCR render exceeds pixel cap; keeping native text",
+                                    page=i + 1,
+                                    pixels=pix.w * pix.h,
+                                )
+                                raise ValueError("OCR render exceeds pixel cap")
                         png_bytes = pix.tobytes("png")
                         ocr_result = ocr_module.ocr_image_bytes(
                             png_bytes,
@@ -235,8 +275,7 @@ def parse_csv(stream: BinaryIO) -> list[dict[str, Any]]:
     if not raw_bytes:
         return [{"page": 1, "text": ""}]
 
-    detected = chardet.detect(raw_bytes)
-    encoding = detected.get("encoding") or "utf-8"
+    encoding = _detect_encoding(raw_bytes)
 
     try:
         text_content = raw_bytes.decode(encoding, errors="replace")
@@ -270,8 +309,7 @@ def parse_json(stream: BinaryIO) -> list[dict[str, Any]]:
     if not raw_bytes:
         return [{"page": 1, "text": ""}]
 
-    detected = chardet.detect(raw_bytes)
-    encoding = detected.get("encoding") or "utf-8"
+    encoding = _detect_encoding(raw_bytes)
 
     try:
         text_content = raw_bytes.decode(encoding, errors="replace")
@@ -314,8 +352,7 @@ def parse_html(stream: BinaryIO) -> list[dict[str, Any]]:
     if not raw_bytes:
         return [{"page": 1, "text": ""}]
 
-    detected = chardet.detect(raw_bytes)
-    encoding = detected.get("encoding") or "utf-8"
+    encoding = _detect_encoding(raw_bytes)
 
     try:
         content = raw_bytes.decode(encoding, errors="replace")
@@ -336,8 +373,7 @@ def parse_txt_or_md(stream: BinaryIO) -> list[dict[str, Any]]:
     if not raw_bytes:
         return [{"page": 1, "text": ""}]
 
-    detected = chardet.detect(raw_bytes)
-    encoding = detected.get("encoding") or "utf-8"
+    encoding = _detect_encoding(raw_bytes)
 
     try:
         text = raw_bytes.decode(encoding, errors="replace")
@@ -358,12 +394,21 @@ def scan_for_malware(stream: BinaryIO) -> None:
     except Exception:
         pos = None
     try:
-        head = stream.read(8192)
-        if EICAR_TEST_STRING in head:
-            raise IngestionError(
-                "Malware detected (EICAR test signature)",
-                detail="Upload blocked by AV scan",
-            )
+        # Chunked full-stream scan (64KB windows with overlap for split
+        # signatures) up to 20MB — 8KB head-only missed appended payloads.
+        overlap = len(EICAR_TEST_STRING)
+        tail = b""
+        while True:
+            chunk = stream.read(65536)
+            if not chunk:
+                break
+            window = tail + chunk
+            if EICAR_TEST_STRING in window:
+                raise IngestionError(
+                    "Malware detected (EICAR test signature)",
+                    detail="Upload blocked by AV scan",
+                )
+            tail = window[-overlap:] if len(window) >= overlap else window
         # Optional: if pyclamd is available and clamd is running, scan there (fail-open)
         try:
             import pyclamd  # type: ignore

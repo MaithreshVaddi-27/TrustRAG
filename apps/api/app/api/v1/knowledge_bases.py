@@ -164,7 +164,8 @@ async def upload_document_endpoint(
     from pathlib import Path
 
     raw_filename = file.filename or "document.txt"
-    filename = Path(raw_filename).name.replace("\x00", "").strip() or "document.txt"
+    filename = Path(raw_filename[:255]).name.replace("\x00", "").strip() or "document.txt"
+    filename = filename[:255]
     ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
     if ext not in allowed_extensions:
         raise UnsupportedFormatError(
@@ -261,8 +262,9 @@ async def ingest_document_from_url_endpoint(
     Allowed content types: text/*, application/pdf, application/json,
     application/xml, text/csv, text/markdown
 
-    Default allowlist includes: wikipedia.org, arxiv.org, github.com,
-    python.org, mozilla.org, w3.org, ietf.org, rfc-editor.org
+    Default allowlist includes: wikipedia.org, arxiv.org, api.github.com,
+    raw.githubusercontent.com, python.org, mozilla.org, w3.org, ietf.org,
+    rfc-editor.org
     """
     cfg = get_model_config()
 
@@ -313,10 +315,11 @@ async def ingest_document_from_url_endpoint(
             # Guess from content type or default to .txt
             filename += ".txt"
 
-    # Clean filename
+    # Clean filename (255-char cap: filesystem + Mongo index guard)
     from pathlib import Path
 
-    filename = Path(filename).name.replace("\x00", "").strip() or "document.txt"
+    filename = Path(filename[:255]).name.replace("\x00", "").strip() or "document.txt"
+    filename = filename[:255]
     ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
     allowed_extensions = {
         ext if ext.startswith(".") else f".{ext}" for ext in cfg.supported_formats

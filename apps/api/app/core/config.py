@@ -178,7 +178,7 @@ class Settings(BaseSettings):
         description="Override llama.cpp model identifier from models.yaml via env",
     )
     mlx_base_url: str = Field(
-        default="http://127.0.0.1:8090/v1",
+        default=_DEFAULT_MLX_BASE_URL,
         validation_alias=AliasChoices("MLX_BASE_URL"),
         description="MLX server OpenAI-compatible base URL (Apple Silicon only)",
     )

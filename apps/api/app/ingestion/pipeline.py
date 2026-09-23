@@ -113,6 +113,35 @@ async def _index_parsed_chunks(
                         )
                 page_image_refs[pg] = ref
 
+        # Pin check BEFORE any writes: never mix embedding spaces in one
+        # collection (retriever would truncate/pad garbage). Fail loudly so the
+        # operator re-uploads into a NEW KB instead of corrupting this one.
+        # Runs before Mongo insert + Qdrant upsert so a mismatch leaves no
+        # orphan chunks behind.
+        cfg_early = get_model_config()
+        _effective_provider_early = embedding_provider or cfg_early.embedding_provider
+        _effective_model_early = embedding_model or cfg_early.embedding_model
+        _kb_coll_early = get_collection(Collections.KNOWLEDGE_BASES)
+        _existing_kb_early = await _kb_coll_early.find_one({"_id": ObjectId(kb_id_str)})
+        if _existing_kb_early and _existing_kb_early.get("embedding_model"):
+            if _existing_kb_early.get("embedding_model") != _effective_model_early:
+                raise RuntimeError(
+                    f"Embedding model mismatch: KB pinned to "
+                    f"{_existing_kb_early.get('embedding_model')} but current is "
+                    f"{_effective_model_early}. Re-upload into a NEW KB to migrate."
+                )
+        elif _existing_kb_early is not None and not _existing_kb_early.get("embedding_model"):
+            await _kb_coll_early.update_one(
+                {"_id": ObjectId(kb_id_str)},
+                {
+                    "$set": {
+                        "embedding_model": _effective_model_early,
+                        "embedding_provider": _effective_provider_early,
+                        "embedding_dim": cfg_early.embedding_dimensionality,
+                    }
+                },
+            )
+
         # Store chunks in MongoDB for future integrity audits
         # Dedup on retry/re-ingest: Qdrant upsert is idempotent (deterministic
         # point IDs) but Mongo insert_many is not — clear this doc's chunks first.
@@ -151,46 +180,10 @@ async def _index_parsed_chunks(
         cfg = get_model_config()
 
         # Determine embedding provider/model: request params > KB pin > config default
+        # (pin already enforced before Mongo writes above; this just resolves
+        # the effective model for embedding).
         effective_embedding_provider = embedding_provider or cfg.embedding_provider
         effective_embedding_model = embedding_model or cfg.embedding_model
-
-        # Pin check BEFORE embed+upsert: never mix embedding spaces in one
-        # collection (retriever would truncate/pad garbage). Fail loudly so the
-        # operator re-uploads into a NEW KB instead of corrupting this one.
-        _kb_coll = get_collection(Collections.KNOWLEDGE_BASES)
-        _existing_kb = await _kb_coll.find_one({"_id": ObjectId(kb_id_str)})
-        if _existing_kb and _existing_kb.get("embedding_model"):
-            if _existing_kb.get("embedding_model") != effective_embedding_model:
-                raise RuntimeError(
-                    f"Embedding model mismatch: KB pinned to "
-                    f"{_existing_kb.get('embedding_model')} but current is "
-                    f"{effective_embedding_model}. Re-upload into a NEW KB to migrate."
-                )
-        # Pin the embedding model/provider for this KB if not already set
-        elif not _existing_kb.get("embedding_model"):
-            await _kb_coll.update_one(
-                {"_id": ObjectId(kb_id_str)},
-                {
-                    "$set": {
-                        "embedding_model": effective_embedding_model,
-                        "embedding_provider": effective_embedding_provider,
-                        "embedding_dim": cfg.embedding_dimensionality,
-                    }
-                },
-            )
-
-        # Pin the embedding model/provider for this KB if not already set
-        elif not _existing_kb.get("embedding_model"):
-            await _kb_coll.update_one(
-                {"_id": ObjectId(kb_id_str)},
-                {
-                    "$set": {
-                        "embedding_model": effective_embedding_model,
-                        "embedding_provider": effective_embedding_provider,
-                        "embedding_dim": cfg.embedding_dimensionality,
-                    }
-                },
-            )
 
         embed_model = get_embedding_model(
             provider=effective_embedding_provider, model=effective_embedding_model
@@ -297,34 +290,20 @@ async def _index_parsed_chunks(
         await doc_coll.update_one({"_id": doc_id}, {"$set": {"ingestion_status": "completed"}})
         logger.info("Ingestion completed successfully", doc_id=doc_id_str, chunks=len(points))
 
-        # 6. Pin the embedding space on the KB record so future analyses can
-        # NEVER silently query these vectors with a different embedding model.
-        # (Cross-space queries return plausible-looking garbage → recovery spiral.)
-        # Pin-once: re-uploading one doc after a provider change must NOT
-        # silently re-pin while older vectors stay in the old space.
+        # 6. Record embedding dimensionality on the KB (pin itself was
+        # enforced before any writes above; this only stamps dim/pinned_at
+        # using the effective model, never re-pinning across spaces).
         if dense_vectors:
             kb_coll = get_collection(Collections.KNOWLEDGE_BASES)
-            existing_kb = await kb_coll.find_one({"_id": ObjectId(kb_id_str)})
-            if existing_kb and existing_kb.get("embedding_model"):
-                if existing_kb.get("embedding_model") != cfg.embedding_model:
-                    logger.warning(
-                        "Ingest uses a different embedding model than the KB pin; "
-                        "keeping the original pin — re-upload into a NEW KB to migrate",
-                        kb_pin=existing_kb.get("embedding_model"),
-                        current=cfg.embedding_model,
-                    )
-            else:
-                await kb_coll.update_one(
-                    {"_id": ObjectId(kb_id_str)},
-                    {
-                        "$set": {
-                            "embedding_model": cfg.embedding_model,
-                            "embedding_provider": cfg.embedding_provider,
-                            "embedding_dim": len(dense_vectors[0]),
-                            "embedding_pinned_at": datetime.now(UTC),
-                        }
-                    },
-                )
+            await kb_coll.update_one(
+                {"_id": ObjectId(kb_id_str)},
+                {
+                    "$set": {
+                        "embedding_dim": len(dense_vectors[0]),
+                        "embedding_pinned_at": datetime.now(UTC),
+                    }
+                },
+            )
 
     except Exception as exc:
         logger.error("Ingestion pipeline failed", doc_id=doc_id_str, error=str(exc))

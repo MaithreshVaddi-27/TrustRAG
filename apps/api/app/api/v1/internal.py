@@ -161,11 +161,23 @@ async def internal_ingest_url(
     """
     Trigger URL document ingestion from an internal service.
 
-    Requires ingest:write permission.
+    Requires ingest:write permission. Same SSRF validation as the public
+    from-url endpoint (allowlist + DNS pinning + per-hop checks).
     """
+    from fastapi import HTTPException
+    from fastapi import status as _status
+
+    from app.services.search_service import validate_ingestion_url
+
     service_name = current_service.get("sub")
 
-    # This would call the URL ingestion logic
+    is_valid, error = validate_ingestion_url(url_data.url, None)
+    if not is_valid:
+        raise HTTPException(
+            status_code=_status.HTTP_400_BAD_REQUEST,
+            detail=f"URL validation failed: {error}",
+        )
+
     return {
         "status": "queued",
         "url": url_data.url,

@@ -415,10 +415,16 @@ async def create_indexes() -> None:
         )
     )
 
-    # Execute all index creations in parallel. Failures are logged, never
+    # Execute index creations in small sequential batches (not all-parallel).
+    # 30 parallel create_index calls throttle M0 free-tier; batches of 5 keep
+    # startup fast without hammering the cluster. Failures are logged, never
     # silent — a failed unique index (e.g. duplicate legacy rows) would
     # otherwise leave the DB under-indexed with a success message.
-    results = await asyncio.gather(*index_tasks, return_exceptions=True)
+    results: list = []
+    for _i in range(0, len(index_tasks), 5):
+        batch = index_tasks[_i : _i + 5]
+        batch_results = await asyncio.gather(*batch, return_exceptions=True)
+        results.extend(batch_results)
     failures = [r for r in results if isinstance(r, Exception)]
     if failures:
         logger.warning(

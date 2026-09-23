@@ -419,8 +419,14 @@ def create_app() -> FastAPI:
     cors_kwargs = {
         "allow_origins": settings.cors_origins_list,
         "allow_credentials": True,
-        "allow_methods": ["*"],
-        "allow_headers": ["*"],
+        "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        "allow_headers": [
+            "Authorization",
+            "Content-Type",
+            "Accept",
+            "X-Request-ID",
+            "X-Requested-With",
+        ],
         "expose_headers": ["X-Request-ID", "Content-Type", "Content-Disposition"],
     }
     if not settings.is_production():
