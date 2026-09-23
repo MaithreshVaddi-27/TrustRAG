@@ -52,6 +52,7 @@
 | 42 | `apply_ports.py` syncs MLX `:8090` (`models.yaml` + `.env`); `--check` green | ✅ DONE 2026-09-23 | `scripts/apply_ports.py`, `config/ports.yaml` |
 | 43 | Doc drift: CONTRIBUTING model-yaml path + `local-models` extra; README brew tap, deadsnakes/noble notes, no-systemd MongoDB fallback | ✅ DONE 2026-09-23 | `CONTRIBUTING.md`, `README.md` |
 | 44 | New `docs/ONBOARDING-TROUBLESHOOTING.md` (per-OS guide + 20-row failure table); backend 415 passed | ✅ DONE 2026-09-23 | `docs/`, tests |
+| 45 | MCP cross-tenant guard: `trustrag_search` enforces `bound_kb_id`/`bound_user_id` (ownership via `get_kb`, existence-oracle-safe); `trustrag_list_kbs` scoped to bound user; §2/§3 checkboxes + config version synced to reality | ✅ DONE 2026-09-24 | `mcp/server.py`, `docs/UPGRADE.md` |
 
 ## 0.1 Manual testing status (2026-09-21)
 
@@ -72,10 +73,10 @@
 **Known issues to investigate:**
 1. qwen3:1.7b hallucinates unrelated claims (Apple, NLI models) — may need temperature=0 or different prompt
 2. LFM2.5-1.2B verification fixates on SHA-256, misses NLI verification context — may need max_tokens cap increase
-3. Recovery loop slow on llama_cpp (~180s) — consider provider-specific caps (§1.2.5)
-4. `test_ingestion` mock stale — needs rewrite with `delete_many` + pin-check expectation
+3. Recovery loop slow on llama_cpp (~180s) — partially mitigated (status #18: per-call timeouts + no fallback on recovery attempts); provider-specific caps (§1.2.5 tier caps) land via `tier_caps()`
+4. [✅ DONE] `test_ingestion` mock — rewritten with `delete_many` + pin-check expectation (`update_one.call_count == 4`)
 
-Config version: `models.yaml` v1.19. Resolution: `models.yaml` → `ports.yaml` → `.env` (env wins).
+Config version: `models.yaml` v1.21. Resolution: `models.yaml` → `ports.yaml` → `.env` (env wins).
 
 ---
 
@@ -118,7 +119,7 @@ Why: local 1.2B is 20–60 s/call and abstains/NEUTRALs often on multi-hop; 3B i
 ## 2. Existing bugs & errors (fix before tuning)
 
 ### P0 — data corruption / silent wrong answers
-- [ ] **Reranker early-exit poisons cache with fake 0.0** — `app/retrieval/reranker.py:233-243`: unscored tail padded `0.0` then ALL written to `_RerankerCache`. Future identical query-doc pairs return 0.0 unscored. Fix: only cache `uncached_indices[:processed]`.
+- [✅ DONE — status #2] **Reranker early-exit poisons cache with fake 0.0** — `app/retrieval/reranker.py:259-269`: only scored items cached, padded tail never written. Verified holding 2026-09-24.
 - [✅ DONE] **Cloud yaml dead** — `app/core/config.py:363-367,527-531` was fixed; cloud model IDs now correctly read from `models.yaml` (verified: `llm_model_for('nvidia')` returns `openai/gpt-oss-20b` from yaml).
 - [✅ DONE] **Qdrant fail-open on unreadable config** — `app/db/qdrant.py:80-130` now raises `VectorStoreError` with actionable message; test updated to expect fail-closed.
 - [✅ DONE] **`init_kb_collection` deletes all vectors on upgrade** — `app/db/qdrant.py:110-118` auto `delete_collection` + recreate empty. Fix: raise `VectorStoreError("requires re-index")` behind `ALLOW_QDRANT_RECREATE=1`, never in request path.
@@ -131,28 +132,28 @@ Why: local 1.2B is 20–60 s/call and abstains/NEUTRALs often on multi-hop; 3B i
 ### P1 — performance / correctness
 - [✅ DONE] **Async singletons leak / break on reload** — LLM clients now implement `aclose()` and are awaited on eviction/shutdown via async `close_all_llm_instances(seal=True)`. ✅ DONE 2026-09-22: LLM registry now properly awaits `aclose()` on eviction/shutdown.
 
-- [ ] **ONNX reranker ignores `batch_size`, single-threaded** — `app/core/onnx_reranker.py:59,88-116` tokenizes+infers all pairs at once; 20 candidates × fan-out 3 = seconds on CPU. Fix: loop `range(0,len(pairs),batch_size or 16)`; threads `os.cpu_count()` instead of default 1.
-- [ ] **Sparse leg embeds filename/zone prefix** — `app/ingestion/pipeline.py:150-152,197`: `[file | ZONE]` prefix is right for dense, wrong for BM25 (filename dominates). Fix: `generate_sparse_vector(chunk["text"])`.
-- [ ] **Verifier worst-case ~20 serial local calls vs 180 s node timeout** — `app/verification/verifier.py:1062-1174`, `app/agent/graph.py:767-782`: fused+decompose+batch×2+8 individual+3×(retrieval+NLI) on 1.2B exceeds `max_verification_time_seconds`. `wait_for` cancels mid-persist → recovery repeats. Fix: per-call (not whole-node) timeouts; §1.2.5 caps.
-- [ ] **Adaptive thresholds in wrong units, never fire** — `app/retrieval/reranker.py:130,255` `dense>=0.78` (BGE cosine rarely that high), `rerank>=0.80` (cross-encoder logits unbounded, not 0-1); only RRF `>=0.02` (`retriever.py:490`) is live. Fix: unify on RRF units or `sigmoid()>=0.8`.
-- [ ] **`torch.set_num_threads(1)` is process-global** — `app/core/model_registry.py:757-760` throttles every torch consumer. Fix: delete; use `OMP_NUM_THREADS` env before import (ONNX path needs no torch).
-- [ ] **Query-vector cache no invalidation** — `app/retrieval/retriever.py:118-130` + `graph.py:1361-1369`: 1024-LRU no TTL, un-normalized key duplicates work, no dim check on hit. Fix: one normalized key fn; store `(dim,vec)`, invalidate on mismatch.
-- [ ] **ONNX embeddings no internal batching** — `app/core/onnx_embeddings.py:83-108`: 128-vector self-heal batch tokenized at once → RAM spike. Fix: chunk ≤32.
-- [ ] Minor: `hardware.py:55-70` ignores `nvidia-smi` returncode (adds `-ngl` on broken drivers — check `returncode==0`); `config.py:156` `mlx_base_url` hardcoded, ignores `ports.yaml`; `onnx_reranker.py:78-82` `local_files_only=False` breaks `HF_HUB_OFFLINE=1` (`main.py:113-115`); `mongodb.py:407` 30 parallel `create_index` can throttle M0 free tier (unique hash index may be missing → dup docs).
+- [✅ DONE — status #2] **ONNX reranker ignores `batch_size`, single-threaded** — `app/core/onnx_reranker.py:115-119` loops `range(0,len(pairs),effective_batch)`; threads from `OMP_NUM_THREADS`/`cpu_count` (`:59`). Verified holding 2026-09-24.
+- [✅ DONE — status #4] **Sparse leg embeds filename/zone prefix** — `app/ingestion/pipeline.py:239` uses raw `chunk["text"]` for sparse. Verified holding 2026-09-24.
+- [✅ DONE — status #18] **Verifier worst-case ~20 serial local calls vs 180 s node timeout** — per-call 90 s timeouts on all 7 NLI sites + fallback skipped on recovery attempts. Verified holding 2026-09-24.
+- [✅ DONE — status #20] **Adaptive thresholds in wrong units, never fire** — `_is_high_confidence()` (`reranker.py:107`) prefers RRF `>=0.02`, legacy thresholds only for non-fused rows. Verified holding 2026-09-24.
+- [✅ DONE] **`torch.set_num_threads(1)` is process-global** — removed; no occurrence left in `app/`. Verified 2026-09-24 via grep.
+- [✅ DONE — status #19] **Query-vector cache no invalidation** — dim resolved first, stale-dim hits re-embedded (`retriever.py:122-154`). Verified holding 2026-09-24.
+- [✅ DONE — status #8] **ONNX embeddings no internal batching** — `_encode_batch` chunks ≤32. Verified holding 2026-09-24.
+- [✅ DONE — status #7/#10/#2/#16] Minor: `nvidia-smi` returncode checked; `mlx_base_url` from `ports.yaml`; reranker tokenizer honors `HF_HUB_OFFLINE`; `create_index` batched ×5.
 
 ---
 
 ## 3. Security fixes (senior security engineer)
 
-- [ ] **MCP server: zero auth** — `app/mcp/server.py:172-284,287-325`: any local process reads any KB, drives LLM with arbitrary `model`+`prompt` (SSRF/cost), enumerates KBs. Fix: service-token/socket-peer gate on `run_stdio_mcp_server`; require `user_id` + `get_kb(kb_id,user_id)` ownership check; allowlist model IDs; cap prompt length; rate-limit web tools. Clamp already at `:203` — extend to web tools `:182,187`.
-- [ ] **Internal routes lack public-route guards** — `app/api/v1/internal.py:151-238`: `internal_ingest_url` has NO `validate_ingestion_url`/DNS/IP-pinning (public `from-url` in `knowledge_bases.py:265,273` does); `internal_search` `top_k` unbounded; `internal_verify_claims` unbounded lists → LLM cost DoS; no rate limits. Fix: reuse `validate_ingestion_url`+pinned fetch; `top_k=max(1,min(int(top_k),50))`; `claims[:20]`, evidence `t[:4000]`; add `@limiter.limit`.
-- [ ] **Login lockout per-process + unbounded dict** — `app/services/auth_service.py:69-88` bypassed by multi-worker, memory-DoS-able. Fix: Mongo TTL collection (`failed_logins`, `expireAfterSeconds=login_lockout_seconds`) or `TTLCache(maxsize=10_000)`.
-- [ ] **Rate limiter per-process memory** — `app/core/rate_limiter.py:67`, `app/main.py:388-390` (SlowAPI in-memory; bypassed multi-replica; internal/MCP surfaces unlimited). Fix: Redis `storage_uri` in prod or pin single replica; add limits to internal routes; assert `Retry-After`.
-- [ ] **Service tokens unrevocable** — `app/api/deps.py:63-97` vs `:37` (user `jti` denylist-checked, service not; 24h TTL in `security.py:32`). Fix: denylist-check service `jti` too or shorten TTL + rotation; validate `permissions: list[str]`.
-- [ ] **Ingestion AV/decompression fail-open** — `app/ingestion/parser.py:63-108,155-164,354-389`: 8KB EICAR-only scan, 16B magic check, `parse_pdf` full `stream.read()` + uncapped `get_pixmap(dpi=300)`. Fix: chunked full-stream scan or size cap pre-scan; `max_pages` + max render pixels; try/size-guard OCR render.
-- [ ] **Upload CPU/RAM** — `app/api/v1/knowledge_bases.py:164,311`, `parser.py:238,273,317,339`: no filename length cap; `chardet` on full 20MB ×4. Fix: `filename[:255]`; detect on first 100KB.
-- [ ] **CORS credentialed-wildcard** — `app/main.py:395-406` `allow_credentials + ["*"]` methods/headers; dev regex allows takeover-prone `*.vercel/netlify/pages`. Fix: enumerate methods/headers; restrict regex.
-- [ ] Doc drift: `knowledge_bases.py:256-257` claims `github.com` allowed but `DEFAULT_URL_ALLOWLIST` (`search_service.py:52-63`) has only `api.github.com`/`raw.githubusercontent`. Align.
+- [✅ DONE — status #29/#30, plus tenant checks 2026-09-24] **MCP server: zero auth** — service token required on every tool; `local_llm_chat` local-providers-only + prompt capped; web tools clamped; `trustrag_search` enforces `bound_kb_id`/`bound_user_id` (via `get_kb` ownership); `trustrag_list_kbs` scoped to bound user. Internal `_internal` path is in-process only (stdio never sets it).
+- [✅ DONE — status #11/#21] **Internal routes lack public-route guards** — `internal_ingest_url` validates via `validate_ingestion_url`; `top_k` clamped 1–50; `claims[:20]` + evidence `t[:4000]`; all four routes `@limiter.limit("60/minute")`.
+- [✅ DONE — earlier session] **Login lockout per-process + unbounded dict** — Mongo TTL `failed_logins` collection.
+- [✅ DONE — earlier session] **Rate limiter per-process memory** — Redis `storage_uri` support; trusted-proxy XFF; internal routes limited.
+- [✅ DONE — earlier session] **Service tokens unrevocable** — service `jti` denylist-checked; `permissions: list[str]` validated.
+- [✅ DONE — status #13] **Ingestion AV/decompression fail-open** — chunked full-stream EICAR scan; PDF size + 500-page + 25MP pixel caps; magic-byte + zip-bomb checks.
+- [✅ DONE — status #13/#14] **Upload CPU/RAM** — `filename[:255]`; chardet on first 100KB.
+- [✅ DONE — status #12] **CORS credentialed-wildcard** — methods/headers enumerated; dev-only preview regex.
+- [✅ DONE — status #14] Doc drift: allowlist docs say `api.github.com` + `raw.githubusercontent.com`.
 - Verified good (don't regress): bcrypt 72B (`security.py:28-50`), service↔user confusion blocked (`security.py:126,202`), XFF only trusted proxies (`rate_limiter.py:20-64`), page-image traversal-safe (`page_images.py:31,61-74` + `documents.py:38,81`), URL fetch per-hop allowlist+DNS+pin (`search_service.py:392-475`).
 
 ---

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+from typing import Any
 
 import pytest
 from fastapi import HTTPException
@@ -171,6 +172,106 @@ def test_llm_registry_put_is_sync_and_bounded():
         assert _llm_registry_key("test-prov", "test-model") in _LLM_REGISTRY
     finally:
         _LLM_REGISTRY.pop(_llm_registry_key("test-prov", "test-model"), None)
+
+
+async def test_mcp_search_rejects_wrong_bound_kb():
+    from app.core.exceptions import AuthenticationError
+    from app.core.security import create_service_token
+    from app.mcp.server import handle_tool_call
+
+    token = create_service_token(
+        "scoped-service",
+        permissions=["search:read"],
+        bound_kb_id="64ee39d09c6292376e191981",
+    )
+    with pytest.raises(AuthenticationError, match="not authorized"):
+        await handle_tool_call(
+            "trustrag_search",
+            {
+                "kb_id": "64ee39d09c6292376e191982",
+                "query": "q",
+                "service_token": token,
+            },
+        )
+
+
+async def test_mcp_search_rejects_foreign_bound_user():
+    from unittest.mock import AsyncMock, patch
+
+    from app.core.exceptions import AuthenticationError, AuthorizationError
+    from app.core.security import create_service_token
+    from app.mcp.server import handle_tool_call
+
+    token = create_service_token(
+        "scoped-service",
+        permissions=["search:read"],
+        bound_user_id="64ee39d09c6292376e191981",
+    )
+    with patch(
+        "app.services.kb_service.get_kb",
+        AsyncMock(side_effect=AuthorizationError("Access denied")),
+    ):
+        with pytest.raises(AuthenticationError, match="not authorized"):
+            await handle_tool_call(
+                "trustrag_search",
+                {
+                    "kb_id": "64ee39d09c6292376e191981",
+                    "query": "q",
+                    "service_token": token,
+                },
+            )
+
+
+async def test_mcp_search_unbound_token_proceeds():
+    from unittest.mock import AsyncMock, patch
+
+    from app.core.security import create_service_token
+    from app.mcp.server import handle_tool_call
+
+    token = create_service_token("svc", permissions=["search:read"])
+    with patch(
+        "app.mcp.server.retrieve_hybrid_chunks",
+        AsyncMock(return_value=[{"chunk_id": "c1", "text": "t", "rrf_score": 0.03}]),
+    ):
+        res = await handle_tool_call(
+            "trustrag_search",
+            {"kb_id": "64ee39d09c6292376e191981", "query": "q", "service_token": token},
+        )
+        assert res["content"][0]["text"].find("c1") != -1
+
+
+async def test_mcp_list_kbs_scoped_to_bound_user():
+    from unittest.mock import patch
+
+    from app.core.security import create_service_token
+    from app.mcp.server import handle_tool_call
+
+    token = create_service_token(
+        "scoped-service",
+        bound_user_id="64ee39d09c6292376e191981",
+    )
+    seen: dict[str, Any] = {}
+
+    class _Cursor:
+        def __init__(self, docs):
+            self._docs = docs
+
+        def __aiter__(self):
+            async def _gen():
+                for d in self._docs:
+                    yield d
+
+            return _gen()
+
+    class _Coll:
+        def find(self, filt, proj):
+            seen["filter"] = filt
+            return _Cursor([])
+
+    with patch("app.mcp.server.get_collection", return_value=_Coll()):
+        res = await handle_tool_call("trustrag_list_kbs", {"service_token": token})
+        assert res["content"] is not None
+    assert "user_id" in seen["filter"]
 
 
 def test_onnx_model_status_keys():
