@@ -141,6 +141,32 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         verification_model=cfg.verification_model,
     )
 
+    # Fail loudly on a missing ONNX bake: without embedding weights every
+    # query 500s, and without reranker weights reranking silently degrades to
+    # RRF order. Both are deploy-time problems (run scripts/bootstrap.py and
+    # bake .model_cache into the image) — never per-request surprises.
+    from app.core.model_registry import onnx_model_status
+
+    onnx_status = onnx_model_status()
+    if cfg.embedding_provider == "onnx" and not onnx_status["embedding_onnx_present"]:
+        logger.error(
+            "ONNX embedding weights missing — every query will fail. "
+            "Run 'python scripts/bootstrap.py' (or "
+            "'python scripts/ensure_onnx_models.py') then bake "
+            "apps/api/.model_cache into the image",
+            path=onnx_status["embedding_onnx_path"],
+        )
+    if (
+        cfg.reranker_enabled
+        and cfg.reranker_use_onnx
+        and not onnx_status["reranker_onnx_present"]
+    ):
+        logger.warning(
+            "ONNX reranker weights missing — reranking degrades to RRF order. "
+            "Run 'python scripts/ensure_onnx_models.py' to enable it",
+            path=onnx_status["reranker_onnx_path"],
+        )
+
     # The model registry owns one cached embedding instance. A separate startup
     # manager used to load a second copy that no serving path consumed.
     await connect_db()

@@ -33,6 +33,14 @@
 | 23 | Cache TTLs/VACUUM already present (disk 30d + VACUUM≥100, semantic 24h/500/20k chars) — no change | ✅ VERIFIED 2026-09-23 | `core/disk_cache.py`, `core/semantic_cache.py` |
 | 24 | conftest resets settings/model caches + query cache; 9 regression tests | ✅ DONE 2026-09-23 | `tests/conftest.py`, `tests/test_upgrade_phases.py` |
 | 25 | Verify: `ruff` clean; backend 406 passed (397 + 9 new) | ✅ DONE 2026-09-23 | tests |
+| 26 | Embedding ONNX path derived from model id (was hardcoded `bge-small-en-v1.5.onnx`); shared resolvers + `onnx_model_status()` startup check (missing bake = ERROR log, reranker miss = RRF warning) | ✅ DONE 2026-09-23 | `core/model_registry.py`, `main.py` |
+| 27 | Pipeline honors KB pin as default (request > pin > config); from-url re-ingest into pinned KBs no longer spurious-fails | ✅ DONE 2026-09-23 | `ingestion/pipeline.py` |
+| 28 | LLM registry `put` is sync again (was un-awaited coroutine: unbounded growth, no eviction); evicted/shutdown closes via loop task or shutdown drain; `clear_model_caches` sync-safe | ✅ DONE 2026-09-23 | `core/model_registry.py` |
+| 29 | MCP `local_llm_chat` restricted to local providers (no cloud spend via service token) | ✅ DONE 2026-09-23 | `mcp/server.py` |
+| 30 | Internal MCP dispatcher uses `_internal` path (pipeline web-grounding was failing service-token auth silently) | ✅ DONE 2026-09-23 | `mcp/server.py`, `mcp/client.py` |
+| 31 | Web-search chunks appended to generation context (≤3, `[WEB CITATION]`-labeled, `EXTERNAL_UNAUDITED`, evidence-aligned); previously paid Tavily cost for zero answer impact | ✅ DONE 2026-09-23 | `agent/graph.py` |
+| 32 | Frontend `npm run lint` clean; `npm test` 22 passed; backend 411 passed | ✅ DONE 2026-09-23 | `apps/web`, tests |
+| 33 | k6 smoke requires live backend + seeded auth (manual: `k6 run load-test/smoke.js`) | ⏳ MANUAL | `load-test/smoke.js` |
 
 ## 0.1 Manual testing status (2026-09-21)
 

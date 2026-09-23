@@ -61,6 +61,53 @@ def _suppress_nvidia_unknown_type_warning(model: str):
         yield
 
 
+def _resolve_embedding_onnx_path(cache_dir: Path, active_model: str) -> Path | None:
+    """Resolve the ONNX embedding weights for a model id (canonical + legacy).
+
+    Canonical: ``<base>.onnx`` (e.g. ``bge-small-en-v1.5.onnx``); legacy
+    accepts the underscored variant (``bge-small-en-v1_5.onnx``). Returns None
+    when neither exists so callers fail with one actionable message.
+    """
+    base = active_model.split("/")[-1]
+    for candidate in (cache_dir / f"{base}.onnx", cache_dir / f"{base.replace('.', '_')}.onnx"):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _resolve_reranker_onnx_path(cache_dir: Path, reranker_model: str) -> Path:
+    """Canonical reranker ONNX path (mirrors get_reranker auto-generation)."""
+    base = reranker_model.split("/")[-1].replace(".", "_")
+    return cache_dir / f"reranker-{base}_int8.onnx"
+
+
+def onnx_model_status() -> dict[str, Any]:
+    """Report presence of the ONNX weight files required by the configuration.
+
+    Startup calls this so a missing bake fails loudly in logs (with the exact
+    bootstrap command) instead of surfacing as per-query ConfigurationError
+    or silent RRF-only reranking.
+    """
+    cfg: ModelConfig = get_model_config()
+    api_base = Path(__file__).parent.parent.parent
+    cache_dir = (api_base / cfg.embedding_cache_dir).resolve()
+    emb = _resolve_embedding_onnx_path(cache_dir, cfg.embedding_model)
+    rnk_path = (
+        Path(cfg.reranker_onnx_model_path)
+        if cfg.reranker_onnx_model_path
+        else _resolve_reranker_onnx_path(cache_dir, cfg.reranker_model)
+    )
+    return {
+        "embedding_provider": cfg.embedding_provider,
+        "embedding_onnx_present": emb is not None,
+        "embedding_onnx_path": str(emb) if emb else str(cache_dir),
+        "reranker_enabled": cfg.reranker_enabled,
+        "reranker_use_onnx": cfg.reranker_use_onnx,
+        "reranker_onnx_present": rnk_path.exists(),
+        "reranker_onnx_path": str(rnk_path),
+    }
+
+
 # ─── Bounded LLM Registry (replaces lru_cache on get_llm/get_verification_model) ────
 # Limits concurrent model instances to prevent RAM/GPU leak from user-controlled keys.
 # Phase 2.2: Aggressive eviction - configurable max instances based on RAM
@@ -233,27 +280,54 @@ def get_llm_instance(provider: str, model: str | None) -> BaseChatModel | None:
     return None
 
 
-async def put_llm_instance(provider: str, model: str | None, llm: BaseChatModel) -> None:
-    """Put LLM instance into bounded registry with LRU eviction."""
+# Instances evicted while no event loop is running (sync call sites, worker
+# threads) wait here until close_all_llm_instances() drains them at shutdown.
+_PENDING_CLOSE: list[BaseChatModel] = []
+
+
+def _schedule_close(llm: BaseChatModel) -> None:
+    """Best-effort async close: direct task when a loop runs, else deferred."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop is not None and not loop.is_closed():
+        loop.create_task(_close_llm_instance(llm))
+    else:
+        with _LLM_REGISTRY_LOCK:
+            _PENDING_CLOSE.append(llm)
+
+
+def put_llm_instance(provider: str, model: str | None, llm: BaseChatModel) -> None:
+    """Put LLM instance into bounded registry with LRU eviction (sync).
+
+    Sync by design: get_llm/get_verification_model are sync factories called
+    from both async and sync code. Evicted instances close via the running
+    loop when there is one, otherwise wait in _PENDING_CLOSE for shutdown.
+    """
     global _LLM_REGISTRY_CLOSED
     if _LLM_REGISTRY_CLOSED:
         # If registry is closed, close the new instance immediately
-        await _close_llm_instance(llm)
+        _schedule_close(llm)
         return
 
     key = _llm_registry_key(provider, model)
     max_instances = get_max_llm_instances()
+    evicted: tuple[str, BaseChatModel] | None = None
     with _LLM_REGISTRY_LOCK:
         # Evict LRU if at capacity
         if len(_LLM_REGISTRY) >= max_instances and key not in _LLM_REGISTRY:
-            evicted_key, evicted_llm = _LLM_REGISTRY.popitem(last=False)
-            await _close_llm_instance(evicted_llm)
-            logger.debug(
-                "Evicted LLM from registry", evicted=evicted_key, max_instances=max_instances
-            )
+            evicted = _LLM_REGISTRY.popitem(last=False)
 
         _LLM_REGISTRY[key] = llm
         _LLM_REGISTRY.move_to_end(key)
+
+    if evicted is not None:
+        evicted_key, evicted_llm = evicted
+        logger.debug(
+            "Evicted LLM from registry", evicted=evicted_key, max_instances=max_instances
+        )
+        _schedule_close(evicted_llm)
 
 
 async def close_all_llm_instances(seal: bool = False) -> None:
@@ -266,13 +340,38 @@ async def close_all_llm_instances(seal: bool = False) -> None:
     global _LLM_REGISTRY_CLOSED
     with _LLM_REGISTRY_LOCK:
         _LLM_REGISTRY_CLOSED = seal
-        for llm in _LLM_REGISTRY.values():
-            await _close_llm_instance(llm)
+        pending = list(_LLM_REGISTRY.values()) + list(_PENDING_CLOSE)
         _LLM_REGISTRY.clear()
-        if seal:
-            logger.info("Closed all LLM instances and sealed registry")
+        _PENDING_CLOSE.clear()
+    for llm in pending:
+        await _close_llm_instance(llm)
+    if seal:
+        logger.info("Closed all LLM instances and sealed registry")
+    else:
+        logger.info("Closed all LLM instances (registry reopened)")
+
+
+def _clear_llm_registry_sync() -> None:
+    """Sync registry drain for sync call sites (clear_model_caches, tests).
+
+    Instances move to _PENDING_CLOSE and close via the running loop when
+    there is one; anything left is drained by close_all_llm_instances().
+    """
+    with _LLM_REGISTRY_LOCK:
+        pending = list(_LLM_REGISTRY.values())
+        _LLM_REGISTRY.clear()
+        _PENDING_CLOSE.extend(pending)
+    for llm in pending:
+        # Sync close when the client offers one; async-only clients wait for
+        # the loop task / shutdown drain.
+        close_fn = getattr(llm, "close", None)
+        if callable(close_fn):
+            try:
+                close_fn()
+            except Exception as exc:
+                logger.debug("Error closing LLM instance", error=str(exc))
         else:
-            logger.info("Closed all LLM instances (registry reopened)")
+            _schedule_close(llm)
 
 
 # ─── LLM ─────────────────────────────────────────────────────────────────────
@@ -743,10 +842,12 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
         # would split the cache in two. Always anchor to api_base.)
         api_base = Path(__file__).parent.parent.parent
         cache_dir = (api_base / cfg.embedding_cache_dir).resolve()
-        onnx_model_path = cache_dir / "bge-small-en-v1.5.onnx"
-        if not onnx_model_path.exists():
+        onnx_model_path = _resolve_embedding_onnx_path(cache_dir, active_model)
+        if onnx_model_path is None:
             raise ConfigurationError(
-                f"ONNX model not found at {onnx_model_path}. "
+                f"ONNX embedding model not found in {cache_dir} "
+                f"(looked for '{active_model.split('/')[-1]}.onnx' and legacy "
+                "underscored variant). "
                 "Run 'python scripts/bootstrap.py' (or "
                 "'python scripts/ensure_onnx_models.py') to download/export it.",
             )
@@ -912,8 +1013,7 @@ def get_reranker():  # type: ignore[return]
             if not onnx_path:
                 api_base = Path(__file__).parent.parent.parent
                 cache_dir = (api_base / cfg.embedding_cache_dir).resolve()
-                base = cfg.reranker_model.split("/")[-1].replace(".", "_")
-                onnx_path = cache_dir / f"reranker-{base}_int8.onnx"
+                onnx_path = _resolve_reranker_onnx_path(cache_dir, cfg.reranker_model)
 
             # If ONNX model doesn't exist, we'll fall back to PyTorch
             if not Path(onnx_path).exists():
@@ -1012,5 +1112,5 @@ def clear_model_caches() -> None:
     get_embedding_model.cache_clear()
     get_reranker.cache_clear()
     # Clear the bounded LLM registry (reopened unless sealed at shutdown)
-    close_all_llm_instances()
+    _clear_llm_registry_sync()
     logger.info("Cleared all model registry caches")

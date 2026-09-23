@@ -169,8 +169,17 @@ MCP_TOOLS: list[dict[str, Any]] = [
 ]
 
 
-async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    """Execute an MCP tool call and return structured tool content."""
+async def handle_tool_call(
+    tool_name: str, arguments: dict[str, Any], *, _internal: bool = False
+) -> dict[str, Any]:
+    """Execute an MCP tool call and return structured tool content.
+
+    Args:
+        _internal: In-process pipeline calls (graph.py web grounding) run
+            inside the already-authenticated API process — no bearer token.
+            External stdio clients must supply service_token. Never exposed
+            over stdio: run_stdio_mcp_server() does not accept this flag.
+    """
     from app.core.exceptions import AuthenticationError
     from app.core.security import decode_service_token
     from app.services.search_service import duckduckgo_search, execute_web_search, tavily_search
@@ -183,6 +192,8 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
 
     def _require_service_token(arguments: dict[str, Any]) -> str:
         """Extract and validate service token from arguments."""
+        if _internal:
+            return "internal-pipeline"
         token = arguments.get("service_token")
         if not token:
             raise AuthenticationError(
@@ -280,9 +291,17 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
 
     elif tool_name == "local_llm_chat":
         _require_service_token(arguments)
+        from app.core.local_llm import LOCAL_LLM_PROVIDERS
         from app.core.model_registry import get_llm
 
-        provider = arguments.get("provider", "ollama")
+        # Local-only tool: never route a service-token call to metered cloud
+        # providers (a leaked token must not become a spend vector).
+        provider = str(arguments.get("provider", "ollama") or "ollama").strip().lower()
+        if provider not in LOCAL_LLM_PROVIDERS:
+            raise ValueError(
+                f"local_llm_chat supports local providers only "
+                f"({sorted(LOCAL_LLM_PROVIDERS)}), got '{provider}'"
+            )
         model = arguments.get("model")
         prompt = str(arguments["prompt"])[:8000]
         llm = get_llm(provider=provider, model=model)

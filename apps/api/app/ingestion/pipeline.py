@@ -117,26 +117,31 @@ async def _index_parsed_chunks(
         # collection (retriever would truncate/pad garbage). Fail loudly so the
         # operator re-uploads into a NEW KB instead of corrupting this one.
         # Runs before Mongo insert + Qdrant upsert so a mismatch leaves no
-        # orphan chunks behind.
+        # orphan chunks behind. Resolution order: request params > KB pin >
+        # config default — a pinned KB keeps working even when callers (e.g.
+        # from-url ingestion, which takes no embedding params) pass nothing.
         cfg_early = get_model_config()
-        _effective_provider_early = embedding_provider or cfg_early.embedding_provider
-        _effective_model_early = embedding_model or cfg_early.embedding_model
         _kb_coll_early = get_collection(Collections.KNOWLEDGE_BASES)
         _existing_kb_early = await _kb_coll_early.find_one({"_id": ObjectId(kb_id_str)})
-        if _existing_kb_early and _existing_kb_early.get("embedding_model"):
-            if _existing_kb_early.get("embedding_model") != _effective_model_early:
-                raise RuntimeError(
-                    f"Embedding model mismatch: KB pinned to "
-                    f"{_existing_kb_early.get('embedding_model')} but current is "
-                    f"{_effective_model_early}. Re-upload into a NEW KB to migrate."
-                )
-        elif _existing_kb_early is not None and not _existing_kb_early.get("embedding_model"):
+        _pinned_model = (_existing_kb_early or {}).get("embedding_model")
+        _pinned_provider = (_existing_kb_early or {}).get("embedding_provider")
+        effective_embedding_provider = (
+            embedding_provider or _pinned_provider or cfg_early.embedding_provider
+        )
+        effective_embedding_model = embedding_model or _pinned_model or cfg_early.embedding_model
+        if _pinned_model and _pinned_model != effective_embedding_model:
+            raise RuntimeError(
+                f"Embedding model mismatch: KB pinned to "
+                f"{_pinned_model} but current is "
+                f"{effective_embedding_model}. Re-upload into a NEW KB to migrate."
+            )
+        if _existing_kb_early is not None and not _pinned_model:
             await _kb_coll_early.update_one(
                 {"_id": ObjectId(kb_id_str)},
                 {
                     "$set": {
-                        "embedding_model": _effective_model_early,
-                        "embedding_provider": _effective_provider_early,
+                        "embedding_model": effective_embedding_model,
+                        "embedding_provider": effective_embedding_provider,
                         "embedding_dim": cfg_early.embedding_dimensionality,
                     }
                 },
@@ -175,16 +180,8 @@ async def _index_parsed_chunks(
         # 2. Ensure Qdrant collection is initialized
         await init_kb_collection(kb_id_str)
 
-        # 3. Load embedding model (cached)
-        # 3. Load embedding model (cached) - use request params or KB pin or config default
-        cfg = get_model_config()
-
-        # Determine embedding provider/model: request params > KB pin > config default
-        # (pin already enforced before Mongo writes above; this just resolves
-        # the effective model for embedding).
-        effective_embedding_provider = embedding_provider or cfg.embedding_provider
-        effective_embedding_model = embedding_model or cfg.embedding_model
-
+        # 3. Load embedding model (cached) — effective model already resolved
+        # (request params > KB pin > config default) in the pin check above.
         embed_model = get_embedding_model(
             provider=effective_embedding_provider, model=effective_embedding_model
         )

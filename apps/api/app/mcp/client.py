@@ -20,10 +20,14 @@ async def execute_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> Any:
     """
     Execute a registered MCP tool through the unified MCP dispatcher.
     Returns the parsed JSON response content.
+
+    In-process pipeline caller: authenticated by construction (runs inside
+    the API process after user auth), so it uses the internal path — external
+    stdio clients still present service_token per call.
     """
     logger.debug("Executing MCP tool", tool_name=tool_name, arguments=arguments)
     try:
-        response = await handle_tool_call(tool_name, arguments)
+        response = await handle_tool_call(tool_name, arguments, _internal=True)
         content_items = response.get("content", [])
         if not content_items:
             return None

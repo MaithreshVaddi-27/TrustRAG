@@ -601,12 +601,37 @@ async def retrieval_node(state: AgentState) -> AgentState:
         if chunk_count > gen_cap:
             dropped = chunk_count - gen_cap
             state["chunks"] = state["chunks"][:gen_cap]
+            state["evidence_ids"] = state["evidence_ids"][:gen_cap]
             await add_trace_event(
                 state["analysis_id"],
                 "retrieval.capped",
                 {
                     "message": f"Capped generation context at {gen_cap} chunks "
                     f"({dropped} extra kept as evidence only)",
+                },
+            )
+
+        # Web-search grounding that never reaches the answer is dead spend
+        # (Tavily cost + latency for zero impact). Append up to 3 external
+        # chunks AFTER verified ones so they ground generation with visible
+        # [WEB CITATION] labels — integrity_status stays EXTERNAL_UNAUDITED
+        # (never VERIFIED), and evidence_ids stay positionally aligned with
+        # chunks so claim→evidence linkage keeps working.
+        web_positions = [
+            i
+            for i, c in enumerate(audited_chunks)
+            if c.get("integrity_status") == "EXTERNAL_UNAUDITED"
+        ][:3]
+        if web_positions and state.get("web_search_enabled"):
+            for pos in web_positions:
+                if pos < len(evidence_ids) and len(state["chunks"]) < gen_cap + 3:
+                    state["chunks"].append(audited_chunks[pos])
+                    state["evidence_ids"].append(evidence_ids[pos])
+            await add_trace_event(
+                state["analysis_id"],
+                "retrieval.web_grounded",
+                {
+                    "message": f"Added {len(web_positions)} web citations to generation context",
                 },
             )
         return state
