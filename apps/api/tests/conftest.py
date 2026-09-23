@@ -46,6 +46,13 @@ def _clear_all_caches() -> None:
         get_model_config.cache_clear()
     except Exception:
         pass
+    # OCR engine/error globals (a failed load would otherwise poison later tests)
+    try:
+        from app.ingestion.ocr import reset_engine_for_tests
+
+        reset_engine_for_tests()
+    except Exception:
+        pass
 
 
 @pytest.fixture(autouse=True)

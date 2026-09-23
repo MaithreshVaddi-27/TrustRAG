@@ -61,6 +61,8 @@
 | 51 | `vm_stat` gets `timeout=5`; MongoDB final error names host + per-OS start command; `Settings.env_file` anchored (same files as `load_dotenv` from any CWD) | ✅ DONE 2026-09-24 | `core/hardware.py`, `db/mongodb.py`, `core/config.py` |
 | 52 | README gains llama.cpp install steps; `setup.sh` mlx note gated to Apple Silicon | ✅ DONE 2026-09-24 | `README.md`, `scripts/setup.sh` |
 | 53 | Verify: backend 422 passed | ✅ DONE 2026-09-24 | tests |
+| 54 | Negative ingestion tests (EICAR, magic-byte, zip-bomb, XXE, oversized PDF) + OCR engine reset in conftest | ✅ DONE 2026-09-24 | `tests/test_upgrade_phases.py`, `tests/conftest.py` |
+| 55 | Verify: backend 427 passed | ✅ DONE 2026-09-24 | tests |
 
 ## 0.1 Manual testing status (2026-09-21)
 

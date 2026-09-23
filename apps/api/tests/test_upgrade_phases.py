@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import re
 from typing import Any
 
 import pytest
@@ -336,6 +337,76 @@ def test_semantic_matrix_rebuilds_when_dirty():
         assert hit_b == {"answer": "B"}
     finally:
         sc.reset_module_state()
+
+
+def test_parse_document_rejects_eicar():
+    import io
+
+    from app.core.exceptions import IngestionError
+    from app.ingestion.parser import EICAR_TEST_STRING, parse_document
+
+    stream = io.BytesIO(b"clean header " + EICAR_TEST_STRING + b" trailer")
+    with pytest.raises(IngestionError, match=r"[Mm]alware|EICAR|blocked"):
+        parse_document("notes.txt", stream)
+
+
+def test_parse_document_rejects_signature_mismatch():
+    import io
+
+    from app.core.exceptions import IngestionError
+    from app.ingestion.parser import parse_document
+
+    with pytest.raises(IngestionError, match=r"[Ss]ignature|mismatch|format"):
+        parse_document("evil.pdf", io.BytesIO(b"hello world, not a pdf"))
+
+
+def test_parse_docx_rejects_zip_bomb():
+    import io
+    import zipfile
+
+    from app.core.exceptions import IngestionError
+    from app.ingestion.parser import parse_document
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("word/document.xml", b"<w:doc>" + b"0" * (2 * 1024 * 1024) + b"</w:doc>")
+    with pytest.raises(IngestionError) as exc_info:
+        parse_document("bomb.docx", io.BytesIO(buf.getvalue()))
+    assert re.search(r"[Bb]omb|ratio", (exc_info.value.detail or "") + str(exc_info.value))
+
+
+def test_parse_docx_rejects_xxe():
+    import io
+    import zipfile
+
+    from app.core.exceptions import IngestionError
+    from app.ingestion.parser import parse_document
+
+    evil_xml = (
+        b'<?xml version="1.0"?>'
+        b'<!DOCTYPE r [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>'
+        b'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        b"<w:p><w:t>&xxe;</w:t></w:p></w:document>"
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("word/document.xml", evil_xml)
+    with pytest.raises(IngestionError):
+        parse_document("xxe.docx", io.BytesIO(buf.getvalue()))
+
+
+def test_parse_pdf_rejects_oversize():
+    import io
+
+    from app.core.exceptions import IngestionError
+    from app.ingestion.parser import parse_document
+
+    # Size guard trips before any PDF parsing (fast: no fitz work).
+    big = b"%PDF-1.7\n" + b"0" * (21 * 1024 * 1024)
+    with pytest.raises(IngestionError) as exc_info:
+        parse_document("big.pdf", io.BytesIO(big))
+    haystack = (exc_info.value.detail or "") + str(exc_info.value)
+    assert re.search(r"[Ss]ize|[Ll]imit|exceeds", haystack)
 
 
 async def test_qdrant_rejects_schemeless_url_without_mkdir(tmp_path):
