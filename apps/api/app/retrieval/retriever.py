@@ -58,6 +58,11 @@ class QueryEmbeddingLRUCache:
                     self._cache.popitem(last=False)
             self._cache[query] = vector
 
+    def clear(self) -> None:
+        """Empty the cache (test isolation)."""
+        with self._lock:
+            self._cache.clear()
+
 
 _query_cache = QueryEmbeddingLRUCache(capacity=1024)
 _collection_dimension_cache: OrderedDict[str, int] = OrderedDict()
@@ -113,16 +118,34 @@ async def dense_search(
     collection_name = get_collection_name(kb_id)
 
     try:
+        # Resolve the collection's expected dimension FIRST (metadata call is
+        # cached in _collection_dimension_cache) so a stale query-vector cache
+        # hit from a previous embedding space is invalidated — never served.
+        try:
+            target_dim = await _get_collection_dimension(client, collection_name)
+        except Exception as col_err:
+            logger.debug("Could not inspect collection dimensions", error=str(col_err))
+            target_dim = None
+
         # Check LRU cache first to eliminate redundant computation.
         # Normalized key avoids repeat embeddings for case/whitespace variants.
+        # Stored as (dim, vec): a hit with a mismatched dim means the embedding
+        # space changed under us — discard and re-embed.
         cache_key = (
             f"{(embedding_provider or '').strip().lower()}:"
             f"{(embedding_model or '').strip().lower()}:{query.strip().lower()}"
         )
         cached_vec = _query_cache.get(cache_key)
-        if cached_vec is not None:
+        if cached_vec is not None and (not target_dim or len(cached_vec) == target_dim):
             query_vector = cached_vec
         else:
+            if cached_vec is not None:
+                logger.warning(
+                    "Query-vector cache dimension mismatch — re-embedding",
+                    cached_dim=len(cached_vec),
+                    collection_dim=target_dim,
+                    kb_id=kb_id,
+                )
             try:
                 embed_model = get_embedding_model(embedding_provider, embedding_model)
                 # Embed query text in background thread to avoid freezing asyncio event loop
@@ -139,34 +162,30 @@ async def dense_search(
         # NOTE: truncate/pad across embedding spaces returns plausible-looking
         # garbage — the create-analysis pin guard (422) is the real defense;
         # this alignment is a last resort, so any mismatch is logged loudly.
-        try:
-            target_dim = await _get_collection_dimension(client, collection_name)
-            if target_dim:
-                if len(query_vector) > target_dim:
-                    logger.warning(
-                        "Query/collection dimension mismatch — truncating",
-                        query_dim=len(query_vector),
-                        collection_dim=target_dim,
-                        kb_id=kb_id,
-                    )
-                    query_vector = query_vector[:target_dim]
-                    # Re-normalize truncated vector to unit length
-                    # for accurate cosine similarity
-                    import math
+        if target_dim:
+            if len(query_vector) > target_dim:
+                logger.warning(
+                    "Query/collection dimension mismatch — truncating",
+                    query_dim=len(query_vector),
+                    collection_dim=target_dim,
+                    kb_id=kb_id,
+                )
+                query_vector = query_vector[:target_dim]
+                # Re-normalize truncated vector to unit length
+                # for accurate cosine similarity
+                import math
 
-                    norm = math.sqrt(sum(x * x for x in query_vector))
-                    if norm > 0:
-                        query_vector = [x / norm for x in query_vector]
-                elif len(query_vector) < target_dim:
-                    logger.warning(
-                        "Query/collection dimension mismatch — zero-padding",
-                        query_dim=len(query_vector),
-                        collection_dim=target_dim,
-                        kb_id=kb_id,
-                    )
-                    query_vector = query_vector + [0.0] * (target_dim - len(query_vector))
-        except Exception as col_err:
-            logger.debug("Could not inspect collection dimensions", error=str(col_err))
+                norm = math.sqrt(sum(x * x for x in query_vector))
+                if norm > 0:
+                    query_vector = [x / norm for x in query_vector]
+            elif len(query_vector) < target_dim:
+                logger.warning(
+                    "Query/collection dimension mismatch — zero-padding",
+                    query_dim=len(query_vector),
+                    collection_dim=target_dim,
+                    kb_id=kb_id,
+                )
+                query_vector = query_vector + [0.0] * (target_dim - len(query_vector))
 
         response = await client.query_points(
             collection_name=collection_name,

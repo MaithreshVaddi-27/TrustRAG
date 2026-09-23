@@ -24,15 +24,33 @@ os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 import pytest
 
 
+def _clear_all_caches() -> None:
+    """Reset every process-global cache that can leak state between tests."""
+    # Reranker result cache
+    from app.retrieval import reranker as reranker_module
+
+    if reranker_module._reranker_cache is not None:
+        reranker_module._reranker_cache.clear()
+    # Query-vector embedding cache (dim-mismatch guard reads this)
+    try:
+        from app.retrieval.retriever import _query_cache
+
+        _query_cache.clear()
+    except Exception:
+        pass
+    # Settings / model-config lru_cache (tests that mutate env leak by order)
+    try:
+        from app.core.config import get_model_config, get_settings
+
+        get_settings.cache_clear()
+        get_model_config.cache_clear()
+    except Exception:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def clear_global_caches():
-    """Clear global caches before each test."""
-    # Clear reranker cache
-    from app.retrieval.reranker import _reranker_cache
-
-    if _reranker_cache is not None:
-        _reranker_cache.clear()
+    """Clear global caches before and after each test."""
+    _clear_all_caches()
     yield
-    # Clear again after test
-    if _reranker_cache is not None:
-        _reranker_cache.clear()
+    _clear_all_caches()

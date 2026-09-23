@@ -7,6 +7,7 @@ against candidate evidence chunks using structured output mappings.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import threading
@@ -23,6 +24,27 @@ from app.core.model_registry import get_verification_model
 from app.db.mongodb import Collections, get_collection
 
 logger = get_logger(__name__)
+
+# ─── Per-call NLI timeout ────────────────────────────────────────────────────
+# A single hung local-LLM call must never eat the whole verification-node
+# budget (node-level wait_for cancels mid-persist → recovery repeats the same
+# spiral). Each NLI call gets its own cap and degrades to NEUTRAL/empty on
+# timeout; the node budget remains the backstop, but cancellation now lands
+# between calls instead of mid-write.
+NLI_PER_CALL_TIMEOUT_SECONDS = 90
+
+
+async def _await_nli_call(coro, *, what: str):  # type: ignore[no-untyped-def]
+    """Await one NLI LLM call with a per-call timeout (TimeoutError propagates)."""
+    try:
+        return await asyncio.wait_for(coro, timeout=NLI_PER_CALL_TIMEOUT_SECONDS)
+    except TimeoutError:
+        logger.warning(
+            "NLI call timed out",
+            what=what,
+            timeout_s=NLI_PER_CALL_TIMEOUT_SECONDS,
+        )
+        raise
 
 # ─── NLI batch-failure metric ────────────────────────────────────────────────
 # Counts batch-NLI calls that fail totally (raise → retry → individual
@@ -987,9 +1009,15 @@ async def execute_claim_verification(
     if is_reasoning_model(model):
         logger.debug("Skipping fused path for reasoning model (two-step directly)", model=model)
     if fused_enabled and answer and not is_refusal_answer(answer) and not is_reasoning_model(model):
-        fused_items = await fused_decompose_verify(
-            answer, chunks, provider=provider, model=model, context_str=context_str
-        )
+        try:
+            fused_items = await _await_nli_call(
+                fused_decompose_verify(
+                    answer, chunks, provider=provider, model=model, context_str=context_str
+                ),
+                what="fused_decompose_verify",
+            )
+        except TimeoutError:
+            fused_items = None
         if fused_items is not None:
             fused_items = [
                 it for it in fused_items if it.get("claim") and not _is_meta_claim(it["claim"])
@@ -1014,7 +1042,13 @@ async def execute_claim_verification(
 
     if not results_map:
         # 1. Classic two-step path: decompose into atomic assertions first.
-        claims_texts = await decompose_answer_to_claims(answer, provider=provider, model=model)
+        try:
+            claims_texts = await _await_nli_call(
+                decompose_answer_to_claims(answer, provider=provider, model=model),
+                what="decompose_answer_to_claims",
+            )
+        except TimeoutError:
+            claims_texts = [answer] if answer and answer.strip() else []
         if not claims_texts and answer and not is_refusal_answer(answer):
             # Empty-structured backstop: ≤3B models often return valid-but-empty
             # {"claims": []} JSON. Deterministic sentence split instead — zero LLM
@@ -1062,7 +1096,10 @@ async def execute_claim_verification(
             "context_str": context_str,
         }
         try:
-            results_map = await batch_verify_claims_nli(claims_texts, chunks, **batch_kwargs)
+            results_map = await _await_nli_call(
+                batch_verify_claims_nli(claims_texts, chunks, **batch_kwargs),
+                what="batch_verify_claims_nli",
+            )
         except Exception as exc:
             # Small local models frequently fail structured batch output transiently
             # (truncated JSON). One retry costs 1 call and usually succeeds; without
@@ -1072,7 +1109,10 @@ async def execute_claim_verification(
                 error=str(exc),
             )
             try:
-                results_map = await batch_verify_claims_nli(claims_texts, chunks, **batch_kwargs)
+                results_map = await _await_nli_call(
+                    batch_verify_claims_nli(claims_texts, chunks, **batch_kwargs),
+                    what="batch_verify_claims_nli(retry)",
+                )
             except Exception as retry_exc:
                 logger.warning(
                     "Batch verification retry failed, falling back to individual checks",
@@ -1098,9 +1138,15 @@ async def execute_claim_verification(
             claim_top_k = int(cfg.claim_retrieval_top_k or 5)
             for position in neutral_positions[:retrieval_budget]:
                 claim_text = claims_texts[position - 1]
-                fresh = await retrieve_evidence_for_claim(
-                    claim_text, kb_id_str, seen_keys, top_k=claim_top_k
-                )
+                try:
+                    fresh = await _await_nli_call(
+                        retrieve_evidence_for_claim(
+                            claim_text, kb_id_str, seen_keys, top_k=claim_top_k
+                        ),
+                        what="retrieve_evidence_for_claim",
+                    )
+                except TimeoutError:
+                    continue
                 if not fresh:
                     continue
                 seen_keys.update(_chunk_identity(c) for c in fresh)
@@ -1109,13 +1155,19 @@ async def execute_claim_verification(
                     continue
                 mini_chunks = [chunk for chunk, _ in pairs]
                 mini_str, mini_indices = _fmt(mini_chunks)
-                re_res = await verify_claim_nli(
-                    claim_text,
-                    mini_chunks,
-                    provider=provider,
-                    model=model,
-                    context_str=mini_str,
-                )
+                try:
+                    re_res = await _await_nli_call(
+                        verify_claim_nli(
+                            claim_text,
+                            mini_chunks,
+                            provider=provider,
+                            model=model,
+                            context_str=mini_str,
+                        ),
+                        what="verify_claim_nli(targeted)",
+                    )
+                except TimeoutError:
+                    continue
                 re_verdict = str(re_res.get("verdict", "")).upper()
                 if re_verdict in ("SUPPORTED", "CONTRADICTED"):
                     mapped: list[ObjectId] = []
@@ -1146,6 +1198,17 @@ async def execute_claim_verification(
     # OPT (local-LLM load): early-exit — if the batch already proves the
     # contradiction rate is over the threshold, skip all individual fallbacks.
     fallback_budget = max(0, int(cfg.max_individual_nli_fallback or 0))
+    if attempt > 0 and fallback_budget:
+        # Recovery rounds re-verify a regenerated answer: the batch path above
+        # already ran (twice on failure). Per-claim re-verification would
+        # repeat up to 8 serial local calls inside a node that already timed
+        # out once — skip it and keep batch verdicts (NEUTRAL where missing).
+        logger.info(
+            "Skipping individual-NLI fallback on recovery attempt",
+            attempt=attempt,
+            saved_calls=fallback_budget,
+        )
+        fallback_budget = 0
     try:
         _threshold = float(getattr(cfg, "maximum_contradiction_rate", 0.2) or 0.2)
         _contra = sum(
@@ -1168,13 +1231,26 @@ async def execute_claim_verification(
             fallback_budget -= 1
             # Fallback to individual claim verification (same provider/model —
             # cfg defaults would silently switch engines mid-analysis otherwise)
-            nli_res = await verify_claim_nli(
-                text,
-                chunks,
-                provider=provider,
-                model=model,
-                context_str=context_str,
-            )
+            try:
+                nli_res = await _await_nli_call(
+                    verify_claim_nli(
+                        text,
+                        chunks,
+                        provider=provider,
+                        model=model,
+                        context_str=context_str,
+                    ),
+                    what="verify_claim_nli(fallback)",
+                )
+            except TimeoutError:
+                nli_res = {
+                    "verdict": "NEUTRAL",
+                    "supporting_segments": [],
+                    "explanation": (
+                        "Verification skipped: per-call NLI timeout "
+                        f"({NLI_PER_CALL_TIMEOUT_SECONDS}s)."
+                    ),
+                }
         else:
             nli_res = {
                 "verdict": "NEUTRAL",

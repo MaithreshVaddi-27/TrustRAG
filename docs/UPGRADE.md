@@ -25,6 +25,14 @@
 | 15 | Pipeline: pin-before-Mongo + remove duplicate pin blocks + effective-model dim stamp | ✅ DONE 2026-09-23 | `ingestion/pipeline.py` |
 | 16 | Mongo `create_index` batched ×5 (M0 throttle guard) | ✅ DONE 2026-09-23 | `db/mongodb.py` |
 | 17 | Verify: `ruff check apps/api/app/` clean; backend 397 passed | ✅ DONE 2026-09-23 | tests |
+| 18 | NLI per-call timeout (90s) + skip individual fallback on recovery attempts | ✅ DONE 2026-09-23 | `verification/verifier.py` |
+| 19 | Query-vector cache dim-mismatch invalidation (re-embed, never serve stale) | ✅ DONE 2026-09-23 | `retrieval/retriever.py:115-155` |
+| 20 | Adaptive thresholds unified on RRF units (`_is_high_confidence`) | ✅ DONE 2026-09-23 | `retrieval/reranker.py` |
+| 21 | Internal routes rate-limited (`60/minute`) | ✅ DONE 2026-09-23 | `api/v1/internal.py` |
+| 22 | `sparse_top_k: 0` kept (conscious): early-return makes it zero-cost; flip to 20 for exact-match recall at ~2× Qdrant cost | ✅ DECIDED 2026-09-23 | `retrieval/retriever.py:200-204`, `models.yaml:148` |
+| 23 | Cache TTLs/VACUUM already present (disk 30d + VACUUM≥100, semantic 24h/500/20k chars) — no change | ✅ VERIFIED 2026-09-23 | `core/disk_cache.py`, `core/semantic_cache.py` |
+| 24 | conftest resets settings/model caches + query cache; 9 regression tests | ✅ DONE 2026-09-23 | `tests/conftest.py`, `tests/test_upgrade_phases.py` |
+| 25 | Verify: `ruff` clean; backend 406 passed (397 + 9 new) | ✅ DONE 2026-09-23 | tests |
 
 ## 0.1 Manual testing status (2026-09-21)
 

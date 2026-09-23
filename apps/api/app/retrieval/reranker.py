@@ -104,13 +104,28 @@ def _get_reranker_cache() -> _RerankerCache:
     return _reranker_cache
 
 
+def _is_high_confidence(top_chunk: dict[str, Any]) -> bool:
+    """Single confidence signal for adaptive Top-K, in RRF units first.
+
+    Fused rows carry `rrf_score` (with rrf_k=60 the max for a result ranked #1
+    in both legs is 2/61 ≈ 0.033, so >= 0.02 means near-top in both legs).
+    Dense cosine (>= 0.78) and cross-encoder logit (>= 0.80) thresholds are
+    legacy fallbacks for rows that never went through RRF fusion.
+    """
+    rrf = top_chunk.get("rrf_score")
+    if isinstance(rrf, (int, float)):
+        return rrf >= 0.02
+    if "rerank_score" in top_chunk:
+        return float(top_chunk.get("rerank_score", 0.0)) >= 0.80
+    return float(top_chunk.get("dense_score", 0.0)) >= 0.78
+
+
 def _adaptive_top_k_slice(chunks: list[dict[str, Any]], max_context: int) -> list[dict[str, Any]]:
     """Adaptive Top-K: confident top chunks bound the window to 4.
 
-    Confidence signal: 4+ chunks with the top dense_score >= 0.78.
     Single home for the slice so the threshold can't drift between call sites.
     """
-    if len(chunks) > 3 and chunks[0].get("dense_score", 0.0) >= 0.78:
+    if len(chunks) > 3 and _is_high_confidence(chunks[0]):
         return chunks[: min(max_context, 4)]
     return chunks[:max_context]
 
@@ -261,11 +276,8 @@ def _rerank_sync(
         ranked = sorted(candidates, key=lambda x: x.get("rerank_score", 0.0), reverse=True)
 
         # Adaptive Top-K: If top chunks are confident, bound to top 4
-        effective_limit = (
-            min(max_context, 4)
-            if (len(ranked) > 3 and ranked[0].get("rerank_score", 0.0) >= 0.80)
-            else max_context
-        )
+        confident = len(ranked) > 3 and _is_high_confidence(ranked[0])
+        effective_limit = min(max_context, 4) if confident else max_context
         sliced = ranked[:effective_limit]
         logger.debug(
             "Reranking completed",
