@@ -16,7 +16,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 runtime:
-  config_version: "1.20"
+  config_version: "1.21"
 
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
@@ -253,7 +253,7 @@ cost_controls:
 
 # ─── Inference Acceleration & KV Cache Optimization ───────────────────────────
 optimization:
-  kv_cache_quantization: "q4_0"                 # Options: q4_0, q8_0, fp16 (saves 50-75% context VRAM)
+  kv_cache_quantization: "q8_0"                 # q8_0 (measured default) | q4_0 | q4_1 — honored by scripts/start_local_llm.sh (unknown values fall back to q8_0; "fp16" is not a valid llama-server k-quant)
   flash_attention: true                         # Computes attention in SRAM tiles (O(N) memory)
   prompt_caching: true                          # Reuses KV cache for static system prompt prefixes
   adaptive_top_k: true                          # Caps fused candidates at 4 on high RRF confidence (>= 0.02)

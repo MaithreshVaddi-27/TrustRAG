@@ -77,7 +77,7 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 | **Integrations** | MCP server (JSON-RPC 2.0) for Claude Desktop / Cursor / Windsurf; SSE live-progress streaming |
 | **Workbench UI** | Dashboard, Playground, knowledge bases, evidence, claims, conflicts, experiments, trace viewer |
 | **Efficiency** | ONNX embedding runtime (torch-free, ~500–1000 MB RAM saved); Metal/CUDA auto-detection |
-| **Inference Acceleration** | KV cache quantization (q4_0/q8_0/fp16), flash attention, prompt caching, speculative decoding, context compression |
+| **Inference Acceleration** | KV cache quantization (q8_0 default), flash attention, prompt caching, context compression |
 | **Ops** | KB snapshots + rollback; Prometheus `/metrics`; A/B experiments with feature flags |
 
 ---
@@ -113,7 +113,7 @@ TrustRAG/
 │   │   │   ├── retrieval/      # hybrid retriever + reranker
 │   │   │   ├── services/       # analysis, KB, auth, experiment services
 │   │   │   └── verification/   # NLI verifier + SHA-256 integrity audit
-│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.20)
+│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.21)
 │   │   ├── tests/              # backend suite (mocked, no live services)
 │   │   └── pyproject.toml
 │   └── web/                    # React frontend (Node 22+)
@@ -137,7 +137,7 @@ via `scripts/bootstrap.py` (see [Installation](#installation)).
 
 | Requirement | Version | Purpose |
 |-------------|---------|---------|
-| Python | 3.11+ | Backend |
+| Python | 3.11–3.12 | Backend (3.13+ breaks the torch/onnxscript ONNX export) |
 | Node.js (+ npm) | 22+ | Frontend |
 | MongoDB | 7.0 | Document store (local or Atlas) |
 | Ollama **or** llama.cpp **or** MLX | latest | Local LLM (at least one) |
@@ -279,7 +279,7 @@ MongoDB and the LLM stay on the host; `api` reaches them via `host.docker.intern
 ```bash
 cp .env.example .env   # set JWT_SECRET (see step 1)
 # One-time on the HOST (the api image is torch-free and cannot export itself):
-apps/api/.venv/bin/python scripts/bootstrap.py
+apps/api/.venv/bin/python scripts/bootstrap.py   # Windows: apps\api\.venv\Scripts\python.exe scripts\bootstrap.py
 docker compose up -d
 # One-time: copy the host-exported weights into the api container's cache volume:
 docker cp apps/api/.model_cache/. trustrag_api:/app/.model_cache/
@@ -327,7 +327,7 @@ curl http://localhost:8000/api/v1/health   # → {"status":"ok"}
 > # Terminal 1: llama.cpp on :8080
 > ./scripts/start_local_llm.sh
 >
-> # Terminal 2: MLX on :8090
+> # Terminal 2: MLX on :8090 (id must match MLX_MODEL in .env / model_mlx in models.yaml)
 > mlx_lm.server --model mlx-community/Llama-3.2-3B-Instruct-4bit --port 8090
 >
 > # Terminal 3: Backend (auto-detects both)
@@ -448,7 +448,7 @@ Interactive docs: <http://localhost:8000/docs> (Swagger) · `/redoc`. Base URL `
 | **Evidence & claims** | `GET /api/v1/evidence` · `GET /api/v1/claims` · `GET /api/v1/conflicts` |
 | **Experiments** | `POST/GET /api/v1/experiments` · `GET /api/v1/experiments/{id}` |
 | **Documents** | `GET/DELETE /api/v1/documents/{id}` |
-| **Ops** | `GET /api/v1/health` · `GET /api/v1/health/detailed` · `GET /api/v1/metrics` · `GET /api/v1/models/providers` · `GET /api/v1/models/hardware` · `POST /api/v1/internal/ingest` |
+| **Ops** | `GET /api/v1/health` · `GET /api/v1/health/detailed` · `GET /api/v1/metrics` · `GET /api/v1/models/providers` · `GET /api/v1/models/hardware` · `POST /api/v1/internal/ingest/document` · `POST /api/v1/internal/ingest/url` · `POST /api/v1/internal/search` · `POST /api/v1/internal/verify/claims` (service-token auth) |
 
 ---
 
@@ -495,16 +495,16 @@ Production checklist: `APP_ENV=production` (+ `QDRANT_API_KEY`), `CORS_ORIGINS` 
 
 ## Optimization
 
-TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.20**) with environment variable overrides.
+TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.21**) with environment variable overrides.
 
 ### Inference Acceleration
 
 | Feature | Description | Config Key | Default |
 |---------|-------------|------------|---------|
-| **KV Cache Quantization** | Quantize KV cache to q4_0/q8_0/fp16 (saves 50-75% VRAM) | `optimization.kv_cache_quantization` | `"q4_0"` |
+| **KV Cache Quantization** | Quantize KV cache to q8_0/q4_0/q4_1, honored by `start_local_llm.sh` (saves 50-75% VRAM) | `optimization.kv_cache_quantization` | `"q8_0"` |
 | **Flash Attention** | O(N) memory attention via SRAM tiling (llama.cpp) | `optimization.flash_attention` | `true` |
 | **Prompt Caching** | Reuse KV cache for static prompt prefixes (llama.cpp `cache_prompt`, Ollama `num_keep`) | `optimization.prompt_caching` | `true` |
-| **Speculative Decoding** | Min-p / top-k sampling + early EOS exit for faster generation | `local_llm.min_p`, `local_llm.top_k`, `local_llm.early_exit_eos` | `0.0`, `0`, `true` |
+| **Sampling Knobs** | Min-p / top-k sampling (disabled by default: `0.0`/`0` = off) + early EOS exit for faster generation | `local_llm.min_p`, `local_llm.top_k`, `local_llm.early_exit_eos` | `0.0`, `0`, `true` |
 | **Batch Prompt Processing** | `n_batch` controls prompt encoding parallelism | `local_llm.num_batch` | `512` |
 | **Connection Pooling** | HTTP keep-alive (30s) with connection limits for local servers | Internal | `5 keepalive / 10 max` |
 
@@ -519,7 +519,7 @@ TrustRAG implements extensive inference acceleration and memory optimization tec
 | **Context Compression** | Hierarchical summarization before LLM call (50% reduction target) | `optimization.context_compression_enabled`, `optimization.context_compression_target_reduction` | `true`, `0.5` |
 | **Adaptive Top-K** | Reduces retrieval when confidence high (RRF > 0.02) | `optimization.adaptive_top_k` | `true` |
 | **Reranker Result Caching** | LRU cache for query-document scores | `reranker.cache_size` | `500` |
-| **Cache TTL + VACUUM** | Embedding & semantic caches auto-expire & reclaim disk | `EMBEDDING_CACHE_TTL_SECONDS`, `SEMANTIC_CACHE_TTL_SECONDS` | 24h, 24h |
+| **Cache TTL + VACUUM** | Embedding & semantic caches auto-expire & reclaim disk | `EMBEDDING_CACHE_TTL_SECONDS`, `SEMANTIC_CACHE_TTL_SECONDS` | 30d, 24h |
 
 ### Environment Variable Overrides
 
@@ -554,6 +554,8 @@ All config options support env overrides:
 
 ## Troubleshooting
 
+Full per-OS field guide (20-row failure table): [docs/ONBOARDING-TROUBLESHOOTING.md](docs/ONBOARDING-TROUBLESHOOTING.md).
+
 | Issue | Fix |
 |-------|-----|
 | `LLM_UNAVAILABLE` (llama.cpp) | Start `scripts/start_local_llm.sh --max 1` |
@@ -571,7 +573,7 @@ All config options support env overrides:
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) (workflow: `READ → PLAN → BUILD → VERIFY → FIX → DOCUMENT → NEXT`; model IDs in `models.yaml`, secrets in `.env` only; conventional commits `feat:`/`fix:`/`docs:`/`test:`/`refactor:`). Security policy: [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) (workflow: `READ → PLAN → BUILD → VERIFY → FIX → DOCUMENT → NEXT`; model IDs in `apps/api/config/models.yaml`, secrets in `.env` only; conventional commits `feat:`/`fix:`/`docs:`/`test:`/`refactor:`). Security policy: [SECURITY.md](SECURITY.md).
 
 ```bash
 ./scripts/setup.sh

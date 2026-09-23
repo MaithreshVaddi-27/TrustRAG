@@ -38,11 +38,25 @@ def get_llamacpp_launch_args() -> list[str]:
 
     args: list[str] = []
 
-    # Quantized KV cache: q8_0 halves KV-cache RAM with negligible quality loss
-    # (community-measured; safe default per llama.cpp docs). Travels with
-    # --flash-attn on — without FA the server dequantizes per attention op and
-    # the saving turns into a slowdown. CPU-only path keeps f16 (no FA there).
-    kv_quant_flags = ["-ctk", "q8_0", "-ctv", "q8_0"]
+    # Quantized KV cache: honors optimization.kv_cache_quantization
+    # (models.yaml, default q8_0 — halves KV-cache RAM with negligible quality
+    # loss, community-measured). Travels with --flash-attn on — without FA the
+    # server dequantizes per attention op and the saving turns into a
+    # slowdown. CPU-only path keeps f16 (no FA there). Unknown values fall
+    # back to q8_0 (e.g. "fp16" is not a valid llama-server k-quant).
+    try:
+        from app.core.config import get_model_config
+
+        _kv_quant = str(get_model_config().kv_cache_quantization or "q8_0").strip().lower()
+    except Exception:
+        _kv_quant = "q8_0"
+    if _kv_quant not in ("q8_0", "q4_0", "q4_1"):
+        logger.warning(
+            "Unsupported kv_cache_quantization; falling back to q8_0",
+            configured=_kv_quant,
+        )
+        _kv_quant = "q8_0"
+    kv_quant_flags = ["-ctk", _kv_quant, "-ctv", _kv_quant]
 
     if is_arm_mac:
         # Metal is native on Apple Silicon — no further probe needed.
