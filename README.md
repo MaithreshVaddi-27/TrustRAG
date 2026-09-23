@@ -164,6 +164,7 @@ python3 -c "import secrets; print(secrets.token_hex(64))"
 ```bash
 # Prerequisites
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew tap mongodb/brew   # required once for the mongodb-community formula
 brew install python@3.11 node@22 mongodb-community ollama
 
 # Services
@@ -195,7 +196,9 @@ npm install && npm run dev   # http://localhost:5173
 ### 2b. Linux (Ubuntu/Debian)
 
 ```bash
-# Prerequisites
+# Prerequisites (Ubuntu 22.04 jammy; on 24.04 noble or other distros adjust
+# the MongoDB repo line below. Stock Ubuntu ≤22.04 ships Python ≤3.10 — add
+# the deadsnakes PPA first: sudo add-apt-repository ppa:deadsnakes/ppa)
 sudo apt update && sudo apt install -y python3.11 python3.11-venv python3.11-dev \
   python3-pip build-essential curl git
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
@@ -208,7 +211,7 @@ echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] \
   https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
   sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
 sudo apt update && sudo apt install -y mongodb-org
-sudo systemctl enable --now mongod
+sudo systemctl enable --now mongod   # no systemd (WSL2/Docker)? use: sudo service mongod start
 
 # Ollama
 curl -fsSL https://ollama.com/install.sh | sh

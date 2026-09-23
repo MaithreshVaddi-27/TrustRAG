@@ -180,3 +180,48 @@ def test_onnx_model_status_keys():
     assert status["embedding_provider"] == "onnx"
     assert "embedding_onnx_present" in status
     assert "reranker_onnx_present" in status
+
+
+def test_onnx_missing_model_points_at_bootstrap():
+    from app.core.exceptions import ConfigurationError
+    from app.core.model_registry import get_embedding_model
+
+    with pytest.raises(ConfigurationError, match="bootstrap"):
+        get_embedding_model(provider="onnx", model="nonexistent-org/nonexistent-model")
+
+
+def test_memory_fallback_without_psutil_or_resource(monkeypatch):
+    import app.core.memory as memory_module
+
+    monkeypatch.setattr(memory_module, "_PSUTIL_AVAILABLE", False)
+    monkeypatch.setattr(memory_module, "resource", None)
+    assert memory_module.get_memory_usage_mb() == 0.0
+
+
+def test_export_fn_accepts_model_name():
+    import inspect
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+    try:
+        import export_bge_onnx
+
+        params = inspect.signature(export_bge_onnx.export_bge_to_onnx).parameters
+        assert "model_name" in params
+    finally:
+        sys.path.remove(str(Path(__file__).resolve().parents[3] / "scripts"))
+
+
+def test_ports_registry_includes_mlx():
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+    try:
+        from apply_ports import load_ports
+
+        ports = load_ports()
+        assert ports["mlx"] == 8090
+    finally:
+        sys.path.remove(str(Path(__file__).resolve().parents[3] / "scripts"))

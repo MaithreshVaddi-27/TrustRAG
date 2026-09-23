@@ -77,7 +77,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     # ── Startup ──────────────────────────────────────────────────────────
     configure_logging()
-    settings = get_settings()
+    try:
+        settings = get_settings()
+    except Exception as exc:
+        # First-run trap: no .env (JWT_SECRET/MONGODB_URI missing) surfaces
+        # as a bare pydantic ValidationError. Point at the fix before re-raise.
+        logger.error(
+            "Settings validation failed — fresh clone? Copy '.env.example' to "
+            "'.env' and set JWT_SECRET (64 hex chars) and MONGODB_URI",
+            error=str(exc)[:500],
+        )
+        raise
 
     # Enforce strict offline operation for all auxiliary tools & telemetry.
     # Offline model loading is only forced when the embedding weights are
@@ -88,7 +98,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _model_cached = False
     try:
         cfg_probe = get_model_config()
-        if cfg_probe.embedding_provider in ("huggingface", "local", "splade"):
+        if cfg_probe.embedding_provider in ("huggingface", "local", "splade", "onnx"):
             from pathlib import Path as _Path
 
             hub_snapshot = (
@@ -335,11 +345,16 @@ def _register_exception_handlers(app: FastAPI) -> None:
     async def configuration_error_handler(
         request: Request, exc: ConfigurationError
     ) -> JSONResponse:
+        # Actionable by design: our ConfigurationError messages are written
+        # for operators (missing ONNX bake, missing API key, retired provider)
+        # and carry no secrets — surfacing them saves a log round-trip on
+        # first-run misconfigurations. Only the optional detail is redacted
+        # when it looks like a connection string or path.
         logger.error("Configuration error", error=exc.message)
         return _error_response(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "CONFIGURATION_ERROR",
-            "Service configuration error. Contact support.",
+            exc.message,
         )
 
     @app.exception_handler(DatabaseError)

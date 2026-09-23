@@ -17,14 +17,19 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Optional psutil for accurate current RSS; falls back to resource.ru_maxrss (peak)
+# Optional psutil for accurate current RSS; falls back to resource.ru_maxrss (peak).
+# `resource` is Unix-only: on Windows without psutil the import itself would
+# crash module load, so guard it (get_memory_usage_mb() then returns 0.0).
 try:
     import psutil
 
     _PSUTIL_AVAILABLE = True
 except ImportError:
     _PSUTIL_AVAILABLE = False
-    import resource
+    try:
+        import resource
+    except ImportError:  # Windows without psutil
+        resource = None  # type: ignore[assignment]
 
 
 def trim_memory() -> None:

@@ -835,7 +835,15 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
 
     # ── ONNX Runtime Embeddings (torch-free, ultra-low RAM) ────────────────────
     if active_provider == "onnx":
-        from app.core.onnx_embeddings import ONNXBGEEmbeddings, ONNXBGEEmbeddingsWrapper
+        try:
+            from app.core.onnx_embeddings import ONNXBGEEmbeddings, ONNXBGEEmbeddingsWrapper
+        except ImportError as exc:
+            raise ConfigurationError(
+                "ONNX embedding stack missing (needs 'onnxruntime' + 'transformers'). "
+                "Run 'python scripts/bootstrap.py' from a venv with the base "
+                "requirements installed: 'cd apps/api && pip install -e .'.",
+                detail=str(exc)[:200],
+            ) from exc
 
         # Use the API directory as base for relative cache_dir to ensure consistency
         # (Path.resolve() alone is CWD-dependent: repo-root vs apps/api runs
@@ -858,17 +866,36 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
             onnx_path=str(onnx_model_path),
         )
 
-        base_emb = ONNXBGEEmbeddings(
-            model_path=str(onnx_model_path),
-            tokenizer_name=active_model,
-            max_seq_length=cfg.embedding_max_seq_length,
-        )
+        try:
+            base_emb = ONNXBGEEmbeddings(
+                model_path=str(onnx_model_path),
+                tokenizer_name=active_model,
+                max_seq_length=cfg.embedding_max_seq_length,
+            )
+        except Exception as exc:
+            raise ConfigurationError(
+                f"Failed to load ONNX embedding model from {onnx_model_path}. "
+                "Re-run 'python scripts/bootstrap.py --force' to re-export it.",
+                detail=str(exc)[:300],
+            ) from exc
         return ONNXBGEEmbeddingsWrapper(base_emb, model_name=f"onnx::{active_model}")
 
     # ── Local Hugging Face Embeddings (Sentence-Transformers / BGE) ────
-    from langchain_huggingface import HuggingFaceEmbeddings
+    try:
+        from langchain_huggingface import HuggingFaceEmbeddings
+    except ImportError as exc:
+        raise ConfigurationError(
+            "HuggingFace embedding stack missing (needs 'sentence-transformers', "
+            "i.e. torch). Install it with 'pip install -e \".[local-models]\"' "
+            "from apps/api — or switch to the torch-free default "
+            "(EMBEDDING_PROVIDER=onnx + 'python scripts/bootstrap.py').",
+            detail=str(exc)[:200],
+        ) from exc
 
-    cache_dir = Path(cfg.embedding_cache_dir).resolve()
+    # Anchored to api_base like the ONNX branch (CWD-dependent resolve would
+    # split .model_cache in two between repo-root and apps/api runs).
+    api_base = Path(__file__).parent.parent.parent
+    cache_dir = (api_base / cfg.embedding_cache_dir).resolve()
 
     logger.info(
         "Initializing local HuggingFace embedding model",

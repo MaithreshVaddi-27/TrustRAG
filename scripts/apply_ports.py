@@ -69,6 +69,7 @@ def build_rules(p: dict[str, int]) -> dict[str, list[tuple[str, str]]]:
     ol = p["ollama"]
     ll = p["llamacpp"]
     mg = p["mongodb"]
+    mx = p.get("mlx", 8090)
     rules: dict[str, list[tuple[str, str]]] = {
         "apps/api/Dockerfile": [
             (r"ENV PORT=\d+", f"ENV PORT={b}"),
@@ -78,10 +79,12 @@ def build_rules(p: dict[str, int]) -> dict[str, list[tuple[str, str]]]:
         "apps/api/config/models.yaml": [
             (r'(ollama_base_url:\s*"http://)[^":]+:\d+(")', rf"\1localhost:{ol}\2"),
             (r'(llamacpp_base_url:\s*"http://)[^":]+:\d+(/v1")', rf"\g<1>127.0.0.1:{ll}\2"),
+            (r'(mlx_base_url:\s*"http://)[^":]+:\d+(/v1")', rf"\g<1>127.0.0.1:{mx}\2"),
         ],
         ".env": [
             (r"(OLLAMA_BASE_URL=http://)[^:]+:\d+", rf"\g<1>localhost:{ol}"),
             (r"(LLAMACPP_BASE_URL=http://)[^:]+:\d+(/v1)", rf"\g<1>127.0.0.1:{ll}\2"),
+            (r"(MLX_BASE_URL=http://)[^:]+:\d+(/v1)", rf"\g<1>127.0.0.1:{mx}\2"),
         ],
         "apps/web/vite.config.js": [
             (r"port: \d+,", f"port: {f},"),

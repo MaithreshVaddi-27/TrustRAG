@@ -16,7 +16,7 @@ Never continue with known failures. Do not generate the whole project blindly.
 
 ## Rules
 
-- **No model IDs in code.** All model identifiers go in `config/models.yaml`
+- **No model IDs in code.** All model identifiers go in `apps/api/config/models.yaml`
 - **No secrets in code or YAML.** Secrets in `.env` only
 - **No invented requirements.** Only implement what the spec mandates
 - **No scope creep.** See spec §34 for explicit out-of-scope items
@@ -28,7 +28,7 @@ Never continue with known failures. Do not generate the whole project blindly.
 cd apps/api
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,local-models]"   # local-models = torch export stack for ONNX bootstrap
 
 # Frontend
 cd apps/web

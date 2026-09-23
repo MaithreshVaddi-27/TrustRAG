@@ -41,6 +41,17 @@
 | 31 | Web-search chunks appended to generation context (≤3, `[WEB CITATION]`-labeled, `EXTERNAL_UNAUDITED`, evidence-aligned); previously paid Tavily cost for zero answer impact | ✅ DONE 2026-09-23 | `agent/graph.py` |
 | 32 | Frontend `npm run lint` clean; `npm test` 22 passed; backend 411 passed | ✅ DONE 2026-09-23 | `apps/web`, tests |
 | 33 | k6 smoke requires live backend + seeded auth (manual: `k6 run load-test/smoke.js`) | ⏳ MANUAL | `load-test/smoke.js` |
+| 34 | Boot forced `HF_HUB_OFFLINE=1` even with no ONNX bake (fresh-clone tokenizer/export blocked) — offline now only when weights cached | ✅ DONE 2026-09-23 | `main.py` lifespan |
+| 35 | Startup `get_settings()` failure now names the `.env`/`JWT_SECRET` fix instead of bare pydantic error | ✅ DONE 2026-09-23 | `main.py` lifespan |
+| 36 | `ConfigurationError` API responses return the actionable message (was redacted to "Contact support.") | ✅ DONE 2026-09-23 | `main.py` handlers |
+| 37 | `memory.py` `import resource` guarded (crashed import on Windows without psutil) | ✅ DONE 2026-09-23 | `core/memory.py` |
+| 38 | ONNX branch wrapped in `ConfigurationError` (was raw `ImportError`); missing-stack hints point at bootstrap; HF cache dir anchored to `api_base` | ✅ DONE 2026-09-23 | `core/model_registry.py` |
+| 39 | `export_bge_to_onnx()` honors configured model id (was hardcoded BGE); reranker warning no longer demands `optimum` | ✅ DONE 2026-09-23 | `scripts/export_bge_onnx.py`, `scripts/ensure_onnx_models.py` |
+| 40 | `start_local_llm.sh`: creates HF hub dir + prints fetch cmds (was hard fail); explicit `llama-server` install hints per OS; `HF_HUB_CACHE` override | ✅ DONE 2026-09-23 | `scripts/start_local_llm.sh` |
+| 41 | `setup.sh`: Python 3.11–3.12 enforcement, curl check, Windows/Git-Bash note, venv-gated embedding checks, Windows MongoDB hint | ✅ DONE 2026-09-23 | `scripts/setup.sh` |
+| 42 | `apply_ports.py` syncs MLX `:8090` (`models.yaml` + `.env`); `--check` green | ✅ DONE 2026-09-23 | `scripts/apply_ports.py`, `config/ports.yaml` |
+| 43 | Doc drift: CONTRIBUTING model-yaml path + `local-models` extra; README brew tap, deadsnakes/noble notes, no-systemd MongoDB fallback | ✅ DONE 2026-09-23 | `CONTRIBUTING.md`, `README.md` |
+| 44 | New `docs/ONBOARDING-TROUBLESHOOTING.md` (per-OS guide + 20-row failure table); backend 415 passed | ✅ DONE 2026-09-23 | `docs/`, tests |
 
 ## 0.1 Manual testing status (2026-09-21)
 

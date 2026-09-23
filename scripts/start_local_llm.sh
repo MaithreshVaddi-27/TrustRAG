@@ -49,9 +49,23 @@ print(1 if total <= 8.5 else (2 if total <= 16.5 else 4))
 fi
 
 # Models directory (HuggingFace cache where GGUF models are stored).
-MODELS_DIR="$HOME/.cache/huggingface/hub"
+# Created on demand: a fresh machine has no GGUFs yet, and the router
+# autoloads models as they arrive — so start anyway and tell the user how
+# to fetch one instead of hard-failing.
+MODELS_DIR="${HF_HUB_CACHE:-$HOME/.cache/huggingface/hub}"
 if [ ! -d "$MODELS_DIR" ]; then
-  echo "ERROR: Models directory not found: $MODELS_DIR" >&2
+  echo "[start_local_llm] creating empty models dir: $MODELS_DIR"
+  mkdir -p "$MODELS_DIR"
+  echo "[start_local_llm] no GGUF models cached yet — fetch one, e.g.:"
+  echo "    hf download LiquidAI/LFM2.5-1.2B-Instruct-GGUF --include '*Q4_K_M*' --local-dir '$MODELS_DIR'"
+  echo "  (needs 'pip install -U \"huggingface_hub[cli]\"'; router picks it up on select)"
+fi
+
+if ! command -v llama-server >/dev/null 2>&1; then
+  echo "ERROR: 'llama-server' not found on PATH." >&2
+  echo "  macOS:  brew install llama.cpp" >&2
+  echo "  Linux:  download a release from https://github.com/ggerganov/llama.cpp/releases" >&2
+  echo "  Windows: run this script under WSL (native .cmd wrapper is not shipped)." >&2
   exit 1
 fi
 

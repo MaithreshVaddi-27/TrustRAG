@@ -25,23 +25,29 @@ import sys
 from pathlib import Path
 
 # ─── Config ─────────────────────────────────────────────────────────────────────
-MODEL_NAME = "BAAI/bge-small-en-v1.5"
+DEFAULT_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 _API_ROOT = Path(__file__).resolve().parents[1] / "apps" / "api"
 OUTPUT_PATH = _API_ROOT / ".model_cache" / "bge-small-en-v1.5.onnx"
 MAX_SEQ_LENGTH = 512
 BATCH_SIZE = 1  # Dynamic batch axis
 
+# Back-compat alias (older scripts/docs import MODEL_NAME).
+MODEL_NAME = DEFAULT_MODEL_NAME
 
-def export_bge_to_onnx(output_path: Path | None = None) -> Path:
+
+def export_bge_to_onnx(
+    output_path: Path | None = None, model_name: str | None = None
+) -> Path:
     """Export BGE model to ONNX with dynamic batch size. Returns the model path."""
     import torch
     from sentence_transformers import SentenceTransformer
 
+    resolved_model = model_name or DEFAULT_MODEL_NAME
     out_path = Path(output_path) if output_path else OUTPUT_PATH
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"Loading {MODEL_NAME}...")
-    model = SentenceTransformer(MODEL_NAME)
+    print(f"Loading {resolved_model}...")
+    model = SentenceTransformer(resolved_model)
     model.max_seq_length = MAX_SEQ_LENGTH
     # Force CPU for ONNX export (MPS not supported by torch.export)
     model.to("cpu")

@@ -131,7 +131,7 @@ def _export_embedding_onnx(cfg, emb_path: Path) -> bool:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from export_bge_onnx import export_bge_to_onnx
 
-        export_bge_to_onnx(emb_path)
+        export_bge_to_onnx(emb_path, model_name=cfg.embedding_model)
         print(f"[ensure_onnx] Embedding export OK: {emb_path}")
         return True
     except ImportError as e:
@@ -275,8 +275,10 @@ def main() -> int:
             # Only --docker (bake-into-image) treats this as fatal.
             print(
                 "[ensure_onnx] WARNING: reranker export failed; backend will "
-                "fall back to RRF order. To enable it: pip install "
-                "'optimum[onnxruntime]' onnx, then re-run.",
+                "fall back to RRF order. The export needs torch + "
+                "sentence-transformers + onnxruntime: from apps/api run "
+                "'pip install -e \".[local-models]\"' (onnxruntime ships "
+                "with the base requirements), then re-run.",
                 file=sys.stderr,
             )
             if args.docker:
