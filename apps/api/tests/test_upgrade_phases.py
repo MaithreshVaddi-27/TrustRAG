@@ -314,6 +314,30 @@ def test_export_fn_accepts_model_name():
         sys.path.remove(str(Path(__file__).resolve().parents[3] / "scripts"))
 
 
+def test_semantic_matrix_rebuilds_when_dirty():
+    import app.core.semantic_cache as sc
+
+    sc.reset_module_state()
+    try:
+        vec_a = [1.0, 0.0, 0.0, 0.0]
+        vec_b = [0.0, 1.0, 0.0, 0.0]
+        sc.store_semantic_cache("q1", "kb1", vec_a, {"answer": "A"}, embedding_model="m")
+        sc.store_semantic_cache("q2", "kb1", vec_b, {"answer": "B"}, embedding_model="m")
+        # Mutations flag dirty; the next lookup must rebuild (fast path live).
+        assert sc._MATRIX_DIRTY is True
+        hit = sc.check_semantic_cache("q1", "kb1", vec_a, embedding_model="m")
+        assert sc._MATRIX_DIRTY is False
+        assert sc._MATRIX_CACHE is not None
+        assert hit == {"answer": "A"}
+        # Near-duplicate still resolves to the right entry through the matrix.
+        hit_b = sc.check_semantic_cache(
+            "q2", "kb1", [0.0, 1.0, 0.0, 0.0], embedding_model="m"
+        )
+        assert hit_b == {"answer": "B"}
+    finally:
+        sc.reset_module_state()
+
+
 def test_ports_registry_includes_mlx():
     import sys
     from pathlib import Path

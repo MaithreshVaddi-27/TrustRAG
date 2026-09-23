@@ -53,6 +53,9 @@
 | 43 | Doc drift: CONTRIBUTING model-yaml path + `local-models` extra; README brew tap, deadsnakes/noble notes, no-systemd MongoDB fallback | ✅ DONE 2026-09-23 | `CONTRIBUTING.md`, `README.md` |
 | 44 | New `docs/ONBOARDING-TROUBLESHOOTING.md` (per-OS guide + 20-row failure table); backend 415 passed | ✅ DONE 2026-09-23 | `docs/`, tests |
 | 45 | MCP cross-tenant guard: `trustrag_search` enforces `bound_kb_id`/`bound_user_id` (ownership via `get_kb`, existence-oracle-safe); `trustrag_list_kbs` scoped to bound user; §2/§3 checkboxes + config version synced to reality | ✅ DONE 2026-09-24 | `mcp/server.py`, `docs/UPGRADE.md` |
+| 46 | Semantic-cache matrix never rebuilt (dirty flag set, never consumed → vectorized path dead, all lookups paid scalar loop); rebuild on dirty at lookup start | ✅ DONE 2026-09-24 | `core/semantic_cache.py` |
+| 47 | Evidence shield fail-closed in UI: missing status renders UNVERIFIED (was shown as verified); `EXTERNAL_UNAUDITED` web chunks already amber + MCP-badged | ✅ DONE 2026-09-24 | `EvidenceViewer.jsx`, `EvidenceChunk.test.jsx` |
+| 48 | Verify: backend 420 passed, frontend lint clean + 25 passed | ✅ DONE 2026-09-24 | tests |
 
 ## 0.1 Manual testing status (2026-09-21)
 

@@ -222,6 +222,15 @@ def check_semantic_cache(
     # Periodic TTL cleanup (cheap, runs under lock)
     _cleanup_expired_entries()
 
+    # The stacked-vector fast path is positional: rebuild it from the current
+    # deque whenever mutations (insert/evict/TTL/load) flagged it dirty.
+    # Without this the matrix stays None forever and every lookup pays the
+    # scalar Python loop — or worse, a stale matrix misaligns with entries.
+    global _MATRIX_CACHE
+    with _CACHE_LOCK:
+        if _MATRIX_DIRTY:
+            _rebuild_matrix()
+
     if not _SEMANTIC_CACHE:
         return None
 
