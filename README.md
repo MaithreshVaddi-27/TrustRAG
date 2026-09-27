@@ -359,7 +359,8 @@ MONGODB_DATABASE=trustrag_db
 LLM_PROVIDER=llama_cpp            # ollama | llama_cpp | mlx | gemini | nvidia
 LLM_MODEL=LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
 MLX_MODEL=mlx-community/Llama-3.2-1B-Instruct-4bit   # Apple Silicon only
-EMBEDDING_PROVIDER=onnx           # onnx (torch-free, low RAM) | huggingface
+# Embeddings: single ONNX engine (BAAI/bge-small-en-v1.5, 384d) from
+# apps/api/config/models.yaml `embedding.model` — no provider choice, no env flag.
 QDRANT_URL=local                  # local (embedded) | http://localhost:6335 (Docker) | cloud URL
 TAVILY_API_KEY=                   # empty → DuckDuckGo fallback for web grounding
 VITE_API_URL=http://localhost:8000
@@ -518,7 +519,7 @@ TrustRAG implements extensive inference acceleration and memory optimization tec
 | **Dynamic Context Sizing** | Token-aware `num_ctx` per request using tiktoken | `local_llm.num_ctx` (base) | `4096` |
 | **Aggressive Model Eviction** | Registry limits instances by RAM: 1 (≤8GB) / 2 (≤16GB) / 4 (32GB+) | Internal | Dynamic |
 | **ONNX Reranker (int8)** | 3-4x CPU speedup, torch-free inference | `reranker.use_onnx` | `true` |
-| **ONNX Embeddings** | Torch-free embedding runtime, ~500-1000 MB RAM saved | `embedding.provider=onnx` | `onnx` |
+| **ONNX Embeddings** | Single torch-free embedding engine, ~500-1000 MB RAM saved | `embedding.model` | `BAAI/bge-small-en-v1.5` |
 | **Context Compression** | Hierarchical summarization before LLM call (50% reduction target) | `optimization.context_compression_enabled`, `optimization.context_compression_target_reduction` | `true`, `0.5` |
 | **Adaptive Top-K** | Reduces retrieval when confidence high (RRF > 0.02) | `optimization.adaptive_top_k` | `true` |
 | **Reranker Result Caching** | LRU cache for query-document scores | `reranker.cache_size` | `500` |
@@ -537,7 +538,7 @@ All config options support env overrides:
 | Context Compression | `CONTEXT_COMPRESSION_ENABLED`, `CONTEXT_COMPRESSION_TARGET_REDUCTION`, `MAX_CONTEXT_TOKENS` |
 | Local LLM Params | `LOCAL_LLM_NUM_CTX`, `LOCAL_LLM_NUM_BATCH`, `LOCAL_LLM_KEEP_ALIVE`, `LOCAL_LLM_MIN_P`, `LOCAL_LLM_TOP_K`, `LOCAL_LLM_EARLY_EXIT_EOS` |
 | Reranker | `RERANKER_USE_ONNX`, `RERANKER_ONNX_MODEL_PATH`, `RERANKER_CACHE_SIZE` |
-| Embedding Provider | `EMBEDDING_PROVIDER` |
+| Embedding model | `embedding.model` in `apps/api/config/models.yaml` (single engine, no env flag) |
 | Cache TTL | `EMBEDDING_CACHE_TTL_SECONDS`, `SEMANTIC_CACHE_TTL_SECONDS`, `EMBEDDING_CACHE_CLEANUP_INTERVAL` |
 
 ---

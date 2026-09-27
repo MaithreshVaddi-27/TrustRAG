@@ -320,7 +320,7 @@ Motion system: `motion` package with shared config (`lib/motionConfig.js`), entr
 **`.env`** — secrets and deployment-specific values:
 - `JWT_SECRET`, `MONGODB_URI`, `QDRANT_URL` (+ `QDRANT_API_KEY` for cloud)
 - `GEMINI_API_KEY` / `NVIDIA_API_KEY` (only for cloud LLM providers), `TAVILY_API_KEY` (else DuckDuckGo)
-- `EMBEDDING_PROVIDER`, `LLM_PROVIDER`, model/endpoint overrides (env wins over `models.yaml`)
+- `LLM_PROVIDER` (`AI_PROVIDER` alias), model/endpoint overrides (env wins over `models.yaml`). Embeddings have no provider choice — single ONNX engine from `embedding.model`.
 
 **`config/ports.yaml`** — canonical port registry for all services (Qdrant, MongoDB, Ollama, llama.cpp, frontend dev server).
 

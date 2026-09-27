@@ -30,25 +30,20 @@ export function QueryPanel({
   setSelectedModel,
 
   selectedEmbeddingModel,
-  setSelectedEmbeddingModel,
   enableWebSearch,
   setEnableWebSearch,
   webSearchProvider,
   setWebSearchProvider,
   providersData,
-  userTouchedEmbeddingRef,
   elapsedSec,
   activeProviderInfo,
-  activeEmbeddingProviderInfo,
   availableModels,
-  availableEmbeddingModels,
   refetchProviders,
   providersUnresolved = false,
   selectedKb,
   knowledgeBases,
   kbEmbeddingPin,
   embeddingMismatch,
-  snapEmbeddingToKb,
 }) {
   const handleProviderChange = (providerKey) => {
     setSelectedProvider(providerKey)
@@ -441,12 +436,8 @@ export function QueryPanel({
                 <Layers className="w-3.5 h-3.5 text-cyan-400" />
                 <span>Dense Embedding Model</span>
               </label>
-              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                activeEmbeddingProviderInfo?.connected
-                  ? 'bg-cyan-950/80 text-cyan-400 border border-cyan-800/40'
-                  : 'bg-slate-800 text-slate-400 border border-slate-700/40'
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${activeEmbeddingProviderInfo?.connected ? 'bg-cyan-400 animate-pulse' : 'bg-slate-500'}`} />
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-950/80 text-cyan-400 border border-cyan-800/40">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
                 Local BGE
               </span>
             </div>
@@ -460,7 +451,7 @@ export function QueryPanel({
               <div className="flex items-center justify-between text-[11px] text-slate-400">
                 <span className="font-medium">Embedding Model:</span>
                 <span className="font-mono text-[10px] text-cyan-400">
-                  {availableEmbeddingModels.find(m => m.id === selectedEmbeddingModel)?.dim ? `${availableEmbeddingModels.find(m => m.id === selectedEmbeddingModel)?.dim}d vectors` : ''}
+                  {selectedEmbeddingModel ? `${shortModelId(selectedEmbeddingModel)} · 384d vectors` : ''}
                 </span>
               </div>
               {selectedKb && (
@@ -469,43 +460,15 @@ export function QueryPanel({
                   {selectedKb.embedding_dim ? ` · ${selectedKb.embedding_dim}d` : ''}
                 </div>
               )}
-              {embeddingMismatch && kbEmbeddingPin && !['BAAI/bge-small-en-v1.5', 'sentence-transformers/all-MiniLM-L6-v2'].includes(kbEmbeddingPin) && (
+              {embeddingMismatch && kbEmbeddingPin && (
                 <div className="w-full flex items-start gap-1.5 rounded-lg border border-amber-500/50 bg-amber-950/40 px-2 py-1.5 text-left text-[11px] text-amber-200">
                   <AlertTriangle className="w-3.5 h-3.5 mt-[1px] shrink-0" />
                   <span>
-                    This KB was indexed with retired cloud embeddings (<span className="font-mono">{kbEmbeddingPin}</span>).
+                    This KB was indexed with <span className="font-mono">{kbEmbeddingPin}</span>.
                     Re-upload its documents to re-index with local BGE.
                   </span>
                 </div>
               )}
-              {embeddingMismatch && ['BAAI/bge-small-en-v1.5', 'sentence-transformers/all-MiniLM-L6-v2'].includes(kbEmbeddingPin) && (
-                <button
-                  type="button"
-                  onClick={snapEmbeddingToKb}
-                  className="w-full flex items-start gap-1.5 rounded-lg border border-amber-500/50 bg-amber-950/40 px-2 py-1.5 text-left text-[11px] text-amber-200 hover:bg-amber-900/40 transition-colors">
-                  <AlertTriangle className="w-3.5 h-3.5 mt-[1px] shrink-0" />
-                  <span>
-                    Mismatch: this KB was indexed with <span className="font-mono">{kbEmbeddingPin}</span>.
-                    Analyses with another model are rejected — click to match.
-                  </span>
-                </button>
-              )}
-              <div className="relative">
-                <select
-                  value={selectedEmbeddingModel}
-                  onChange={e => {
-                    setSelectedEmbeddingModel(e.target.value)
-                    userTouchedEmbeddingRef.current = true
-                  }}
-                  disabled={loading}
-                  className="w-full bg-surface-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-500/50">
-                {availableEmbeddingModels.map(m => (
-                  <option key={m.id} value={m.id} title={m.id}>
-                    {shortModelId(m.id)}{m.dim ? ` · ${m.dim}d` : ''}{m.tag ? ` — ${m.tag}` : ''}
-                  </option>
-                ))}
-                </select>
-              </div>
             </div>
           </div>
 

@@ -77,21 +77,16 @@ async def get_providers_endpoint(
 
     # Embeddings are single-engine (ONNX BGE from models.yaml) — no provider
     # choice. The UI renders this as a fixed badge, not a selector.
-    embedding_providers = {
-        "onnx": {
-            "name": "ONNX BGE (local, torch-free)",
-            "type": "local",
-            "connected": True,
-            "default_model": cfg.embedding_model,
-            "models": [
-                {
-                    "id": cfg.embedding_model,
-                    "name": f"{cfg.embedding_model} ({cfg.embedding_dimensionality}d)",
-                    "dim": cfg.embedding_dimensionality,
-                    "tag": "Active",
-                },
-            ],
-        },
+    # NOTE: `embedding_providers` (plural choice map) was removed — single
+    # default only. `embedding` below is informational (what is active).
+    embedding_info = {
+        "provider": "onnx",
+        "name": "ONNX BGE (local, torch-free)",
+        "type": "local",
+        "connected": True,
+        "default_model": cfg.embedding_model,
+        "model": cfg.embedding_model,
+        "dim": cfg.embedding_dimensionality,
     }
 
     return {
@@ -162,7 +157,7 @@ async def get_providers_endpoint(
                 ],
             },
         },
-        "embedding_providers": embedding_providers,
+        "embedding": embedding_info,
         "hardware": _safe_hardware_profile(),
     }
 

@@ -225,7 +225,6 @@ jobs:
           CORS_ORIGINS: http://localhost:5173
           AI_PROVIDER: ollama
           OLLAMA_BASE_URL: http://127.0.0.1:11434
-          EMBEDDING_PROVIDER: huggingface
         run: |
           nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/api.log 2>&1 &
           for i in $(seq 1 60); do

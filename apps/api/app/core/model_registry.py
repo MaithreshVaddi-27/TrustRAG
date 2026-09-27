@@ -61,13 +61,16 @@ def _suppress_nvidia_unknown_type_warning(model: str):
         yield
 
 
-def _resolve_embedding_onnx_path(cache_dir: Path, active_model: str) -> Path | None:
-    """Resolve the ONNX embedding weights for a model id (canonical + legacy).
+def _resolve_embedding_onnx_path(cache_dir: Path) -> Path | None:
+    """Resolve the ONNX embedding weights for the configured model.
 
-    Canonical: ``<base>.onnx`` (e.g. ``bge-small-en-v1.5.onnx``); legacy
-    accepts the underscored variant (``bge-small-en-v1_5.onnx``). Returns None
-    when neither exists so callers fail with one actionable message.
+    Single-model install: the id comes from ``embedding.model`` in
+    models.yaml (default ``BAAI/bge-small-en-v1.5``). Canonical file is
+    ``<base>.onnx`` (e.g. ``bge-small-en-v1.5.onnx``); the legacy
+    underscored variant (``bge-small-en-v1_5.onnx``) is accepted.
+    Returns None when neither exists so callers fail with one message.
     """
+    active_model = get_model_config().embedding_model
     base = active_model.split("/")[-1]
     for candidate in (cache_dir / f"{base}.onnx", cache_dir / f"{base.replace('.', '_')}.onnx"):
         if candidate.exists():
@@ -91,7 +94,7 @@ def onnx_model_status() -> dict[str, Any]:
     cfg: ModelConfig = get_model_config()
     api_base = Path(__file__).parent.parent.parent
     cache_dir = (api_base / cfg.embedding_cache_dir).resolve()
-    emb = _resolve_embedding_onnx_path(cache_dir, cfg.embedding_model)
+    emb = _resolve_embedding_onnx_path(cache_dir)
     rnk_path = (
         Path(cfg.reranker_onnx_model_path)
         if cfg.reranker_onnx_model_path
@@ -487,123 +490,6 @@ def get_verification_model(provider: str | None = None, model: str | None = None
     )
     put_llm_instance(f"verify:{active_provider}", active_model, llm)
     return llm
-    """
-    Return the verification LLM for claim-level structured verification.
-
-    Separate from the primary LLM to allow independent cost/quality tuning.
-    Temperature is forced to 0.0 for deterministic verification.
-
-    Uses bounded registry (max 4 instances) with LRU eviction.
-    """
-    settings = get_settings()
-    cfg: ModelConfig = get_model_config()
-
-    active_provider = (provider or cfg.verification_provider).lower()
-    # Same empty-override fallback as get_llm, per requested provider.
-    if active_provider == "ollama":
-        active_model = model or settings.ollama_model or cfg.verification_model_for("ollama")
-    elif active_provider in ("llama_cpp", "llamacpp"):
-        active_model = model or settings.llamacpp_model or cfg.verification_model_for("llama_cpp")
-    elif active_provider == "mlx":
-        active_model = model or settings.mlx_model or cfg.verification_model_for("mlx")
-    else:
-        active_model = model or cfg.verification_model_for(active_provider)
-
-    # Check registry first (use distinct key prefix for verification models)
-    cached = get_llm_instance(f"verify:{active_provider}", active_model)
-    if cached is not None:
-        logger.debug("Verification LLM cache hit", provider=active_provider, model=active_model)
-        return cached
-
-    logger.info(
-        "Initializing verification model",
-        provider=active_provider,
-        model=active_model,
-        temperature=0.0,
-    )
-
-    try:
-        if active_provider == "ollama":
-            from app.core.local_llm import ChatOllamaClient
-
-            llm = ChatOllamaClient(
-                base_url=settings.ollama_base_url,
-                model=active_model or "granite4.2:3b-q4_K_M",
-                temperature=0.0,
-                timeout=float(cfg.verification_timeout_seconds),
-            )
-            put_llm_instance(f"verify:{active_provider}", active_model, llm)
-            return llm
-
-        if active_provider in ("llama_cpp", "llamacpp"):
-            from app.core.local_llm import ChatLlamaCppClient
-
-            llm = ChatLlamaCppClient(
-                base_url=settings.llamacpp_base_url,
-                model=active_model or "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M",
-                temperature=0.0,
-                max_tokens=cfg.verification_max_output_tokens,
-                timeout=float(cfg.verification_timeout_seconds),
-            )
-            put_llm_instance(f"verify:{active_provider}", active_model, llm)
-            return llm
-
-        if active_provider == "mlx":
-            from app.core.local_llm import ChatLlamaCppClient
-
-            llm = ChatLlamaCppClient(
-                base_url=settings.mlx_base_url,
-                model=active_model or "mlx-community/Llama-3.2-1B-Instruct-4bit",
-                temperature=0.0,
-                max_tokens=cfg.verification_max_output_tokens,
-                timeout=float(cfg.verification_timeout_seconds),
-            )
-            put_llm_instance(f"verify:{active_provider}", active_model, llm)
-            return llm
-
-        if active_provider in ("nvidia", "nim"):
-            from langchain_nvidia_ai_endpoints import ChatNVIDIA
-
-            if not settings.nvidia_api_key:
-                raise ConfigurationError("NVIDIA_API_KEY must be set when AI_PROVIDER is 'nvidia'")
-
-            # Same ChatNVIDIA field rule as get_llm: max_completion_tokens +
-            # client timeout (max_tokens/timeout are silently ignored).
-            with _suppress_nvidia_unknown_type_warning(active_model):
-                llm = ChatNVIDIA(
-                    model=active_model,
-                    api_key=settings.nvidia_api_key,
-                    temperature=0.0,
-                    max_completion_tokens=cfg.verification_max_output_tokens,
-                    timeout=float(cfg.verification_timeout_seconds),
-                )
-            put_llm_instance(f"verify:{active_provider}", active_model, llm)
-            return llm
-
-        from langchain_google_genai import ChatGoogleGenerativeAI
-
-        if not settings.gemini_api_key:
-            raise ConfigurationError(
-                "GEMINI_API_KEY must be set when using Google Gemini provider. "
-                "Switch to 'ollama' or 'llama_cpp' to run completely locally without an API key."
-            )
-
-        llm = ChatGoogleGenerativeAI(
-            model=active_model,
-            google_api_key=settings.gemini_api_key,
-            temperature=cfg.verification_temperature,
-            max_output_tokens=cfg.verification_max_output_tokens,
-            timeout=cfg.verification_timeout_seconds,
-            max_retries=cfg.verification_max_retries,
-        )
-        put_llm_instance(f"verify:{active_provider}", active_model, llm)
-        return llm
-    except Exception as exc:
-        msg = (
-            f"Failed to initialize verification model '{active_model}' "
-            f"(provider: {active_provider})"
-        )
-        raise ConfigurationError(msg, detail=str(exc)) from exc
 
 
 # ─── Embedding Model (single engine: ONNX BGE) ──────────────────────────────
@@ -614,23 +500,23 @@ def get_verification_model(provider: str | None = None, model: str | None = None
 # ID in models.yaml and every stage follows automatically.
 
 
-@lru_cache(maxsize=8)
-def get_embedding_model(model: str | None = None) -> Embeddings:
+@lru_cache(maxsize=1)
+def get_embedding_model() -> Embeddings:
     """
-    Return the ONNX embedding model wrapped with persistent disk cache.
+    Return the single ONNX embedding model wrapped with persistent disk cache.
 
-    Args:
-        model: Optional model ID override (defaults to models.yaml
-            `embedding.model`). The engine is always ONNX Runtime BGE.
+    The model id comes from models.yaml ``embedding.model`` (default
+    ``BAAI/bge-small-en-v1.5``). There is no provider choice and no
+    per-request override — the engine is always ONNX Runtime BGE.
 
     Cloud embeddings (google_genai, nvidia) were removed: embeddings are a
     local-only concern now, so ingestion and retrieval work fully offline.
     NOTE (2026-09-06): Ollama / llama.cpp are LLM-only providers — their embedding
-    usage was removed. Requesting them raises ConfigurationError with a fix.
+    usage was removed.
     """
     cfg: ModelConfig = get_model_config()
 
-    active_model = model or cfg.embedding_model
+    active_model = cfg.embedding_model
 
     try:
         from app.core.onnx_embeddings import ONNXBGEEmbeddings, ONNXBGEEmbeddingsWrapper
@@ -647,7 +533,7 @@ def get_embedding_model(model: str | None = None) -> Embeddings:
     # would split the cache in two. Always anchor to api_base.)
     api_base = Path(__file__).parent.parent.parent
     cache_dir = (api_base / cfg.embedding_cache_dir).resolve()
-    onnx_model_path = _resolve_embedding_onnx_path(cache_dir, active_model)
+    onnx_model_path = _resolve_embedding_onnx_path(cache_dir)
     if onnx_model_path is None:
         raise ConfigurationError(
             f"ONNX embedding model not found in {cache_dir} "

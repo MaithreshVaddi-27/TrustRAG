@@ -98,9 +98,8 @@ export default function AppLayout({ children }) {
   const effProvider = playgroundEngine?.provider || serverProvider
   const effModel = playgroundEngine?.model || serverModel
   const isEngineOverride = !!playgroundEngine?.model && playgroundEngine.model !== serverModel
-  const serverEmbeddingModel = providersData?.active_embedding_model
-  const effEmbeddingModel = playgroundEngine?.embeddingModel || serverEmbeddingModel
-  const isEmbeddingOverride = !!playgroundEngine?.embeddingModel && playgroundEngine.embeddingModel !== serverEmbeddingModel
+  // Single embedding engine — server default only, no Playground override.
+  const effEmbeddingModel = providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
 
   // Motion values for spring animations
   const sidebarWidth = useSpring(isCollapsed ? 72 : 240, { damping: 20, stiffness: 220 })
@@ -263,13 +262,13 @@ export default function AppLayout({ children }) {
           <div
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300"
             title={effEmbeddingModel
-              ? `${effEmbeddingModel} · ${isEmbeddingOverride ? 'Playground selection' : 'Server default'}`
+              ? `${effEmbeddingModel} · Server default (single engine)`
               : 'Embedding model not configured'}
           >
             <Layers size={12} className="text-cyan-400 shrink-0" />
             <span
-              className={`w-1.5 h-1.5 rounded-full shrink-0 ${isEmbeddingOverride ? 'bg-cyan-400' : 'bg-slate-500'}`}
-              title={isEmbeddingOverride ? 'Playground selection' : 'Server default'}
+              className="w-1.5 h-1.5 rounded-full shrink-0 bg-slate-500"
+              title="Server default"
             />
             <span className="max-w-[210px] truncate tracking-tight">
               {shortModelId(effEmbeddingModel) || 'bge-small-en-v1.5'}

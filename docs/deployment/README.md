@@ -53,7 +53,7 @@ cp .env.example .env
 | `RATE_LIMIT_*_PER_MINUTE` | No | Per-client ceilings (analyses/auth/upload/url-ingest) |
 | `CACHE_DIR` | No | SQLite embedding + semantic-cache directory |
 | `LOCAL_LLM_MAX_CONCURRENCY` | No | Concurrent local generations, default 1 (raise only on parallel servers) |
-| `AI_PROVIDER`, `EMBEDDING_PROVIDER` (`huggingface`\|`onnx`), `SEARCH_PROVIDER`, `*_MODEL`, `*_BASE_URL`, `EMBEDDING_DIM` | No | Per-deploy overrides; env wins over models.yaml/ports.yaml (see `.env.example`) |
+| `AI_PROVIDER`, `SEARCH_PROVIDER`, `*_MODEL`, `*_BASE_URL`, `EMBEDDING_DIM` | No | Per-deploy overrides; env wins over models.yaml/ports.yaml (see `.env.example`) |
 | `FUSED_DECOMPOSE_VERIFY` | No | `1`/`0` kill-switch for the fused decompose+verify fast path |
 | `MALLOC_ARENA_MAX`, `TOKENIZERS_PARALLELISM` | No | Allocator tuning (`1`, `false`) to cut glibc/tokenizer RAM overhead |
 | `OLLAMA_KV_CACHE_TYPE`, `OLLAMA_FLASH_ATTENTION`, `OLLAMA_MAX_LOADED_MODELS`, `OLLAMA_NUM_PARALLEL` | No | Ollama **server** memory tuning — set in the shell before `ollama serve`, not read by the backend |
@@ -94,8 +94,8 @@ curl http://localhost:8000/api/v1/health
 cd apps/api
 python -m venv .venv
 source .venv/bin/activate
-# local-models = torch for default HuggingFace embeddings (also needed once
-# for the optional ONNX export below).
+# local-models = torch for the one-time ONNX export (the API runtime itself
+# is torch-free and serves the exported .onnx).
 pip install -e ".[dev,local-models]"
 uvicorn app.main:app --reload --port 8000
 
@@ -105,7 +105,7 @@ npm ci
 npm run dev
 ```
 
-> **Embeddings:** TRUSTRAG runs local BGE (384d) embeddings — zero cloud cost, zero keys. `EMBEDDING_PROVIDER=onnx` (torch-free ONNX Runtime; one-time fetch with `apps/api/.venv/bin/python scripts/bootstrap.py`, then `EMBEDDING_PROVIDER=onnx`). Cloud embeddings were removed. (`EMBEDDING_MODEL` selects between BGE and MiniLM.)
+> **Embeddings:** TRUSTRAG runs one local embedding engine — ONNX BGE (`BAAI/bge-small-en-v1.5`, 384d) from `embedding.model` in `models.yaml`. Zero cloud cost, zero keys, no provider choice. One-time fetch with `apps/api/.venv/bin/python scripts/bootstrap.py`. Cloud embeddings were removed.
 >
 > **OCR:** scanned/image PDF pages fall back to local RapidOCR-ONNX (`rapidocr-onnxruntime`, a default `pyproject.toml` dependency reusing the shipped `onnxruntime` — no Dockerfile change, no system binaries). Models download once to `~/.onnx` on the first scanned page and are cached afterwards: **pre-warm on deploy** (ingest one scanned PDF) or the first scanned upload stalls on the download. Disable per-deploy with `ingestion.ocr.enabled: false` in `models.yaml` if scanned input is out of scope.
 >
@@ -356,23 +356,17 @@ Verify `MONGODB_URI` is correct and Atlas IP whitelist includes your server IP.
 
 ### Embedding latency & zero-GPU operation
 
-By default TRUSTRAG uses local HuggingFace BGE (`BAAI/bge-small-en-v1.5`, 384d) via PyTorch — zero cloud cost and zero required credentials. On Apple Silicon it rides the Metal (MPS) device; on NVIDIA it picks CUDA; CPU hosts fall back cleanly. An in-memory thread-safe LRU cache serves repeat queries instantly.
-
-For sub-16GB hosts or to remove PyTorch from the API process entirely (~500–1000 MB RSS savings), switch to torch-free ONNX Runtime embeddings:
+TRUSTRAG uses one local embedding engine — ONNX BGE (`BAAI/bge-small-en-v1.5`, 384d, torch-free ONNX Runtime) — zero cloud cost and zero required credentials. CPU hosts run cleanly; an in-memory thread-safe LRU cache serves repeat queries instantly.
 
 ```bash
 # One-time fetch/export (needs the backend venv + network, once)
 apps/api/.venv/bin/python scripts/bootstrap.py
-
-# Enable in .env
-EMBEDDING_PROVIDER=onnx
 ```
 
-Cloud embeddings (Gemini/NVIDIA) were removed — embeddings are local-only. Knowledge bases indexed with a retired provider must be re-uploaded.
+Knowledge bases indexed with a retired embedding model must be re-uploaded.
 
 > **Docker note:** the API image ships `onnxruntime` but neither PyTorch nor model
-> weights, so `EMBEDDING_PROVIDER=huggingface` cannot load inside the container —
-> use `EMBEDDING_PROVIDER=onnx` and copy the exported model into the running
+> weights — copy the exported model into the running
 > container once (see the `model_cache` volume comment in `docker-compose.yml`).
 > The tokenizer still downloads from the Hub on first boot (pinned revision).
 

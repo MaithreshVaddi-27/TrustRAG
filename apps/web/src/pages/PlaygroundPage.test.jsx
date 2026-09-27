@@ -20,8 +20,11 @@ vi.mock('@/services/api', () => ({
           models: ['org/Picked-Model-GGUF:Q4_K_M'],
         },
       },
-      embedding_providers: {
-        onnx: { connected: true, models: [] },
+      embedding: {
+        provider: 'onnx',
+        connected: true,
+        model: 'BAAI/bge-small-en-v1.5',
+        dim: 384,
       },
     }),
   },

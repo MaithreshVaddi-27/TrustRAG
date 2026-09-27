@@ -34,9 +34,8 @@ _PORTS_YAML_PATH = _API_ROOT.parent.parent / "config" / "ports.yaml"
 
 # P0-CFG FIX (2026-09-06 audit): ModelConfig reads os.environ directly while
 # Settings loads .env via pydantic-settings (which does NOT export to
-# os.environ). Without this, .env values like EMBEDDING_PROVIDER/AI_PROVIDER
-# were silently ignored and models.yaml defaults won (e.g. Settings said
-# huggingface while ModelConfig reported google_genai). Loading .env into
+# os.environ). Without this, .env values like AI_PROVIDER
+# were silently ignored and models.yaml defaults won. Loading .env into
 # os.environ here keeps both paths consistent.
 load_dotenv(_API_ROOT / ".env", override=False)
 load_dotenv(_API_ROOT.parent.parent / ".env", override=False)

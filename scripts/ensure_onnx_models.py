@@ -13,11 +13,14 @@ Usage:
 Env vars:
   MODEL_CACHE_DIR           # preferred override (default: apps/api/.model_cache)
   CACHE_DIR                 # legacy fallback (MODEL_CACHE_DIR wins)
-  EMBEDDING_MODEL           # override embedding model (default: BAAI/bge-small-en-v1.5)
   RERANKER_MODEL            # override reranker model (default: cross-encoder/...MiniLM-L-6-v2)
   HF_TOKEN                  # Hugging Face token for private models
   HF_HUB_OFFLINE=1          # force offline mode (use local cache only)
   SKIP_ONNX_EXPORT=1        # skip export (verify only)
+
+NOTE: the embedding model is pinned to config/models.yaml `embedding.model`
+(default BAAI/bge-small-en-v1.5). There is no EMBEDDING_MODEL override —
+change the id in models.yaml and every stage follows.
 """
 
 from __future__ import annotations
@@ -39,7 +42,7 @@ except ImportError:
     # Fallback if config not loadable (e.g., during Docker build before install)
     def get_model_config():
         class _Cfg:
-            embedding_model = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
+            embedding_model = "BAAI/bge-small-en-v1.5"
             reranker_model = os.getenv("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
             embedding_dimensionality = 384
 

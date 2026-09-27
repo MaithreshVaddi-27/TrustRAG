@@ -216,9 +216,8 @@ async def create_analysis(
             raise InputValidationError(
                 f"Embedding mismatch: knowledge base '{kb.name}' was indexed "
                 f"with '{kb.embedding_model}' ({kb.embedding_dim or '?'}d), "
-                f"but this analysis requests '{effective_model}'. "
-                f"Switch the Playground embedding selector to '{kb.embedding_model}' "
-                f"or re-upload the documents to re-index with the new model.",
+                f"but the server runs '{effective_model}'. "
+                f"Re-upload the documents to re-index with the current model.",
                 detail=f"kb_pin={kb.embedding_model} requested={effective_model}",
             )
         # Dimension pin: same model name at a different output width (e.g. a

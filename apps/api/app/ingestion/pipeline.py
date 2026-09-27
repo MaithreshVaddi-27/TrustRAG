@@ -121,8 +121,11 @@ async def _index_parsed_chunks(
         _kb_coll_early = get_collection(Collections.KNOWLEDGE_BASES)
         _existing_kb_early = await _kb_coll_early.find_one({"_id": ObjectId(kb_id_str)})
         _pinned_model = (_existing_kb_early or {}).get("embedding_model")
-        effective_embedding_model = _pinned_model or cfg_early.embedding_model
-        if _pinned_model and _pinned_model != effective_embedding_model:
+        # Single embedding engine: the server always runs the models.yaml
+        # default. A pinned KB with a different id means re-upload.
+        effective_embedding_model = cfg_early.embedding_model
+        _pinned_norm = _pinned_model.strip().lower() if _pinned_model else ""
+        if _pinned_model and _pinned_norm != effective_embedding_model.strip().lower():
             raise RuntimeError(
                 f"Embedding model mismatch: KB pinned to "
                 f"{_pinned_model} but current is "
@@ -173,7 +176,7 @@ async def _index_parsed_chunks(
         await init_kb_collection(kb_id_str)
 
         # 3. Load embedding model (cached) — single models.yaml model.
-        embed_model = get_embedding_model(model=effective_embedding_model)
+        embed_model = get_embedding_model()
 
         # Zero-Cost Contextual Prefixing (Anthropic SOTA pattern):
         # Prepend document filename and zone to resolve chunk ambiguity without extra LLM cost

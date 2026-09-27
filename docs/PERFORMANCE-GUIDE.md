@@ -58,12 +58,7 @@ The torch process RSS floor dominates small hosts. The ONNX path is numerically 
 apps/api/.venv/bin/python scripts/bootstrap.py
 ```
 
-```bash
-# .env
-EMBEDDING_PROVIDER=onnx
-```
-
-Files: `scripts/bootstrap.py` (+ `ensure_onnx_models.py`), `apps/api/app/core/onnx_embeddings.py`, `apps/api/app/core/model_registry.py` (`onnx` branch). In Docker this is mandatory anyway (the image ships `onnxruntime` but no torch — export on the host, then `docker cp` into the container).
+Files: `scripts/bootstrap.py` (+ `ensure_onnx_models.py`), `apps/api/app/core/onnx_embeddings.py`, `apps/api/app/core/model_registry.py`. The single ONNX embedding engine is the default (no env flag) — in Docker this is mandatory anyway (the image ships `onnxruntime` but no torch — export on the host, then `docker cp` into the container).
 
 ### 2.2 Keep both caches ON (they already are — don't turn them off)
 
@@ -256,7 +251,7 @@ Ingest cost is offline — spend it wisely once instead of per query forever:
 
 In order of MB saved:
 
-1. `EMBEDDING_PROVIDER=onnx` — removes torch entirely (~500–1000 MB). Biggest single item.
+1. Torch-free ONNX embedding engine (default, no flag) — removes torch entirely (~500–1000 MB). Biggest single item.
 2. 1–3B Q4 local model (default 1.2B is already right-sized) + q8_0 KV cache (Ollama env or llama-server flags — both scripted; see §3).
 3. `TOKENIZERS_PARALLELISM=false` + `MALLOC_ARENA_MAX=1` in `.env` — kills thread-pool/allocator bloat next to torch.
 4. Qdrant embedded (`QDRANT_URL=local`) with INT8 on-disk vectors (already default per D-13) — 75% vector RAM saving, no server process.
@@ -304,7 +299,6 @@ curl -s http://localhost:8000/api/v1/metrics | grep trustrag_
 API_BASE_URL=http://localhost:8000 k6 run load-test/smoke.js
 
 # 1. .env free wins
-EMBEDDING_PROVIDER=onnx
 LOG_LEVEL=WARNING
 TOKENIZERS_PARALLELISM=false
 LOCAL_LLM_MAX_CONCURRENCY=1

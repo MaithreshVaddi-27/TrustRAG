@@ -23,7 +23,6 @@ export default function PlaygroundPage() {
   const streamRef = useRef(null)
   const pollTimerRef = useRef(null)
   const finalizedRef = useRef(false)
-  const userTouchedEmbeddingRef = useRef(false)
 
   useEffect(() => {
     if (!loading) return undefined
@@ -65,8 +64,13 @@ export default function PlaygroundPage() {
 
   const [selectedProvider, setSelectedProvider] = useState('llama_cpp')
   const [selectedModel, setSelectedModel] = useState('LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M')
-  // Auto-select the discovered default on first load so runs never go out
-  // with an empty model (previously rendered as "DEFAULT" everywhere).
+  // Single embedding engine (ONNX BGE from models.yaml) — no selector.
+  // The server default is the only valid value; KB pins are validated
+  // server-side and surfaced as a re-upload banner client-side.
+  const selectedEmbeddingModel = providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
+  // Publish the effective engine to the top telemetry bar (AppLayout reads the
+  // same localStorage key + event) so the navbar pills always show what the
+  // Playground will actually run — not just the server default.
   // One-shot: once set — by the user or here — nothing overrides it.
   const activeProviderDefault = providersData?.providers?.[selectedProvider]?.default_model
   useEffect(() => {
@@ -74,9 +78,6 @@ export default function PlaygroundPage() {
       setSelectedModel(activeProviderDefault)
     }
   }, [activeProviderDefault, selectedModel])
-
-  const [selectedEmbeddingProvider, setSelectedEmbeddingProvider] = useState('huggingface')
-  const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState('BAAI/bge-small-en-v1.5')
 
   // Publish the effective engine to the top telemetry bar (AppLayout reads the
   // same localStorage key + event) so the navbar pills always show what the
@@ -86,7 +87,6 @@ export default function PlaygroundPage() {
       localStorage.setItem('trustrag.playground.engine', JSON.stringify({
         provider: selectedProvider,
         model: selectedModel,
-        embeddingProvider: selectedEmbeddingProvider,
         embeddingModel: selectedEmbeddingModel,
         ts: Date.now(),
       }))
@@ -94,27 +94,11 @@ export default function PlaygroundPage() {
     } catch {
       // private-mode storage denial must never break the workbench
     }
-  }, [selectedProvider, selectedModel, selectedEmbeddingProvider, selectedEmbeddingModel])
-
-  useEffect(() => {
-    if (!userTouchedEmbeddingRef.current) {
-      if (providersData?.active_embedding_provider) {
-        setSelectedEmbeddingProvider(providersData.active_embedding_provider)
-      }
-      if (providersData?.active_embedding_model) {
-        setSelectedEmbeddingModel(providersData.active_embedding_model)
-      }
-    }
-  }, [providersData?.active_embedding_provider, providersData?.active_embedding_model])
+  }, [selectedProvider, selectedModel, selectedEmbeddingModel])
 
 const activeProviderInfo = providersData?.providers?.[selectedProvider]
   const availableModels = activeProviderInfo?.models?.length
     ? [...new Set(activeProviderInfo.models)]
-    : []
-
-  const activeEmbeddingProviderInfo = providersData?.embedding_providers?.[selectedEmbeddingProvider]
-  const availableEmbeddingModels = activeEmbeddingProviderInfo?.models?.length
-    ? activeEmbeddingProviderInfo.models
     : []
 
   const handleReset = () => {
@@ -321,28 +305,10 @@ const activeProviderInfo = providersData?.providers?.[selectedProvider]
   const selectedKb = knowledgeBases?.find(k => k.id === kbId)
 
   // KB embedding-space pin: a KB's vectors live in exactly one embedding space
-  // (recorded at first ingest). The backend rejects analyses that request any
-  // other model, so auto-snap the selector whenever the KB (or its pin) changes.
-  // Retired cloud pins never snap (no valid selection exists) — the banner
-  // directs to re-upload instead.
-  const LOCAL_EMBEDDING_MODELS = ['BAAI/bge-small-en-v1.5', 'sentence-transformers/all-MiniLM-L6-v2']
+  // (recorded at first ingest). Single-engine install: the server always runs
+  // the models.yaml default, so a pin mismatch means re-upload.
   const kbEmbeddingPin = selectedKb?.embedding_model || null
-  const kbEmbeddingProviderPin = selectedKb?.embedding_provider || null
-  const isLocalPin = kbEmbeddingPin && LOCAL_EMBEDDING_MODELS.includes(kbEmbeddingPin)
-  useEffect(() => {
-    if (isLocalPin) {
-      if (kbEmbeddingProviderPin === 'huggingface') setSelectedEmbeddingProvider(kbEmbeddingProviderPin)
-      setSelectedEmbeddingModel(kbEmbeddingPin)
-      userTouchedEmbeddingRef.current = false
-    }
-  }, [kbId, kbEmbeddingPin, kbEmbeddingProviderPin, isLocalPin])
   const embeddingMismatch = !!kbEmbeddingPin && selectedEmbeddingModel !== kbEmbeddingPin
-  const snapEmbeddingToKb = () => {
-    if (!isLocalPin) return
-    if (kbEmbeddingProviderPin === 'huggingface') setSelectedEmbeddingProvider(kbEmbeddingProviderPin)
-    if (kbEmbeddingPin) setSelectedEmbeddingModel(kbEmbeddingPin)
-    userTouchedEmbeddingRef.current = false
-  }
 
   return (
     <AppLayout>
@@ -367,25 +333,20 @@ const activeProviderInfo = providersData?.providers?.[selectedProvider]
           selectedModel={selectedModel}
           setSelectedModel={setSelectedModel}
           selectedEmbeddingModel={selectedEmbeddingModel}
-          setSelectedEmbeddingModel={setSelectedEmbeddingModel}
           enableWebSearch={enableWebSearch}
           setEnableWebSearch={setEnableWebSearch}
           webSearchProvider={webSearchProvider}
           setWebSearchProvider={setWebSearchProvider}
           providersData={providersData}
-          userTouchedEmbeddingRef={userTouchedEmbeddingRef}
           elapsedSec={elapsedSec}
           activeProviderInfo={activeProviderInfo}
-          activeEmbeddingProviderInfo={activeEmbeddingProviderInfo}
           availableModels={availableModels}
-          availableEmbeddingModels={availableEmbeddingModels}
           refetchProviders={refetchProviders}
           providersUnresolved={providersUnresolved}
           selectedKb={selectedKb}
           knowledgeBases={knowledgeBases}
           kbEmbeddingPin={kbEmbeddingPin}
           embeddingMismatch={embeddingMismatch}
-          snapEmbeddingToKb={snapEmbeddingToKb}
         />
 
         <ResultsPanel

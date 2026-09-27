@@ -65,7 +65,7 @@ dependencies = [
     "tiktoken>=0.8.0",            # Token counting for dynamic context sizing
 
     # ── Local embeddings (ONNX Runtime, torch-free) ──────────────────────────
-    "onnxruntime>=1.20.0",        # BGE-small via ONNX (EMBEDDING_PROVIDER=onnx)
+    "onnxruntime>=1.20.0",        # single embedding engine: BGE-small via ONNX
 ]
 
 [project.optional-dependencies]

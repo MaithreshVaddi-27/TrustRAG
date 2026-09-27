@@ -143,9 +143,26 @@ def test_embedding_model_is_single_onnx_engine():
     assert cfg.embedding_model == "BAAI/bge-small-en-v1.5"
     assert not hasattr(cfg, "embedding_provider")
 
-    # Unknown model ID fails loudly with the bootstrap fix (not silent).
-    with pytest.raises(ConfigurationError, match="bootstrap"):
-        get_embedding_model(model="nonexistent-org/nonexistent-model")
+    # Single-model install: get_embedding_model() takes no override — it
+    # serves the models.yaml default or fails loudly with the bootstrap fix.
+    import inspect
+
+
+    assert "model" not in inspect.signature(get_embedding_model).parameters
+    # Missing ONNX weights fail loudly with the bootstrap fix (not silent).
+    get_embedding_model.cache_clear()
+    try:
+        with pytest.raises(ConfigurationError, match="bootstrap"):
+            import app.core.model_registry as _reg
+
+            orig = _reg._resolve_embedding_onnx_path
+            _reg._resolve_embedding_onnx_path = lambda _cache_dir: None
+            try:
+                get_embedding_model()
+            finally:
+                _reg._resolve_embedding_onnx_path = orig
+    finally:
+        get_embedding_model.cache_clear()
 
 
 # ─── Discovery snapshot + seeding tests ───────────────────────────────────────

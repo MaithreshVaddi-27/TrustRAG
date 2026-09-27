@@ -726,8 +726,8 @@ class ChatLlamaCppClient(BaseChatModel):
 # ─── CLI model discovery (LLM-only) ────────────────────────────────────────────
 # NOTE: embedding models are intentionally EXCLUDED everywhere here.
 # `ollama list` feeds the Ollama LLM selector, `llama-server --cache-list` feeds
-# the llama.cpp LLM selector. Embeddings are fixed via EMBEDDING_* env / models.yaml
-# and pinned per-KB at ingest — never user-selected per request.
+# the llama.cpp LLM selector. Embeddings are fixed to the single models.yaml
+# model and pinned per-KB at ingest — never user-selected per request.
 
 # ─── Runtime model discovery cache ────────────────────────────────────────────
 # Only models actually discovered via `ollama list` and `llama-server --cache-list`

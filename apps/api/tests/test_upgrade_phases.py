@@ -289,8 +289,21 @@ def test_onnx_missing_model_points_at_bootstrap():
     from app.core.exceptions import ConfigurationError
     from app.core.model_registry import get_embedding_model
 
-    with pytest.raises(ConfigurationError, match="bootstrap"):
-        get_embedding_model(model="nonexistent-org/nonexistent-model")
+    # Single-model install: no per-request override. A missing ONNX file
+    # fails loudly with the bootstrap fix (not silent).
+    get_embedding_model.cache_clear()
+    try:
+        import app.core.model_registry as _reg
+
+        orig = _reg._resolve_embedding_onnx_path
+        _reg._resolve_embedding_onnx_path = lambda _cache_dir: None
+        try:
+            with pytest.raises(ConfigurationError, match="bootstrap"):
+                get_embedding_model()
+        finally:
+            _reg._resolve_embedding_onnx_path = orig
+    finally:
+        get_embedding_model.cache_clear()
 
 
 def test_memory_fallback_without_psutil_or_resource(monkeypatch):
