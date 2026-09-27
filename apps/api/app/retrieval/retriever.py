@@ -92,8 +92,6 @@ async def dense_search(
     query: str,
     kb_id: str,
     top_k: int = 20,
-    embedding_provider: str | None = None,
-    embedding_model: str | None = None,
 ) -> list[Any]:
     """Retrieve top_k chunks using dense vector embeddings with LRU cache.
 
@@ -130,11 +128,9 @@ async def dense_search(
         # Check LRU cache first to eliminate redundant computation.
         # Normalized key avoids repeat embeddings for case/whitespace variants.
         # Stored as (dim, vec): a hit with a mismatched dim means the embedding
-        # space changed under us — discard and re-embed.
-        cache_key = (
-            f"{(embedding_provider or '').strip().lower()}:"
-            f"{(embedding_model or '').strip().lower()}:{query.strip().lower()}"
-        )
+        # space changed under us — discard and re-embed. The model is the
+        # single models.yaml value, so the key needs no provider segment.
+        cache_key = f"onnx:{query.strip().lower()}"
         cached_vec = _query_cache.get(cache_key)
         if cached_vec is not None and (not target_dim or len(cached_vec) == target_dim):
             query_vector = cached_vec
@@ -147,7 +143,7 @@ async def dense_search(
                     kb_id=kb_id,
                 )
             try:
-                embed_model = get_embedding_model(embedding_provider, embedding_model)
+                embed_model = get_embedding_model()
                 # Embed query text in background thread to avoid freezing asyncio event loop
                 query_vector = await asyncio.to_thread(embed_model.embed_query, query)
                 _query_cache.set(cache_key, query_vector)
@@ -420,8 +416,6 @@ async def retrieve_hybrid_chunks(
     kb_id: str,
     reference_time: datetime | None = None,
     top_k_override: int | None = None,
-    embedding_provider: str | None = None,
-    embedding_model: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Primary hybrid dense + sparse retrieval coordinator.
@@ -467,8 +461,6 @@ async def retrieve_hybrid_chunks(
                         query,
                         kb_id,
                         top_k=dense_top,
-                        embedding_provider=embedding_provider,
-                        embedding_model=embedding_model,
                     ),
                     "dense",
                 ),

@@ -177,8 +177,6 @@ const activeProviderInfo = providersData?.providers?.[selectedProvider]
         web_search_provider: webSearchProvider,
         llm_provider: selectedProvider,
         llm_model: selectedModel,
-        embedding_provider: selectedEmbeddingProvider,
-        embedding_model: selectedEmbeddingModel,
       })
 
       finalizedRef.current = false

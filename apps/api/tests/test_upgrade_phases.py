@@ -290,7 +290,7 @@ def test_onnx_missing_model_points_at_bootstrap():
     from app.core.model_registry import get_embedding_model
 
     with pytest.raises(ConfigurationError, match="bootstrap"):
-        get_embedding_model(provider="onnx", model="nonexistent-org/nonexistent-model")
+        get_embedding_model(model="nonexistent-org/nonexistent-model")
 
 
 def test_memory_fallback_without_psutil_or_resource(monkeypatch):
@@ -332,9 +332,7 @@ def test_semantic_matrix_rebuilds_when_dirty():
         assert sc._MATRIX_CACHE is not None
         assert hit == {"answer": "A"}
         # Near-duplicate still resolves to the right entry through the matrix.
-        hit_b = sc.check_semantic_cache(
-            "q2", "kb1", [0.0, 1.0, 0.0, 0.0], embedding_model="m"
-        )
+        hit_b = sc.check_semantic_cache("q2", "kb1", [0.0, 1.0, 0.0, 0.0], embedding_model="m")
         assert hit_b == {"answer": "B"}
     finally:
         sc.reset_module_state()

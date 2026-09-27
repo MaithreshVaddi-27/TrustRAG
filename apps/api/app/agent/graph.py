@@ -63,8 +63,6 @@ class AgentState(TypedDict):
     web_search_provider: str  # "tavily" | "duckduckgo" | "both"
     llm_provider: str | None
     llm_model: str | None
-    embedding_provider: str | None
-    embedding_model: str | None
     # True when the answer text is reused from semantic cache; retrieval and
     # verification still rerun against the current knowledge base for auditability.
     cache_hit: bool
@@ -239,10 +237,6 @@ async def retrieval_node(state: AgentState) -> AgentState:
             "kb_id": state["kb_id"],
             "top_k_override": top_k_override,
         }
-        if state.get("embedding_provider"):
-            retrieve_kwargs["embedding_provider"] = state.get("embedding_provider")
-        if state.get("embedding_model"):
-            retrieve_kwargs["embedding_model"] = state.get("embedding_model")
 
         # Deterministic query router: SIMPLE reuses today's single hybrid call
         # verbatim; TEMPORAL adds an explicit reference_time; COMPARISON and
@@ -347,10 +341,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                         ):
                             doc_map[str(d_obj["_id"])] = d_obj.get("filename", "document")
 
-                    embed_model = get_embedding_model(
-                        provider=state.get("embedding_provider"),
-                        model=state.get("embedding_model"),
-                    )
+                    embed_model = get_embedding_model()
                     # H-BE-5: embed + upsert in bounded batches so a 10 k-chunk
                     # self-heal never holds all vectors/points in RAM at once.
                     # Progress events keep the trace UI honest on long heals
@@ -1355,11 +1346,10 @@ async def execute_agentic_rag_flow(
     web_search_provider: str = "both",
     llm_provider: str | None = None,
     llm_model: str | None = None,
-    embedding_provider: str | None = None,
-    embedding_model: str | None = None,
 ) -> dict[str, Any]:
     """Compile and execute the full agent graph pipeline."""
     graph = build_agent_graph()
+    cfg = get_model_config()
 
     initial_state: AgentState = {
         "analysis_id": analysis_id_str,
@@ -1381,8 +1371,6 @@ async def execute_agentic_rag_flow(
         "web_search_provider": web_search_provider,
         "llm_provider": llm_provider,
         "llm_model": llm_model,
-        "embedding_provider": embedding_provider,
-        "embedding_model": embedding_model,
         "cache_hit": False,
         "node_errors": [],
     }
@@ -1397,10 +1385,10 @@ async def execute_agentic_rag_flow(
             from app.core.model_registry import get_embedding_model
             from app.core.semantic_cache import check_semantic_cache
 
-            cache_key = f"{embedding_provider or ''}:{embedding_model or ''}:{query}"
+            cache_key = f"onnx:{query}"
             q_vec = _query_cache.get(cache_key)
             if q_vec is None:
-                emb_model = get_embedding_model(provider=embedding_provider, model=embedding_model)
+                emb_model = get_embedding_model()
                 try:
                     q_vec = await emb_model.aembed_query(query)
                 except Exception:
@@ -1413,7 +1401,7 @@ async def execute_agentic_rag_flow(
                 kb_id_str,
                 q_vec,
                 similarity_threshold=0.94,
-                embedding_model=f"{embedding_provider or ''}:{embedding_model or ''}",
+                embedding_model=f"onnx:{cfg.embedding_model}",
             )
             if cached_resp and isinstance(cached_resp.get("answer"), str):
                 initial_state["answer"] = cached_resp["answer"]
@@ -1454,7 +1442,7 @@ async def execute_agentic_rag_flow(
                     response_data={
                         "answer": final_state["answer"],
                     },
-                    embedding_model=f"{embedding_provider or ''}:{embedding_model or ''}",
+                    embedding_model=f"onnx:{cfg.embedding_model}",
                 )
             except Exception as store_err:
                 logger.debug("Semantic cache store skipped", error=str(store_err))

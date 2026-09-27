@@ -43,8 +43,6 @@ async def _index_parsed_chunks(
     kb_id_str: str,
     chunks: list[dict[str, Any]] | None = None,
     strategy: ChunkingStrategy | None = None,
-    embedding_provider: str | None = None,
-    embedding_model: str | None = None,
 ) -> None:
     """
     Background task to generate embeddings and index chunks to Qdrant.
@@ -117,18 +115,13 @@ async def _index_parsed_chunks(
         # collection (retriever would truncate/pad garbage). Fail loudly so the
         # operator re-uploads into a NEW KB instead of corrupting this one.
         # Runs before Mongo insert + Qdrant upsert so a mismatch leaves no
-        # orphan chunks behind. Resolution order: request params > KB pin >
-        # config default — a pinned KB keeps working even when callers (e.g.
-        # from-url ingestion, which takes no embedding params) pass nothing.
+        # orphan chunks behind. The model is the single models.yaml value —
+        # a pinned KB keeps working, and a config change requires re-upload.
         cfg_early = get_model_config()
         _kb_coll_early = get_collection(Collections.KNOWLEDGE_BASES)
         _existing_kb_early = await _kb_coll_early.find_one({"_id": ObjectId(kb_id_str)})
         _pinned_model = (_existing_kb_early or {}).get("embedding_model")
-        _pinned_provider = (_existing_kb_early or {}).get("embedding_provider")
-        effective_embedding_provider = (
-            embedding_provider or _pinned_provider or cfg_early.embedding_provider
-        )
-        effective_embedding_model = embedding_model or _pinned_model or cfg_early.embedding_model
+        effective_embedding_model = _pinned_model or cfg_early.embedding_model
         if _pinned_model and _pinned_model != effective_embedding_model:
             raise RuntimeError(
                 f"Embedding model mismatch: KB pinned to "
@@ -141,7 +134,6 @@ async def _index_parsed_chunks(
                 {
                     "$set": {
                         "embedding_model": effective_embedding_model,
-                        "embedding_provider": effective_embedding_provider,
                         "embedding_dim": cfg_early.embedding_dimensionality,
                     }
                 },
@@ -180,11 +172,8 @@ async def _index_parsed_chunks(
         # 2. Ensure Qdrant collection is initialized
         await init_kb_collection(kb_id_str)
 
-        # 3. Load embedding model (cached) — effective model already resolved
-        # (request params > KB pin > config default) in the pin check above.
-        embed_model = get_embedding_model(
-            provider=effective_embedding_provider, model=effective_embedding_model
-        )
+        # 3. Load embedding model (cached) — single models.yaml model.
+        embed_model = get_embedding_model(model=effective_embedding_model)
 
         # Zero-Cost Contextual Prefixing (Anthropic SOTA pattern):
         # Prepend document filename and zone to resolve chunk ambiguity without extra LLM cost

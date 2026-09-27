@@ -38,7 +38,6 @@ def serialize_kb(kb_doc: Mapping[str, Any], doc_count: int = 0) -> KBResponse:
         parent_kb_id=str(parent_kb_id) if parent_kb_id else None,
         is_snapshot=is_snapshot,
         embedding_model=kb_doc.get("embedding_model"),
-        embedding_provider=kb_doc.get("embedding_provider"),
         embedding_dim=kb_doc.get("embedding_dim"),
     )
 
@@ -355,7 +354,6 @@ async def create_kb_snapshot(kb_id_str: str, user_id_str: str, version: str = "1
             {
                 "$set": {
                     "embedding_model": current_kb.get("embedding_model"),
-                    "embedding_provider": current_kb.get("embedding_provider"),
                     "embedding_dim": current_kb.get("embedding_dim"),
                 }
             },

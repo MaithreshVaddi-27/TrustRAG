@@ -138,7 +138,7 @@ def serialize_analysis(doc: Mapping[str, Any]) -> AnalysisResponse:
         web_search_provider=doc.get("web_search_provider"),
         llm_provider=doc.get("llm_provider"),
         llm_model=doc.get("llm_model"),
-        embedding_provider=doc.get("embedding_provider"),
+        embedding_provider="onnx",
         embedding_model=doc.get("embedding_model"),
     )
 
@@ -203,27 +203,13 @@ async def create_analysis(
 
     cfg = get_model_config()
 
-    # Fail fast on retired embedding providers: ollama/llama.cpp are LLM-only
-    # (model_registry raises ConfigurationError → 503 deep in the background
-    # pipeline). Rejecting here returns an actionable 422 synchronously.
-    # The server default is checked too — a retired EMBEDDING_PROVIDER with no
-    # per-request override would otherwise slip past and fail in background.
-    effective_provider = (schema.embedding_provider or cfg.embedding_provider).lower()
-    if effective_provider in ("ollama", "llamacpp", "llama_cpp"):
-        raise InputValidationError(
-            f"Embedding provider '{effective_provider}' is LLM-only and was removed. "
-            "Use 'huggingface' (local BGE).",
-            detail=f"requested_embedding_provider={schema.embedding_provider} "
-            f"server_default={cfg.embedding_provider}",
-        )
-
     # EMBEDDING-SPACE GUARD 2026-09-06: a KB's vectors live in exactly one
     # embedding space (pinned at first ingest). Querying with another model
     # returns plausible-looking garbage → verification fails → recovery spiral
     # (heat + minutes of wasted local inference). Fail fast with a message
     # that tells the user exactly how to fix it.
     if kb.embedding_model:
-        effective_model = schema.embedding_model or cfg.embedding_model
+        effective_model = cfg.embedding_model
         # Model ids are case-sensitive upstream, but a casing/whitespace-only
         # difference is never a different embedding space — normalize the compare.
         if effective_model.strip().lower() != kb.embedding_model.strip().lower():
@@ -273,8 +259,7 @@ async def create_analysis(
     # rendered "DEFAULT" and audits couldn't tell granite from EXAONE).
     effective_llm_provider = (schema.llm_provider or cfg.llm_provider or "").strip().lower()
     effective_llm_model = schema.llm_model or cfg.llm_model_for(effective_llm_provider)
-    effective_embedding_provider = schema.embedding_provider or cfg.embedding_provider
-    effective_embedding_model = schema.embedding_model or cfg.embedding_model
+    effective_embedding_model = cfg.embedding_model
 
     # LOCAL-LLM PREFLIGHT: when the effective provider is a local inference
     # server, verify it answers in ~3s. Without this, a stopped ollama /
@@ -318,7 +303,7 @@ async def create_analysis(
         "web_search_provider": schema.web_search_provider,
         "llm_provider": effective_llm_provider,
         "llm_model": effective_llm_model,
-        "embedding_provider": effective_embedding_provider,
+        "embedding_provider": "onnx",
         "embedding_model": effective_embedding_model,
     }
 
@@ -334,7 +319,7 @@ async def create_analysis(
             "message": "Analysis run initiated",
             "provider": effective_llm_provider,
             "model": effective_llm_model,
-            "embedding_provider": effective_embedding_provider,
+            "embedding_provider": "onnx",
             "embedding_model": effective_embedding_model,
         },
     )
@@ -350,8 +335,6 @@ async def create_analysis(
         web_search_provider=schema.web_search_provider,
         llm_provider=effective_llm_provider,
         llm_model=effective_llm_model,
-        embedding_provider=effective_embedding_provider,
-        embedding_model=effective_embedding_model,
     )
 
     return serialize_analysis(analysis_doc)
@@ -549,8 +532,6 @@ async def run_analysis_pipeline(
     web_search_provider: str = "both",
     llm_provider: str | None = None,
     llm_model: str | None = None,
-    embedding_provider: str | None = None,
-    embedding_model: str | None = None,
 ) -> None:
     """
     Execute RAG retrieval and generation pipeline in the background.
@@ -589,8 +570,6 @@ async def run_analysis_pipeline(
                 web_search_provider=web_search_provider,
                 llm_provider=llm_provider,
                 llm_model=llm_model,
-                embedding_provider=embedding_provider,
-                embedding_model=embedding_model,
             )
 
         if final_state.get("diagnosis_type") == "RETRIEVAL_OUTAGE":
@@ -1045,7 +1024,7 @@ async def get_analytics_dashboard(user_id_str: str) -> dict[str, Any]:
     cfg = get_model_config()
     cost_indicators = {
         "config_version": cfg.config_version,
-        "embedding_provider": cfg.embedding_provider,
+        "embedding_provider": "onnx",
         "llm_provider": cfg.llm_provider,
     }
 

@@ -46,6 +46,7 @@ async def _await_nli_call(coro, *, what: str):  # type: ignore[no-untyped-def]
         )
         raise
 
+
 # ─── NLI batch-failure metric ────────────────────────────────────────────────
 # Counts batch-NLI calls that fail totally (raise → retry → individual
 # fallback). Exposed via /health/detailed for tuning the fused/two-step split.

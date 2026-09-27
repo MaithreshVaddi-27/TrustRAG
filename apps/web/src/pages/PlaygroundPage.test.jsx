@@ -11,7 +11,7 @@ vi.mock('@/services/api', () => ({
     getProviders: vi.fn().mockResolvedValue({
       active_provider: 'llama_cpp',
       active_model: 'ibm-granite/granite-4.2-3b-GGUF:Q4_K_M',
-      active_embedding_provider: 'huggingface',
+      active_embedding_provider: 'onnx',
       active_embedding_model: 'BAAI/bge-small-en-v1.5',
       providers: {
         llama_cpp: {
@@ -21,7 +21,7 @@ vi.mock('@/services/api', () => ({
         },
       },
       embedding_providers: {
-        huggingface: { connected: true, models: [] },
+        onnx: { connected: true, models: [] },
       },
     }),
   },

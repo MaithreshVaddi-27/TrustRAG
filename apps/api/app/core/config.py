@@ -226,11 +226,6 @@ class Settings(BaseSettings):
             "'llama_cpp', 'mlx' (Apple Silicon), 'gemini', or 'nvidia'"
         ),
     )
-    embedding_provider: str = Field(
-        default="huggingface",
-        validation_alias=AliasChoices("EMBEDDING_PROVIDER", "EMBEDDING_BACKEND"),
-        description="Active embedding engine: 'huggingface' (local-only)",
-    )
     search_provider: str = Field(
         default="auto",
         validation_alias=AliasChoices("SEARCH_PROVIDER"),
@@ -261,11 +256,6 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("GEMINI_VERIFICATION_MODEL", "VERIFICATION_MODEL"),
         description="Override verification LLM model ID in .env",
-    )
-    gemini_embedding_model: str = Field(
-        default="",
-        validation_alias=AliasChoices("EMBEDDING_MODEL", "LOCAL_EMBEDDING_MODEL"),
-        description="Override embedding model ID in .env",
     )
     embedding_dim: int | None = Field(
         default=None,
@@ -460,20 +450,14 @@ class ModelConfig:
         return int(self._get("llm", "max_retries"))
 
     # ── Embedding ─────────────────────────────────────────────────────────
-    @property
-    def embedding_provider(self) -> str:
-        val = self._get("embedding", "provider", required=False)
-        env_val = os.environ.get("EMBEDDING_PROVIDER") or os.environ.get("EMBEDDING_BACKEND")
-        if env_val:
-            return env_val.lower()
-        return str(val or "huggingface").lower()
-
+    # Single embedding engine: ONNX BGE (torch-free). `embedding.model` in
+    # models.yaml is the sole source of truth — there is no provider choice,
+    # no EMBEDDING_PROVIDER env, and no per-request override. Update the model
+    # ID in models.yaml and every stage (ingest, retrieval, verification)
+    # follows automatically.
     @property
     def embedding_model(self) -> str:
         val = self._get("embedding", "model")
-        env_model = os.environ.get("EMBEDDING_MODEL") or os.environ.get("LOCAL_EMBEDDING_MODEL")
-        if env_model:
-            return env_model
         return str(val or "BAAI/bge-small-en-v1.5")
 
     @property
@@ -503,16 +487,6 @@ class ModelConfig:
         if val is not None:
             return int(val)
         return 512  # Default for BGE-small
-
-    # ── Embedding Quantization (Phase 4.2) ──────────────────────────────────────
-    @property
-    def embedding_quantization(self) -> bool:
-        """Enable int8 quantization for embedding model (~500-1000MB RAM savings)."""
-        value = self._get("embedding", "quantization", required=False)
-        env_val = os.environ.get("EMBEDDING_QUANTIZATION")
-        if env_val is not None:
-            return _parse_bool(env_val)
-        return _parse_bool(value, False)  # Default disabled, opt-in
 
     # ── Verification ──────────────────────────────────────────────────────
     @property
@@ -985,7 +959,6 @@ class ModelConfig:
             "config_version": self.config_version,
             "llm_provider": self.llm_provider,
             "llm_model": self.llm_model,
-            "embedding_provider": self.embedding_provider,
             "embedding_model": self.embedding_model,
             "embedding_version": self.embedding_version,
             "embedding_dimensionality": self.embedding_dimensionality,

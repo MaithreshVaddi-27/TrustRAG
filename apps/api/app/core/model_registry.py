@@ -98,7 +98,8 @@ def onnx_model_status() -> dict[str, Any]:
         else _resolve_reranker_onnx_path(cache_dir, cfg.reranker_model)
     )
     return {
-        "embedding_provider": cfg.embedding_provider,
+        "embedding_provider": "onnx",
+        "embedding_model": cfg.embedding_model,
         "embedding_onnx_present": emb is not None,
         "embedding_onnx_path": str(emb) if emb else str(cache_dir),
         "reranker_enabled": cfg.reranker_enabled,
@@ -324,9 +325,7 @@ def put_llm_instance(provider: str, model: str | None, llm: BaseChatModel) -> No
 
     if evicted is not None:
         evicted_key, evicted_llm = evicted
-        logger.debug(
-            "Evicted LLM from registry", evicted=evicted_key, max_instances=max_instances
-        )
+        logger.debug("Evicted LLM from registry", evicted=evicted_key, max_instances=max_instances)
         _schedule_close(evicted_llm)
 
 
@@ -607,186 +606,22 @@ def get_verification_model(provider: str | None = None, model: str | None = None
         raise ConfigurationError(msg, detail=str(exc)) from exc
 
 
-# ─── Embedding Model ──────────────────────────────────────────────────────────
-
-
-class BGEAwareHuggingFaceEmbeddings:
-    """
-    Wrapper around HuggingFaceEmbeddings adding BGE query instruction prefixing
-    and executing under torch.inference_mode() to minimize memory footprint.
-    """
-
-    def __init__(self, base_embeddings: Any, model_name: str) -> None:
-        self._base = base_embeddings
-        self._is_bge = "bge" in model_name.lower()
-
-    def embed_query(self, text: str) -> list[float]:
-        if self._is_bge and not text.startswith("Represent this sentence"):
-            text = f"Represent this sentence for searching relevant passages: {text}"
-        try:
-            import torch
-
-            with torch.inference_mode():
-                return self._base.embed_query(text)
-        except Exception:
-            logger.debug("torch.inference_mode() failed for embed_query, falling back")
-            return self._base.embed_query(text)
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        try:
-            import torch
-
-            with torch.inference_mode():
-                return self._base.embed_documents(texts)
-        except Exception:
-            logger.debug("torch.inference_mode() failed for embed_documents, falling back")
-            return self._base.embed_documents(texts)
-
-    async def aembed_query(self, text: str) -> list[float]:
-        if self._is_bge and not text.startswith("Represent this sentence"):
-            text = f"Represent this sentence for searching relevant passages: {text}"
-        return await self._base.aembed_query(text)
-
-    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
-        return await self._base.aembed_documents(texts)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._base, name)
-
-
-class CachedEmbeddingsWrapper(Embeddings):
-    """
-    Two-tier High-Speed Embedding Cache Wrapper:
-      Tier 1: In-memory LRU cache (sub-millisecond memory hits)
-      Tier 2: Persistent on-disk SQLite cache (eliminates repeat compute across reboots)
-    Prevents redundant forward passes and network I/O for repeated queries and document chunks.
-    """
-
-    def __init__(
-        self, base_embeddings: Any, max_cache_size: int = 512, model_name: str = "default"
-    ) -> None:
-        self._base = base_embeddings
-        self._cache: OrderedDict[str, list[float]] = OrderedDict()
-        # get_embedding_model is lru_cache'd per (provider, model), so every
-        # caller for the same embedding serves from ONE wrapper instance. The
-        # in-memory LRU is mutated via asyncio.to_thread (thread pool) and from
-        # the event loop, so it must be guarded by a lock.
-        self._mem_lock = threading.RLock()
-        self._max_size = max_cache_size
-        self._model_name = getattr(
-            base_embeddings, "model", getattr(base_embeddings, "model_name", model_name)
-        )
-
-    def embed_query(self, text: str) -> list[float]:
-        cached = self._lookup_mem(text)
-        if cached is not None:
-            return cached
-
-        from app.core.disk_cache import get_cached_embedding, set_cached_embedding
-
-        disk_hit = get_cached_embedding(text, self._model_name)
-        if disk_hit:
-            self._store_mem(text, disk_hit)
-            return disk_hit
-
-        vec = self._base.embed_query(text)
-        self._store_mem(text, vec)
-        set_cached_embedding(text, self._model_name, vec)
-        return vec
-
-    async def aembed_query(self, text: str) -> list[float]:
-        cached = self._lookup_mem(text)
-        if cached is not None:
-            return cached
-
-        from app.core.disk_cache import get_cached_embedding, set_cached_embedding
-
-        disk_hit = await asyncio.to_thread(get_cached_embedding, text, self._model_name)
-        if disk_hit:
-            self._store_mem(text, disk_hit)
-            return disk_hit
-
-        vec = await self._base.aembed_query(text)
-        self._store_mem(text, vec)
-        await asyncio.to_thread(set_cached_embedding, text, self._model_name, vec)
-        return vec
-
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        if not texts:
-            return []
-
-        from app.core.disk_cache import get_cached_embeddings_batch, set_cached_embeddings_batch
-
-        cached_map, missing_indices = get_cached_embeddings_batch(texts, self._model_name)
-        if not missing_indices:
-            return [cached_map[i] for i in range(len(texts))]
-
-        missing_texts = [texts[i] for i in missing_indices]
-        computed_vectors = self._base.embed_documents(missing_texts)
-
-        # Batch write computed vectors to disk cache
-        set_cached_embeddings_batch(missing_texts, self._model_name, computed_vectors)
-
-        for i, idx in enumerate(missing_indices):
-            vec = computed_vectors[i]
-            cached_map[idx] = vec
-            self._store_mem(texts[idx], vec)
-
-        return [cached_map[i] for i in range(len(texts))]
-
-    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
-        if not texts:
-            return []
-
-        from app.core.disk_cache import get_cached_embeddings_batch, set_cached_embeddings_batch
-
-        cached_map, missing_indices = await asyncio.to_thread(
-            get_cached_embeddings_batch, texts, self._model_name
-        )
-        if not missing_indices:
-            return [cached_map[i] for i in range(len(texts))]
-
-        missing_texts = [texts[i] for i in missing_indices]
-        computed_vectors = await self._base.aembed_documents(missing_texts)
-
-        # Batch write computed vectors to disk cache
-        await asyncio.to_thread(
-            set_cached_embeddings_batch, missing_texts, self._model_name, computed_vectors
-        )
-
-        for i, idx in enumerate(missing_indices):
-            vec = computed_vectors[i]
-            cached_map[idx] = vec
-            self._store_mem(texts[idx], vec)
-
-        return [cached_map[i] for i in range(len(texts))]
-
-    def _lookup_mem(self, key: str) -> list[float] | None:
-        with self._mem_lock:
-            value = self._cache.get(key)
-            if value is not None:
-                self._cache.move_to_end(key)
-            return value
-
-    def _store_mem(self, key: str, val: list[float]) -> None:
-        with self._mem_lock:
-            self._cache[key] = val
-            self._cache.move_to_end(key)
-            while len(self._cache) > self._max_size:
-                self._cache.popitem(last=False)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._base, name)
+# ─── Embedding Model (single engine: ONNX BGE) ──────────────────────────────
+#
+# There is exactly one embedding engine: ONNX Runtime BGE (torch-free).
+# `embedding.model` in models.yaml is the sole source of truth — no provider
+# choice, no EMBEDDING_PROVIDER env, no per-request override. Update the model
+# ID in models.yaml and every stage follows automatically.
 
 
 @lru_cache(maxsize=8)
-def get_embedding_model(provider: str | None = None, model: str | None = None) -> Embeddings:
+def get_embedding_model(model: str | None = None) -> Embeddings:
     """
-    Return the embedding model wrapped with persistent disk cache.
+    Return the ONNX embedding model wrapped with persistent disk cache.
 
-    Supported:
-      - huggingface / local: Local BGE (BAAI/bge-small-en-v1.5, 0 API cost)
-      - onnx: ONNX Runtime BGE (no PyTorch in API process, ~500-1000 MB RSS savings)
+    Args:
+        model: Optional model ID override (defaults to models.yaml
+            `embedding.model`). The engine is always ONNX Runtime BGE.
 
     Cloud embeddings (google_genai, nvidia) were removed: embeddings are a
     local-only concern now, so ingestion and retrieval work fully offline.
@@ -794,211 +629,53 @@ def get_embedding_model(provider: str | None = None, model: str | None = None) -
     usage was removed. Requesting them raises ConfigurationError with a fix.
     """
     cfg: ModelConfig = get_model_config()
-    settings = get_settings()
 
-    active_provider = (provider or cfg.embedding_provider).lower()
     active_model = model or cfg.embedding_model
 
-    # Normalize provider to include splade option
-    if active_provider == "splade":
-        active_provider = "huggingface"  # SPLADE uses sentence-transformers under the hood
-
-    def _wrap_with_cache(base_emb):
-        """Wrap embedding model with persistent disk cache.
-
-        The disk cache (embedding_cache.db) is shared across providers, so the
-        cache key must carry the provider — otherwise two providers serving the
-        same model string but different vectors would cross-contaminate.
-        """
-        from app.core.model_registry import CachedEmbeddingsWrapper
-
-        cache_label = f"{active_provider}::{active_model}"
-        return CachedEmbeddingsWrapper(base_emb, model_name=cache_label)
-
-    # ── Retired providers ─────────────────────────────────────────────────────
-    # Ollama / llama.cpp are LLM-only, and cloud embeddings (google_genai,
-    # nvidia) were removed — embeddings are local-only (huggingface BGE).
-    # Anything else is rejected with a fix instead of failing deep in the
-    # pipeline. Knowledge bases indexed with a retired provider must be
-    # re-uploaded to re-index with local BGE.
-    _emb_model_lower = active_model.lower() if isinstance(active_model, str) else ""
-    if active_provider not in ("huggingface", "local", "splade", "onnx") or any(
-        k in _emb_model_lower for k in ("embeddinggemma", "nomic-embed")
-    ):
-        raise ConfigurationError(
-            "Only local HuggingFace or ONNX embeddings are supported "
-            "(EMBEDDING_PROVIDER=huggingface|onnx, e.g. BAAI/bge-small-en-v1.5, 384d). "
-            "Re-upload documents to re-index knowledge bases built with a "
-            "retired provider.",
-            detail=f"requested provider={active_provider} model={active_model}",
-        )
-
-    # ── ONNX Runtime Embeddings (torch-free, ultra-low RAM) ────────────────────
-    if active_provider == "onnx":
-        try:
-            from app.core.onnx_embeddings import ONNXBGEEmbeddings, ONNXBGEEmbeddingsWrapper
-        except ImportError as exc:
-            raise ConfigurationError(
-                "ONNX embedding stack missing (needs 'onnxruntime' + 'transformers'). "
-                "Run 'python scripts/bootstrap.py' from a venv with the base "
-                "requirements installed: 'cd apps/api && pip install -e .'.",
-                detail=str(exc)[:200],
-            ) from exc
-
-        # Use the API directory as base for relative cache_dir to ensure consistency
-        # (Path.resolve() alone is CWD-dependent: repo-root vs apps/api runs
-        # would split the cache in two. Always anchor to api_base.)
-        api_base = Path(__file__).parent.parent.parent
-        cache_dir = (api_base / cfg.embedding_cache_dir).resolve()
-        onnx_model_path = _resolve_embedding_onnx_path(cache_dir, active_model)
-        if onnx_model_path is None:
-            raise ConfigurationError(
-                f"ONNX embedding model not found in {cache_dir} "
-                f"(looked for '{active_model.split('/')[-1]}.onnx' and legacy "
-                "underscored variant). "
-                "Run 'python scripts/bootstrap.py' (or "
-                "'python scripts/ensure_onnx_models.py') to download/export it.",
-            )
-
-        logger.info(
-            "Initializing ONNX Runtime BGE embedding model",
-            model=active_model,
-            onnx_path=str(onnx_model_path),
-        )
-
-        try:
-            base_emb = ONNXBGEEmbeddings(
-                model_path=str(onnx_model_path),
-                tokenizer_name=active_model,
-                max_seq_length=cfg.embedding_max_seq_length,
-            )
-        except Exception as exc:
-            raise ConfigurationError(
-                f"Failed to load ONNX embedding model from {onnx_model_path}. "
-                "Re-run 'python scripts/bootstrap.py --force' to re-export it.",
-                detail=str(exc)[:300],
-            ) from exc
-        return ONNXBGEEmbeddingsWrapper(base_emb, model_name=f"onnx::{active_model}")
-
-    # ── Local Hugging Face Embeddings (Sentence-Transformers / BGE) ────
     try:
-        from langchain_huggingface import HuggingFaceEmbeddings
+        from app.core.onnx_embeddings import ONNXBGEEmbeddings, ONNXBGEEmbeddingsWrapper
     except ImportError as exc:
         raise ConfigurationError(
-            "HuggingFace embedding stack missing (needs 'sentence-transformers', "
-            "i.e. torch). Install it with 'pip install -e \".[local-models]\"' "
-            "from apps/api — or switch to the torch-free default "
-            "(EMBEDDING_PROVIDER=onnx + 'python scripts/bootstrap.py').",
+            "ONNX embedding stack missing (needs 'onnxruntime' + 'transformers'). "
+            "Run 'python scripts/bootstrap.py' from a venv with the base "
+            "requirements installed: 'cd apps/api && pip install -e .'.",
             detail=str(exc)[:200],
         ) from exc
 
-    # Anchored to api_base like the ONNX branch (CWD-dependent resolve would
-    # split .model_cache in two between repo-root and apps/api runs).
+    # Use the API directory as base for relative cache_dir to ensure consistency
+    # (Path.resolve() alone is CWD-dependent: repo-root vs apps/api runs
+    # would split the cache in two. Always anchor to api_base.)
     api_base = Path(__file__).parent.parent.parent
     cache_dir = (api_base / cfg.embedding_cache_dir).resolve()
+    onnx_model_path = _resolve_embedding_onnx_path(cache_dir, active_model)
+    if onnx_model_path is None:
+        raise ConfigurationError(
+            f"ONNX embedding model not found in {cache_dir} "
+            f"(looked for '{active_model.split('/')[-1]}.onnx' and legacy "
+            "underscored variant). "
+            "Run 'python scripts/bootstrap.py' (or "
+            "'python scripts/ensure_onnx_models.py') to download/export it.",
+        )
 
     logger.info(
-        "Initializing local HuggingFace embedding model",
+        "Initializing ONNX Runtime BGE embedding model",
         model=active_model,
-        dimensionality=cfg.embedding_dimensionality,
-        cache_dir=str(cache_dir),
-        quantization=cfg.embedding_quantization,
+        onnx_path=str(onnx_model_path),
     )
 
-    if settings.hf_token:
-        import os
-
-        os.environ["HF_TOKEN"] = settings.hf_token
-        os.environ["HUGGING_FACE_HUB_TOKEN"] = settings.hf_token
-
     try:
-        from app.core.hardware import get_optimal_torch_device
-
-        opt_device = get_optimal_torch_device()
-        model_kwargs: dict[str, Any] = {"device": opt_device}
-        if settings.hf_token:
-            model_kwargs["token"] = settings.hf_token
-
-        # Phase 4.2: Embedding Quantization (int8) for RAM savings
-        if cfg.embedding_quantization:
-            try:
-                import importlib.util
-
-                if importlib.util.find_spec("optimum.intel") is not None:
-                    # Use OpenVINO for int8 quantization if available
-                    model_kwargs["quantization_config"] = "int8"
-                    logger.info("Int8 quantization enabled for embedding model")
-                else:
-                    raise ImportError("optimum-intel not available")
-            except ImportError:
-                logger.warning(
-                    "Optimum-Intel not available, skipping int8 quantization. "
-                    "Install 'optimum-intel' for CPU int8."
-                )
-                # Fallback: try torch int8 quantization
-                try:
-                    import importlib.util
-
-                    if importlib.util.find_spec("torch") is not None and opt_device == "cpu":
-                        import torch
-
-                        if hasattr(torch, "quantization"):
-                            logger.info("Using PyTorch dynamic int8 quantization for embeddings")
-                except Exception:
-                    logger.debug("PyTorch dynamic quantization not available")
-
-        # Fast-path 1: Check local Hugging Face Hub snapshots directory
-        hf_hub_name = "models--" + active_model.replace("/", "--")
-        snapshots_dir = Path.home() / ".cache" / "huggingface" / "hub" / hf_hub_name / "snapshots"
-        local_snapshot = next(snapshots_dir.glob("*"), None) if snapshots_dir.exists() else None
-
-        if local_snapshot and local_snapshot.is_dir():
-            try:
-                base_emb = HuggingFaceEmbeddings(
-                    model_name=str(local_snapshot),
-                    encode_kwargs={"normalize_embeddings": True},
-                    model_kwargs=model_kwargs,
-                )
-                logger.info(
-                    "Loaded local embedding model directly from snapshot cache",
-                    path=str(local_snapshot),
-                )
-                return _wrap_with_cache(BGEAwareHuggingFaceEmbeddings(base_emb, active_model))
-            except Exception as snap_err:
-                logger.debug(
-                    "Local snapshot load failed, falling back to standard loader",
-                    error=str(snap_err),
-                )
-
-        # Fast-path 2: Check custom cache_dir
-        if cache_dir.exists() and any(cache_dir.iterdir()):
-            try:
-                offline_kwargs = {**model_kwargs, "local_files_only": True}
-                base_emb = HuggingFaceEmbeddings(
-                    model_name=active_model,
-                    cache_folder=str(cache_dir),
-                    encode_kwargs={"normalize_embeddings": True},
-                    model_kwargs=offline_kwargs,
-                )
-                return _wrap_with_cache(BGEAwareHuggingFaceEmbeddings(base_emb, active_model))
-            except Exception as offline_err:
-                logger.debug(
-                    "Offline cache fast-path fallback, attempting standard load",
-                    error=str(offline_err),
-                )
-
-        base_emb = HuggingFaceEmbeddings(
-            model_name=active_model,
-            cache_folder=str(cache_dir) if cache_dir.exists() else None,
-            encode_kwargs={"normalize_embeddings": True},
-            model_kwargs=model_kwargs,
+        base_emb = ONNXBGEEmbeddings(
+            model_path=str(onnx_model_path),
+            tokenizer_name=active_model,
+            max_seq_length=cfg.embedding_max_seq_length,
         )
-        return _wrap_with_cache(BGEAwareHuggingFaceEmbeddings(base_emb, active_model))
     except Exception as exc:
         raise ConfigurationError(
-            f"Failed to initialize embedding model '{active_model}'",
-            detail=str(exc),
+            f"Failed to load ONNX embedding model from {onnx_model_path}. "
+            "Re-run 'python scripts/bootstrap.py --force' to re-export it.",
+            detail=str(exc)[:300],
         ) from exc
+    return ONNXBGEEmbeddingsWrapper(base_emb, model_name=f"onnx::{active_model}")
 
 
 # ─── Reranker ─────────────────────────────────────────────────────────────────
@@ -1119,7 +796,7 @@ def registry_status() -> dict[str, Any]:
         "config_version": cfg.config_version,
         "llm_provider": cfg.llm_provider,
         "llm_model": cfg.llm_model,
-        "embedding_provider": cfg.embedding_provider,
+        "embedding_provider": "onnx",
         "embedding_model": cfg.embedding_model,
         "embedding_dimensionality": cfg.embedding_dimensionality,
         "embedding_version": cfg.embedding_version,

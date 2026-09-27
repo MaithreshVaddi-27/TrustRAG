@@ -129,15 +129,10 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeyp
             assert call_kwargs["data"]["message"] == "Analysis run initiated"
 
 
-@patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
-def test_create_analysis_rejects_retired_cloud_embedding(
-    mock_create_indexes, mock_connect, mock_kb_doc, mock_user_doc, monkeypatch
-):
-    """Cloud embeddings are gone: requesting one fails closed with guidance."""
+def test_create_analysis_ignores_legacy_embedding_overrides(monkeypatch):
+    """Legacy per-request embedding fields are ignored (single models.yaml engine)."""
     import app.core.local_llm as _llm_mod
-    from app.api.v1.schemas.kb import KBResponse
+    from app.api.v1.schemas.analysis import AnalysisCreate
 
     monkeypatch.setattr(
         _llm_mod,
@@ -153,25 +148,25 @@ def test_create_analysis_rejects_retired_cloud_embedding(
         ),
     )
 
-    mock_kb = KBResponse(
-        id=str(mock_kb_doc["_id"]),
-        name=mock_kb_doc["name"],
-        description=mock_kb_doc["description"],
-        user_id=str(mock_kb_doc["user_id"]),
-        created_at="2026-08-27T10:00:00Z",
-        embedding_model="BAAI/bge-small-en-v1.5",
-        embedding_provider="huggingface",
-        embedding_dim=384,
+    schema = AnalysisCreate(
+        knowledge_base_id="64ee39d09c6292376e191982",
+        query="Is there a 45 days policy?",
+        llm_provider="ollama",
+        llm_model="gemma3:1b",
     )
-    with patch("app.services.analysis_service.get_kb", return_value=mock_kb):
-        payload = {
+    # Legacy fields are not part of the schema: extra='ignore' drops them.
+    assert not hasattr(schema, "embedding_provider")
+    assert not hasattr(schema, "embedding_model")
+
+    payload_schema = AnalysisCreate(
+        **{
             "knowledge_base_id": "64ee39d09c6292376e191982",
             "query": "Is there a 45 days policy?",
             "embedding_provider": "google_genai",
             "embedding_model": "models/gemini-embedding-001",
         }
-        response = client.post("/api/v1/analyses", json=payload)
-        assert response.status_code == 422
+    )
+    assert payload_schema.query == "Is there a 45 days policy?"
 
 
 @patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
@@ -233,7 +228,7 @@ def test_create_analysis_fails_fast_when_local_llm_down(
 def test_create_analysis_rejects_embedding_mismatch(
     mock_create_indexes, mock_connect, mock_kb_doc, mock_user_doc, monkeypatch
 ):
-    """A KB pinned to one embedding space must reject analyses requesting another."""
+    """A KB pinned to one embedding space must reject analyses after a model change."""
     import app.core.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
 
@@ -260,18 +255,22 @@ def test_create_analysis_rejects_embedding_mismatch(
         user_id=str(mock_kb_doc["user_id"]),
         created_at="2026-08-27T10:00:00Z",
         embedding_model="BAAI/bge-small-en-v1.5",
-        embedding_provider="huggingface",
         embedding_dim=384,
     )
     with patch("app.services.analysis_service.get_kb", return_value=mock_kb):
         payload = {
             "knowledge_base_id": "64ee39d09c6292376e191982",
             "query": "Is there a 45 days policy?",
-            # Explicit provider so the request clears schema validation and
-            # reaches the service-level embedding-space guard under test.
-            "embedding_provider": "huggingface",
-            "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
         }
+        # Simulate a post-deploy models.yaml model change: server now serves
+        # MiniLM while the KB is pinned to BGE → guard must 422.
+        from app.core.config import ModelConfig
+
+        monkeypatch.setattr(
+            ModelConfig,
+            "embedding_model",
+            property(lambda self: "sentence-transformers/all-MiniLM-L6-v2"),
+        )
         response = client.post("/api/v1/analyses", json=payload)
 
         assert response.status_code == 422

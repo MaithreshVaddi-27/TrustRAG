@@ -373,11 +373,12 @@ class TestAnalysisModelPolicy:
         assert "nomic-embed-text" not in discovered
 
     def test_arbitrary_embedding_repository_is_rejected(self, monkeypatch) -> None:
-        from pydantic import ValidationError
-
-        # Patch discovered models so the LLM validation passes
+        # No per-request embedding choice exists: attacker-controlled model IDs
+        # in the payload are dropped (extra='ignore') and can never reach a
+        # model loader. The engine always serves models.yaml `embedding.model`.
         import app.core.local_llm as _llm_mod
         from app.api.v1.schemas.analysis import AnalysisCreate
+        from app.core.config import get_model_config
 
         _orig_get_discovered = _llm_mod.get_discovered_llms
         _llm_mod.get_discovered_llms = lambda provider: frozenset(
@@ -391,17 +392,17 @@ class TestAnalysisModelPolicy:
         )
 
         try:
-            with pytest.raises(
-                ValidationError,
-                match="Embedding model is not enabled for provider 'huggingface'",
-            ):
-                AnalysisCreate(
-                    knowledge_base_id="64ee39d09c6292376e191983",
-                    query="Embed this",
-                    llm_provider="ollama",
-                    llm_model="granite4.2:3b-q4_K_M",
-                    embedding_provider="huggingface",
-                    embedding_model="attacker/untrusted-code",
-                )
+            schema = AnalysisCreate(
+                **{
+                    "knowledge_base_id": "64ee39d09c6292376e191983",
+                    "query": "Embed this",
+                    "llm_provider": "ollama",
+                    "llm_model": "granite4.2:3b-q4_K_M",
+                    "embedding_provider": "huggingface",
+                    "embedding_model": "attacker/untrusted-code",
+                }
+            )
+            assert not hasattr(schema, "embedding_model")
+            assert get_model_config().embedding_model == "BAAI/bge-small-en-v1.5"
         finally:
             _llm_mod.get_discovered_llms = _orig_get_discovered

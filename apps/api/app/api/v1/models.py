@@ -75,29 +75,20 @@ async def get_providers_endpoint(
         _safe_provider_status(check_mlx_status, settings.mlx_base_url, "mlx"),
     )
 
-    # Use only discovered models from the status checks — no hardcoded fallbacks.
-    # Offline providers still list cached/installable models (with
-    # connected:false) so the UI can show the offline warning + refresh path
-    # instead of an empty dropdown. Embeddings are local-only — cloud
-    # embedding providers were removed, so ingestion works fully offline.
+    # Embeddings are single-engine (ONNX BGE from models.yaml) — no provider
+    # choice. The UI renders this as a fixed badge, not a selector.
     embedding_providers = {
-        "huggingface": {
-            "name": "Local Hugging Face (PyTorch / BGE)",
+        "onnx": {
+            "name": "ONNX BGE (local, torch-free)",
             "type": "local",
             "connected": True,
-            "default_model": "BAAI/bge-small-en-v1.5",
+            "default_model": cfg.embedding_model,
             "models": [
                 {
-                    "id": "BAAI/bge-small-en-v1.5",
-                    "name": "BAAI/bge-small-en-v1.5 (384d SOTA)",
-                    "dim": 384,
-                    "tag": "Recommended",
-                },
-                {
-                    "id": "sentence-transformers/all-MiniLM-L6-v2",
-                    "name": "all-MiniLM-L6-v2 (384d Fast)",
-                    "dim": 384,
-                    "tag": "Fast",
+                    "id": cfg.embedding_model,
+                    "name": f"{cfg.embedding_model} ({cfg.embedding_dimensionality}d)",
+                    "dim": cfg.embedding_dimensionality,
+                    "tag": "Active",
                 },
             ],
         },
@@ -106,7 +97,7 @@ async def get_providers_endpoint(
     return {
         "active_provider": cfg.llm_provider,
         "active_model": cfg.llm_model,
-        "active_embedding_provider": cfg.embedding_provider,
+        "active_embedding_provider": "onnx",
         "active_embedding_model": cfg.embedding_model,
         # Canonical port registry (repo-root config/ports.yaml)
         "ports": get_ports(),

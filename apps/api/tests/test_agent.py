@@ -904,8 +904,6 @@ async def test_recovery_node_budget_enforcement(mock_get_model, mock_collection)
         "web_search_provider": "both",
         "llm_provider": None,
         "llm_model": None,
-        "embedding_provider": None,
-        "embedding_model": None,
         "cache_hit": False,
         "node_errors": [],
         # Budget nearly exhausted - just under the limit
@@ -969,8 +967,6 @@ async def test_recovery_node_diagnosis_based_strategy(mock_get_model, mock_colle
         "web_search_provider": "both",
         "llm_provider": None,
         "llm_model": None,
-        "embedding_provider": None,
-        "embedding_model": None,
         "cache_hit": False,
         "node_errors": [],
         "recovery_tokens_used": 0,

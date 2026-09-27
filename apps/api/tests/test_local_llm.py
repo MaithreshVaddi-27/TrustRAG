@@ -134,24 +134,18 @@ async def test_llamacpp_health_check():
         assert status["default_model"] in status["models"] or status["default_model"] == ""
 
 
-def test_embedding_model_local_providers():
-    """Only local HuggingFace embeddings exist: anything else fails loudly."""
-    import pytest
-
-    from app.core.exceptions import ConfigurationError
+def test_embedding_model_is_single_onnx_engine():
+    """Single embedding engine: ONNX BGE from models.yaml, no provider choice."""
+    from app.core.config import get_model_config
     from app.core.model_registry import get_embedding_model
 
-    with pytest.raises(ConfigurationError, match="local HuggingFace"):
-        get_embedding_model("ollama", "embeddinggemma:300m-qat-q8_0")
+    cfg = get_model_config()
+    assert cfg.embedding_model == "BAAI/bge-small-en-v1.5"
+    assert not hasattr(cfg, "embedding_provider")
 
-    with pytest.raises(ConfigurationError, match="local HuggingFace"):
-        get_embedding_model("llamacpp", "ggml-org/embeddinggemma-300M-GGUF:Q8_0")
-
-    with pytest.raises(ConfigurationError, match="local HuggingFace"):
-        get_embedding_model("google_genai", "models/gemini-embedding-001")
-
-    with pytest.raises(ConfigurationError, match="local HuggingFace"):
-        get_embedding_model("nvidia", "nvidia/nv-embedqa-e5-v5")
+    # Unknown model ID fails loudly with the bootstrap fix (not silent).
+    with pytest.raises(ConfigurationError, match="bootstrap"):
+        get_embedding_model(model="nonexistent-org/nonexistent-model")
 
 
 # ─── Discovery snapshot + seeding tests ───────────────────────────────────────

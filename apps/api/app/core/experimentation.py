@@ -73,78 +73,6 @@ class FeatureFlagManager:
             logger.warning("Failed to load feature flags", error=str(exc))
             self._initialized = True  # Don't retry on every call
 
-    def is_enabled(self, key: str, context: dict[str, Any] | None = None) -> bool:
-        """
-        Check if a feature flag is enabled for the given context.
-
-        Args:
-            key: Feature flag key
-            context: User/request context for targeting (user_id, tier, region, etc.)
-
-        Returns:
-            True if feature is enabled for this context
-        """
-        flag = self._flags.get(key)
-        if not flag:
-            return False
-
-        if not flag.enabled:
-            return False
-
-        # Check targeting rules first
-        if flag.targeting_rules and context:
-            for rule in flag.targeting_rules:
-                if self._matches_rule(rule, context):
-                    return True
-            # If there are targeting rules but none matched, check rollout
-            if flag.rollout_percentage >= 1.0:
-                return True
-            return False
-
-        # Rollout percentage check using consistent hashing
-        if flag.rollout_percentage > 0:
-            user_id = context.get("user_id") if context else None
-            if user_id:
-                return self._in_rollout(user_id, flag.rollout_percentage)
-            return False
-
-        return flag.rollout_percentage >= 1.0
-
-    def _matches_rule(self, rule: dict[str, Any], context: dict[str, Any]) -> bool:
-        """Check if context matches a targeting rule."""
-        # Rule format: {"attribute": "user_id", "operator": "in", "values": ["user1", "user2"]}
-        attribute = rule.get("attribute")
-        operator = rule.get("operator", "equals")
-        values = rule.get("values", [])
-
-        context_value = context.get(attribute)
-        if context_value is None:
-            return False
-
-        if operator == "equals":
-            return context_value in values
-        elif operator == "in":
-            return context_value in values
-        elif operator == "contains":
-            return any(v in str(context_value) for v in values)
-        elif operator == "starts_with":
-            return any(str(context_value).startswith(v) for v in values)
-        elif operator == "gt":
-            return float(context_value) > float(values[0]) if values else False
-        elif operator == "lt":
-            return float(context_value) < float(values[0]) if values else False
-
-        return False
-
-    def _in_rollout(self, user_id: str, percentage: float) -> bool:
-        """Deterministic rollout check using consistent hashing."""
-        hash_input = f"{user_id}:{percentage}".encode()
-        # Non-security use (bucketing only) — not for auth or integrity.
-        hash_value = int(hashlib.md5(hash_input, usedforsecurity=False).hexdigest(), 16)
-        # Normalize to 0-1 range
-        normalized = (hash_value % 10000) / 10000.0
-        return normalized < percentage
-
     async def set_flag(self, flag: FeatureFlag) -> None:
         """Create or update a feature flag."""
         flag.updated_at = datetime.now(UTC)
@@ -180,10 +108,6 @@ class FeatureFlagManager:
     def get_all_flags(self) -> dict[str, FeatureFlag]:
         """Get all feature flags."""
         return self._flags.copy()
-
-    def get_flag(self, key: str) -> FeatureFlag | None:
-        """Get a specific feature flag."""
-        return self._flags.get(key)
 
 
 # Global feature flag manager
@@ -426,18 +350,6 @@ class ExperimentMetrics:
     error_count: int = 0
     custom_metrics: dict[str, float] = field(default_factory=lambda: defaultdict(float))
 
-    @property
-    def conversion_rate(self) -> float:
-        if self.assignments == 0:
-            return 0.0
-        return self.conversions / self.assignments
-
-    @property
-    def avg_latency_ms(self) -> float:
-        if self.assignments == 0:
-            return 0.0
-        return self.total_latency_ms / self.assignments
-
 
 class MetricsCollector:
     """Collects and aggregates experiment metrics."""
@@ -469,29 +381,6 @@ class MetricsCollector:
         )
         self._maybe_flush()
 
-    def record_conversion(
-        self,
-        experiment_key: str,
-        variant_name: str,
-        user_id: str,
-        conversion_value: float = 1.0,
-    ) -> None:
-        """Record a conversion event."""
-        if experiment_key in self._metrics and variant_name in self._metrics[experiment_key]:
-            self._metrics[experiment_key][variant_name].conversions += conversion_value
-
-        self._buffer.append(
-            {
-                "type": "conversion",
-                "experiment_key": experiment_key,
-                "variant_name": variant_name,
-                "user_id": user_id,
-                "value": conversion_value,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-        )
-        self._maybe_flush()
-
     def record_latency(self, experiment_key: str, variant_name: str, latency_ms: float) -> None:
         """Record latency for an experiment variant."""
         if experiment_key in self._metrics and variant_name in self._metrics[experiment_key]:
@@ -501,25 +390,6 @@ class MetricsCollector:
         """Record an error for an experiment variant."""
         if experiment_key in self._metrics and variant_name in self._metrics[experiment_key]:
             self._metrics[experiment_key][variant_name].error_count += 1
-
-    def record_custom_metric(
-        self,
-        experiment_key: str,
-        variant_name: str,
-        metric_name: str,
-        value: float,
-    ) -> None:
-        """Record a custom metric."""
-        if experiment_key in self._metrics and variant_name in self._metrics[experiment_key]:
-            self._metrics[experiment_key][variant_name].custom_metrics[metric_name] += value
-
-    def get_metrics(self, experiment_key: str) -> dict[str, ExperimentMetrics]:
-        """Get metrics for an experiment."""
-        return self._metrics.get(experiment_key, {})
-
-    def get_all_metrics(self) -> dict[str, dict[str, ExperimentMetrics]]:
-        """Get all metrics."""
-        return dict(self._metrics)
 
     def _maybe_flush(self) -> None:
         """Flush buffer to database periodically."""
@@ -554,33 +424,6 @@ def get_metrics_collector() -> MetricsCollector:
 
 
 # ─── Integration Helpers ────────────────────────────────────────────────────
-
-
-def create_agent_config_from_experiment(
-    experiment_key: str,
-    user_id: str,
-    base_config: dict[str, Any],
-    context: dict[str, Any] | None = None,
-) -> tuple[dict[str, Any], ExperimentVariant | None]:
-    """
-    Create agent configuration from experiment variant.
-
-    Returns tuple of (merged_config, variant) where variant is None if not in experiment.
-    """
-    exp_manager = get_experiment_manager()
-    variant = exp_manager.get_variant(experiment_key, user_id, context)
-
-    if not variant:
-        return base_config, None
-
-    # Record assignment
-    metrics = get_metrics_collector()
-    metrics.record_assignment(experiment_key, variant.name, user_id)
-
-    # Merge variant config with base config
-    merged_config = {**base_config, **variant.config}
-
-    return merged_config, variant
 
 
 async def run_with_experiment_tracking(

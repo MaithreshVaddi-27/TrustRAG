@@ -371,23 +371,6 @@ def load_cache() -> int:
     return len(_SEMANTIC_CACHE)
 
 
-def clear_all_cache(persist: bool = True) -> int:
-    """Clear the entire semantic cache (for testing).
-
-    Returns:
-        Number of entries removed.
-    """
-    global _SEMANTIC_CACHE, _MATRIX_DIRTY
-    with _CACHE_LOCK:
-        original_len = len(_SEMANTIC_CACHE)
-        _SEMANTIC_CACHE = deque(maxlen=_MAX_CACHE_ENTRIES)
-        removed = original_len
-        _MATRIX_DIRTY = True
-    if persist:
-        _persist_cache()
-    return removed
-
-
 def reset_module_state() -> None:
     """Completely reset module state for test isolation.
 

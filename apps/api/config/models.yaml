@@ -16,11 +16,10 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 runtime:
-  config_version: "1.21"
+  config_version: "1.22"
 
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
-  framework: langchain
   # Provider options: ollama, llama_cpp, mlx (Apple Silicon), google_genai, nvidia
   provider: llama_cpp
   ollama_base_url: "http://localhost:11434"
@@ -79,12 +78,12 @@ llm:
   max_retries: 1
 
 # ─── Embedding ────────────────────────────────────────────────────────────────
+# Single embedding model (single source of truth). The provider is always ONNX;
+# update `model` here and every stage (ingest, retrieval, verification) follows.
 embedding:
-  framework: langchain
   # Local HuggingFace BGE — offline default, zero API cost. Embeddings are
   # local-only: cloud options were removed, and ollama / llama.cpp are
   # LLM-only — never embedding providers.
-  provider: onnx
   model: BAAI/bge-small-en-v1.5
   # 384 dimensions matches Qdrant collection configuration via Matryoshka embeddings.
   output_dimensionality: 384
@@ -92,14 +91,10 @@ embedding:
   max_seq_length: 512
   # Increment this version when you change the embedding model.
   version: "1"
-  # Embedding Quantization (Phase 4.2) - Int8 quantized embeddings for RAM savings
-  quantization: false          # Enable int8 quantization (~500-1000MB RAM savings)
-  quantized_model_path: ""     # Path to pre-quantized model (auto-quantize if empty)
 
 # ─── Verification LLM ─────────────────────────────────────────────────────────
 # Used for claim-level NLI/structured verification.
 verification:
-  framework: langchain
   provider: llama_cpp
   model: LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
   # Per-provider yaml defaults (used when the env override is empty).
@@ -179,14 +174,11 @@ ingestion:
     - html
     - htm
   max_file_size_mb: 20
-  # Maximum file size for processing (deny-of-wallet defense)
-  max_total_tokens_per_doc: 200000
   # OCR fallback (RapidOCR-ONNX): native extraction stays the default; only
   # pages with less than min_native_chars of native text are OCR-rendered.
   # Page text below min_confidence is dropped (never becomes evidence).
   ocr:
     enabled: true
-    engine: rapidocr-onnx
     min_native_chars: 50
     dpi: 200
     min_confidence: 0.5
@@ -219,7 +211,6 @@ recovery:
 
 # ─── Observability (Phase 10) ───────────────────────────────────────────────
 observability:
-  metrics_enabled: true             # GET /api/v1/metrics Prometheus exposition
   pre_request_budget_enforcement: true  # Reject over-budget queries with 422
 
 # ─── Context & Cost Controls ──────────────────────────────────────────────────
@@ -233,7 +224,6 @@ cost_controls:
   max_claim_retrievals: 3             # Targeted-retrieval budget: at most this many
                                         # NEUTRAL claims get one extra retrieval + NLI each
   claim_retrieval_top_k: 5            # Candidate depth per targeted claim retrieval
-  enable_response_caching: true     # Semantic response caching enabled
   # Per-tier caps (provider-aware override in graph.py/verifier.py)
   # Lean 8GB: local models only
   lean_tier:
@@ -261,7 +251,6 @@ optimization:
   context_compression_enabled: true             # Enable/disable context compression globally
   context_compression_provider: "cloud"         # "cloud" | "local" | "off" — compression only for cloud providers (gemini, nvidia)
   context_compression_target_reduction: 0.5     # Target: 50% of original size (40-60% range)
-  max_context_tokens: 8000                      # Hard token budget for context before LLM call
 
 # ─── Local LLM Inference Parameters ────────────────────────────────────────────
 # Applied to Ollama, llama.cpp, and MLX clients
@@ -285,4 +274,3 @@ local_llm:
   # llama.cpp: auto-unload on idle (keep_alive) or restart server with new model
   model_unload_enabled: true
   model_unload_timeout: "5m"  # Time before considering a model idle for unloading
-  max_loaded_models: 1        # Max concurrent models in memory (1 for lowest RAM)

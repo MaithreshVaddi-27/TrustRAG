@@ -76,8 +76,6 @@ def _state(**overrides) -> dict:
         "web_search_provider": "both",
         "llm_provider": None,
         "llm_model": None,
-        "embedding_provider": None,
-        "embedding_model": None,
         "cache_hit": False,
         "node_errors": [],
         "recovery_tokens_used": 0,
@@ -378,17 +376,13 @@ def test_max_file_size_config_exists():
 
 
 def test_max_total_tokens_per_doc_config_exists():
-    """Token cap per doc must be configured (DoW mitigation)."""
+    """Token cap per doc must be configured (DoW mitigation).
+
+    The per-request token budget is enforced via cost_controls.max_input_tokens
+    (pre-request 422 guard). The legacy ingestion.max_total_tokens_per_doc key
+    was removed as dead config — it was never read by application code.
+    """
     from app.core.config import get_model_config
 
     cfg = get_model_config()
     assert cfg.max_input_tokens > 0
-    # also ensure ingestion token cap present in models.yaml
-    import os
-    from pathlib import Path
-
-    import yaml
-
-    config_path = os.path.join(os.path.dirname(__file__), "..", "config", "models.yaml")
-    data = yaml.safe_load(Path(config_path).read_text())
-    assert data["ingestion"]["max_total_tokens_per_doc"] > 0

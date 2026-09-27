@@ -36,19 +36,6 @@ class AnalysisCreate(BaseModel):
         default=None,
         description="Specific model identifier override (e.g. 'granite4.2:3b-q4_K_M')",
     )
-    embedding_provider: str | None = Field(
-        default=None,
-        description=(
-            "Active embedding provider override ('huggingface' only — "
-            "embeddings are local-only; cloud and LLM-server providers are rejected)."
-        ),
-    )
-    embedding_model: str | None = Field(
-        default=None,
-        description=(
-            "Specific embedding model identifier override (e.g. 'BAAI/bge-small-en-v1.5')"
-        ),
-    )
 
     @model_validator(mode="after")
     def enforce_server_model_policy(self) -> AnalysisCreate:
@@ -117,45 +104,6 @@ class AnalysisCreate(BaseModel):
         )
         if requested_llm_model and requested_llm_model not in allowed_llms[provider]:
             raise ValueError(f"Model is not enabled for provider '{provider}'")
-
-        embedding_provider = (self.embedding_provider or cfg.embedding_provider).lower()
-        if embedding_provider == "local":
-            embedding_provider = "huggingface"
-        allowed_embedding_providers = {"huggingface", "onnx"}
-        if embedding_provider not in allowed_embedding_providers:
-            raise ValueError(
-                "Unsupported embedding provider: "
-                f"{embedding_provider} (embeddings are local-only; "
-                "re-upload documents to re-index with 'huggingface' or 'onnx')"
-            )
-
-        allowed_embeddings = {
-            "huggingface": {
-                "BAAI/bge-small-en-v1.5",
-                "sentence-transformers/all-MiniLM-L6-v2",
-            },
-            "onnx": {
-                "BAAI/bge-small-en-v1.5",
-                "sentence-transformers/all-MiniLM-L6-v2",
-            },
-        }
-        if cfg.embedding_provider == embedding_provider and cfg.embedding_model:
-            allowed_embeddings[embedding_provider].add(cfg.embedding_model)
-
-        requested_embedding_model = self.embedding_model or cfg.embedding_model
-        if self.embedding_model and not self.embedding_provider:
-            matching_providers = [
-                candidate
-                for candidate, models in allowed_embeddings.items()
-                if requested_embedding_model in models
-            ]
-            if len(matching_providers) != 1:
-                raise ValueError(
-                    "Embedding model requires an explicit provider or a supported model ID"
-                )
-            embedding_provider = matching_providers[0]
-        if requested_embedding_model not in allowed_embeddings[embedding_provider]:
-            raise ValueError(f"Embedding model is not enabled for provider '{embedding_provider}'")
         return self
 
 

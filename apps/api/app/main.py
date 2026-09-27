@@ -98,31 +98,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _model_cached = False
     try:
         cfg_probe = get_model_config()
-        if cfg_probe.embedding_provider in ("huggingface", "local", "splade", "onnx"):
-            from pathlib import Path as _Path
+        from pathlib import Path as _Path
 
-            hub_snapshot = (
-                _Path.home()
-                / ".cache"
-                / "huggingface"
-                / "hub"
-                / ("models--" + cfg_probe.embedding_model.replace("/", "--"))
-            )
-            cache_dir = _Path(cfg_probe.embedding_cache_dir)
-            # Real weight files only — a stray config.json must not count as cached.
-            # .onnx counts: the default provider is onnx, whose weights live as
-            # <cache>/bge-small-en-v1.5.onnx (see scripts/ensure_onnx_models.py).
-            # cache_dir may be relative (".model_cache") — anchor to apps/api.
-            if not cache_dir.is_absolute():
-                cache_dir = _Path(__file__).resolve().parent.parent / cache_dir
-            has_weights = hub_snapshot.exists() or (
-                cache_dir.exists()
-                and any(cache_dir.rglob(p) for p in ("*.safetensors", "*.bin", "*.pt", "*.onnx"))
-            )
-            if has_weights:
-                _model_cached = True
-        else:
-            _model_cached = True  # cloud embeddings need no local weights
+        hub_snapshot = (
+            _Path.home()
+            / ".cache"
+            / "huggingface"
+            / "hub"
+            / ("models--" + cfg_probe.embedding_model.replace("/", "--"))
+        )
+        cache_dir = _Path(cfg_probe.embedding_cache_dir)
+        # Real weight files only — a stray config.json must not count as cached.
+        # .onnx counts: the engine is always ONNX, whose weights live as
+        # <cache>/bge-small-en-v1.5.onnx (see scripts/ensure_onnx_models.py).
+        # cache_dir may be relative (".model_cache") — anchor to apps/api.
+        if not cache_dir.is_absolute():
+            cache_dir = _Path(__file__).resolve().parent.parent / cache_dir
+        has_weights = hub_snapshot.exists() or (
+            cache_dir.exists()
+            and any(cache_dir.rglob(p) for p in ("*.safetensors", "*.bin", "*.pt", "*.onnx"))
+        )
+        if has_weights:
+            _model_cached = True
     except Exception:
         _model_cached = False
     if _model_cached:
@@ -145,7 +142,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         "Effective model configuration (env overrides models.yaml)",
         llm_provider=cfg.llm_provider,
         llm_model=cfg.llm_model,
-        embedding_provider=cfg.embedding_provider,
         embedding_model=cfg.embedding_model,
         verification_provider=cfg.verification_provider,
         verification_model=cfg.verification_model,
@@ -158,7 +154,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.core.model_registry import onnx_model_status
 
     onnx_status = onnx_model_status()
-    if cfg.embedding_provider == "onnx" and not onnx_status["embedding_onnx_present"]:
+    if not onnx_status["embedding_onnx_present"]:
         logger.error(
             "ONNX embedding weights missing — every query will fail. "
             "Run 'python scripts/bootstrap.py' (or "
@@ -166,11 +162,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "apps/api/.model_cache into the image",
             path=onnx_status["embedding_onnx_path"],
         )
-    if (
-        cfg.reranker_enabled
-        and cfg.reranker_use_onnx
-        and not onnx_status["reranker_onnx_present"]
-    ):
+    if cfg.reranker_enabled and cfg.reranker_use_onnx and not onnx_status["reranker_onnx_present"]:
         logger.warning(
             "ONNX reranker weights missing — reranking degrades to RRF order. "
             "Run 'python scripts/ensure_onnx_models.py' to enable it",
