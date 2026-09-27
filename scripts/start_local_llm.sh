@@ -21,10 +21,17 @@ if [ ! -x "$PY" ]; then
 fi
 
 # Resolve hardware-specific launch flags.
-LAUNCH_FLAGS=($(cd "$API_DIR" && "$PY" -c "
+# NOTE: app logging (structlog) writes to stdout (see app/core/logging.py),
+# so these one-liners can emit log lines before the value line — e.g.
+# "2026-09-27 ... vm_stat failed ...". `tail -n 1` keeps only the value line;
+# without it, log words leak into llama-server argv and it dies with
+# "error: invalid argument: 2026-09-27". pipefail + set -e still abort when
+# the Python itself fails (tail never masks a non-zero python exit).
+_LAUNCH_FLAGS_LINE=$(cd "$API_DIR" && "$PY" -c "
 from app.core.hardware import get_llamacpp_launch_args
 print(' '.join(get_llamacpp_launch_args()))
-"))
+" | tail -n 1)
+read -ra LAUNCH_FLAGS <<< "$_LAUNCH_FLAGS_LINE"
 
 # Parse args.
 MAX_MODELS=""
@@ -41,11 +48,12 @@ done
 # on 8 GB hosts a second model means swap). Matches the -c/-np tiers in
 # app/core/hardware.py:get_llamacpp_launch_args.
 if [ -z "$MAX_MODELS" ]; then
+  # Same stdout-log caveat as LAUNCH_FLAGS above: keep the value line only.
   MAX_MODELS=$(cd "$API_DIR" && "$PY" -c "
 from app.core.hardware import get_system_memory_info
 total = get_system_memory_info()['total_gb']
 print(1 if total <= 8.5 else (2 if total <= 16.5 else 4))
-")
+" | tail -n 1)
 fi
 
 # Models directory (HuggingFace cache where GGUF models are stored).

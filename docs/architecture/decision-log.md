@@ -571,3 +571,28 @@ in `core/metrics.py` rendered as Prometheus text at public `GET /api/v1/metrics`
 `/analyses` list reads only — generation/verification/ingest stay out of the CI
 gate (non-deterministic on throttled local models). Redis/Celery, multi-worker
 SSE bus, and server-side histograms explicitly deferred until measured pain.
+
+## D-34: Citation Markers Are Internal Plumbing, Stripped From the Answer
+
+**Date:** 2026-09-27
+**Status:** Accepted & Implemented (no `models.yaml` change)
+
+**Decision:** The grounding prompt still requires `[Segment N]` per factual
+sentence, and verification still consumes them (`extract_citations` links each
+claim to its evidence, `strip_invalid_citations` drops refs to unserved
+segments). What changed is the *user-facing* surface: at finalize, after
+verification has already run, `strip_citation_markers` removes the refs from the
+stored `answer` so readers get normal prose instead of bracket noise. The
+marker-bearing text is kept in `answer_cited` for the audit dossier and the
+baseline eval, which scores citation existence and would otherwise silently
+report zero citations.
+
+**Why:** the markers are an internal addressing scheme, not a citation UI. Every
+provider emitted them, but cloud models emitted them densely enough that the
+answer read like a debug dump. Stripping at finalize (not at generation) keeps
+claim→evidence linking, the Evidence tab, and the provenance metric intact.
+
+**Consequences:** `[Segment N]` in an answer is a bug, not a feature — see
+`generator.strip_citation_markers` and its regression tests. The D-27
+"answers carry inline citations" wording is superseded for the reader-facing
+field only; the mechanism is unchanged.

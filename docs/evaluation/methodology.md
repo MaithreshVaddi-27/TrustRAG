@@ -114,3 +114,5 @@ To change the set, add `baseline_v2.jsonl` and keep v1 for comparability.
 
 ¹ Citation correctness is an existence check until Phase 5 (every `[Segment N]` names a
 served segment — provenance honesty, not entailment); the runner records `claims_with_evidence_rate` alongside.
+Refs are read from the `answer_cited` field (the reader-facing `answer` has markers stripped
+at finalize, D-34), so this metric stays populated on new runs.

@@ -54,7 +54,7 @@ Query → Route → Retrieve (hybrid) → Generate (grounded) → Decompose
 
 1. **Route** — deterministic query classification (no LLM call).
 2. **Retrieve** — dense vectors (BGE-small, 384-d) + BM25 sparse + RRF fusion, optional cross-encoder rerank.
-3. **Generate** — LLM answers only from retrieved chunks, with inline `[Segment N]` citations.
+3. **Generate** — LLM answers only from retrieved chunks, each factual sentence pinned to a source segment for verification.
 4. **Decompose** — answer split into atomic, checkable claims.
 5. **Verify** — each claim judged `SUPPORTED` / `CONTRADICTED` / `NEUTRAL`.
 6. **Audit** — SHA-256 tamper detection + temporal validity on sources.

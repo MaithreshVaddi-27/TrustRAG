@@ -301,7 +301,7 @@ Key components:
 - **ClaimInspector** — drill-down into individual verified claims with evidence links
 - **EvidenceViewer** — raw evidence segments with integrity status
 - **ExecutionTrace** — timeline of pipeline nodes executed, timings, recovery events
-- **FormattedAnswer** — rendered markdown answer with inline `[Segment N]` citations
+- **FormattedAnswer** — rendered markdown answer (citation markers are stripped server-side before this point)
 
 Motion system: `motion` package with shared config (`lib/motionConfig.js`), entrance/exit animations, layout transitions.
 

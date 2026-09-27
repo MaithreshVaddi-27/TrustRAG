@@ -8,7 +8,7 @@ TRUSTRAG is an AI reliability workbench that implements a closed-loop reliabilit
 Query → Route (simple / temporal / comparison / complex, deterministic, no LLM)
       → Retrieve (Dense + BM25-TF/IDF + MCP Live Web) → RRF fusion (fusion_top_k enforced)
       → Rerank (cross-encoder, OFF by default, depth-capped)
-      → Grounded Generation with inline [Segment N] citations (Local llama.cpp / Ollama / Gemini / NVIDIA — per request) 
+      → Grounded Generation, each sentence pinned to a source segment (Local llama.cpp / Ollama / Gemini / NVIDIA — per request)
       → Propositional Claim Decomposition → NLI Claim Verification (+ targeted NEUTRAL-only re-retrieval) 
       → Evidence Integrity & Provenance Audit → Threshold Reliability Diagnosis 
       → Adaptive Recovery Loop (LangGraph StateGraph) 
@@ -52,7 +52,7 @@ FastAPI (Python 3.11+, Default Port 8000)
     ├─── app/services/     Search Service (SSRF sanitization, private IP guards);
     │                      KB lifecycle (snapshots, rollback with vector-less guard)
     ├─── app/generation/   Grounded answer generation (Local LLMs or Cloud) with
-    │                      inline [Segment N] citations + invalid-ref strip post-check
+    │                      per-sentence [Segment N] provenance + invalid-ref strip, markers stripped from the answer at finalize
 ├─── app/verification/ Propositional claim decomposition + NLI entailment +
 │                      targeted NEUTRAL-only claim retrieval (≤3/analysis);
 │                      brackets-exempt scaffold-echo filter; SHA-256
@@ -120,7 +120,7 @@ TRUSTRAG adopts the open **Model Context Protocol (MCP)** specification to decou
           ▼                        │
    [generation_node]               │
    (Context-bound synthesis +      │
-    [Segment N] citations)         │
+    [Segment N] provenance)        │
           │                        │
           ▼                        │
    [verification_node]             │

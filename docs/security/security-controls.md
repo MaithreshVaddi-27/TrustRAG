@@ -51,7 +51,7 @@
 | Control | Implementation | Status |
 |---------|---------------|--------|
 | Prompt injection defense | Evidence labeled as UNTRUSTED DATA in prompt | Phase 6 |
-| Citation provenance check | Unserved `[Segment N]` refs stripped post-generation | RAG Phase 4 ✓ |
+| Citation provenance check | Unserved `[Segment N]` refs stripped post-generation; all refs stripped from the reader-facing answer at finalize (audit form kept in `answer_cited`) | RAG Phase 4 ✓ / D-34 ✓ |
 | Claim-retrieval budget | NEUTRAL-only re-retrieval, `max_claim_retrievals: 3` | RAG Phase 5 ✓ |
 | Router fan-out ceiling | `max_sub_queries: 3`, partial-outage degrade | RAG Phase 6 ✓ |
 | Snapshot/rollback ownership | `user_id` checks on snapshot, rollback, and restore; 409 on vector-less snapshots | RAG Phase 8 ✓ |

@@ -463,3 +463,75 @@ def test_create_analysis_guides_new_user_without_models(
     response = client.post("/api/v1/analyses", json=payload)
     assert response.status_code == 422
     assert "No llama_cpp models discovered" in response.text
+
+
+async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
+    """Stored answer must be normal prose — no [Segment N] markers leak to users.
+
+    Regression: markers are load-bearing during verification (claim->evidence
+    linking) so they are stripped ONLY at finalize, after verification ran.
+    """
+    from types import SimpleNamespace
+
+    from app.services import analysis_service as svc
+    from app.verification.verdict import DiagnosisType, ReliabilityStatus
+
+    raw_answer = (
+        "### Contents of the Knowledge Base\n"
+        "The knowledge base holds domain knowledge [Segment 2].\n"
+        "* **Concept hierarchies:** organize attributes [Segment 6]."
+    )
+
+    async def _fake_flow(**_kwargs):
+        return {
+            "answer": raw_answer,
+            "claims": [{"state": "SUPPORTED"}],
+            "diagnosis_type": None,
+            "diagnosis_failures": [],
+            "reliability_score": 0.9,
+        }
+
+    monkeypatch.setattr("app.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    coll = MagicMock()
+    coll.update_one = AsyncMock()
+
+    class _Sem:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
+
+    async def _get_sem():
+        return _Sem()
+
+    monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
+    monkeypatch.setattr(svc, "_get_concurrency_semaphore", _get_sem, raising=False)
+    monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
+    monkeypatch.setattr(
+        svc,
+        "verdict_from_state",
+        lambda _state, _thresholds: SimpleNamespace(
+            reliability_status=ReliabilityStatus.TRUSTED,
+            reliability_score=0.9,
+            diagnosis_type=DiagnosisType.NONE,
+            diagnosis_failures=[],
+        ),
+    )
+    monkeypatch.setattr("app.core.metrics.record_analysis_completed", lambda *_a, **_k: None)
+
+    await svc.run_analysis_pipeline(
+        analysis_id_str="507f1f77bcf86cd799439011",
+        kb_id_str="507f1f77bcf86cd799439012",
+        query="What is in the knowledge base?",
+    )
+
+    set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]
+    assert set_arg["status"] == "completed"
+    assert "[Segment" not in set_arg["answer"]
+    assert "holds domain knowledge." in set_arg["answer"]
+    assert "### Contents of the Knowledge Base" in set_arg["answer"]
+    # Audit form must keep the provenance refs the baseline eval scores on,
+    # otherwise citation_correctness silently reports nothing.
+    assert "[Segment 2]" in set_arg["answer_cited"]
+    assert "[Segment 6]" in set_arg["answer_cited"]

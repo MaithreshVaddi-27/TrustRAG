@@ -650,8 +650,10 @@ CONTRADICTED
 NEUTRAL
 ```
 
-Answers carry inline `[Segment N]` citations (refs to unserved segments are
-stripped post-generation). NEUTRAL claims may earn one bounded targeted-retrieval
+Generation pins each factual sentence to a `[Segment N]` marker for verification (refs to
+unserved segments are stripped post-generation); the markers are internal plumbing and are
+removed from the reader-facing answer at finalize, with the marker-bearing text retained in
+`answer_cited` for audit and eval. NEUTRAL claims may earn one bounded targeted-retrieval
 round each (claim text as query, ≤3 per analysis); CONTRADICTED claims are never
 re-searched.
 

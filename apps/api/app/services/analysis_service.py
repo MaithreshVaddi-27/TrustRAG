@@ -697,7 +697,17 @@ async def run_analysis_pipeline(
                     "I am abstaining rather than guessing. Try a more specific "
                     "query or add documents covering this topic."
                 )
-                stored_status = "abstained"
+            # USER-FACING CLEANUP: verification already consumed the [Segment N]
+            # markers (claims carry their own evidence_ids; the Evidence tab is
+            # unaffected), so the stored prose drops them — readers see normal
+            # text instead of bracket noise. No-op for marker-free answers.
+            # `answer_cited` keeps the marker-bearing form for the audit dossier
+            # and the baseline-eval provenance check, which must still be able
+            # to see which segments the model actually cited.
+            from app.generation.generator import strip_citation_markers
+
+            answer_cited = stored_answer
+            stored_answer = strip_citation_markers(stored_answer)
             # Update database first, then publish trace event with answer
             await analyses_coll.update_one(
                 {"_id": analysis_id},
@@ -705,6 +715,7 @@ async def run_analysis_pipeline(
                     "$set": {
                         "status": stored_status,
                         "answer": stored_answer,
+                        "answer_cited": answer_cited,
                         "reliability": {
                             "score": verdict.reliability_score,
                             "status": verdict.reliability_status.value,

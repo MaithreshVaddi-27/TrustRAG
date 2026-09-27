@@ -467,6 +467,24 @@ def strip_invalid_citations(answer: str, valid_segments: int) -> tuple[str, list
     return cleaned, dropped
 
 
+def strip_citation_markers(answer: str) -> str:
+    """Remove ALL [Segment N] markers for user-facing text.
+
+    Markers are load-bearing during the pipeline (decomposition links claims
+    to segments via extract_citations; strip_invalid_citations drops
+    hallucinated refs), so this runs ONLY at finalize time, after
+    verification has consumed them. Claims keep their own evidence_ids, and
+    the Evidence tab is unaffected — only the stored answer prose changes.
+    """
+    if not answer:
+        return answer
+    cleaned = _CITATION_RE.sub("", answer)
+    if cleaned != answer:
+        cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+        cleaned = re.sub(r" ([.,;:!?])", r"\1", cleaned)
+    return cleaned
+
+
 # Sections small reasoning models wrap around the real answer. Extraction is
 # structural (bracket markers), never content-based, so well-behaved models
 # whose output has no markers pass through byte-identical.

@@ -142,11 +142,18 @@ def run_query(args: argparse.Namespace, token: str, row: dict) -> dict:
     _ = retrieved_ids  # raw chunk ids kept in the per-query record below, not scored
 
     claim_states = [c.get("state", "NEUTRAL") for c in claims]
-    # Phase-4 existence check: every [Segment N] in the answer must name a served
-    # segment (1..len(evidence) approximates the served range). This measures
-    # provenance honesty, NOT entailment — the entailment check lands in Phase 5.
-    # No refs (e.g. abstentions) → [] → citation None, never a penalty.
-    answer_text = ((detail.get("analysis") or {}).get("answer")) or ""
+    # Phase-4 existence check: every [Segment N] the model emitted must name a
+    # served segment (1..len(evidence) approximates the served range). This
+    # measures provenance honesty, NOT entailment — the entailment check lands
+    # in Phase 5. No refs (e.g. abstentions) → [] → citation None, never a
+    # penalty.
+    #
+    # Read `answer_cited` (marker-bearing form kept for audit). The user-facing
+    # `answer` has [Segment N] stripped at finalize, so parsing it would always
+    # yield zero refs and silently zero out this metric. Fall back to `answer`
+    # for pre-strip analyses so old runs stay scoreable.
+    _analysis = detail.get("analysis") or {}
+    answer_text = _analysis.get("answer_cited") or _analysis.get("answer") or ""
     cited = [int(n) for n in re.findall(r"\[Segment\s+(\d+)\]", answer_text)]
     citation_supporting = [1 <= n <= len(evidence) for n in cited]
     linked = sum(1 for c in claims if c.get("evidence_ids"))

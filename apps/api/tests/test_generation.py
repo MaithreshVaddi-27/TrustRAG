@@ -184,3 +184,42 @@ def test_format_dedupes_punctuation_variants():
     context, indices = format_context_with_chunk_indices(chunks, max_chars=10000)
     assert len(indices) == 2
     assert "Segment 3" not in context
+
+
+def test_strip_citation_markers_removes_all_refs():
+    from app.generation.generator import strip_citation_markers
+
+    raw = (
+        "### Contents\n"
+        "The knowledge base holds domain knowledge [Segment 2].\n"
+        "* **Concept hierarchies:** organize attributes [Segment 6].\n"
+        "* **User beliefs:** assess interestingness [Segment 6]."
+    )
+    cleaned = strip_citation_markers(raw)
+
+    assert "[Segment" not in cleaned
+    assert "Segment 2" not in cleaned
+    # Prose and markdown structure survive; no double spaces or dangling spaces
+    assert "### Contents" in cleaned
+    assert "holds domain knowledge." in cleaned
+    assert "**Concept hierarchies:** organize attributes." in cleaned
+    assert "  " not in cleaned
+    assert " ." not in cleaned
+
+
+def test_strip_citation_markers_is_noop_without_markers():
+    from app.generation.generator import strip_citation_markers
+
+    plain = "### Answer\nA grounded sentence with no refs.\n* bullet two"
+    assert strip_citation_markers(plain) == plain
+    assert strip_citation_markers("") == ""
+
+
+def test_strip_citation_markers_leaves_bracketless_prose():
+    from app.generation.generator import strip_citation_markers
+
+    # Only the bracketed form is provenance; prose mentions are real content.
+    text = "Segment 2 states that patterns must be interesting [Segment 3]."
+    cleaned = strip_citation_markers(text)
+    assert "Segment 2 states" in cleaned
+    assert "[Segment 3]" not in cleaned
