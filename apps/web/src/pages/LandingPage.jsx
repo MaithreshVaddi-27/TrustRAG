@@ -28,7 +28,7 @@ export default function LandingPage() {
     <div
       ref={containerRef}
       onMouseMove={handleMouseMove}
-      className="min-h-screen bg-surface-950 text-slate-100 font-sans selection:bg-sky-500/30 selection:text-sky-300 relative overflow-hidden bg-cyber-grid"
+      className="min-h-screen supports-[min-height:100dvh]:min-h-dvh bg-surface-950 text-slate-100 font-sans selection:bg-sky-500/30 selection:text-sky-300 relative overflow-hidden bg-cyber-grid"
     >
       {/* Interactive Cursor Spotlight */}
       <motion.div

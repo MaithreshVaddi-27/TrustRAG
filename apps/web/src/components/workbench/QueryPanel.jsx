@@ -30,25 +30,20 @@ export function QueryPanel({
   setSelectedModel,
 
   selectedEmbeddingModel,
-  setSelectedEmbeddingModel,
   enableWebSearch,
   setEnableWebSearch,
   webSearchProvider,
   setWebSearchProvider,
   providersData,
-  userTouchedEmbeddingRef,
   elapsedSec,
   activeProviderInfo,
-  activeEmbeddingProviderInfo,
   availableModels,
-  availableEmbeddingModels,
   refetchProviders,
   providersUnresolved = false,
   selectedKb,
   knowledgeBases,
   kbEmbeddingPin,
   embeddingMismatch,
-  snapEmbeddingToKb,
 }) {
   const handleProviderChange = (providerKey) => {
     setSelectedProvider(providerKey)
@@ -59,6 +54,8 @@ export function QueryPanel({
       setSelectedModel('granite4.2:3b-q4_K_M')
     } else if (providerKey === 'llama_cpp') {
       setSelectedModel('occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M')
+    } else if (providerKey === 'mlx') {
+      setSelectedModel('mlx-community/Llama-3.2-1B-Instruct-4bit')
     } else if (providerKey === 'gemini') {
       setSelectedModel('gemini-3.5-flash-lite')
     } else if (providerKey === 'nvidia') {
@@ -93,6 +90,7 @@ export function QueryPanel({
           onClick={handleReset}
           disabled={loading}
           title="Reset query and results (Clear)"
+          aria-label="Reset query and results"
           className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-surface-800 rounded-lg border border-slate-800 transition-colors"
         >
           <RotateCcw size={13} />
@@ -168,7 +166,7 @@ export function QueryPanel({
             </div>
 
             <AnimatePresence>
-            {(selectedProvider === 'ollama' || selectedProvider === 'llama_cpp') && (providersUnresolved || (activeProviderInfo && !activeProviderInfo.connected)) && (
+            {(selectedProvider === 'ollama' || selectedProvider === 'llama_cpp' || selectedProvider === 'mlx') && (providersUnresolved || (activeProviderInfo && !activeProviderInfo.connected)) && (
               <motion.div
                 role="alert"
                 initial={{ opacity: 0, y: -6 }}
@@ -184,6 +182,8 @@ export function QueryPanel({
                 <p className="mt-1 text-[10px] leading-relaxed text-amber-200/80">
                   {selectedProvider === 'ollama' ? (
                     <>Run <code className="font-mono text-amber-100">ollama serve</code> in a terminal, then refresh.</>
+                  ) : selectedProvider === 'mlx' ? (
+                    <>Run <code className="font-mono text-amber-100">mlx_lm.server --model mlx-community/Llama-3.2-1B-Instruct-4bit</code> in a terminal (Apple Silicon), then refresh.</>
                   ) : (
                     <>Run <code className="font-mono text-amber-100">./scripts/start_local_llm.sh</code> in a terminal, then refresh.</>
                   )}
@@ -249,6 +249,20 @@ export function QueryPanel({
               </motion.button>
               <motion.button
                 type="button"
+                onClick={() => handleProviderChange('mlx')}
+                disabled={loading}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.96, transition: SPRING_SNAPPY }}
+                className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between transition-all duration-150 ease-out ${
+                  selectedProvider === 'mlx'
+                    ? 'bg-orange-600/30 text-orange-200 border border-orange-500/50 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                }`}>
+                <span>MLX</span>
+                <span className="text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-orange-400 font-mono">Mac</span>
+              </motion.button>
+              <motion.button
+                type="button"
                 onClick={() => handleProviderChange('gemini')}
                 disabled={loading}
                 whileHover={{ scale: 1.02 }}
@@ -282,7 +296,7 @@ export function QueryPanel({
                 <span className="font-medium">Model:</span>
                 <span className="flex items-center gap-2">
                   <span className="font-mono text-[10px] text-slate-500">
-                    {selectedProvider === 'ollama' ? ':11434' : (selectedProvider === 'llama_cpp' ? ':8080' : '')}
+                    {selectedProvider === 'ollama' ? ':11434' : ((selectedProvider === 'llama_cpp' || selectedProvider === 'mlx') ? ':8080' : '')}
                   </span>
                   <button
                     type="button"
@@ -339,7 +353,7 @@ export function QueryPanel({
                   <p className="text-[11px] text-slate-400">
                     {enableWebSearch 
                       ? 'Active: Live internet grounding will be queried via MCP.'
-                      : 'Unchecked: 100% Private Local RAG — searches only your Knowledge Base.'}
+                      : 'Unchecked: 100% private local RAG limited to your knowledge base.'}
                   </p>
                 </label>
               </div>
@@ -397,7 +411,7 @@ export function QueryPanel({
                 </p>
 
                 {/* MCP Tool Grounding - only when web search is enabled */}
-                {(selectedProvider === 'ollama' || selectedProvider === 'llama_cpp') && (
+                {(selectedProvider === 'ollama' || selectedProvider === 'llama_cpp' || selectedProvider === 'mlx') && (
                   <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
                     <div className="flex items-center justify-between text-[11px]">
                       <div className="flex items-center gap-1.5 text-cyan-300 font-medium">
@@ -423,12 +437,8 @@ export function QueryPanel({
                 <Layers className="w-3.5 h-3.5 text-cyan-400" />
                 <span>Dense Embedding Model</span>
               </label>
-              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                activeEmbeddingProviderInfo?.connected
-                  ? 'bg-cyan-950/80 text-cyan-400 border border-cyan-800/40'
-                  : 'bg-slate-800 text-slate-400 border border-slate-700/40'
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${activeEmbeddingProviderInfo?.connected ? 'bg-cyan-400 animate-pulse' : 'bg-slate-500'}`} />
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-950/80 text-cyan-400 border border-cyan-800/40">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
                 Local BGE
               </span>
             </div>
@@ -442,52 +452,24 @@ export function QueryPanel({
               <div className="flex items-center justify-between text-[11px] text-slate-400">
                 <span className="font-medium">Embedding Model:</span>
                 <span className="font-mono text-[10px] text-cyan-400">
-                  {availableEmbeddingModels.find(m => m.id === selectedEmbeddingModel)?.dim ? `${availableEmbeddingModels.find(m => m.id === selectedEmbeddingModel)?.dim}d vectors` : ''}
+                  {selectedEmbeddingModel ? `${shortModelId(selectedEmbeddingModel)} · 384d vectors` : ''}
                 </span>
               </div>
               {selectedKb && (
                 <div className="text-[10px] font-mono text-slate-500">
-                  KB index: {selectedKb.embedding_model || 'legacy (unknown) — re-ingest recommended'}
+                  KB index: {selectedKb.embedding_model || 'legacy (unknown): re-ingest recommended'}
                   {selectedKb.embedding_dim ? ` · ${selectedKb.embedding_dim}d` : ''}
                 </div>
               )}
-              {embeddingMismatch && kbEmbeddingPin && !['BAAI/bge-small-en-v1.5', 'sentence-transformers/all-MiniLM-L6-v2'].includes(kbEmbeddingPin) && (
+              {embeddingMismatch && kbEmbeddingPin && (
                 <div className="w-full flex items-start gap-1.5 rounded-lg border border-amber-500/50 bg-amber-950/40 px-2 py-1.5 text-left text-[11px] text-amber-200">
                   <AlertTriangle className="w-3.5 h-3.5 mt-[1px] shrink-0" />
                   <span>
-                    This KB was indexed with retired cloud embeddings (<span className="font-mono">{kbEmbeddingPin}</span>).
+                    This KB was indexed with <span className="font-mono">{kbEmbeddingPin}</span>.
                     Re-upload its documents to re-index with local BGE.
                   </span>
                 </div>
               )}
-              {embeddingMismatch && ['BAAI/bge-small-en-v1.5', 'sentence-transformers/all-MiniLM-L6-v2'].includes(kbEmbeddingPin) && (
-                <button
-                  type="button"
-                  onClick={snapEmbeddingToKb}
-                  className="w-full flex items-start gap-1.5 rounded-lg border border-amber-500/50 bg-amber-950/40 px-2 py-1.5 text-left text-[11px] text-amber-200 hover:bg-amber-900/40 transition-colors">
-                  <AlertTriangle className="w-3.5 h-3.5 mt-[1px] shrink-0" />
-                  <span>
-                    Mismatch: this KB was indexed with <span className="font-mono">{kbEmbeddingPin}</span>.
-                    Analyses with another model are rejected — click to match.
-                  </span>
-                </button>
-              )}
-              <div className="relative">
-                <select
-                  value={selectedEmbeddingModel}
-                  onChange={e => {
-                    setSelectedEmbeddingModel(e.target.value)
-                    userTouchedEmbeddingRef.current = true
-                  }}
-                  disabled={loading}
-                  className="w-full bg-surface-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-500/50">
-                {availableEmbeddingModels.map(m => (
-                  <option key={m.id} value={m.id} title={m.id}>
-                    {shortModelId(m.id)}{m.dim ? ` · ${m.dim}d` : ''}{m.tag ? ` — ${m.tag}` : ''}
-                  </option>
-                ))}
-                </select>
-              </div>
             </div>
           </div>
 

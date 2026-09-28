@@ -59,6 +59,12 @@ MAX_DECOMPRESSION_RATIO = {
 
 DEFAULT_MAX_RATIO = 100
 
+# Absolute ceiling on total uncompressed bytes for ZIP-based formats (M1).
+# Ratio-only guards miss mildly-repetitive prose (~43x, far under the 100x
+# cap) that still expands a 2MB upload into ~90MB XML / ~280MB RSS.
+# 256MB keeps every legitimate document working while bounding RSS.
+MAX_DECOMPRESSED_BYTES = 256 * 1024 * 1024
+
 
 def validate_magic_bytes(filename: str, stream: BinaryIO) -> None:
     """
@@ -92,7 +98,19 @@ def validate_magic_bytes(filename: str, stream: BinaryIO) -> None:
 def check_decompression_bomb(filename: str, compressed_size: int, decompressed_size: int) -> None:
     """
     Check if decompression ratio exceeds safe threshold (zip bomb protection).
+
+    Enforces BOTH a per-format ratio cap and an absolute byte ceiling (M1):
+    ratio-only checks miss mildly-repetitive prose that compresses ~43x yet
+    expands into hundreds of MB of live XML.
     """
+    if decompressed_size > MAX_DECOMPRESSED_BYTES:
+        raise IngestionError(
+            "Decompression bomb detected",
+            detail=(
+                f"File '{filename}' uncompressed size {decompressed_size / (1024 * 1024):.1f}MB "
+                f"exceeds absolute maximum {MAX_DECOMPRESSED_BYTES / (1024 * 1024):.0f}MB"
+            ),
+        )
     if compressed_size <= 0:
         return
     ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
@@ -133,18 +151,111 @@ def extract_dates(text: str) -> tuple[datetime | None, datetime | None]:
     return eff_from, eff_until
 
 
+MAX_PDF_PAGES = 500
+MAX_RENDER_PIXELS = 25_000_000  # ~25MP cap per OCR render (RAM guard)
+
+_ENCODING_DETECT_SLICE = 100 * 1024
+
+
+def _detect_encoding(raw_bytes: bytes) -> str:
+    """Detect encoding from the first 100KB (not the full 20MB file)."""
+    if len(raw_bytes) > _ENCODING_DETECT_SLICE:
+        sample = raw_bytes[:_ENCODING_DETECT_SLICE]
+    else:
+        sample = raw_bytes
+    detected = chardet.detect(sample)
+    return detected.get("encoding") or "utf-8"
+
+
 def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
     """
     Parse a PDF file page-by-page.
-    Returns a list of dicts: [{"page": page_num, "text": page_text}].
+    Returns a list of dicts: [{"page": page_num, "text": page_text,
+    "ocr_used": bool, "ocr_confidence": float | None,
+    "page_image_png": bytes | None}].
+
+    Pages with sufficient native text keep native extraction. Pages below the
+    native-text density threshold fall back to RapidOCR-ONNX (ingestion.ocr.*)
+    when enabled. OCR failures fail open to whatever native text exists.
+    OCR pages keep the exact rendered pixels (page_image_png) so the
+    Answer → chunk → page → image provenance chain can be served later;
+    native pages carry None (no render exists, no disk cost).
     """
+    from app.core.config import get_model_config
+    from app.ingestion import ocr as ocr_module
+
+    cfg = get_model_config()
     try:
-        with fitz.open(stream=stream.read(), filetype="pdf") as doc:
+        raw = stream.read()
+        max_bytes = int(cfg.max_file_size_mb * 1024 * 1024)
+        if len(raw) > max_bytes:
+            size_mb = len(raw) / (1024 * 1024)
+            raise IngestionError(
+                "PDF exceeds size limit",
+                detail=f"PDF is {size_mb:.1f}MB, limit is {cfg.max_file_size_mb}MB",
+            )
+        with fitz.open(stream=raw, filetype="pdf") as doc:
+            if len(doc) > MAX_PDF_PAGES:
+                raise IngestionError(
+                    "PDF exceeds page limit",
+                    detail=f"PDF has {len(doc)} pages, limit is {MAX_PDF_PAGES}",
+                )
             pages = []
             for i, page in enumerate(doc):
-                text = page.get_text()
-                pages.append({"page": i + 1, "text": text.strip()})
+                native_text = page.get_text().strip()
+                text, ocr_used, ocr_confidence, page_image_png = native_text, False, None, None
+                if cfg.ocr_enabled and ocr_module.should_ocr_page(
+                    native_text, cfg.ocr_min_native_chars
+                ):
+                    try:
+                        pix = page.get_pixmap(dpi=cfg.ocr_dpi)
+                        if pix.w * pix.h > MAX_RENDER_PIXELS:
+                            # Downscale render: huge pages (e.g. A0 at 300dpi)
+                            # would spike RAM. Halve DPI and re-render.
+                            pix = page.get_pixmap(dpi=max(72, cfg.ocr_dpi // 2))
+                            if pix.w * pix.h > MAX_RENDER_PIXELS:
+                                logger.warning(
+                                    "OCR render exceeds pixel cap; keeping native text",
+                                    page=i + 1,
+                                    pixels=pix.w * pix.h,
+                                )
+                                raise ValueError("OCR render exceeds pixel cap")
+                        png_bytes = pix.tobytes("png")
+                        ocr_result = ocr_module.ocr_image_bytes(
+                            png_bytes,
+                            min_confidence=cfg.ocr_min_confidence,
+                        )
+                        text = ocr_result.text.strip()
+                        ocr_used, ocr_confidence = True, ocr_result.confidence
+                        # Keep the exact pixels the engine read (Phase 7 chain).
+                        page_image_png = png_bytes
+                        logger.info(
+                            "OCR fallback used for PDF page",
+                            page=i + 1,
+                            confidence=ocr_confidence,
+                        )
+                    except Exception as exc:
+                        # Fail open: a broken OCR page must not kill ingestion
+                        # of the whole document; keep whatever native text exists.
+                        logger.warning(
+                            "OCR fallback failed; keeping native page text",
+                            page=i + 1,
+                            error=str(exc),
+                        )
+                pages.append(
+                    {
+                        "page": i + 1,
+                        "text": text,
+                        "ocr_used": ocr_used,
+                        "ocr_confidence": ocr_confidence,
+                        "page_image_png": page_image_png,
+                    }
+                )
             return pages
+    except IngestionError:
+        # Size/page-limit guards raise IngestionError with operator-facing
+        # messages — re-wrapping them would destroy the diagnosis (L2).
+        raise
     except Exception as exc:
         raise IngestionError("Failed to parse PDF document", detail=str(exc)) from exc
 
@@ -164,6 +275,22 @@ def parse_docx(stream: BinaryIO) -> list[dict[str, Any]]:
             total_uncompressed = sum(info.file_size for info in docx_zip.infolist())
             check_decompression_bomb("document.docx", compressed_size, total_uncompressed)
 
+            # Bound the single member read too (M1): the total can pass while
+            # one member still materialises hundreds of MB of live XML.
+            try:
+                member_size = docx_zip.getinfo("word/document.xml").file_size
+            except KeyError:
+                member_size = 0
+            if member_size > MAX_DECOMPRESSED_BYTES:
+                raise IngestionError(
+                    "Decompression bomb detected",
+                    detail=(
+                        f"File 'document.docx' member word/document.xml is "
+                        f"{member_size / (1024 * 1024):.1f}MB, exceeds absolute maximum "
+                        f"{MAX_DECOMPRESSED_BYTES / (1024 * 1024):.0f}MB"
+                    ),
+                )
+
             xml_content = docx_zip.read("word/document.xml")
             tree = ET.fromstring(xml_content)
             namespaces = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
@@ -174,6 +301,11 @@ def parse_docx(stream: BinaryIO) -> list[dict[str, Any]]:
                     paragraphs.append("".join(texts))
             full_text = "\n\n".join(paragraphs)
             return [{"page": 1, "text": full_text.strip()}]
+    except IngestionError:
+        # Decompression-bomb guards raise IngestionError with operator-facing
+        # messages — re-wrapping them would destroy the diagnosis (L2, same
+        # shape as parse_pdf).
+        raise
     except Exception as exc:
         raise IngestionError("Failed to parse DOCX document", detail=str(exc)) from exc
 
@@ -186,8 +318,7 @@ def parse_csv(stream: BinaryIO) -> list[dict[str, Any]]:
     if not raw_bytes:
         return [{"page": 1, "text": ""}]
 
-    detected = chardet.detect(raw_bytes)
-    encoding = detected.get("encoding") or "utf-8"
+    encoding = _detect_encoding(raw_bytes)
 
     try:
         text_content = raw_bytes.decode(encoding, errors="replace")
@@ -221,8 +352,7 @@ def parse_json(stream: BinaryIO) -> list[dict[str, Any]]:
     if not raw_bytes:
         return [{"page": 1, "text": ""}]
 
-    detected = chardet.detect(raw_bytes)
-    encoding = detected.get("encoding") or "utf-8"
+    encoding = _detect_encoding(raw_bytes)
 
     try:
         text_content = raw_bytes.decode(encoding, errors="replace")
@@ -237,20 +367,22 @@ class _HTMLTextExtractor(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.pieces: list[str] = []
-        self.ignore = False
+        # Set of currently-open ignored tags. Only script/style latch —
+        # meta/noscript are void/unclosed so they must never set the flag
+        # (H1: a single <meta> used to silence the rest of the document).
+        self._ignored: set[str] = set()
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in ("script", "style", "meta", "noscript"):
-            self.ignore = True
+        if tag in ("script", "style"):
+            self._ignored.add(tag)
         elif tag in ("p", "br", "div", "h1", "h2", "h3", "h4", "li", "tr"):
             self.pieces.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in ("script", "style", "meta", "noscript"):
-            self.ignore = False
+        self._ignored.discard(tag)
 
     def handle_data(self, data: str) -> None:
-        if not self.ignore and data.strip():
+        if not self._ignored and data.strip():
             self.pieces.append(data.strip())
 
     def get_text(self) -> str:
@@ -265,8 +397,7 @@ def parse_html(stream: BinaryIO) -> list[dict[str, Any]]:
     if not raw_bytes:
         return [{"page": 1, "text": ""}]
 
-    detected = chardet.detect(raw_bytes)
-    encoding = detected.get("encoding") or "utf-8"
+    encoding = _detect_encoding(raw_bytes)
 
     try:
         content = raw_bytes.decode(encoding, errors="replace")
@@ -287,8 +418,7 @@ def parse_txt_or_md(stream: BinaryIO) -> list[dict[str, Any]]:
     if not raw_bytes:
         return [{"page": 1, "text": ""}]
 
-    detected = chardet.detect(raw_bytes)
-    encoding = detected.get("encoding") or "utf-8"
+    encoding = _detect_encoding(raw_bytes)
 
     try:
         text = raw_bytes.decode(encoding, errors="replace")
@@ -299,6 +429,60 @@ def parse_txt_or_md(stream: BinaryIO) -> list[dict[str, Any]]:
         ) from exc
 
 
+EICAR_TEST_STRING = b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+
+
+def scan_for_malware(stream: BinaryIO) -> None:
+    """Lightweight AV hook: flag EICAR test file; optionally call ClamAV via clamd."""
+    try:
+        pos = stream.tell()
+    except Exception:
+        pos = None
+    try:
+        # Chunked full-stream scan (64KB windows with overlap for split
+        # signatures) up to 20MB — 8KB head-only missed appended payloads.
+        overlap = len(EICAR_TEST_STRING)
+        tail = b""
+        while True:
+            chunk = stream.read(65536)
+            if not chunk:
+                break
+            window = tail + chunk
+            if EICAR_TEST_STRING in window:
+                raise IngestionError(
+                    "Malware detected (EICAR test signature)",
+                    detail="Upload blocked by AV scan",
+                )
+            tail = window[-overlap:] if len(window) >= overlap else window
+        # Optional: if pyclamd is available and clamd is running, scan there (fail-open)
+        try:
+            import pyclamd  # type: ignore
+
+            stream.seek(0)
+            # pyclamd expects bytes; use scan_stream if daemon reachable (best-effort)
+            result = None
+            try:
+                cd = pyclamd.ClamdNetworkSocket()
+                if cd.ping():
+                    stream.seek(0)
+                    result = cd.scan_stream(stream.read())
+                else:
+                    return
+            except Exception:
+                logger.debug("ClamAV daemon unavailable, skipping AV scan")
+                return
+            if result:
+                raise IngestionError("Malware detected by AV engine", detail=str(result))
+        except ImportError:
+            pass
+    finally:
+        if pos is not None:
+            try:
+                stream.seek(pos)
+            except Exception:
+                logger.debug("Failed to restore stream position after AV scan")
+
+
 def parse_document(
     filename: str, stream: BinaryIO
 ) -> tuple[list[dict[str, Any]], datetime | None, datetime | None]:
@@ -306,6 +490,8 @@ def parse_document(
     Determine format and parse document bytes across all supported extensions.
     Extracts temporal validity metadata if present.
     """
+    # AV scan before magic-byte validation (malware may masquerade)
+    scan_for_malware(stream)
     # Validate magic bytes before parsing
     validate_magic_bytes(filename, stream)
 

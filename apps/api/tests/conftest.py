@@ -8,6 +8,25 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
+# Hermetic provider config: a developer's local .env (e.g. AI_PROVIDER=ollama)
+# must not leak into the suite — tests assert models.yaml defaults
+# (test_create_analysis expects llama_cpp). Pop, don't default: an ambient
+# value would otherwise win over setdefault and make results machine-dependent.
+for _leaky_var in (
+    "AI_PROVIDER",
+    "LLM_PROVIDER",
+    "OLLAMA_MODEL",
+    "LLAMACPP_MODEL",
+    # Removed envs (single ONNX engine since 2026-09-27) kept out defensively.
+    "EMBEDDING_PROVIDER",
+    "EMBEDDING_BACKEND",
+    "EMBEDDING_MODEL",
+):
+    os.environ.pop(_leaky_var, None)
+del _leaky_var
+
 # Set dummy test environment variables before any app modules are imported
 os.environ.setdefault(
     "JWT_SECRET",
@@ -18,3 +37,59 @@ os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017")
 os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
 os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
+
+
+# Clear global caches between tests to avoid cross-test pollution
+def _clear_all_caches() -> None:
+    """Reset every process-global cache that can leak state between tests."""
+    # Provider hermeticity: app/core/config.py runs load_dotenv() at import,
+    # so a developer's local .env (e.g. AI_PROVIDER=ollama) lands in
+    # os.environ AFTER this module's top-level pop. Strip file-loaded values
+    # here too, before the config caches below are cleared and re-read.
+    for _leaky_var in (
+        "AI_PROVIDER",
+        "LLM_PROVIDER",
+        "OLLAMA_MODEL",
+        "LLAMACPP_MODEL",
+        "LLAMA_CPP_MODEL",
+        "MLX_MODEL",
+        "EMBEDDING_PROVIDER",
+        "EMBEDDING_BACKEND",
+        "EMBEDDING_MODEL",
+    ):
+        os.environ.pop(_leaky_var, None)
+    # Reranker result cache
+    from app.retrieval import reranker as reranker_module
+
+    if reranker_module._reranker_cache is not None:
+        reranker_module._reranker_cache.clear()
+    # Query-vector embedding cache (dim-mismatch guard reads this)
+    try:
+        from app.retrieval.retriever import _query_cache
+
+        _query_cache.clear()
+    except Exception:
+        pass
+    # Settings / model-config lru_cache (tests that mutate env leak by order)
+    try:
+        from app.core.config import get_model_config, get_settings
+
+        get_settings.cache_clear()
+        get_model_config.cache_clear()
+    except Exception:
+        pass
+    # OCR engine/error globals (a failed load would otherwise poison later tests)
+    try:
+        from app.ingestion.ocr import reset_engine_for_tests
+
+        reset_engine_for_tests()
+    except Exception:
+        pass
+
+
+@pytest.fixture(autouse=True)
+def clear_global_caches():
+    """Clear global caches before and after each test."""
+    _clear_all_caches()
+    yield
+    _clear_all_caches()

@@ -1,6 +1,8 @@
 # TRUSTRAG Documentation Index
 
-Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench. This directory is organized by domain: architecture, security, quality audits, evaluation methodology, and deployment.
+Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench. This directory is organized by domain: product specification, architecture, security, evaluation methodology, and deployment.
+
+> **Note:** Point-in-time audit reports (`docs/audits/`, `PHASE_AUDIT_*.md`, `TRUSTRAG_AUDIT_2026-09-21.md`, `SESSION_SUMMARY_2026-09-21.md`, `TRUSTRAG_OPTIMIZATION_PLAN.md`) and the stale agent work-plan (`docs/superpowers/`) were removed during cleanup. Their history remains in git (e.g. `git log -- docs/TRUSTRAG_AUDIT_2026-09-21.md`).
 
 ---
 
@@ -8,55 +10,65 @@ Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench
 
 ```
 docs/
-├── README.md                  # Master index (this file)
-├── TRUSTRAG_specs.md          # Full product specification
-├── ROADMAP.md                 # Product vision, milestones, phase tracking
-├── IMPLEMENTATION_STATUS_2026-09-11.md  # Current implementation status & progress
+├── README.md                        # Master index (this file)
+├── TRUSTRAG_specs.md                # Full product specification (source of truth)
+├── audit-2026-09-28-ui-redesign-full.md  # LIVE audit tracker (all findings fixed; supersedes removed point-in-time reports)
+├── ONBOARDING-TROUBLESHOOTING.md    # Per-OS setup guide + failure table + live verification backlog
+├── ROADMAP.md                       # Product vision, milestones, phase tracking
+├── PERFORMANCE-GUIDE.md             # Free speed/RAM tuning + MLX on Mac
 ├── architecture/
-│   ├── architecture.md        # End-to-end system design, MCP tools, LangGraph loop, data flow
-│   └── decision-log.md        # ADRs D-01 through D-22 (incl. ONNX embeddings, tolerant NLI)
-├── audits/
-│   └── 2026-09-11_unified_senior_audit.md  # Canonical audit (supersedes all prior audits; history in git)
+│   ├── architecture.md              # End-to-end system design, MCP tools, LangGraph loop, data flow
+│   ├── RAG_ARCHITECTURE.md          # RAG pipeline technical reference
+│   └── decision-log.md              # ADRs D-01 through D-33
 ├── security/
-│   ├── security-controls.md   # Auth, anti-IDOR, SSRF, rate limits, headers
-│   └── threat-model.md        # STRIDE threat model and mitigations
+│   ├── security-controls.md         # Auth, anti-IDOR, SSRF, rate limits, headers
+│   └── threat-model.md              # STRIDE threat model and mitigations
 ├── evaluation/
-│   └── methodology.md         # Benchmark dataset and reliability metrics
+│   ├── methodology.md               # Benchmark dataset, metrics, measured snapshot
+│   └── results/                     # Live eval-run JSON (gitignored, local only)
 ├── deployment/
-│   ├── DEPLOYMENT_GUIDE.md    # Cloudflare Pages + Google Cloud Run + MongoDB Atlas
-│   └── README.md              # Docker Compose / local deployment runbook
+│   ├── DEPLOYMENT_GUIDE.md          # Cloud production runbook (Pages + GCR + Atlas)
+│   └── README.md                    # Env vars, local/Compose setup, pre-prod checklist
 ```
 
 ---
 
 ## 📑 Core Sections
 
-### 1. Architecture & Design
-- [**System Architecture (`architecture/architecture.md`)**](architecture/architecture.md): LangGraph agent loop, MCP tools, hybrid retrieval (dense + sparse RRF), claim decomposition → NLI verification → verdict pipeline.
-- [**Decision Log (`architecture/decision-log.md`)**](architecture/decision-log.md): Architectural Decision Records covering technology choices, storage layers, and code quality decisions (D-21 ONNX embeddings, D-22 tolerant NLI parsing).
+### 1. Product & Planning
 
-### 2. Audits & Implementation Status
-- [**2026-09-11 — Unified Senior Audit**](audits/2026-09-11_unified_senior_audit.md): **Canonical audit** — multi-role review (frontend, backend, AI/ML, security, optimization, testing) with Apple-design compliance, ultra-low RAM plan, and 2-day vs >2-day upgrade split. Supersedes all prior audits (history preserved in git).
-- [**Implementation Status (`IMPLEMENTATION_STATUS_2026-09-11.md`)**](IMPLEMENTATION_STATUS_2026-09-11.md): What was fixed, current test state (backend 219/219, frontend 22/22), and remaining work. Covers the ≤2-day fixes, ONNX runtime, tolerant-NLI + fusion hardening, CI repairs, offline-warning and probe hardening, and the push-readiness passes.
+- [**Specification (`TRUSTRAG_specs.md`)**](TRUSTRAG_specs.md): product definition, engineering principles, stack, architecture, config, ingestion → recovery pipeline, API, testing, acceptance criteria. Read this first before contributing.
+- [**Roadmap (`ROADMAP.md`)**](ROADMAP.md): completed phases, pre-deployment checklist, and prioritized upcoming work.
+- [**Performance Guide (`PERFORMANCE-GUIDE.md`)**](PERFORMANCE-GUIDE.md): free efficiency changes (config-only speed/RAM wins) plus MLX local inference on Apple Silicon.
+- [**Onboarding & Troubleshooting (`ONBOARDING-TROUBLESHOOTING.md`)**](ONBOARDING-TROUBLESHOOTING.md): per-OS setup guide, failure table, live verification backlog.
+- [**Live Audit Tracker (`audit-2026-09-28-ui-redesign-full.md`)**](audit-2026-09-28-ui-redesign-full.md): every bug/error/issue/dead-code finding with severity, fix, and verification evidence. Supersedes the removed point-in-time reports (history in git).
+
+### 2. Architecture & Design
+
+- [**System Architecture (`architecture/architecture.md`)**](architecture/architecture.md): LangGraph agent loop, MCP tools, hybrid retrieval (dense + sparse RRF), claim decomposition → NLI verification → verdict pipeline.
+- [**RAG Reference (`architecture/RAG_ARCHITECTURE.md`)**](architecture/RAG_ARCHITECTURE.md): pipeline flow, LangGraph state, ingestion/retrieval/generation/verification internals, data stores, frontend architecture.
+- [**Decision Log (`architecture/decision-log.md`)**](architecture/decision-log.md): ADRs covering providers, storage, ports, embeddings (local-only BGE, ONNX), NLI parsing, BM25+IDF, reranker cap, RapidOCR, chunking, citations, claim retrieval, router, lifecycle, recovery, security, observability.
 
 ### 3. Security
-- [**Security Controls (`security/security-controls.md`)**](security/security-controls.md): JWT, bcrypt, anti-IDOR, SSRF guards, rate limiting, defensive headers.
-- [**Threat Model (`security/threat-model.md`)**](security/threat-model.md): STRIDE analysis and countermeasures.
+
+- [**Security Controls (`security/security-controls.md`)**](security/security-controls.md): JWT, bcrypt, JTI revocation, service-token KB/user binding, login lockout (5/900s), EICAR + best-effort clamd upload AV, 24-test red-team suite.
+- [**Threat Model (`security/threat-model.md`)**](security/threat-model.md): assets, STRIDE threats T-01…T-11, mitigations, residual risks, out-of-scope items.
 
 ### 4. Evaluation
-- [**Methodology (`evaluation/methodology.md`)**](evaluation/methodology.md): datasets and reliability metrics.
+
+- [**Methodology (`evaluation/methodology.md`)**](evaluation/methodology.md): experiment configs, metrics, ablation plan, frozen `baseline_v1` dataset, live run procedure, measured snapshot table.
 
 ### 5. Deployment
-- [**Production Deployment (`deployment/DEPLOYMENT_GUIDE.md`)**](deployment/DEPLOYMENT_GUIDE.md): Cloudflare Pages, GCR, MongoDB Atlas, Qdrant Cloud.
-- [**Local/Compose Deployment (`deployment/README.md`)**](deployment/README.md): Docker Compose and local run instructions.
+
+- [**Production Runbook (`deployment/DEPLOYMENT_GUIDE.md`)**](deployment/DEPLOYMENT_GUIDE.md): deploy order (data plane → API → frontend), Render/Railway/Koyeb/Cloud Run, Cloudflare Pages, CORS, smoke test, production gotchas.
+- [**Deploy Reference (`deployment/README.md`)**](deployment/README.md): environment variables, local/Compose setup, Atlas + Qdrant Cloud setup, health checks, re-indexing, pre-production checklist, troubleshooting.
 
 ---
 
-## Current Stack (2026-09-12)
+### 6. Current Verification Snapshot (2026-09-28, `ui-redesign`)
 
-- **LLM**: llama.cpp (local, default: `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`), Ollama (default: `gemma3:1b`), Gemini, NVIDIA NIM — selectable per request.
-- **Embeddings**: BGE-small-en-v1.5 (local, 384d) — HuggingFace/torch by default, **ONNX Runtime** (`EMBEDDING_PROVIDER=onnx`, export via `scripts/export_bge_onnx.py`) for torch-free ultra-low RAM.
-- **Retrieval**: Qdrant (embedded local or cloud) + sparse BM25 + RRF; reranker runs on detected device (Metal/CUDA/CPU).
-- **Verification**: Batch NLI + per-claim fallback with tolerant parsing of small-model near-miss JSON (VERIFIED→SUPPORTED aliasing, segment coercion).
-- **Local LLM server**: start via `./scripts/start_local_llm.sh` (auto GPU offload + KV budget).
-- **Tests**: backend 219/219, frontend 22/22 + lint + build; ruff check + format clean.
+- **Tests**: backend 665 pytest green, frontend 33 Vitest green; `ruff check` + `ruff format --check` clean (CI pins `ruff==0.16.9`); ESLint clean; `vite build` green.
+- **CI**: Ubuntu jobs + `cross-platform` smoke (Windows + macOS: backend import/config smoke, frontend lint/test/build), all gated in `ci-gate`.
+- **Runtimes**: models run ONNX-only (`onnxruntime` + `transformers` tokenizer; reranker fails closed to RRF when `use_onnx=true`); torch lives in the `local-models` extra for one-time export only.
+- **Stack**: Python 3.11–3.12 (`requires-python >=3.11,<3.13`), Node 22+ (`engines`), per-OS setup in `ONBOARDING-TROUBLESHOOTING.md`.
+- **Pending operator runs**: pre-IDF KBs need document re-upload; chunking/normalization change needs re-index; OCR models not pre-warmed; live-model verification (Gemini/NVIDIA/MLX) + k6 + Playwright e2e — see `ONBOARDING-TROUBLESHOOTING.md §5`.

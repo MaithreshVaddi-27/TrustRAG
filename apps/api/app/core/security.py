@@ -14,11 +14,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import bcrypt
+import structlog
 from jose import jwt
 from jose.exceptions import ExpiredSignatureError, JWTError
 
 from app.core.config import get_settings
 from app.core.exceptions import AuthenticationError
+
+logger = structlog.get_logger(__name__)
 
 ALGORITHM = "HS256"
 
@@ -60,6 +63,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         pwd_bytes = plain_password.encode("utf-8")[:BCRYPT_MAX_PASSWORD_BYTES]
         return bcrypt.checkpw(pwd_bytes, hashed_password.encode("utf-8"))
     except Exception:
+        logger.debug("bcrypt checkpw failed, treating as invalid password")
         return False
 
 
@@ -82,6 +86,8 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
         "sub": str(subject),
         "iat": datetime.now(UTC),
         "jti": str(uuid.uuid4()),
+        "iss": settings.jwt_issuer,
+        "aud": settings.jwt_audience,
     }
 
     encoded_jwt = jwt.encode(to_encode, settings.jwt_secret, algorithm=ALGORITHM)
@@ -102,26 +108,43 @@ def jti_key(payload: dict[str, Any]) -> str:
     return f"{payload.get('sub')}:{payload.get('iat')}"
 
 
+def _decode_jwt(token: str) -> dict[str, Any]:
+    """Verify signature, issuer and audience, and normalise PyJWT errors.
+
+    Both token kinds are signed with the same secret and algorithm, so the
+    decode call is identical. Callers differ only in which ``type`` claim they
+    require and the message they raise.
+    """
+    settings = get_settings()
+    try:
+        return jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[ALGORITHM],
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+            options={"verify_aud": True, "verify_iss": True},
+        )
+    except ExpiredSignatureError as exc:
+        raise AuthenticationError("Token signature has expired", detail=str(exc)) from exc
+    except JWTError as exc:
+        raise AuthenticationError("Invalid authentication token", detail=str(exc)) from exc
+
+
 def decode_access_token(token: str) -> dict[str, Any]:
     """
     Decode and validate a JWT access token.
     Raises AuthenticationError if invalid or expired.
     """
-    settings = get_settings()
-    try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
-        # User and service tokens share the secret/algorithm — never accept a
-        # service token where a user token is required (and vice versa is
-        # already enforced in decode_service_token).
-        if payload.get("type") == SERVICE_TOKEN_TYPE:
-            raise AuthenticationError(
-                "Invalid authentication token", detail="Service token used as user token"
-            )
-        return payload
-    except ExpiredSignatureError as exc:
-        raise AuthenticationError("Token signature has expired", detail=str(exc)) from exc
-    except JWTError as exc:
-        raise AuthenticationError("Invalid authentication token", detail=str(exc)) from exc
+    payload = _decode_jwt(token)
+    # User and service tokens share the secret/algorithm — never accept a
+    # service token where a user token is required (and vice versa is
+    # already enforced in decode_service_token).
+    if payload.get("type") == SERVICE_TOKEN_TYPE:
+        raise AuthenticationError(
+            "Invalid authentication token", detail="Service token used as user token"
+        )
+    return payload
 
 
 # ─── Service-to-Service Authentication ────────────────────────────────────────
@@ -131,6 +154,8 @@ def create_service_token(
     service_name: str,
     permissions: list[str] | None = None,
     expires_delta: timedelta | None = None,
+    bound_kb_id: str | None = None,
+    bound_user_id: str | None = None,
 ) -> str:
     """
     Generate a signed JWT token for service-to-service authentication.
@@ -139,6 +164,9 @@ def create_service_token(
         service_name: Unique identifier for the service (e.g., "ingestion-worker", "api-gateway")
         permissions: List of permission strings (e.g., ["ingest:write", "search:read"])
         expires_delta: Optional custom expiration. Defaults to SERVICE_TOKEN_TTL_HOURS.
+        bound_kb_id: Optional KB tenancy binding (M-2).
+            When set, internal endpoints must enforce it.
+        bound_user_id: Optional user tenancy binding (M-2).
 
     Returns:
         Encoded JWT token string.
@@ -149,14 +177,20 @@ def create_service_token(
     else:
         expire = datetime.now(UTC) + timedelta(hours=SERVICE_TOKEN_TTL_HOURS)
 
-    to_encode = {
+    to_encode: dict[str, Any] = {
         "exp": expire,
         "sub": service_name,
         "iat": datetime.now(UTC),
         "jti": str(uuid.uuid4()),
         "type": SERVICE_TOKEN_TYPE,
         "permissions": permissions or [],
+        "iss": settings.jwt_issuer,
+        "aud": settings.jwt_audience,
     }
+    if bound_kb_id:
+        to_encode["bound_kb_id"] = str(bound_kb_id)
+    if bound_user_id:
+        to_encode["bound_user_id"] = str(bound_user_id)
 
     encoded_jwt = jwt.encode(to_encode, settings.jwt_secret, algorithm=ALGORITHM)
     return encoded_jwt
@@ -167,16 +201,12 @@ def decode_service_token(token: str) -> dict[str, Any]:
     Decode and validate a service-to-service JWT token.
     Raises AuthenticationError if invalid, expired, or not a service token.
     """
-    settings = get_settings()
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
-
-        # Verify this is a service token
-        if payload.get("type") != SERVICE_TOKEN_TYPE:
-            raise AuthenticationError("Token is not a service token")
-
-        return payload
-    except ExpiredSignatureError as exc:
-        raise AuthenticationError("Service token signature has expired", detail=str(exc)) from exc
-    except JWTError as exc:
+        payload = _decode_jwt(token)
+    except AuthenticationError as exc:
         raise AuthenticationError("Invalid service token", detail=str(exc)) from exc
+
+    # Verify this is a service token
+    if payload.get("type") != SERVICE_TOKEN_TYPE:
+        raise AuthenticationError("Token is not a service token")
+    return payload

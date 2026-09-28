@@ -14,6 +14,7 @@ from app.core.config import get_model_config, get_ports, get_settings
 from app.core.hardware import get_cached_hardware_profile
 from app.core.local_llm import (
     check_llamacpp_status,
+    check_mlx_status,
     check_ollama_status,
 )
 from app.core.logging import get_logger
@@ -67,44 +68,31 @@ async def get_providers_endpoint(
     cfg = get_model_config()
 
     # Concurrent: each check retries once internally, so sequential awaits
-    # would double the worst-case latency of this 8 s-polled endpoint.
-    ollama_info, llamacpp_info = await asyncio.gather(
+    # would triple the worst-case latency of this 8 s-polled endpoint.
+    ollama_info, llamacpp_info, mlx_info = await asyncio.gather(
         _safe_provider_status(check_ollama_status, settings.ollama_base_url, "ollama"),
         _safe_provider_status(check_llamacpp_status, settings.llamacpp_base_url, "llama_cpp"),
+        _safe_provider_status(check_mlx_status, settings.mlx_base_url, "mlx"),
     )
 
-    # Use only discovered models from the status checks — no hardcoded fallbacks.
-    # Offline providers still list cached/installable models (with
-    # connected:false) so the UI can show the offline warning + refresh path
-    # instead of an empty dropdown. Embeddings are local-only — cloud
-    # embedding providers were removed, so ingestion works fully offline.
-    embedding_providers = {
-        "huggingface": {
-            "name": "Local Hugging Face (PyTorch / BGE)",
-            "type": "local",
-            "connected": True,
-            "default_model": "BAAI/bge-small-en-v1.5",
-            "models": [
-                {
-                    "id": "BAAI/bge-small-en-v1.5",
-                    "name": "BAAI/bge-small-en-v1.5 (384d SOTA)",
-                    "dim": 384,
-                    "tag": "Recommended",
-                },
-                {
-                    "id": "sentence-transformers/all-MiniLM-L6-v2",
-                    "name": "all-MiniLM-L6-v2 (384d Fast)",
-                    "dim": 384,
-                    "tag": "Fast",
-                },
-            ],
-        },
+    # Embeddings are single-engine (ONNX BGE from models.yaml) — no provider
+    # choice. The UI renders this as a fixed badge, not a selector.
+    # NOTE: `embedding_providers` (plural choice map) was removed — single
+    # default only. `embedding` below is informational (what is active).
+    embedding_info = {
+        "provider": "onnx",
+        "name": "ONNX BGE (local, torch-free)",
+        "type": "local",
+        "connected": True,
+        "default_model": cfg.embedding_model,
+        "model": cfg.embedding_model,
+        "dim": cfg.embedding_dimensionality,
     }
 
     return {
         "active_provider": cfg.llm_provider,
         "active_model": cfg.llm_model,
-        "active_embedding_provider": cfg.embedding_provider,
+        "active_embedding_provider": "onnx",
         "active_embedding_model": cfg.embedding_model,
         # Canonical port registry (repo-root config/ports.yaml)
         "ports": get_ports(),
@@ -128,6 +116,16 @@ async def get_providers_endpoint(
                 "cache_models": llamacpp_info.get("cache_models", []),
                 "error": llamacpp_info.get("error"),
             },
+            "mlx": {
+                "name": "MLX (Local, Apple Silicon)",
+                "type": "local",
+                "connected": mlx_info.get("connected", False),
+                "base_url": settings.mlx_base_url,
+                "default_model": mlx_info.get("default_model", ""),
+                "models": mlx_info.get("models", []),
+                "cache_models": mlx_info.get("cache_models", []),
+                "error": mlx_info.get("error"),
+            },
             "gemini": {
                 "name": "Google Gemini (Cloud)",
                 "type": "cloud",
@@ -136,24 +134,30 @@ async def get_providers_endpoint(
                 if cfg.llm_provider == "gemini"
                 else "gemini-3.5-flash-lite",
                 "models": [
+                    "gemini-3.8-flash",
+                    "gemini-3.7-flash",
+                    "gemini-3.6-flash",
+                    "gemini-3.5-flash",
                     "gemini-3.5-flash-lite",
-                    "gemini-2.5-flash",
-                    "gemini-2.5-pro",
                 ],
             },
             "nvidia": {
                 "name": "NVIDIA NIM (Cloud)",
                 "type": "cloud",
                 "connected": bool(settings.nvidia_api_key),
-                "default_model": "meta/llama-3.3-70b-instruct",
+                # Verified live 2026-09-21: only these three answer on this
+                # account (lightning stalls, nano-omni 503s, rest 404).
+                # Reasoning models (gpt-oss, muse-glimmer) need headroom:
+                # reasoning shares the max_tokens budget with the answer.
+                "default_model": "openai/gpt-oss-20b",
                 "models": [
-                    "meta/llama-3.3-70b-instruct",
-                    "mistralai/mistral-large-2-instruct",
-                    "nvidia/llama-3.1-nemotron-70b-instruct",
+                    "openai/gpt-oss-20b",
+                    "google/gemma-4-31b-it",
+                    "meta/muse-glimmer-30b",
                 ],
             },
         },
-        "embedding_providers": embedding_providers,
+        "embedding": embedding_info,
         "hardware": _safe_hardware_profile(),
     }
 

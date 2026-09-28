@@ -27,6 +27,9 @@ async def audit_evidence_integrity(chunks: list[dict[str, Any]]) -> list[dict[st
     if not chunks:
         return []
 
+    # Bound input: unbounded $or queries can OOM Mongo on huge analyses.
+    chunks = chunks[:100]
+
     # Map chunks by (document_id, chunk_index) for fast matching
     chunk_keys = []
     chunk_map = {}
@@ -35,10 +38,10 @@ async def audit_evidence_integrity(chunks: list[dict[str, Any]]) -> list[dict[st
         doc_id_str = c.get("document_id")
         chunk_idx = c.get("chunk_index")
 
-        # Web search / external chunks have no MongoDB reference — mark VERIFIED immediately.
-        # They are trusted external citations, not DB-backed text that can be tampered with.
+        # Web search / external chunks have no MongoDB reference — they are
+        # untrusted external citations, NEVER cryptographically VERIFIED.
         if not doc_id_str:
-            c["integrity_status"] = "VERIFIED"
+            c["integrity_status"] = "EXTERNAL_UNAUDITED"
             continue
 
         if doc_id_str and chunk_idx is not None:

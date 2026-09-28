@@ -21,7 +21,8 @@ from app.api.v1.schemas.analysis import (
     ReliabilitySummary,
     TraceEventResponse,
 )
-from app.core.config import get_model_config, get_settings
+from app.core.concurrency import get_global_semaphore
+from app.core.config import get_model_config, get_settings, normalize_provider
 from app.core.exceptions import AuthorizationError, InputValidationError, NotFoundError
 from app.core.logging import get_logger
 from app.db.mongodb import Collections, get_collection
@@ -137,7 +138,7 @@ def serialize_analysis(doc: Mapping[str, Any]) -> AnalysisResponse:
         web_search_provider=doc.get("web_search_provider"),
         llm_provider=doc.get("llm_provider"),
         llm_model=doc.get("llm_model"),
-        embedding_provider=doc.get("embedding_provider"),
+        embedding_provider="onnx",
         embedding_model=doc.get("embedding_model"),
     )
 
@@ -202,36 +203,21 @@ async def create_analysis(
 
     cfg = get_model_config()
 
-    # Fail fast on retired embedding providers: ollama/llama.cpp are LLM-only
-    # (model_registry raises ConfigurationError → 503 deep in the background
-    # pipeline). Rejecting here returns an actionable 422 synchronously.
-    # The server default is checked too — a retired EMBEDDING_PROVIDER with no
-    # per-request override would otherwise slip past and fail in background.
-    effective_provider = (schema.embedding_provider or cfg.embedding_provider).lower()
-    if effective_provider in ("ollama", "llamacpp", "llama_cpp"):
-        raise InputValidationError(
-            f"Embedding provider '{effective_provider}' is LLM-only and was removed. "
-            "Use 'huggingface' (local BGE).",
-            detail=f"requested_embedding_provider={schema.embedding_provider} "
-            f"server_default={cfg.embedding_provider}",
-        )
-
     # EMBEDDING-SPACE GUARD 2026-09-06: a KB's vectors live in exactly one
     # embedding space (pinned at first ingest). Querying with another model
     # returns plausible-looking garbage → verification fails → recovery spiral
     # (heat + minutes of wasted local inference). Fail fast with a message
     # that tells the user exactly how to fix it.
     if kb.embedding_model:
-        effective_model = schema.embedding_model or cfg.embedding_model
+        effective_model = cfg.embedding_model
         # Model ids are case-sensitive upstream, but a casing/whitespace-only
         # difference is never a different embedding space — normalize the compare.
         if effective_model.strip().lower() != kb.embedding_model.strip().lower():
             raise InputValidationError(
                 f"Embedding mismatch: knowledge base '{kb.name}' was indexed "
                 f"with '{kb.embedding_model}' ({kb.embedding_dim or '?'}d), "
-                f"but this analysis requests '{effective_model}'. "
-                f"Switch the Playground embedding selector to '{kb.embedding_model}' "
-                f"or re-upload the documents to re-index with the new model.",
+                f"but the server runs '{effective_model}'. "
+                f"Re-upload the documents to re-index with the current model.",
                 detail=f"kb_pin={kb.embedding_model} requested={effective_model}",
             )
         # Dimension pin: same model name at a different output width (e.g. a
@@ -244,35 +230,78 @@ async def create_analysis(
                 detail=f"kb_dim={kb.embedding_dim} server_dim={cfg.embedding_dimensionality}",
             )
 
+    # Phase 10: pre-request token budget enforcement (zero LLM calls).
+    # Estimate query cost up front; reject absurd inputs with 422 instead of
+    # burning embedding/retrieval/generation on a request that cannot fit.
+    from app.core.metrics import (
+        estimate_tokens,
+        record_analysis_created,
+        record_budget_rejection,
+        record_tokens_estimated,
+    )
+
+    query_text = schema.query.strip()
+    query_tokens = estimate_tokens(query_text)
+    record_tokens_estimated(query_tokens)
+    # Pre-request query guard. NOTE (audit B-4): this used to compare the query
+    # against `cost_controls.max_input_tokens` (100000), which can never be
+    # exceeded because pydantic already caps the query at 2000 characters
+    # (~500 tokens) — dead code whose comment claimed to be a per-call limit.
+    # The per-analysis spend ceiling is now `max_llm_calls_per_analysis`,
+    # enforced by the LLM ledger; this check is a separate, query-scoped bound.
+    if cfg.pre_request_budget_enforcement and query_tokens > cfg.max_query_tokens:
+        record_budget_rejection("max_query_tokens")
+        raise InputValidationError(
+            f"Query too large: estimated {query_tokens} tokens exceeds the "
+            f"per-request query budget of {cfg.max_query_tokens} tokens. "
+            "Shorten the query and try again.",
+            detail=f"estimated_tokens={query_tokens} budget={cfg.max_query_tokens}",
+        )
+
     # Resolve EFFECTIVE engine now: the persisted doc (and every downstream
     # consumer: HUD chips, trace, export dossier) must name what will actually
     # run — not the raw nullable request fields (previously stored "" → the UI
     # rendered "DEFAULT" and audits couldn't tell granite from EXAONE).
-    effective_llm_provider = (schema.llm_provider or cfg.llm_provider or "").strip().lower()
+    # Normalize the provider to its canonical spelling: the request validator
+    # already does this, so persisting the raw value stored "google_genai" /
+    # "nim" / "llamacpp" while the allowlist check ran against "gemini" /
+    # "nvidia" / "llama_cpp" (audit B-15/B-18).
+    effective_llm_provider = normalize_provider(schema.llm_provider or cfg.llm_provider or "")
     effective_llm_model = schema.llm_model or cfg.llm_model_for(effective_llm_provider)
-    effective_embedding_provider = schema.embedding_provider or cfg.embedding_provider
-    effective_embedding_model = schema.embedding_model or cfg.embedding_model
+    effective_embedding_model = cfg.embedding_model
 
     # LOCAL-LLM PREFLIGHT: when the effective provider is a local inference
     # server, verify it answers in ~3s. Without this, a stopped ollama /
     # llama-server burns minutes of 120s timeouts across ~9 sequential calls
     # before the pipeline abstains or fails. Raises LLMUnavailableError → 503
     # with the exact start command so the UI can alert instead of hanging.
-    if effective_llm_provider in ("ollama", "llama_cpp", "llamacpp"):
+    if effective_llm_provider in ("ollama", "llama_cpp", "llamacpp", "mlx"):
         from app.core.local_llm import probe_local_llm_server
 
         settings = get_settings()
         if effective_llm_provider == "ollama":
             llm_base_url = settings.ollama_base_url
             probe_provider = "ollama"
+        elif effective_llm_provider == "mlx":
+            llm_base_url = settings.mlx_base_url
+            probe_provider = "mlx"
         else:
             llm_base_url = settings.llamacpp_base_url
             probe_provider = "llama_cpp"
         await probe_local_llm_server(probe_provider, llm_base_url)
+    # CLOUD PREFLIGHT: a stalled cloud model (observed: NVIDIA endpoints
+    # returning zero bytes indefinitely while auth/metadata stay healthy)
+    # otherwise burns the full per-call timeout on every sequential pipeline
+    # call. One tiny completion up front fails fast → 503 with retry guidance.
+    elif effective_llm_provider in ("nvidia", "nim", "gemini", "google_genai"):
+        from app.core.local_llm import probe_cloud_llm
+
+        await probe_cloud_llm(effective_llm_provider, effective_llm_model)
     analysis_doc = {
         "user_id": ObjectId(user_id_str),
         "knowledge_base_id": ObjectId(schema.knowledge_base_id),
         "query": schema.query.strip(),
+        "estimated_input_tokens": query_tokens,
         "status": "pending",
         "answer": None,
         "reliability": {"score": None, "status": "PENDING"},
@@ -283,12 +312,13 @@ async def create_analysis(
         "web_search_provider": schema.web_search_provider,
         "llm_provider": effective_llm_provider,
         "llm_model": effective_llm_model,
-        "embedding_provider": effective_embedding_provider,
+        "embedding_provider": "onnx",
         "embedding_model": effective_embedding_model,
     }
 
     result = await get_collection(Collections.ANALYSES).insert_one(analysis_doc)
     analysis_doc["_id"] = result.inserted_id
+    record_analysis_created()
 
     # Emit initial started trace event
     await add_trace_event(
@@ -298,7 +328,7 @@ async def create_analysis(
             "message": "Analysis run initiated",
             "provider": effective_llm_provider,
             "model": effective_llm_model,
-            "embedding_provider": effective_embedding_provider,
+            "embedding_provider": "onnx",
             "embedding_model": effective_embedding_model,
         },
     )
@@ -314,8 +344,6 @@ async def create_analysis(
         web_search_provider=schema.web_search_provider,
         llm_provider=effective_llm_provider,
         llm_model=effective_llm_model,
-        embedding_provider=effective_embedding_provider,
-        embedding_model=effective_embedding_model,
     )
 
     return serialize_analysis(analysis_doc)
@@ -473,6 +501,11 @@ async def sse_event_generator(
             "analysis.completed",
             "analysis.abstained",
             "analysis.failed",
+            # The pipeline has already exited when it emits an outage, so nothing
+            # further will ever be published. Without this the generator spins on
+            # heartbeats until no_event_ticks hits 360 (~6 minutes), holding the
+            # subscriber queue for an analysis that is definitively over.
+            "analysis.outage",
         }
         # Local 3B pipelines can run 3-5 min with recovery; keep the stream
         # open past the worst case (frontend also runs fallback polling).
@@ -499,36 +532,9 @@ async def sse_event_generator(
         await _unsubscribe_from_analysis(analysis_id_str, queue)
 
 
-# Hardware-aware global concurrency limiter to protect system resources
-_analysis_semaphore: asyncio.Semaphore | None = None
-_semaphore_init_lock: asyncio.Lock | None = None
-
-
-def _get_semaphore_init_lock() -> asyncio.Lock:
-    """Return the module-level asyncio lock for semaphore initialization (lazy, event-loop-safe)."""
-    global _semaphore_init_lock
-    if _semaphore_init_lock is None:
-        _semaphore_init_lock = asyncio.Lock()
-    return _semaphore_init_lock
-
-
 async def _get_concurrency_semaphore() -> asyncio.Semaphore:
-    """Return the global analysis semaphore, initializing it exactly once under a lock."""
-    global _analysis_semaphore
-    if _analysis_semaphore is not None:
-        return _analysis_semaphore
-    async with _get_semaphore_init_lock():
-        # Double-check after acquiring lock to handle concurrent waiters
-        if _analysis_semaphore is None:
-            try:
-                from app.core.hardware import detect_hardware_profile
-
-                profile = detect_hardware_profile()
-                max_conc = profile.get("recommendations", {}).get("max_concurrency", 2)
-            except Exception:
-                max_conc = 2
-            _analysis_semaphore = asyncio.Semaphore(max_conc)
-    return _analysis_semaphore
+    """Return the global concurrency semaphore from the shared module."""
+    return get_global_semaphore()
 
 
 async def run_analysis_pipeline(
@@ -540,8 +546,6 @@ async def run_analysis_pipeline(
     web_search_provider: str = "both",
     llm_provider: str | None = None,
     llm_model: str | None = None,
-    embedding_provider: str | None = None,
-    embedding_model: str | None = None,
 ) -> None:
     """
     Execute RAG retrieval and generation pipeline in the background.
@@ -580,8 +584,6 @@ async def run_analysis_pipeline(
                 web_search_provider=web_search_provider,
                 llm_provider=llm_provider,
                 llm_model=llm_model,
-                embedding_provider=embedding_provider,
-                embedding_model=embedding_model,
             )
 
         if final_state.get("diagnosis_type") == "RETRIEVAL_OUTAGE":
@@ -617,6 +619,12 @@ async def run_analysis_pipeline(
                 "analysis.outage",
                 {"message": outage_failures[0]},
             )
+            try:
+                from app.core.metrics import record_analysis_completed as _rec_completed
+
+                _rec_completed("failed")
+            except Exception:  # noqa: S110
+                pass
             return
 
         answer = final_state["answer"]
@@ -666,6 +674,12 @@ async def run_analysis_pipeline(
                 "analysis.abstained",
                 {"message": "Agent reasoning resulted in abstention"},
             )
+            try:
+                from app.core.metrics import record_analysis_completed as _rec_abstained
+
+                _rec_abstained("abstained")
+            except Exception:  # noqa: S110
+                pass
         else:
             # DEGENERATE-STUB GUARD 2026-09-06: when verification fails with zero
             # claims, the stored "answer" can be a context-overflow stub (e.g. the
@@ -698,7 +712,17 @@ async def run_analysis_pipeline(
                     "I am abstaining rather than guessing. Try a more specific "
                     "query or add documents covering this topic."
                 )
-                stored_status = "abstained"
+            # USER-FACING CLEANUP: verification already consumed the [Segment N]
+            # markers (claims carry their own evidence_ids; the Evidence tab is
+            # unaffected), so the stored prose drops them — readers see normal
+            # text instead of bracket noise. No-op for marker-free answers.
+            # `answer_cited` keeps the marker-bearing form for the audit dossier
+            # and the baseline-eval provenance check, which must still be able
+            # to see which segments the model actually cited.
+            from app.generation.generator import strip_citation_markers
+
+            answer_cited = stored_answer
+            stored_answer = strip_citation_markers(stored_answer)
             # Update database first, then publish trace event with answer
             await analyses_coll.update_one(
                 {"_id": analysis_id},
@@ -706,6 +730,7 @@ async def run_analysis_pipeline(
                     "$set": {
                         "status": stored_status,
                         "answer": stored_answer,
+                        "answer_cited": answer_cited,
                         "reliability": {
                             "score": verdict.reliability_score,
                             "status": verdict.reliability_status.value,
@@ -727,12 +752,19 @@ async def run_analysis_pipeline(
                     "verdict": verdict.diagnosis_type.value,
                 },
             )
+            try:
+                from app.core.metrics import record_analysis_completed as _rec_done
+
+                _rec_done(stored_status)
+            except Exception:  # noqa: S110
+                pass
 
     except Exception as exc:
         logger.error(
             "Analysis background execution pipeline failed",
             analysis_id=analysis_id_str,
             error=str(exc),
+            exc_info=True,
         )
 
         err_str = str(exc).lower()
@@ -770,6 +802,12 @@ async def run_analysis_pipeline(
                 }
             },
         )
+        try:
+            from app.core.metrics import record_analysis_completed as _rec_failed
+
+            _rec_failed("failed")
+        except Exception:  # noqa: S110
+            pass
     finally:
         try:
             import asyncio
@@ -905,127 +943,6 @@ async def list_all_user_conflicts(
 
 # ─── Analytics Dashboard ──────────────────────────────────────────────────────
 # Provides aggregated analytics for monitoring and optimization.
-
-
-async def get_analytics_dashboard(user_id_str: str) -> dict[str, Any]:
-    """Generate a comprehensive analytics dashboard for a user.
-
-    Includes:
-    - Analysis summary (counts, status distribution)
-    - Retrieval effectiveness metrics
-    - Verification patterns
-    - Conflict and integrity statistics
-    - Cost and performance indicators
-    """
-    from app.core.config import get_model_config
-
-    uid = ObjectId(user_id_str)
-    analyses_coll = get_collection(Collections.ANALYSES)
-    claims_coll = get_collection(Collections.CLAIMS)
-    evidence_coll = get_collection(Collections.EVIDENCE)
-
-    # Fetch user's analyses
-    user_analyses = await analyses_coll.find({"user_id": uid}).to_list(500)
-    a_ids = [a["_id"] for a in user_analyses]
-
-    if not a_ids:
-        return {
-            "total_analyses": 0,
-            "analyses_by_status": {},
-            "total_claims": 0,
-            "claims_by_state": {},
-            "total_evidence": 0,
-            "evidence_integrity": {},
-            "conflict_count": 0,
-            "average_reliability": 0.0,
-            "cost_indicators": {
-                "total_llm_calls": 0,
-                "total_embedding_calls": 0,
-            },
-        }
-
-    # 1. Analyses by status
-    status_pipeline = [
-        {"$match": {"_id": {"$in": a_ids}}},
-        {
-            "$group": {
-                "_id": "$status",
-                "count": {"$sum": 1},
-                "average_reliability": {"$avg": "$reliability.score"},
-            }
-        },
-    ]
-    analyses_by_status = {}
-    avg_reliability_sum = 0
-    analyses_with_reliability = 0
-    async for row in analyses_coll.aggregate(status_pipeline):
-        analyses_by_status[row["_id"]] = {
-            "count": row["count"],
-            "average_reliability": round(row["average_reliability"], 2)
-            if row["average_reliability"]
-            else 0.0,
-        }
-        avg_reliability_sum += row.get("average_reliability", 0) or 0
-        analyses_with_reliability += 1
-
-    if analyses_with_reliability > 0:
-        average_reliability = round(avg_reliability_sum / analyses_with_reliability, 2)
-    else:
-        average_reliability = 0.0
-
-    # 2. Claims by state
-    if a_ids:
-        claims_pipeline = [
-            {"$match": {"analysis_id": {"$in": a_ids}}},
-            {"$group": {"_id": "$state", "count": {"$sum": 1}}},
-        ]
-        claims_by_state = {}
-        total_claims = 0
-        async for row in claims_coll.aggregate(claims_pipeline):
-            claims_by_state[row["_id"]] = row["count"]
-            total_claims += row["count"]
-    else:
-        claims_by_state = {}
-        total_claims = 0
-
-    # 3. Evidence count and integrity
-    if a_ids:
-        evidence_count = await evidence_coll.count_documents({"analysis_id": {"$in": a_ids}})
-
-        # Evidence integrity breakdown
-        integrity_pipeline = [
-            {"$match": {"analysis_id": {"$in": a_ids}}},
-            {"$group": {"_id": "$integrity_status", "count": {"$sum": 1}}},
-        ]
-        evidence_integrity = {}
-        async for row in evidence_coll.aggregate(integrity_pipeline):
-            evidence_integrity[row["_id"]] = row["count"]
-    else:
-        evidence_count = 0
-        evidence_integrity = {}
-
-    # 4. Conflicts
-    conflict_count = len(await list_all_user_conflicts(user_id_str))
-
-    # 5. Cost indicators (from config and trace events)
-    cfg = get_model_config()
-    cost_indicators = {
-        "config_version": cfg.config_version,
-        "embedding_provider": cfg.embedding_provider,
-        "llm_provider": cfg.llm_provider,
-    }
-
-    return {
-        "total_analyses": len(user_analyses),
-        "analyses_by_status": analyses_by_status,
-        "total_claims": total_claims,
-        "claims_by_state": claims_by_state,
-        "total_evidence": evidence_count,
-        "evidence_integrity": evidence_integrity,
-        "conflict_count": conflict_count,
-        "average_reliability": average_reliability,
-        "cost_indicators": cost_indicators,
-    }
 
 
 async def export_analysis_dossier(

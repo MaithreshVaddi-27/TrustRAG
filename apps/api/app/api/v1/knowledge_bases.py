@@ -27,7 +27,7 @@ from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
 from app.core.config import get_model_config, get_settings
 from app.core.exceptions import FileTooLargeError, UnsupportedFormatError
 from app.core.rate_limiter import limiter
-from app.ingestion.chunker import chunk_text
+from app.ingestion.chunking_strategies import get_chunking_strategy
 from app.ingestion.parser import parse_document
 from app.ingestion.pipeline import index_parsed_chunks
 from app.services import kb_service
@@ -86,6 +86,40 @@ async def delete_kb_endpoint(
     await kb_service.delete_kb(kb_id, str(current_user["_id"]))
 
 
+@router.post(
+    "/{kb_id}/snapshots",
+    response_model=KBResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Snapshot a knowledge base for rollback",
+)
+async def create_snapshot_endpoint(
+    kb_id: str,
+    version: str = "1.0",
+    current_user: Mapping[str, Any] = Depends(get_current_user),
+) -> KBResponse:
+    """Copy documents, chunks, and vectors into a versioned snapshot KB."""
+    return await kb_service.create_kb_snapshot(kb_id, str(current_user["_id"]), version=version)
+
+
+@router.post(
+    "/{kb_id}/rollback/{snapshot_id}",
+    response_model=KBResponse,
+    summary="Roll back a knowledge base to a snapshot",
+)
+async def rollback_kb_endpoint(
+    kb_id: str,
+    snapshot_id: str,
+    current_user: Mapping[str, Any] = Depends(get_current_user),
+) -> KBResponse:
+    """Restore the snapshot's state as the live KB.
+
+    The restored KB keeps the *snapshot's* id, not the original live id —
+    clients must swap to the returned id. Refuses snapshots with no searchable
+    vectors (409) instead of restoring an empty KB.
+    """
+    return await kb_service.rollback_kb_to_snapshot(kb_id, snapshot_id, str(current_user["_id"]))
+
+
 @router.get(
     "/{kb_id}/documents",
     response_model=list[DocResponse],
@@ -96,6 +130,56 @@ async def list_documents_endpoint(
 ) -> list[DocResponse]:
     """List all documents registered in this knowledge base."""
     return await kb_service.list_kb_documents(kb_id, str(current_user["_id"]))
+
+
+async def _ingest_content(
+    *,
+    content: bytes,
+    filename: str,
+    file_size: int,
+    content_hash: str,
+    kb_id: str,
+    current_user: Mapping[str, Any],
+    cfg: Any,
+    background_tasks: BackgroundTasks,
+) -> DocResponse:
+    """Parse, chunk, register and schedule indexing for one document's bytes.
+
+    Shared by the upload and URL-ingest routes, which used to carry separate
+    copies of this pipeline. Only the leading filename/extension validation
+    differs between them, and each route still owns that. Parsing and chunking
+    run in a worker thread so neither route blocks the event loop on CPU-heavy
+    work.
+    """
+    stream = io.BytesIO(content)
+    pages, eff_from, eff_until = await asyncio.to_thread(parse_document, filename, stream)
+
+    chunks = await asyncio.to_thread(
+        get_chunking_strategy().chunk,
+        pages,
+        chunk_size=cfg.chunk_size,
+        chunk_overlap=cfg.chunk_overlap,
+    )
+
+    doc = await kb_service.add_document(
+        kb_id_str=kb_id,
+        filename=filename,
+        file_size=file_size,
+        content_hash=content_hash,
+        user_id_str=str(current_user["_id"]),
+        effective_from=eff_from,
+        effective_until=eff_until,
+    )
+
+    # Indexing runs in the background: the client gets a document record back
+    # immediately and the knowledge base becomes searchable shortly after.
+    background_tasks.add_task(
+        index_parsed_chunks,
+        doc_id_str=doc.id,
+        kb_id_str=kb_id,
+        chunks=chunks,
+    )
+    return doc
 
 
 @router.post(
@@ -127,7 +211,8 @@ async def upload_document_endpoint(
     from pathlib import Path
 
     raw_filename = file.filename or "document.txt"
-    filename = Path(raw_filename).name.replace("\x00", "").strip() or "document.txt"
+    filename = Path(raw_filename[:255]).name.replace("\x00", "").strip() or "document.txt"
+    filename = filename[:255]
     ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
     if ext not in allowed_extensions:
         raise UnsupportedFormatError(
@@ -159,32 +244,16 @@ async def upload_document_endpoint(
     # Compute content hash
     content_hash = hashlib.sha256(content).hexdigest()
 
-    # Parse document immediately to extract pages and dates without blocking
-    # the event loop on CPU-heavy PDF/DOCX work.
-    stream = io.BytesIO(content)
-    pages, eff_from, eff_until = await asyncio.to_thread(parse_document, filename, stream)
-
-    chunks = await asyncio.to_thread(
-        chunk_text, pages, chunk_size=cfg.chunk_size, chunk_overlap=cfg.chunk_overlap
-    )
-
-    # Save metadata record in MongoDB
-    doc = await kb_service.add_document(
-        kb_id_str=kb_id,
+    return await _ingest_content(
+        content=content,
         filename=filename,
         file_size=file_size,
         content_hash=content_hash,
-        user_id_str=str(current_user["_id"]),
-        effective_from=eff_from,
-        effective_until=eff_until,
+        kb_id=kb_id,
+        current_user=current_user,
+        cfg=cfg,
+        background_tasks=background_tasks,
     )
-
-    # Trigger background indexing
-    background_tasks.add_task(
-        index_parsed_chunks, doc_id_str=doc.id, kb_id_str=kb_id, chunks=chunks
-    )
-
-    return doc
 
 
 @router.post(
@@ -216,8 +285,9 @@ async def ingest_document_from_url_endpoint(
     Allowed content types: text/*, application/pdf, application/json,
     application/xml, text/csv, text/markdown
 
-    Default allowlist includes: wikipedia.org, arxiv.org, github.com,
-    python.org, mozilla.org, w3.org, ietf.org, rfc-editor.org
+    Default allowlist includes: wikipedia.org, arxiv.org, api.github.com,
+    raw.githubusercontent.com, python.org, mozilla.org, w3.org, ietf.org,
+    rfc-editor.org
     """
     cfg = get_model_config()
 
@@ -268,10 +338,11 @@ async def ingest_document_from_url_endpoint(
             # Guess from content type or default to .txt
             filename += ".txt"
 
-    # Clean filename
+    # Clean filename (255-char cap: filesystem + Mongo index guard)
     from pathlib import Path
 
-    filename = Path(filename).name.replace("\x00", "").strip() or "document.txt"
+    filename = Path(filename[:255]).name.replace("\x00", "").strip() or "document.txt"
+    filename = filename[:255]
     ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
     allowed_extensions = {
         ext if ext.startswith(".") else f".{ext}" for ext in cfg.supported_formats
@@ -285,29 +356,13 @@ async def ingest_document_from_url_endpoint(
     # Compute content hash
     content_hash = hashlib.sha256(content).hexdigest()
 
-    # Parse document immediately to extract pages and dates without blocking
-    # the event loop on CPU-heavy remote-file parsing.
-    stream = io.BytesIO(content)
-    pages, eff_from, eff_until = await asyncio.to_thread(parse_document, filename, stream)
-
-    chunks = await asyncio.to_thread(
-        chunk_text, pages, chunk_size=cfg.chunk_size, chunk_overlap=cfg.chunk_overlap
-    )
-
-    # Save metadata record in MongoDB
-    doc = await kb_service.add_document(
-        kb_id_str=kb_id,
+    return await _ingest_content(
+        content=content,
         filename=filename,
         file_size=file_size,
         content_hash=content_hash,
-        user_id_str=str(current_user["_id"]),
-        effective_from=eff_from,
-        effective_until=eff_until,
+        kb_id=kb_id,
+        current_user=current_user,
+        cfg=cfg,
+        background_tasks=background_tasks,
     )
-
-    # Trigger background indexing
-    background_tasks.add_task(
-        index_parsed_chunks, doc_id_str=doc.id, kb_id_str=kb_id, chunks=chunks
-    )
-
-    return doc

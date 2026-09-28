@@ -6,7 +6,7 @@ import { Swords, ArrowLeft } from 'lucide-react'
  */
 export default function AuthLayout({ children, title, subtitle }) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-surface-950 bg-cyber-grid px-4 relative overflow-hidden">
+    <div className="min-h-screen supports-[min-height:100dvh]:min-h-dvh flex flex-col items-center justify-center bg-surface-950 bg-cyber-grid px-4 relative overflow-hidden">
       {/* Ambient gradient */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full bg-cyan-500/10 blur-[130px]" />

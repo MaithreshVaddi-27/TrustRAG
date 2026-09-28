@@ -5,9 +5,11 @@
 TRUSTRAG is an AI reliability workbench that implements a closed-loop reliability and self-healing engine over Retrieval-Augmented Generation (RAG):
 
 ```
-Query → Retrieve (Vector + BM25 + MCP Live Web) → Rerank (RRF) 
-      → Grounded Generation (Local llama.cpp / Ollama / Gemini / NVIDIA — per request) 
-      → Propositional Claim Decomposition → NLI Claim Verification 
+Query → Route (simple / temporal / comparison / complex, deterministic, no LLM)
+      → Retrieve (Dense + BM25-TF/IDF + MCP Live Web) → RRF fusion (fusion_top_k enforced)
+      → Rerank (cross-encoder, OFF by default, depth-capped)
+      → Grounded Generation, each sentence pinned to a source segment (Local llama.cpp / Ollama / Gemini / NVIDIA — per request)
+      → Propositional Claim Decomposition → NLI Claim Verification (+ targeted NEUTRAL-only re-retrieval) 
       → Evidence Integrity & Provenance Audit → Threshold Reliability Diagnosis 
       → Adaptive Recovery Loop (LangGraph StateGraph) 
       → Re-verify → Grounded Answer / Safe Abstention
@@ -24,40 +26,57 @@ React 18 + Vite (Port 5173)
     │
     │ REST /api/v1/... (Reverse Proxy) │ SSE /api/v1/analyses/{id}/stream
     ▼
-FastAPI (Python 3.12, Default Port 8000)
+FastAPI (Python 3.11+, Default Port 8000)
     │
     ├─── app/core/         Settings, ModelRegistry, Logging, Security, Exceptions
     │       └── local_llm.py → ChatOllamaClient, ChatLlamaCppClient (LLM-only),
     │                          CLI introspection (ollama list, llama-server --cache-list)
     ├─── app/db/           MongoDB Community / Atlas client, Qdrant client
-    ├─── app/ingestion/    Document parsing, chunking, cryptographic hashing
-    ├─── app/retrieval/    Dense (384d/768d) + Sparse BM25 + Reciprocal Rank Fusion (RRF)
-    │                      + Dynamic L2 dimension alignment & normalization
-    ├─── app/mcp/          Model Context Protocol (MCP) Server & Dispatcher
-    │       ├── local_llm_chat    → Prompt local LLM (Ollama / llama.cpp) over MCP
-    │       ├── local_llm_status  → Query local model health & discovery via MCP
-    │       ├── tavily_search     → AI-curated RAG search with clean parsed snippets
-    │       ├── duckduckgo_search → Zero-config, 100% free web search fallback
-    │       └── hybrid_web_search → Parallel execution with URL deduplication
-    ├─── app/services/     Search Service (SSRF sanitization, private IP guards)
-    ├─── app/generation/   Grounded answer generation (Local LLMs or Cloud)
-    ├─── app/verification/ Propositional claim decomposition + NLI entailment
-    ├─── app/integrity/    Cryptographic SHA-256 provenance & temporal audit
-    ├─── app/agent/        LangGraph stateful self-healing workflow
-    └─── app/evaluation/   Experiment runner & benchmark metrics
+    ├─── app/ingestion/    Document parsing (+ per-page RapidOCR-ONNX fallback for
+    │                      <50-native-char pages), selectable chunking strategies,
+    │                      newline-preserving normalization, cryptographic hashing
+    ├─── app/retrieval/    Dense (384d BGE) + sparse (client BM25-TF saturation +
+    │                      server-side Qdrant Modifier.IDF) + Reciprocal Rank Fusion
+    │                      (RRF, fusion_top_k enforced); recreate-on-mismatch for
+    │                      pre-IDF collections; cross-encoder reranker (off by
+    │                      default, top_k=20 depth cap)
+├─── app/mcp/          Model Context Protocol (MCP) Server & Dispatcher
+│       ├── trustrag_search     → Search a knowledge base (primary KB tool)
+│       ├── trustrag_verify_claim → Verify a claim against evidence
+│       ├── trustrag_list_kbs   → List available knowledge bases
+│       ├── local_llm_chat      → Prompt local LLM (Ollama / llama.cpp) over MCP
+│       ├── local_llm_status    → Query local model health & discovery via MCP
+│       ├── tavily_search       → AI-curated RAG search with clean parsed snippets
+│       ├── duckduckgo_search   → Zero-config, 100% free web search fallback
+│       └── hybrid_web_search   → Parallel execution with URL deduplication
+    ├─── app/services/     Search Service (SSRF sanitization, private IP guards);
+    │                      KB lifecycle (snapshots, rollback with vector-less guard)
+    ├─── app/generation/   Grounded answer generation (Local LLMs or Cloud) with
+    │                      per-sentence [Segment N] provenance + invalid-ref strip, markers stripped from the answer at finalize
+├─── app/verification/ Propositional claim decomposition + NLI entailment +
+│                      targeted NEUTRAL-only claim retrieval (≤3/analysis);
+│                      brackets-exempt scaffold-echo filter; SHA-256
+│                      provenance & temporal audit (`integrity.py`)
+├─── app/agent/        LangGraph stateful self-healing workflow (deterministic
+│                      query router + bounded fan-out inside retrieval_node)
+└─── experiments/      Experiment runner (`app/services/experiment_service.py`)
+                       + eval harness & frozen dataset (`apps/api/tests/eval/`)
          │
 ├─── Local Engines:
-           │       Ollama (Port 11434, LLM-only): granite4.2:3b-q4_K_M, gemma3:1b
-           │       llama.cpp (Port 8080, LLM-only): ibm-granite/granite-4.2-3b-GGUF:Q4_K_M
-           │             (+ ibm-granite/granite-4.0-h-1b GGUF)
-           │       HuggingFace: BAAI/bge-small-en-v1.5 (384d SOTA embeddings)
+            │       Ollama (Port 11434, LLM-only; default `gemma3:1b`)
+            │       llama.cpp (Port 8080, LLM-only; default
+            │             `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`)
+            │       HuggingFace: BAAI/bge-small-en-v1.5 (384d local embeddings,
+            │             torch `huggingface` provider or torch-free `onnx`)
          │
          ├─── Cloud Engines, LLM-only (Optional):
-         │       Google Gemini: gemini-3.5-flash-lite (embeddings: local BGE)
+          │       Google Gemini: gemini-2.5-flash family (embeddings: local BGE)
          │       NVIDIA NIM: meta/llama-3.3-70b-instruct (embeddings: local BGE)
          │
-         ├─── Qdrant (Vector & Payload Store)
-         │       Dense vector indexing (384d & 768d) + Payload filtering
+          ├─── Qdrant (Vector & Payload Store)
+          │       Dense vector indexing (384d only — 768d retired) + sparse-text
+          │       (Modifier.IDF) + Payload filtering; pre-IDF collections recreate
+          │       on next init (re-upload those KBs)
          │
          └─── MongoDB (Operational Data Store)
                  Users, Knowledge Bases, Analyses, Claims, Evidence, Traces
@@ -71,10 +90,12 @@ TRUSTRAG adopts the open **Model Context Protocol (MCP)** specification to decou
 
 1. **MCP Server (`app/mcp/server.py`)**:
    - Exposes standardized JSON-RPC endpoints: `tools/list` and `tools/call`.
-   - Built-in tools:
+   - Primary KB tools: `trustrag_search`, `trustrag_verify_claim`, `trustrag_list_kbs`.
+   - Grounding tools:
      - `tavily_search`: High-accuracy AI search tailored for RAG grounding.
      - `duckduckgo_search`: Free live search requiring zero API keys.
      - `hybrid_web_search`: Parallel execution across both engines with automatic URL deduplication.
+   - Local-LLM tools: `local_llm_chat`, `local_llm_status`.
 2. **MCP Client Dispatcher (`app/mcp/client.py`)**:
    - Dispatches agent grounding requests through the standard MCP interface.
    - Converts web results into verified context segments with SHA-256 hashes and citation metadata.
@@ -91,15 +112,20 @@ TRUSTRAG adopts the open **Model Context Protocol (MCP)** specification to decou
           │
           ▼
    [retrieval_node] ◄──────────────┐ (Adaptive Recovery Edge)
-   (Dense + Sparse + MCP Web)     │
+   (Route: simple/temporal/        │
+    comparison/complex → Dense +   │
+    Sparse + MCP Web, bounded      │
+    fan-out merged by RRF)         │
           │                        │
           ▼                        │
    [generation_node]               │
-   (Context-bound synthesis)      │
+   (Context-bound synthesis +      │
+    [Segment N] provenance)        │
           │                        │
           ▼                        │
    [verification_node]             │
-   (Propositional NLI)             │
+   (Propositional NLI + targeted   │
+    NEUTRAL-only claim retrieval)  │
           │                        │
           ▼                        │
    [verdict computation]           │
@@ -125,6 +151,7 @@ TRUSTRAG adopts the open **Model Context Protocol (MCP)** specification to decou
 
 **Guardrails:**
 - Bounded strictly by `max_recovery_attempts` in `models.yaml`.
+- Router kill-switch + ceiling (`retrieval.query_router.enabled`, `max_sub_queries: 3`); claim-retrieval budget (`cost_controls.max_claim_retrievals: 3`); reranker depth floor at `fusion_top_k`; per-branch retrieval timeouts (45 s each, 60 s total).
 - State reset logic: `state["answer"] = None` and `state["claims"] = []` prevent stale abstentions from propagating when newly retrieved segments provide the missing facts.
 - Refusal gate: hedged refusals skip decomposition/NLI entirely (zero LLM calls).
 - Empty-decomposition backstop: valid-but-empty claim JSON falls back to deterministic sentence splitting (still NLI-verified downstream).
@@ -167,3 +194,7 @@ TRUSTRAG adopts the open **Model Context Protocol (MCP)** specification to decou
 | `trace_events`   | Persistent audit log of all pipeline events             |
 | `experiments`    | Evaluation experiment datasets and benchmark results    |
 | `feedback`       | User feedback on synthesized answers                    |
+| `revoked_tokens` | JTI blocklist for logged-out JWTs                       |
+| `stream_tickets` | One-time SSE stream tickets (TTL)                       |
+
+Source of truth: `Collections` in `apps/api/app/db/mongodb.py`.

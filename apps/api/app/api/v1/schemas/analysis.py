@@ -4,6 +4,7 @@ Pydantic schemas for Analysis runs, claims, and evidence.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from typing import Any
 
@@ -28,24 +29,13 @@ class AnalysisCreate(BaseModel):
     )
     llm_provider: str | None = Field(
         default=None,
-        description="Active LLM provider override ('ollama', 'llama_cpp', 'gemini', 'nvidia')",
+        description=(
+            "Active LLM provider override ('ollama', 'llama_cpp', 'mlx', 'gemini', 'nvidia')"
+        ),
     )
     llm_model: str | None = Field(
         default=None,
         description="Specific model identifier override (e.g. 'granite4.2:3b-q4_K_M')",
-    )
-    embedding_provider: str | None = Field(
-        default=None,
-        description=(
-            "Active embedding provider override ('huggingface' only — "
-            "embeddings are local-only; cloud and LLM-server providers are rejected)."
-        ),
-    )
-    embedding_model: str | None = Field(
-        default=None,
-        description=(
-            "Specific embedding model identifier override (e.g. 'BAAI/bge-small-en-v1.5')"
-        ),
     )
 
     @model_validator(mode="after")
@@ -56,98 +46,107 @@ class AnalysisCreate(BaseModel):
         only select models exposed by this deployment. This prevents arbitrary
         Hugging Face downloads and unbudgeted cloud model invocations.
         """
-        from app.core.config import get_model_config, get_settings
+        from app.core.config import (
+            SUPPORTED_LLM_PROVIDERS,
+            get_model_config,
+            get_settings,
+            normalize_provider,
+        )
         from app.core.local_llm import get_discovered_llms
 
         cfg = get_model_config()
         settings = get_settings()
 
-        provider = (self.llm_provider or cfg.llm_provider).lower()
-        provider = {"llamacpp": "llama_cpp", "nim": "nvidia", "google_genai": "gemini"}.get(
-            provider, provider
-        )
-        allowed_providers = {"ollama", "llama_cpp", "gemini", "nvidia"}
-        if provider not in allowed_providers:
+        provider = normalize_provider(self.llm_provider or cfg.llm_provider)
+        if provider not in SUPPORTED_LLM_PROVIDERS:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
         # Local providers use models discovered from the running server /
         # local cache (see local_llm.get_discovered_llms). A local server can only
         # serve weights already on disk, so discovery never opens an arbitrary
         # auto-download path — but it does let operators select freshly-installed
-        # GGUFs that the /models dropdown already lists.
+        # models that the /models dropdown already lists.
         allowed_llms = {
             "ollama": set(get_discovered_llms("ollama")),
             "llama_cpp": set(get_discovered_llms("llama_cpp")),
-            "gemini": {
-                "gemini-3.5-flash-lite",
-                "gemini-2.5-flash",
-                "gemini-2.5-pro",
-            },
-            "nvidia": {
-                "meta/llama-3.3-70b-instruct",
-                "mistralai/mistral-large-2-instruct",
-                "nvidia/llama-3.1-nemotron-70b-instruct",
-            },
+            "mlx": set(get_discovered_llms("mlx")),
+            # Cloud allowlists live in models.yaml (single source of truth) —
+            # never hardcode model IDs here, or the next model release 422s
+            # again (cf. gemini-3.8-flash).
+            "gemini": set(cfg.supported_gemini_models),
+            "nvidia": set(cfg.supported_nvidia_models),
         }
         operator_llm_overrides = {
             "ollama": settings.ollama_model,
             "llama_cpp": settings.llamacpp_model,
+            "mlx": settings.mlx_model,
             "gemini": settings.gemini_model,
             "nvidia": cfg.llm_model if cfg.llm_provider == "nvidia" else "",
         }
         if operator_llm_overrides.get(provider):
             allowed_llms[provider].add(operator_llm_overrides[provider])
-        if provider in ("ollama", "llama_cpp") and not allowed_llms[provider]:
+        if provider in ("ollama", "llama_cpp", "mlx") and not allowed_llms[provider]:
             # New-user path: nothing installed yet. Fail closed with the fix
             # instead of a bare "not enabled" rejection.
+            start_hints = {
+                "ollama": "'ollama pull granite4.2:3b-q4_K_M' + 'ollama serve'",
+                "llama_cpp": "place a GGUF and run ./scripts/start_local_llm.sh",
+                "mlx": "'pip install mlx-lm' then 'mlx_lm.server --model "
+                "mlx-community/Llama-3.2-1B-Instruct-4bit' (Apple Silicon only)",
+            }
             raise ValueError(
                 f"No {provider} models discovered on this host. Install one "
-                "(e.g. 'ollama pull granite4.2:3b-q4_K_M' + 'ollama serve', or "
-                "place a GGUF and run ./scripts/start_local_llm.sh), then refresh."
+                f"({start_hints[provider]}), then refresh."
             )
 
         requested_llm_model = (
             self.llm_model
             or operator_llm_overrides.get(provider)
-            or (cfg.llm_model_for(provider) if provider in ("ollama", "llama_cpp") else None)
+            or (cfg.llm_model_for(provider) if provider in ("ollama", "llama_cpp", "mlx") else None)
         )
         if requested_llm_model and requested_llm_model not in allowed_llms[provider]:
             raise ValueError(f"Model is not enabled for provider '{provider}'")
 
-        embedding_provider = (self.embedding_provider or cfg.embedding_provider).lower()
-        if embedding_provider == "local":
-            embedding_provider = "huggingface"
-        allowed_embedding_providers = {"huggingface"}
-        if embedding_provider not in allowed_embedding_providers:
+        # Validate the EFFECTIVE model, not just the optional request field
+        # (audit B-15). The old check returned early when `llm_model` was
+        # omitted: for a cloud provider `requested_llm_model` is then None, so
+        # no allowlist check ran at all and the resolved config default went
+        # through unvalidated. Whatever model will actually be used must be in
+        # the allowlist.
+        effective_llm_model = requested_llm_model or cfg.llm_model_for(provider)
+        if effective_llm_model and effective_llm_model not in allowed_llms[provider]:
             raise ValueError(
-                "Unsupported embedding provider: "
-                f"{embedding_provider} (embeddings are local-only; "
-                "re-upload documents to re-index with 'huggingface')"
+                f"Model '{effective_llm_model}' is not enabled for provider '{provider}'. "
+                f"Allowed: {sorted(allowed_llms[provider]) or '(none discovered)'}."
             )
 
-        allowed_embeddings = {
-            "huggingface": {
-                "BAAI/bge-small-en-v1.5",
-                "sentence-transformers/all-MiniLM-L6-v2",
-            },
-        }
-        if cfg.embedding_provider == embedding_provider and cfg.embedding_model:
-            allowed_embeddings[embedding_provider].add(cfg.embedding_model)
-
-        requested_embedding_model = self.embedding_model or cfg.embedding_model
-        if self.embedding_model and not self.embedding_provider:
-            matching_providers = [
-                candidate
-                for candidate, models in allowed_embeddings.items()
-                if requested_embedding_model in models
-            ]
-            if len(matching_providers) != 1:
+        # Apply the same allowlist to the resolved VERIFICATION model (audit
+        # B-15). The verifier runs its own billed, long-timeout calls, and until
+        # now nothing constrained which cloud model those calls could target —
+        # an operator-set (or drifted) verification model would silently bill an
+        # unbudgeted model that the generation allowlist already forbids.
+        #
+        # Only cloud providers are checked here. A local server can only serve
+        # weights already on disk, so a local verification model is inherently
+        # bounded — the same argument made for the generation model above.
+        v_provider = normalize_provider(cfg.verification_provider)
+        if v_provider not in SUPPORTED_LLM_PROVIDERS:
+            raise ValueError(f"Unsupported verification provider: {v_provider}")
+        if v_provider in ("gemini", "nvidia"):
+            v_allowed = set(allowed_llms[v_provider])
+            # An explicit env override is an operator decision, same trust level
+            # as settings.<provider>_model above: honour it rather than 422.
+            env_v_model = os.environ.get("GEMINI_VERIFICATION_MODEL") or os.environ.get(
+                "VERIFICATION_MODEL"
+            )
+            if env_v_model:
+                v_allowed.add(env_v_model)
+            v_model = cfg.verification_model_for(v_provider)
+            if v_model and v_model not in v_allowed:
                 raise ValueError(
-                    "Embedding model requires an explicit provider or a supported model ID"
+                    f"Verification model '{v_model}' is not enabled for provider "
+                    f"'{v_provider}'. Allowed: {sorted(v_allowed)}."
                 )
-            embedding_provider = matching_providers[0]
-        if requested_embedding_model not in allowed_embeddings[embedding_provider]:
-            raise ValueError(f"Embedding model is not enabled for provider '{embedding_provider}'")
         return self
 
 
@@ -168,7 +167,11 @@ class AnalysisResponse(BaseModel):
     user_id: str
     knowledge_base_id: str
     query: str
-    status: str  # pending, running, completed, failed, abstained
+    # Actual values written by analysis_service: pending, processing, completed,
+    # failed, abstained. There is no "running" — poll until the status leaves
+    # pending/processing. (This comment is rendered in /docs, so it is part of the
+    # published contract.)
+    status: str
     answer: str | None = None
     reliability: ReliabilitySummary
     diagnosis: DiagnosisSummary

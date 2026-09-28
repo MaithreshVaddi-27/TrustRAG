@@ -17,6 +17,14 @@ from langgraph.graph import END, StateGraph
 
 from app.core.config import get_model_config
 from app.core.exceptions import RetrievalOutageError
+from app.core.llm_ledger import (
+    begin_analysis,
+    current_ledger,
+    end_analysis,
+    invoke_counted,
+    llm_budget_exhausted,
+)
+from app.core.llm_outage import classify_llm_exception
 from app.core.llm_utils import normalize_llm_content
 from app.core.logging import get_logger
 from app.core.model_registry import get_verification_model
@@ -51,25 +59,26 @@ class AgentState(TypedDict):
     claims: list[dict[str, Any]]
     attempts: int
     verdict_status: str  # "PASS" | "FAIL"
-    recovery_strategy: str | None  # "query_rewrite" | "re_retrieve" | None
+    recovery_strategy: str | None  # "query_rewrite" | "re_retrieve" | "regenerate" | None
     reliability_score: float | None
     diagnosis_type: (
         str | None
     )  # RETRIEVAL_FAILURE | RETRIEVAL_OUTAGE | EVIDENCE_CONFLICT | LOW_COVERAGE
     # | VERIFICATION_TIMEOUT | VERIFICATION_ERROR | RETRIEVAL_ERROR
-    # | GENERATION_ERROR | None
+    # | GENERATION_ERROR | RECOVERY_BUDGET_EXHAUSTED | None
     diagnosis_failures: list[str]
     web_search_enabled: bool
     web_search_provider: str  # "tavily" | "duckduckgo" | "both"
     llm_provider: str | None
     llm_model: str | None
-    embedding_provider: str | None
-    embedding_model: str | None
     # True when the answer text is reused from semantic cache; retrieval and
     # verification still rerun against the current knowledge base for auditability.
     cache_hit: bool
     # Error tracking for fallback paths
     node_errors: list[dict[str, Any]]
+    # Recovery budget tracking
+    recovery_tokens_used: int
+    recovery_latency_ms: int
 
 
 # ─── Standardized Error Handling ─────────────────────────────────────────────
@@ -102,6 +111,46 @@ async def _execute_with_fallback(
     )
 
     try:
+        # Spend guard (audit B-4): a cloud analysis that has exhausted its
+        # per-analysis LLM call budget must stop, not start another node. The
+        # recovery loop is the multiplier — without this a runaway loop bills
+        # until the provider refuses.
+        if llm_budget_exhausted():
+            ledger = current_ledger()
+            used = ledger.calls if ledger else 0
+            logger.warning(
+                "LLM call budget exhausted before node execution",
+                node=node_name,
+                calls=used,
+            )
+            state["node_errors"] = [
+                *state.get("node_errors", []),
+                {
+                    "node": node_name,
+                    "error_type": "RECOVERY_BUDGET_EXHAUSTED",
+                    "message": (
+                        f"LLM call budget exhausted ({used} calls) before {node_name}; "
+                        "stopping to bound cost."
+                    ),
+                },
+            ]
+            await add_trace_event(
+                state["analysis_id"],
+                f"{node_name}.budget_exhausted",
+                {
+                    "message": "Per-analysis LLM call budget exhausted",
+                    "error_type": "RECOVERY_BUDGET_EXHAUSTED",
+                    "calls": used,
+                },
+            )
+            state["verdict_status"] = "FAIL"
+            state["diagnosis_type"] = "RECOVERY_BUDGET_EXHAUSTED"
+            state["diagnosis_failures"] = [
+                f"Per-analysis LLM call budget exhausted after {used} calls"
+            ]
+            state["attempts"] = get_model_config().max_recovery_attempts
+            return state
+
         if timeout_seconds:
             result = await asyncio.wait_for(operation(), timeout=timeout_seconds)
         else:
@@ -136,6 +185,45 @@ async def _execute_with_fallback(
         return state
 
     except Exception as exc:
+        # Provider outage (bad key, exhausted quota, provider 5xx, unreachable
+        # endpoint) is an infrastructure failure, not a finding about the
+        # evidence. Short-circuit with a terminal LLM_OUTAGE diagnosis so a
+        # dead credential cannot burn three recovery rounds against the live API
+        # and then be reported to the user as "insufficient evidence"
+        # (audit B-5). Mirrors the RETRIEVAL_OUTAGE fast path.
+        outage = classify_llm_exception(exc, context=node_name)
+        if outage is not None:
+            logger.error(
+                f"{node_name} node hit an LLM provider outage",
+                error=str(outage),
+                exc_info=True,
+            )
+            state["node_errors"] = [
+                *state.get("node_errors", []),
+                {
+                    "node": node_name,
+                    "error_type": "LLM_OUTAGE",
+                    "message": str(outage),
+                },
+            ]
+            await add_trace_event(
+                state["analysis_id"],
+                f"{node_name}.outage",
+                {"message": str(outage), "error_type": "LLM_OUTAGE"},
+            )
+            state["answer"] = (
+                f"The language model provider is unavailable, so I could not "
+                f"complete this analysis. This is not a finding of 'insufficient "
+                f"evidence'.\n\nReason: {outage}"
+            )
+            state["verdict_status"] = "FAIL"
+            state["reliability_score"] = 0.0
+            state["diagnosis_type"] = "LLM_OUTAGE"
+            state["diagnosis_failures"] = [str(outage)]
+            # Exhaust the recovery budget so the graph terminates immediately.
+            state["attempts"] = get_model_config().max_recovery_attempts
+            return state
+
         logger.error(f"{node_name} node failed", error=str(exc), exc_info=True)
         error_info = {
             "node": node_name,
@@ -191,11 +279,17 @@ async def retrieval_node(state: AgentState) -> AgentState:
         # 1. Hybrid Retrieval
         top_k_override = None
         max_context_override = None
+
+        # Get tier-aware caps based on provider
+        provider = state.get("llm_provider", cfg.llm_provider)
+        caps = cfg.tier_caps(provider)
+        max_context_chunks = caps["max_context_chunks"]
+
         if state["recovery_strategy"] == "re_retrieve":
             # Second layer (see recovery_node downgrade): only widen search when
             # evidence is actually thin — doubling on top of sufficient chunks
             # just burns embedding/rerank compute and overflows small contexts.
-            if len(state.get("chunks") or []) >= cfg.max_context_chunks:
+            if len(state.get("chunks") or []) >= max_context_chunks:
                 await add_trace_event(
                     state["analysis_id"],
                     "recovery.re_retrieve_skipped",
@@ -206,10 +300,10 @@ async def retrieval_node(state: AgentState) -> AgentState:
                 )
             else:
                 # OPT (local-LLM load): cap widened retrieval so recovery does
-                # not pay 2x Qdrant/rerank/Mongo for chunks the 8-chunk
-                # generation cap throws away anyway.
-                top_k_override = min(cfg.dense_top_k * 2, cfg.max_context_chunks + 16)
-                max_context_override = min(cfg.max_context_chunks * 2, cfg.max_context_chunks + 4)
+                # not pay 2x Qdrant/rerank/Mongo for chunks the generation cap
+                # throws away anyway.
+                top_k_override = min(cfg.dense_top_k * 2, max_context_chunks + 16)
+                max_context_override = min(max_context_chunks * 2, max_context_chunks + 4)
                 logger.info(
                     "Recovery: expanded search retrieval size triggered",
                     top_k=top_k_override,
@@ -230,13 +324,38 @@ async def retrieval_node(state: AgentState) -> AgentState:
             "kb_id": state["kb_id"],
             "top_k_override": top_k_override,
         }
-        if state.get("embedding_provider"):
-            retrieve_kwargs["embedding_provider"] = state.get("embedding_provider")
-        if state.get("embedding_model"):
-            retrieve_kwargs["embedding_model"] = state.get("embedding_model")
+
+        # Deterministic query router: SIMPLE reuses today's single hybrid call
+        # verbatim; TEMPORAL adds an explicit reference_time; COMPARISON and
+        # COMPLEX fan out to bounded parallel retrievals merged by RRF score.
+        # Everything downstream (rerank → integrity → persist) is untouched.
+        from app.agent.router import fanout_retrieve, route_query
+
+        routed = (
+            route_query(state["current_query"], max_sub_queries=cfg.max_fanout_sub_queries)
+            if cfg.router_enabled
+            else None
+        )
+        if routed is not None and routed.reference_time is not None:
+            retrieve_kwargs["reference_time"] = routed.reference_time
+        if routed is not None and len(routed.sub_queries) > 1:
+            await add_trace_event(
+                state["analysis_id"],
+                "retrieval.routed",
+                {
+                    "message": f"Query routed as {routed.route.value}: "
+                    f"{len(routed.sub_queries)} parallel retrievals",
+                    "route": routed.route.value,
+                    "sub_queries": routed.sub_queries,
+                },
+            )
 
         try:
-            candidates = await retrieve_hybrid_chunks(**retrieve_kwargs)
+            if routed is None or len(routed.sub_queries) == 1:
+                candidates = await retrieve_hybrid_chunks(**retrieve_kwargs)
+            else:
+                branch_kwargs = {k: v for k, v in retrieve_kwargs.items() if k != "query"}
+                candidates = await fanout_retrieve(routed.sub_queries, branch_kwargs)
         except RetrievalOutageError as exc:
             # Infra outage (Qdrant / embedding service unreachable) — NOT
             # "no evidence". Surface it distinctly, store a clear message,
@@ -309,10 +428,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                         ):
                             doc_map[str(d_obj["_id"])] = d_obj.get("filename", "document")
 
-                    embed_model = get_embedding_model(
-                        provider=state.get("embedding_provider"),
-                        model=state.get("embedding_model"),
-                    )
+                    embed_model = get_embedding_model()
                     # H-BE-5: embed + upsert in bounded batches so a 10 k-chunk
                     # self-heal never holds all vectors/points in RAM at once.
                     # Progress events keep the trace UI honest on long heals
@@ -343,6 +459,12 @@ async def retrieval_node(state: AgentState) -> AgentState:
                                 "character_offset": c.get("character_offset", 0),
                                 "zone": chunk_zone,
                                 "text": c["text"],
+                                # Self-heal must not strip Phase 7 provenance.
+                                "ocr_used": bool(c.get("ocr_used", False)),
+                                "ocr_confidence": c.get("ocr_confidence"),
+                                "page_image_ref": c.get("page_image_ref"),
+                                "document_version": c.get("document_version", "1.0"),
+                                "is_snapshot": bool(c.get("is_snapshot", False)),
                             }
                             sync_points.append(
                                 models.PointStruct(
@@ -393,7 +515,28 @@ async def retrieval_node(state: AgentState) -> AgentState:
                     state["diagnosis_failures"] = ["Knowledge base contains 0 indexed chunks"]
                     return state
             except Exception as exc:
+                # Self-heal is best-effort bookkeeping, so a failure here must not
+                # abort the analysis — we fall through and answer from whatever
+                # was already retrieved. But it used to be invisible: the only
+                # trace was a server log line, so a half-reindexed collection and
+                # a skipped empty-KB guard looked identical to a healthy run in
+                # the UI. Emit a trace event so the degradation is attributable.
                 logger.warning("Error during collection point verification/sync", error=str(exc))
+                try:
+                    await add_trace_event(
+                        state["analysis_id"],
+                        "retrieval.self_heal_failed",
+                        {
+                            "message": (
+                                "Collection-point self-heal did not complete; continuing "
+                                "with the previously retrieved results. Evidence may be "
+                                "stale until the next run."
+                            ),
+                            "error": str(exc)[:200],
+                        },
+                    )
+                except Exception:  # pragma: no cover - trace must not mask the cause
+                    logger.debug("Could not record self-heal failure trace event")
 
         # 2. Rerank
         top_chunks = await rerank_candidate_chunks(
@@ -447,11 +590,14 @@ async def retrieval_node(state: AgentState) -> AgentState:
                             "rrf_score": float(w.get("score", 0.8)),
                             "rerank_score": float(w.get("score", 0.8)),
                             "method": f"mcp_{w.get('source', search_prov)}",
-                            "integrity_status": "VERIFIED",
+                            "integrity_status": "EXTERNAL_UNAUDITED",
                             "page": 1,
                         }
                         audited_chunks.append(w_chunk)
-                        verified_chunks.append(w_chunk)
+                        # Web chunks are NOT added to verified_chunks — they bypass
+                        # integrity audit and are tagged EXTERNAL_UNAUDITED. They are
+                        # available for citation but never marked VERIFIED.
+                        # verified_chunks.append(w_chunk)  # intentionally omitted
 
                     web_sources = [
                         {"title": w.get("title"), "url": w.get("url")} for w in web_items
@@ -508,6 +654,13 @@ async def retrieval_node(state: AgentState) -> AgentState:
                     "document_id": doc_id,
                     "filename": c.get("filename"),
                     "url": c.get("url"),
+                    # Phase 7 provenance: evidence stays traceable to the
+                    # source page (and its OCR image when one exists).
+                    "page": c.get("page"),
+                    "chunk_index": c.get("chunk_index"),
+                    "ocr_used": bool(c.get("ocr_used", False)),
+                    "ocr_confidence": c.get("ocr_confidence"),
+                    "page_image_ref": c.get("page_image_ref"),
                     "retrieval_score": c.get("dense_score", 0.0),
                     "fusion_score": c.get("rrf_score", 0.0),
                     "rerank_score": c.get("rerank_score"),
@@ -538,18 +691,46 @@ async def retrieval_node(state: AgentState) -> AgentState:
 
         # PERF/SPIRAL GUARD 2026-09-06: expanded recovery retrieval widens the
         # CANDIDATE pool (top_k=40), but generation must never exceed
-        # max_context_chunks. Stuffing 16-32 chunks into a 2k-context local LLM
-        # overflows num_ctx and yields truncated stubs (e.g. answer "The").
-        gen_cap = cfg.max_context_chunks
-        if len(state["chunks"]) > gen_cap:
-            dropped = len(state["chunks"]) - gen_cap
+        # tier-aware max_context_chunks. Stuffing 16-32 chunks into a 2k-context
+        # local LLM overflows num_ctx and yields truncated stubs.
+        provider = state.get("llm_provider", cfg.llm_provider)
+        caps = cfg.tier_caps(provider)
+        gen_cap = caps["max_context_chunks"]
+        chunk_count = len(state["chunks"])
+        if chunk_count > gen_cap:
+            dropped = chunk_count - gen_cap
             state["chunks"] = state["chunks"][:gen_cap]
+            state["evidence_ids"] = state["evidence_ids"][:gen_cap]
             await add_trace_event(
                 state["analysis_id"],
                 "retrieval.capped",
                 {
                     "message": f"Capped generation context at {gen_cap} chunks "
                     f"({dropped} extra kept as evidence only)",
+                },
+            )
+
+        # Web-search grounding that never reaches the answer is dead spend
+        # (Tavily cost + latency for zero impact). Append up to 3 external
+        # chunks AFTER verified ones so they ground generation with visible
+        # [WEB CITATION] labels — integrity_status stays EXTERNAL_UNAUDITED
+        # (never VERIFIED), and evidence_ids stay positionally aligned with
+        # chunks so claim→evidence linkage keeps working.
+        web_positions = [
+            i
+            for i, c in enumerate(audited_chunks)
+            if c.get("integrity_status") == "EXTERNAL_UNAUDITED"
+        ][:3]
+        if web_positions and state.get("web_search_enabled"):
+            for pos in web_positions:
+                if pos < len(evidence_ids) and len(state["chunks"]) < gen_cap + 3:
+                    state["chunks"].append(audited_chunks[pos])
+                    state["evidence_ids"].append(evidence_ids[pos])
+            await add_trace_event(
+                state["analysis_id"],
+                "retrieval.web_grounded",
+                {
+                    "message": f"Added {len(web_positions)} web citations to generation context",
                 },
             )
         return state
@@ -729,6 +910,7 @@ async def verification_node(state: AgentState) -> AgentState:
             provider=state.get("llm_provider"),
             model=state.get("llm_model"),
             attempt=state.get("attempts", 0),
+            kb_id_str=state.get("kb_id"),
         )
 
     try:
@@ -813,6 +995,14 @@ async def verification_node(state: AgentState) -> AgentState:
     state["diagnosis_type"] = verdict.diagnosis_type.value
     state["diagnosis_failures"] = verdict.diagnosis_failures
 
+    # Phase 10: verification outcome counters (never break verification path)
+    try:
+        from app.core.metrics import record_verification_claims
+
+        record_verification_claims(supported, contradicted, neutral)
+    except Exception:
+        logger.debug("Failed to record verification claims metrics")
+
     logger.info(
         "Unified verdict computed",
         verdict=verdict.verdict_status.value,
@@ -890,12 +1080,45 @@ def _looks_like_instruction_echo(text: str) -> bool:
 
 
 async def recovery_node(state: AgentState) -> AgentState:
-    """Determine adaptive strategy and execute recovery step (e.g. Query Rewriting)."""
+    """Determine adaptive strategy and execute recovery step (e.g. Query Rewriting).
+
+    Diagnoses the failure type first, then selects the appropriate recovery strategy.
+    Tracks token and latency budget across recovery attempts; abstains when exhausted.
+    """
     cfg = get_model_config()
     recovery_timeout = cfg.llm_timeout_seconds
 
+    # Initialize budget tracking on first attempt
+    if state.get("recovery_tokens_used") is None:
+        state["recovery_tokens_used"] = 0
+    if state.get("recovery_latency_ms") is None:
+        state["recovery_latency_ms"] = 0
+
     async def _run_recovery() -> AgentState:
         state["attempts"] += 1
+
+        # Check budget before attempting recovery
+        max_tokens = cfg.max_recovery_tokens
+        max_latency = cfg.max_recovery_latency_seconds * 1000  # Convert to ms
+
+        tokens_exceeded = state["recovery_tokens_used"] >= max_tokens
+        latency_exceeded = state["recovery_latency_ms"] >= max_latency
+        if tokens_exceeded or latency_exceeded:
+            logger.warning(
+                "Recovery budget exhausted, forcing abstention",
+                tokens_used=state["recovery_tokens_used"],
+                max_tokens=max_tokens,
+                latency_ms=state["recovery_latency_ms"],
+                max_latency_ms=max_latency,
+            )
+            state["verdict_status"] = "PASS"
+            state["diagnosis_type"] = "RECOVERY_BUDGET_EXHAUSTED"
+            state["diagnosis_failures"] = [
+                f"Recovery budget exhausted: tokens={state['recovery_tokens_used']}/{max_tokens}, "
+                f"latency={state['recovery_latency_ms']}ms/{max_latency}ms"
+            ]
+            state["attempts"] = cfg.max_recovery_attempts  # Force end
+            return state
 
         # Snapshot failed-claim context BEFORE clearing: the query_rewrite
         # strategy targets missing facts, but state["claims"] is reset below.
@@ -918,156 +1141,42 @@ async def recovery_node(state: AgentState) -> AgentState:
         state["verdict_status"] = "FAIL"
         state["reliability_score"] = None
 
-        # Determine recovery strategy from public config property
-        priority = cfg.recovery_strategy_priority
-        idx = (state["attempts"] - 1) % len(priority)
-        strategy = priority[idx]
+        # DIAGNOSE: Map diagnosis_type to recovery strategy
+        strategy = _select_recovery_strategy(state, cfg)
 
         logger.info(
-            "Triggering adaptive recovery loop", attempt=state["attempts"], strategy=strategy
+            "Triggering adaptive recovery loop",
+            attempt=state["attempts"],
+            strategy=strategy,
+            diagnosis=state.get("diagnosis_type"),
         )
 
-        if strategy == "query_rewrite":
-            # Use LLM to expand acronyms and terms contextually (no hardcoded map)
-            # so it adapts to any knowledge base domain.
-            # Invoke LLM to rewrite the query targeting the missing facts
-            missing_claims = missing_claims_snapshot
-            if missing_claims:
-                missing_str = "\n".join(f"- {c}" for c in missing_claims)
-                rewrite_prompt = f"""You are a query expansion assistant for an IR system.
-The original query may contain acronyms or ambiguous terms.
-Your task: rewrite the query to search for the missing factual details below.
-- Expand acronyms/abbreviations to full forms
-  (e.g., API → Application Programming Interface)
-- Add synonyms or related terms that would help retrieval
-- Keep the query focused and concise (5 to 12 words)
+        # Track start time for latency budget
+        import time
 
-Output only the expanded search query string. No markdown or commentary.
-Never reply empty: if unsure, return the original query with spelling corrected.
+        start_time = time.monotonic()
 
-<ORIGINAL_QUERY>
-{state["query"]}
-</ORIGINAL_QUERY>
-<MISSING_CLAIMS>
-{missing_str}
-</MISSING_CLAIMS>
-"""
+        try:
+            if strategy == "query_rewrite":
+                await _execute_query_rewrite(state, prior_answer, missing_claims_snapshot, cfg)
+            elif strategy == "re_retrieve":
+                await _execute_re_retrieve(state, prior_answer, cfg)
+            elif strategy == "regenerate":
+                state["recovery_strategy"] = "regenerate"
             else:
-                # Query rewrite triggered because generation abstained / insufficient context
-                rewrite_prompt = f"""You are a search query expansion assistant for an IR system.
-The original query did not return sufficient information to answer the question.
-Your task: expand the query by resolving ambiguous acronyms and terms.
-- Expand any acronyms/abbreviations to their full forms
-- Add synonyms or related terms that would help retrieval
-- Keep the query focused and concise (5 to 12 words)
-
-Output only the expanded search query string. No markdown or quotes.
-Never reply empty: if unsure, return the original query with spelling corrected.
-
-<ORIGINAL_QUERY>
-{state["query"]}
-</ORIGINAL_QUERY>
-"""
-            try:
-                from app.core.local_llm import local_cap_kwargs
-
-                model = get_verification_model(
-                    provider=state.get("llm_provider"), model=state.get("llm_model")
-                )
-                # Local-RAM: a 5-12 word rewrite must not reserve 1024 output
-                # tokens of KV cache. Cloud providers ignore the foreign key.
-                cap = local_cap_kwargs(
-                    state.get("llm_provider") or cfg.verification_provider,
-                    max_tokens=128,
-                )
-                invoker = model.bind(**cap) if cap else model
-                response = await invoker.ainvoke(rewrite_prompt)
-                new_query = normalize_llm_content(response.content)
-                new_query = _sanitize_rewritten_query(str(new_query))
-
-                if not new_query or len(new_query) < 3:
-                    # Small local models sometimes return an empty rewrite.
-                    # An empty query would waste a full retrieval+generation
-                    # round on unranked content — keep the original instead.
-                    logger.warning(
-                        "Query rewrite returned empty text, keeping original query",
-                        original=state["query"],
-                    )
-                    if is_refusal_answer(prior_answer) and state.get("chunks"):
-                        # ...and the model already refused these exact chunks:
-                        # re-searching the identical query can only return the
-                        # same context for a certain repeat refusal. Route
-                        # through regenerate so retrieval short-circuits and
-                        # the futile-generation guard skips the repeat call —
-                        # the round then costs ~zero instead of minutes.
-                        state["recovery_strategy"] = "regenerate"
-                        # Restore the refusal cleared above: it arms the
-                        # futile-generation guard (regenerate + refusal +
-                        # unchanged chunks → skip) so the round costs ~zero.
-                        state["answer"] = prior_answer
-                        await add_trace_event(
-                            state["analysis_id"],
-                            "recovery.regenerate",
-                            {
-                                "message": "Empty rewrite on already-refused evidence — "
-                                "reusing saved segments without new retrieval spend",
-                            },
-                        )
-                    else:
-                        state["recovery_strategy"] = None
-                else:
-                    logger.info(
-                        "Query rewritten successfully",
-                        original=state["query"],
-                        rewritten=new_query,
-                    )
-                    state["current_query"] = new_query
-                    state["recovery_strategy"] = "query_rewrite"
-
-                    await add_trace_event(
-                        state["analysis_id"],
-                        "recovery.rewrite",
-                        {
-                            "message": "Rewriting query to target missing details",
-                            "original_query": state["query"],
-                            "rewritten_query": new_query,
-                        },
-                    )
-            except Exception as exc:
-                logger.error("Query rewrite failed, falling back to original query", error=str(exc))
                 state["recovery_strategy"] = None
 
-        elif strategy == "re_retrieve":
-            # Load-aware downgrade (decision layer): when evidence is already
-            # sufficient, the failure is generation-side — widening search only
-            # burns embedding/rerank/compute on a small local model. Retry
-            # generation on the saved chunks instead (retrieval_node short-
-            # circuits on the "regenerate" strategy).
-            if len(state.get("chunks") or []) >= cfg.max_context_chunks:
-                strategy = "regenerate"
-                state["recovery_strategy"] = "regenerate"
-                logger.info(
-                    "Recovery downgraded re_retrieve → regenerate (evidence sufficient)",
-                    chunks=len(state.get("chunks") or []),
-                )
-                await add_trace_event(
-                    state["analysis_id"],
-                    "recovery.regenerate",
-                    {
-                        "message": "Evidence sufficient — retrying generation on "
-                        "saved segments without new retrieval spend",
-                    },
-                )
-            else:
-                state["recovery_strategy"] = "re_retrieve"
-                # re_retrieve executes in retrieval_node via doubled search params
-
-        elif strategy == "regenerate":
-            # Explicit yaml strategy: same cheap retry, no retrieval spend.
-            state["recovery_strategy"] = "regenerate"
-
-        else:
+        except Exception as exc:
+            logger.error("Recovery strategy execution failed", strategy=strategy, error=str(exc))
             state["recovery_strategy"] = None
+
+        finally:
+            # Update budget tracking
+            elapsed_ms = int((time.monotonic() - start_time) * 1000)
+            state["recovery_latency_ms"] = state.get("recovery_latency_ms", 0) + elapsed_ms
+            # Estimate tokens used (rough approximation: 4 chars ≈ 1 token for output)
+            tokens_estimate = len(str(state.get("current_query", ""))) // 4 + 100  # base cost
+            state["recovery_tokens_used"] = state.get("recovery_tokens_used", 0) + tokens_estimate
 
         # Persist recovery run record in MongoDB
         run_doc = {
@@ -1075,9 +1184,19 @@ Never reply empty: if unsure, return the original query with spelling corrected.
             "attempt": state["attempts"],
             "strategy": strategy,
             "query_used": state["current_query"],
+            "tokens_used": tokens_estimate if "tokens_estimate" in locals() else 0,
+            "latency_ms": elapsed_ms,
             "created_at": datetime.now(UTC),
         }
         await get_collection(Collections.RECOVERY_RUNS).insert_one(run_doc)
+
+        # Phase 10: recovery strategy counter (never break recovery path)
+        try:
+            from app.core.metrics import record_recovery_attempt
+
+            record_recovery_attempt(strategy)
+        except Exception:  # noqa: S110
+            pass
 
         return state
 
@@ -1099,15 +1218,193 @@ Never reply empty: if unsure, return the original query with spelling corrected.
     )
 
 
+def _select_recovery_strategy(state: AgentState, cfg) -> str:
+    """Select recovery strategy based on diagnosis type.
+
+    Mapping per UPGRADE_PLAN §8:
+    - RETRIEVAL_FAILURE / RETRIEVAL_OUTAGE / RETRIEVAL_ERROR → query_rewrite
+    - LOW_COVERAGE / EVIDENCE_CONFLICT → re_retrieve (expand search)
+    - VERIFICATION_TIMEOUT / VERIFICATION_ERROR → regenerate
+    - GENERATION_ERROR → regenerate
+    - Fallback to config priority for undiagnosed failures
+    """
+    diagnosis = state.get("diagnosis_type")
+
+    # Direct mapping from diagnosis to strategy
+    if diagnosis in ("RETRIEVAL_FAILURE", "RETRIEVAL_OUTAGE", "RETRIEVAL_ERROR"):
+        return "query_rewrite"
+    if diagnosis in ("LOW_COVERAGE", "EVIDENCE_CONFLICT"):
+        return "re_retrieve"
+    if diagnosis in ("VERIFICATION_TIMEOUT", "VERIFICATION_ERROR", "GENERATION_ERROR"):
+        return "regenerate"
+
+    # Fallback: round-robin from config priority
+    priority = cfg.recovery_strategy_priority
+    idx = (state["attempts"] - 1) % len(priority)
+    return priority[idx]
+
+
+async def _execute_query_rewrite(
+    state: AgentState,
+    prior_answer: str | None,
+    missing_claims_snapshot: list[str],
+    cfg,
+) -> None:
+    """Execute query rewrite strategy targeting missing facts."""
+    missing_claims = missing_claims_snapshot
+    if missing_claims:
+        missing_str = "\n".join(f"- {c}" for c in missing_claims)
+        rewrite_prompt = f"""You are a query expansion assistant for an IR system.
+The original query may contain acronyms or ambiguous terms.
+Your task: rewrite the query to search for the missing factual details below.
+- Expand acronyms/abbreviations to full forms
+  (e.g., API → Application Programming Interface)
+- Add synonyms or related terms that would help retrieval
+- Keep the query focused and concise (5 to 12 words)
+
+Output only the expanded search query string. No markdown or commentary.
+Never reply empty: if unsure, return the original query with spelling corrected.
+
+<ORIGINAL_QUERY>
+{state["query"]}
+</ORIGINAL_QUERY>
+<MISSING_CLAIMS>
+{missing_str}
+</MISSING_CLAIMS>
+"""
+    else:
+        # Query rewrite triggered because generation abstained / insufficient context
+        rewrite_prompt = f"""You are a search query expansion assistant for an IR system.
+The original query did not return sufficient information to answer the question.
+Your task: expand the query by resolving ambiguous acronyms and terms.
+- Expand any acronyms/abbreviations to their full forms
+  (e.g., API → Application Programming Interface)
+- Add synonyms or related terms that would help retrieval
+- Keep the query focused and concise (5 to 12 words)
+
+Output only the expanded search query string. No markdown or quotes.
+Never reply empty: if unsure, return the original query with spelling corrected.
+
+<ORIGINAL_QUERY>
+{state["query"]}
+</ORIGINAL_QUERY>
+"""
+    try:
+        from app.core.local_llm import verification_cap_kwargs
+
+        model = get_verification_model(
+            provider=state.get("llm_provider"), model=state.get("llm_model")
+        )
+        # Local-RAM: a 5-12 word rewrite must not reserve 1024 output
+        # tokens of KV cache. Non-reasoning cloud models use instance
+        # defaults; reasoning cloud models get 2x headroom.
+        cap = verification_cap_kwargs(
+            state.get("llm_provider") or cfg.verification_provider,
+            state.get("llm_model"),
+            max_tokens=128,
+        )
+        invoker = model.bind(**cap) if cap else model
+        response = await invoke_counted(invoker, rewrite_prompt)
+        new_query = normalize_llm_content(response.content)
+        new_query = _sanitize_rewritten_query(str(new_query))
+
+        if not new_query or len(new_query) < 3:
+            # Small local models sometimes return an empty rewrite.
+            # An empty query would waste a full retrieval+generation
+            # round on unranked content — keep the original instead.
+            logger.warning(
+                "Query rewrite returned empty text, keeping original query",
+                original=state["query"],
+            )
+            if is_refusal_answer(prior_answer) and state.get("chunks"):
+                # ...and the model already refused these exact chunks:
+                # re-searching the identical query can only return the
+                # same context for a certain repeat refusal. Route
+                # through regenerate so retrieval short-circuits and
+                # the futile-generation guard skips the repeat call —
+                # the round then costs ~zero instead of minutes.
+                state["recovery_strategy"] = "regenerate"
+                # Restore the refusal cleared above: it arms the
+                # futile-generation guard (regenerate + refusal +
+                # unchanged chunks → skip) so the round costs ~zero.
+                state["answer"] = prior_answer
+                await add_trace_event(
+                    state["analysis_id"],
+                    "recovery.regenerate",
+                    {
+                        "message": "Empty rewrite on already-refused evidence — "
+                        "reusing saved segments without new retrieval spend",
+                    },
+                )
+            else:
+                state["recovery_strategy"] = None
+        else:
+            logger.info(
+                "Query rewritten successfully",
+                original=state["query"],
+                rewritten=new_query,
+            )
+            state["current_query"] = new_query
+            state["recovery_strategy"] = "query_rewrite"
+
+            await add_trace_event(
+                state["analysis_id"],
+                "recovery.rewrite",
+                {
+                    "message": "Rewriting query to target missing details",
+                    "original_query": state["query"],
+                    "rewritten_query": new_query,
+                },
+            )
+    except Exception as exc:
+        logger.error("Query rewrite failed, falling back to original query", error=str(exc))
+        state["recovery_strategy"] = None
+
+
+async def _execute_re_retrieve(state: AgentState, prior_answer: str | None, cfg) -> None:
+    """Execute re-retrieve strategy (expand search)."""
+    # Load-aware downgrade (decision layer): when evidence is already
+    # sufficient, the failure is generation-side — widening search only
+    # burns embedding/rerank/compute on a small local model. Retry
+    # generation on the saved chunks instead (retrieval_node short-
+    # circuits on the "regenerate" strategy).
+    provider = state.get("llm_provider", cfg.llm_provider)
+    caps = cfg.tier_caps(provider)
+    max_context_chunks = caps["max_context_chunks"]
+    if len(state.get("chunks") or []) >= max_context_chunks:
+        state["recovery_strategy"] = "regenerate"
+        logger.info(
+            "Recovery downgraded re_retrieve → regenerate (evidence sufficient)",
+            chunks=len(state.get("chunks") or []),
+        )
+        await add_trace_event(
+            state["analysis_id"],
+            "recovery.regenerate",
+            {
+                "message": "Evidence sufficient — retrying generation on "
+                "saved segments without new retrieval spend",
+            },
+        )
+    else:
+        state["recovery_strategy"] = "re_retrieve"
+        # re_retrieve executes in retrieval_node via doubled search params
+
+
 # ─── Conditional Edge Router ──────────────────────────────────────────────────
 
 
 def should_recover(state: AgentState) -> str:
-    """Determine if recovery node should execute or terminate the graph run."""
+    """Determine if recovery node should execute or terminate the graph run.
+
+    Checks attempt count, PASS verdict, AND budget exhaustion (tokens/latency).
+    """
     cfg = get_model_config()
     max_recovery = cfg.max_recovery_attempts
 
     if state["verdict_status"] == "PASS" or state["attempts"] >= max_recovery:
+        return "end"
+    # Check budget exhaustion (set by recovery_node when budget exceeded)
+    if state.get("diagnosis_type") == "RECOVERY_BUDGET_EXHAUSTED":
         return "end"
     return "recover"
 
@@ -1158,11 +1455,10 @@ async def execute_agentic_rag_flow(
     web_search_provider: str = "both",
     llm_provider: str | None = None,
     llm_model: str | None = None,
-    embedding_provider: str | None = None,
-    embedding_model: str | None = None,
 ) -> dict[str, Any]:
     """Compile and execute the full agent graph pipeline."""
     graph = build_agent_graph()
+    cfg = get_model_config()
 
     initial_state: AgentState = {
         "analysis_id": analysis_id_str,
@@ -1184,8 +1480,6 @@ async def execute_agentic_rag_flow(
         "web_search_provider": web_search_provider,
         "llm_provider": llm_provider,
         "llm_model": llm_model,
-        "embedding_provider": embedding_provider,
-        "embedding_model": embedding_model,
         "cache_hit": False,
         "node_errors": [],
     }
@@ -1200,13 +1494,14 @@ async def execute_agentic_rag_flow(
             from app.core.model_registry import get_embedding_model
             from app.core.semantic_cache import check_semantic_cache
 
-            cache_key = f"{embedding_provider or ''}:{embedding_model or ''}:{query}"
+            cache_key = f"onnx:{query}"
             q_vec = _query_cache.get(cache_key)
             if q_vec is None:
-                emb_model = get_embedding_model(provider=embedding_provider, model=embedding_model)
+                emb_model = get_embedding_model()
                 try:
                     q_vec = await emb_model.aembed_query(query)
                 except Exception:
+                    logger.debug("async embed_query failed, falling back to sync")
                     q_vec = await asyncio.to_thread(emb_model.embed_query, query)
                 _query_cache.set(cache_key, q_vec)
 
@@ -1215,7 +1510,7 @@ async def execute_agentic_rag_flow(
                 kb_id_str,
                 q_vec,
                 similarity_threshold=0.94,
-                embedding_model=f"{embedding_provider or ''}:{embedding_model or ''}",
+                embedding_model=f"onnx:{cfg.embedding_model}",
             )
             if cached_resp and isinstance(cached_resp.get("answer"), str):
                 initial_state["answer"] = cached_resp["answer"]
@@ -1235,6 +1530,10 @@ async def execute_agentic_rag_flow(
             logger.debug("Semantic cache check bypassed", error=str(cache_err))
 
     logger.info("Executing Agentic RAG Flow graph", analysis_id=analysis_id_str)
+    # Open a per-analysis LLM ledger so every provider call made below is
+    # counted and bounded (audit B-4). ContextVar-scoped, so concurrent
+    # analyses do not share a budget.
+    ledger_token = begin_analysis()
     try:
         final_state = await graph.ainvoke(initial_state)
 
@@ -1256,13 +1555,25 @@ async def execute_agentic_rag_flow(
                     response_data={
                         "answer": final_state["answer"],
                     },
-                    embedding_model=f"{embedding_provider or ''}:{embedding_model or ''}",
+                    embedding_model=f"onnx:{cfg.embedding_model}",
                 )
             except Exception as store_err:
                 logger.debug("Semantic cache store skipped", error=str(store_err))
 
         return final_state
     finally:
+        # Close out the per-analysis LLM ledger before releasing memory.
+        ledger = current_ledger()
+        if ledger is not None:
+            logger.info(
+                "LLM usage for analysis",
+                analysis_id=analysis_id_str,
+                calls=ledger.calls,
+                input_tokens=ledger.input_tokens,
+                output_tokens=ledger.output_tokens,
+                by_model=ledger.by_model,
+            )
+        end_analysis(ledger_token)
         from app.core.memory import trim_memory
 
         await asyncio.to_thread(trim_memory)

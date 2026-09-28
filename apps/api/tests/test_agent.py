@@ -4,7 +4,6 @@ Unit tests for the Agentic Adaptive Recovery LangGraph workflow.
 
 from __future__ import annotations
 
-import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -307,10 +306,57 @@ def test_sanitize_rewritten_query_rejects_full_instruction_echo():
     )
 
 
-def test_rewrite_prompts_have_no_tax_agency_example():
-    """The acronym example must not bias IRS toward Internal Revenue Service."""
-    source = inspect.getsource(recovery_node)
-    assert "Internal Revenue Service" not in source
+@patch("app.agent.graph.add_trace_event", AsyncMock())
+@patch("app.agent.graph.get_collection")
+@patch("app.agent.graph.get_verification_model")
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_missing_claims", [True, False])
+async def test_rewrite_prompt_uses_neutral_acronym_example(
+    mock_model, mock_collection, with_missing_claims
+):
+    """The acronym-expansion example must not bias "IRS" toward
+    "Internal Revenue Service" in a domain-agnostic IR system.
+
+    Replaces a source-text lint (`"Internal Revenue Service" not in
+    inspect.getsource(recovery_node)`, audit B-19) with a behavioural check on
+    the prompt actually sent to the model. The old form passed vacuously if the
+    prompt were ever moved into a template, constant, or imported helper, and
+    said nothing about which example is present.
+    """
+    mock_response = MagicMock()
+    mock_response.content = "internal revenue service decision tree"
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+    mock_llm.bind = MagicMock(return_value=mock_llm)
+    mock_model.return_value = mock_llm
+
+    mock_db = MagicMock()
+    mock_db.insert_one = AsyncMock()
+    mock_collection.return_value = mock_db
+
+    state = {
+        "analysis_id": "64ee39d09c6292376e191983",
+        "query": "What are the steps of IRS?",
+        "current_query": "What are the steps of IRS?",
+        "answer": "Insufficient evidence.",
+        "claims": [{"text": "IRS publishes guidance"}] if with_missing_claims else [],
+        "missing_claims_snapshot": ["IRS publishes guidance"] if with_missing_claims else [],
+        "chunks": [{"text": "some evidence"}],
+        "attempts": 0,
+        "recovery_strategy": None,
+        "cache_hit": False,
+    }
+
+    await recovery_node(state)
+
+    mock_llm.ainvoke.assert_awaited()
+    sent = mock_llm.ainvoke.await_args.args[0]
+    prompt = sent if isinstance(sent, str) else str(sent)
+    assert "Internal Revenue Service" not in prompt
+    # Positive assertion: a domain-neutral example is present instead.
+    assert "API" in prompt and "Application Programming Interface" in prompt
+    # The original query still reaches the model.
+    assert "IRS" in prompt
 
 
 @patch("app.agent.graph.add_trace_event", AsyncMock())
@@ -787,3 +833,255 @@ async def test_verification_node_outage_fast_path_skips_verification(mock_execut
     assert res["answer"] == outage_msg
     assert res["verdict_status"] == "FAIL"
     assert res["attempts"] == get_model_config().max_recovery_attempts
+
+
+# ─── Phase 8: Adaptive Recovery Tests ───────────────────────────────────────────
+
+
+def test_select_recovery_strategy_diagnosis_mapping():
+    """Test that diagnosis types map to correct recovery strategies."""
+    from app.agent.graph import _select_recovery_strategy
+    from app.core.config import get_model_config
+
+    cfg = get_model_config()
+
+    # RETRIEVAL_FAILURE → query_rewrite
+    state = {"attempts": 1, "diagnosis_type": "RETRIEVAL_FAILURE"}
+    assert _select_recovery_strategy(state, cfg) == "query_rewrite"
+
+    # RETRIEVAL_OUTAGE → query_rewrite
+    state = {"attempts": 1, "diagnosis_type": "RETRIEVAL_OUTAGE"}
+    assert _select_recovery_strategy(state, cfg) == "query_rewrite"
+
+    # RETRIEVAL_ERROR → query_rewrite
+    state = {"attempts": 1, "diagnosis_type": "RETRIEVAL_ERROR"}
+    assert _select_recovery_strategy(state, cfg) == "query_rewrite"
+
+    # LOW_COVERAGE → re_retrieve
+    state = {"attempts": 1, "diagnosis_type": "LOW_COVERAGE"}
+    assert _select_recovery_strategy(state, cfg) == "re_retrieve"
+
+    # EVIDENCE_CONFLICT → re_retrieve
+    state = {"attempts": 1, "diagnosis_type": "EVIDENCE_CONFLICT"}
+    assert _select_recovery_strategy(state, cfg) == "re_retrieve"
+
+    # VERIFICATION_TIMEOUT → regenerate
+    state = {"attempts": 1, "diagnosis_type": "VERIFICATION_TIMEOUT"}
+    assert _select_recovery_strategy(state, cfg) == "regenerate"
+
+    # VERIFICATION_ERROR → regenerate
+    state = {"attempts": 1, "diagnosis_type": "VERIFICATION_ERROR"}
+    assert _select_recovery_strategy(state, cfg) == "regenerate"
+
+    # GENERATION_ERROR → regenerate
+    state = {"attempts": 1, "diagnosis_type": "GENERATION_ERROR"}
+    assert _select_recovery_strategy(state, cfg) == "regenerate"
+
+
+def test_should_recover_budget_exhaustion_ends_graph():
+    """Budget exhaustion should end the graph (force abstention)."""
+    state = {
+        "verdict_status": "FAIL",
+        "attempts": 0,
+        "diagnosis_type": "RECOVERY_BUDGET_EXHAUSTED",
+    }
+    assert should_recover(state) == "end"
+
+
+def test_should_recover_still_respects_attempts_and_pass():
+    """should_recover still respects PASS verdict and max attempts."""
+    from app.core.config import get_model_config
+
+    max_recovery = get_model_config().max_recovery_attempts
+
+    # PASS ends graph even with budget not exhausted
+    state_pass = {"verdict_status": "PASS", "attempts": 0, "diagnosis_type": None}
+    assert should_recover(state_pass) == "end"
+
+    # Max attempts ends graph
+    state_max = {"verdict_status": "FAIL", "attempts": max_recovery, "diagnosis_type": None}
+    assert should_recover(state_max) == "end"
+
+    # Normal FAIL under attempts ceiling triggers recover
+    state_fail = {"verdict_status": "FAIL", "attempts": max_recovery - 1, "diagnosis_type": None}
+    assert should_recover(state_fail) == "recover"
+
+
+@patch("app.agent.graph.add_trace_event", AsyncMock())
+@patch("app.agent.graph.get_collection")
+@patch("app.agent.graph.get_verification_model")
+@pytest.mark.asyncio
+async def test_recovery_node_budget_enforcement(mock_get_model, mock_collection):
+    """Recovery node should track budget and force abstention when exhausted."""
+    from app.agent.graph import recovery_node
+    from app.core.config import get_model_config
+
+    cfg = get_model_config()
+
+    # Mock LLM for query rewrite
+    mock_model = MagicMock()
+    mock_model.bind.return_value = mock_model
+    mock_model.ainvoke = AsyncMock()
+    mock_model.ainvoke.return_value.content = "expanded query for missing facts"
+    mock_get_model.return_value = mock_model
+
+    # Mock DB
+    mock_db = MagicMock()
+    mock_db.insert_one = AsyncMock()
+    mock_collection.return_value = mock_db
+
+    # Set budget nearly exhausted
+    state = {
+        "analysis_id": "64ee39d09c6292376e191983",
+        "kb_id": "64ee39d09c6292376e191982",
+        "query": "original query",
+        "current_query": "original query",
+        "answer": "ABSTAIN",
+        "chunks": [],
+        "evidence_ids": [],
+        "claims": [],
+        "attempts": 0,
+        "verdict_status": "FAIL",
+        "recovery_strategy": None,
+        "reliability_score": None,
+        "diagnosis_type": "RETRIEVAL_FAILURE",
+        "diagnosis_failures": ["No evidence"],
+        "web_search_enabled": False,
+        "web_search_provider": "both",
+        "llm_provider": None,
+        "llm_model": None,
+        "cache_hit": False,
+        "node_errors": [],
+        # Budget nearly exhausted - just under the limit
+        "recovery_tokens_used": cfg.max_recovery_tokens - 100,
+        "recovery_latency_ms": cfg.max_recovery_latency_seconds * 1000 - 100,
+    }
+
+    # This attempt should succeed (under budget)
+    res = await recovery_node(state)
+
+    # But next attempt would exceed budget
+    state = {
+        **res,
+        "recovery_tokens_used": cfg.max_recovery_tokens + 100,  # Exceeded
+        "recovery_latency_ms": cfg.max_recovery_latency_seconds * 1000 + 100,  # Exceeded
+    }
+
+    res = await recovery_node(state)
+    assert res["diagnosis_type"] == "RECOVERY_BUDGET_EXHAUSTED"
+    assert res["verdict_status"] == "PASS"  # Forces abstention
+    assert res["attempts"] == cfg.max_recovery_attempts  # Forces end
+
+
+@patch("app.agent.graph.add_trace_event", AsyncMock())
+@patch("app.agent.graph.get_collection")
+@patch("app.agent.graph.get_verification_model")
+@pytest.mark.asyncio
+async def test_recovery_node_diagnosis_based_strategy(mock_get_model, mock_collection):
+    """Recovery node should select strategy based on diagnosis, not round-robin."""
+    from app.agent.graph import recovery_node
+
+    # Mock LLM for query rewrite
+    mock_model = MagicMock()
+    mock_model.bind.return_value = mock_model
+    mock_model.ainvoke = AsyncMock()
+    mock_model.ainvoke.return_value.content = "expanded query"
+    mock_get_model.return_value = mock_model
+
+    # Mock DB
+    mock_db = MagicMock()
+    mock_db.insert_one = AsyncMock()
+    mock_collection.return_value = mock_db
+
+    # Test RETRIEVAL_FAILURE → query_rewrite
+    state = {
+        "analysis_id": "64ee39d09c6292376e191983",
+        "kb_id": "64ee39d09c6292376e191982",
+        "query": "original query",
+        "current_query": "original query",
+        "answer": "ABSTAIN",
+        "chunks": [],
+        "evidence_ids": [],
+        "claims": [],
+        "attempts": 0,
+        "verdict_status": "FAIL",
+        "recovery_strategy": None,
+        "reliability_score": None,
+        "diagnosis_type": "RETRIEVAL_FAILURE",
+        "diagnosis_failures": ["No evidence"],
+        "web_search_enabled": False,
+        "web_search_provider": "both",
+        "llm_provider": None,
+        "llm_model": None,
+        "cache_hit": False,
+        "node_errors": [],
+        "recovery_tokens_used": 0,
+        "recovery_latency_ms": 0,
+    }
+
+    res = await recovery_node(state)
+    assert res["recovery_strategy"] == "query_rewrite"
+
+    # Test LOW_COVERAGE → re_retrieve
+    state = {
+        **state,
+        "diagnosis_type": "LOW_COVERAGE",
+        "attempts": 1,
+        "recovery_tokens_used": 100,
+        "recovery_latency_ms": 500,
+    }
+    res = await recovery_node(state)
+    assert res["recovery_strategy"] == "re_retrieve"
+
+    # Test VERIFICATION_TIMEOUT → regenerate
+    state = {
+        **state,
+        "diagnosis_type": "VERIFICATION_TIMEOUT",
+        "attempts": 2,
+        "recovery_tokens_used": 200,
+        "recovery_latency_ms": 1000,
+    }
+    res = await recovery_node(state)
+    assert res["recovery_strategy"] == "regenerate"
+
+
+# ─── Audit T-3: graph topology ───────────────────────────────────────────────────
+
+
+def test_build_agent_graph_has_expected_topology():
+    """Pin the workflow shape so a mis-wired edge cannot ship unnoticed.
+
+    Audit T-3: `build_agent_graph` (graph.py:1309-1334) had 0% coverage, so a
+    change such as routing recovery back into generation instead of retrieval —
+    which would infinite-loop a self-heal run — was invisible to the whole suite.
+    """
+    from app.agent import graph as graph_mod
+
+    graph_mod._compiled_graph = None
+    compiled = graph_mod.build_agent_graph()
+
+    nodes = set(compiled.get_graph().nodes)
+    for expected in ("retrieval", "generation", "verification", "recovery"):
+        assert expected in nodes, f"missing node: {expected} (have {nodes})"
+
+    edges = {(e.source, e.target) for e in compiled.get_graph().edges}
+    assert ("retrieval", "generation") in edges
+    assert ("generation", "verification") in edges
+    # Recovery must loop back to retrieval, never to generation: re-entering
+    # generation with a stale state is the mis-wiring this test exists to catch.
+    assert ("recovery", "retrieval") in edges, f"recovery edges wrong: {edges}"
+    assert ("recovery", "generation") not in edges
+
+    graph_mod._compiled_graph = None
+
+
+def test_build_agent_graph_is_cached_singleton():
+    """The compiled graph is a module singleton; rebuilding per call would
+    recompile the workflow on every analysis."""
+    from app.agent import graph as graph_mod
+
+    graph_mod._compiled_graph = None
+    first = graph_mod.build_agent_graph()
+    second = graph_mod.build_agent_graph()
+    assert first is second
+    graph_mod._compiled_graph = None

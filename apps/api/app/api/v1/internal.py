@@ -12,12 +12,17 @@ from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel, field_validator
 
 from app.api.deps import require_service_permission
+from app.core.rate_limiter import limiter
 from app.core.security import create_service_token
 from app.services.kb_service import add_document
+
+# Cost-DoS backstop for service-to-service routes (generous: functionality is
+# already gated by service-token permissions, this only bounds LLM fan-out).
+_INTERNAL_RATE_LIMIT = "60/minute"
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -95,7 +100,9 @@ async def generate_service_token_endpoint(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Internal document ingestion trigger",
 )
+@limiter.limit(_INTERNAL_RATE_LIMIT)
 async def internal_ingest_document(
+    request: Request,
     kb_id: str,
     document_data: InternalDocumentIngest,
     current_service: Mapping[str, Any] = Depends(require_service_permission("ingest:write")),
@@ -109,6 +116,26 @@ async def internal_ingest_document(
     is the current cross-tenant backstop.
     """
     service_name = current_service.get("sub")
+
+    # M-2 tenant binding: if token is bound to a specific KB or user, enforce it
+    bound_kb = current_service.get("bound_kb_id")
+    if bound_kb and str(bound_kb) != str(kb_id):
+        from fastapi import HTTPException
+        from fastapi import status as _status
+
+        raise HTTPException(
+            status_code=_status.HTTP_403_FORBIDDEN,
+            detail="Service token not authorized for this knowledge base",
+        )
+    bound_user = current_service.get("bound_user_id")
+    if bound_user and str(bound_user) != str(document_data.user_id):
+        from fastapi import HTTPException
+        from fastapi import status as _status2
+
+        raise HTTPException(
+            status_code=_status2.HTTP_403_FORBIDDEN,
+            detail="Service token not authorized for this user",
+        )
 
     # Add document metadata
     doc = await add_document(
@@ -133,7 +160,9 @@ async def internal_ingest_document(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Internal URL ingestion trigger",
 )
+@limiter.limit(_INTERNAL_RATE_LIMIT)
 async def internal_ingest_url(
+    request: Request,
     kb_id: str,
     url_data: InternalUrlIngest,
     current_service: Mapping[str, Any] = Depends(require_service_permission("ingest:write")),
@@ -141,11 +170,23 @@ async def internal_ingest_url(
     """
     Trigger URL document ingestion from an internal service.
 
-    Requires ingest:write permission.
+    Requires ingest:write permission. Same SSRF validation as the public
+    from-url endpoint (allowlist + DNS pinning + per-hop checks).
     """
+    from fastapi import HTTPException
+    from fastapi import status as _status
+
+    from app.services.search_service import validate_ingestion_url
+
     service_name = current_service.get("sub")
 
-    # This would call the URL ingestion logic
+    is_valid, error = validate_ingestion_url(url_data.url, None)
+    if not is_valid:
+        raise HTTPException(
+            status_code=_status.HTTP_400_BAD_REQUEST,
+            detail=f"URL validation failed: {error}",
+        )
+
     return {
         "status": "queued",
         "url": url_data.url,
@@ -160,7 +201,9 @@ async def internal_ingest_url(
     "/search",
     summary="Internal hybrid search",
 )
+@limiter.limit(_INTERNAL_RATE_LIMIT)
 async def internal_search(
+    request: Request,
     query: str,
     kb_id: str,
     top_k: int = 10,
@@ -174,6 +217,10 @@ async def internal_search(
     from app.core.exceptions import RetrievalOutageError
     from app.retrieval.retriever import retrieve_hybrid_chunks
 
+    try:
+        top_k = max(1, min(int(top_k), 50))
+    except (TypeError, ValueError):
+        top_k = 10
     try:
         results = await retrieve_hybrid_chunks(query=query, kb_id=kb_id, top_k_override=top_k)
     except RetrievalOutageError as exc:
@@ -196,7 +243,9 @@ async def internal_search(
     "/verify/claims",
     summary="Internal claim verification",
 )
+@limiter.limit(_INTERNAL_RATE_LIMIT)
 async def internal_verify_claims(
+    request: Request,
     claims: list[str],
     evidence_texts: list[str],
     current_service: Mapping[str, Any] = Depends(require_service_permission("verify:execute")),
@@ -208,6 +257,9 @@ async def internal_verify_claims(
     """
     from app.verification.verifier import batch_verify_claims_nli
 
+    # Cost-DoS guard: unbounded lists fan out to LLM calls.
+    claims = claims[:20]
+    evidence_texts = [t[:4000] for t in evidence_texts[:20]]
     fake_chunks = [
         {"chunk_id": f"ev_{idx}", "text": text} for idx, text in enumerate(evidence_texts)
     ]

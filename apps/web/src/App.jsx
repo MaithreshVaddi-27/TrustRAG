@@ -25,7 +25,7 @@ const NotFoundPage       = lazy(() => import('@/pages/NotFoundPage'))
 
 function PageLoading() {
   return (
-    <div className="min-h-screen bg-surface-950 flex flex-col items-center justify-center">
+    <div className="min-h-screen supports-[min-height:100dvh]:min-h-dvh bg-surface-950 flex flex-col items-center justify-center">
       <div className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-surface-900 border border-slate-800 shadow-2xl">
         <Loader2 className="w-5 h-5 text-primary-400 animate-spin" />
         <span className="text-sm font-medium text-slate-300">Loading module...</span>

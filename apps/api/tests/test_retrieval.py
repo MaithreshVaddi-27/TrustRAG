@@ -56,6 +56,32 @@ def test_reciprocal_rank_fusion_logic():
     assert abs(fused[1]["rrf_score"] - (1.0 / 62.0)) < 1e-5
 
 
+def test_rrf_carries_ocr_image_and_version_provenance():
+    """Fused dicts must keep payload provenance or the answer chain breaks."""
+    point = MagicMock()
+    point.id = "point-9"
+    point.score = 0.7
+    point.payload = {
+        "text": "scanned text",
+        "document_id": "doc-9",
+        "ocr_used": True,
+        "ocr_confidence": 0.87,
+        "page_image_ref": "kb/doc/p2.png",
+        "document_version": "1.0",
+        "is_snapshot": False,
+        "page": 2,
+    }
+    fused = reciprocal_rank_fusion([point], [], k=60)
+    assert len(fused) == 1
+    row = fused[0]
+    assert row["ocr_used"] is True
+    assert row["ocr_confidence"] == 0.87
+    assert row["page_image_ref"] == "kb/doc/p2.png"
+    assert row["document_version"] == "1.0"
+    assert row["is_snapshot"] is False
+    assert row["page"] == 2
+
+
 @pytest.mark.asyncio
 async def test_collection_dimension_is_cached_per_collection():
     import app.retrieval.retriever as retriever
@@ -124,6 +150,48 @@ async def test_temporal_validity_filtering():
         # Only doc-active fits (2026-08-01 lies between 2026-07-01 and 2026-09-01)
         assert len(filtered) == 1
         assert filtered[0]["document_id"] == "64ee39d09c6292376e191981"
+
+
+@pytest.mark.asyncio
+async def test_temporal_filter_drops_orphan_points_and_marks_versions():
+    """Points whose parent document record is gone are stale evidence: drop them.
+
+    Points with no document_id at all cannot be judged — keep them (fail-open).
+    Surviving rows gain document_version/is_snapshot from the parent record.
+    """
+    results = [
+        {"document_id": "64ee39d09c6292376e191981", "text": "live chunk"},
+        {"document_id": "64ee39d09c6292376e191999", "text": "orphan chunk"},
+        {"document_id": None, "text": "unjudgeable chunk"},
+    ]
+    mock_docs = [
+        {
+            "_id": "64ee39d09c6292376e191981",
+            "filename": "live.txt",
+            "version": "2.0",
+            "is_snapshot": False,
+        },
+    ]
+    mock_cursor = MagicMock()
+
+    async def mock_async_gen():
+        for d in mock_docs:
+            yield d
+
+    mock_cursor.__aiter__ = MagicMock(side_effect=mock_async_gen)
+    mock_collection = MagicMock()
+    mock_collection.find = MagicMock(return_value=mock_cursor)
+
+    with patch("app.retrieval.retriever.get_collection", return_value=mock_collection):
+        filtered = await apply_temporal_filtering(results, datetime(2026, 8, 1, tzinfo=UTC))
+
+    texts = [r["text"] for r in filtered]
+    assert "orphan chunk" not in texts
+    assert "live chunk" in texts
+    assert "unjudgeable chunk" in texts
+    live = next(r for r in filtered if r["text"] == "live chunk")
+    assert live["document_version"] == "2.0"
+    assert live["is_snapshot"] is False
 
 
 @pytest.mark.asyncio
@@ -196,6 +264,40 @@ async def test_sparse_search_returns_empty_when_no_indexable_tokens():
 
 
 @pytest.mark.asyncio
+async def test_sparse_search_top_k_zero_disables_leg_without_qdrant():
+    """top_k<=0 means the sparse leg is disabled: successful empty, never an outage."""
+    with (
+        patch(
+            "app.retrieval.retriever.get_qdrant_client",
+            side_effect=AssertionError("must not touch Qdrant when leg disabled"),
+        ),
+        patch(
+            "app.retrieval.retriever.generate_sparse_vector",
+            side_effect=AssertionError("must not vectorize when leg disabled"),
+        ),
+    ):
+        assert await sparse_search("refund policy", "kb_x", top_k=0) == []
+        assert await sparse_search("refund policy", "kb_x", top_k=-3) == []
+
+
+@pytest.mark.asyncio
+async def test_dense_search_top_k_zero_disables_leg_without_embedding():
+    """top_k<=0 means the dense leg is disabled: successful empty, never an outage."""
+    with (
+        patch(
+            "app.retrieval.retriever.get_qdrant_client",
+            side_effect=AssertionError("must not touch Qdrant when leg disabled"),
+        ),
+        patch(
+            "app.retrieval.retriever.get_embedding_model",
+            side_effect=AssertionError("must not embed when leg disabled"),
+        ),
+    ):
+        assert await dense_search("refund policy", "kb_x", top_k=0) == []
+        assert await dense_search("refund policy", "kb_x", top_k=-1) == []
+
+
+@pytest.mark.asyncio
 async def test_sparse_search_raises_outage_when_query_fails():
     mock_client = SimpleNamespace(query_points=AsyncMock(side_effect=Exception("Qdrant timed out")))
     with (
@@ -264,3 +366,39 @@ async def test_hybrid_both_branches_timeout_is_outage(monkeypatch):
     ):
         with pytest.raises(RetrievalOutageError, match="both"):
             await retrieve_hybrid_chunks("outage probe query zeta", "kb_outage_5")
+
+
+@pytest.mark.asyncio
+async def test_hybrid_enforces_fusion_top_k():
+    """Fused candidates are truncated to retrieval.fusion_top_k (default 20)."""
+    from app.core.config import get_model_config
+
+    fusion_top_k = get_model_config().fusion_top_k
+    assert fusion_top_k == 20
+
+    def make_points(prefix: str, count: int) -> list:
+        points = []
+        for i in range(count):
+            point = MagicMock()
+            point.id = f"{prefix}-{i}"
+            point.score = 1.0 - (i * 0.01)
+            point.payload = {"text": f"{prefix} hit {i}"}
+            points.append(point)
+        return points
+
+    with (
+        patch(
+            "app.retrieval.retriever.dense_search",
+            AsyncMock(return_value=make_points("d", 25)),
+        ),
+        patch(
+            "app.retrieval.retriever.sparse_search",
+            AsyncMock(return_value=make_points("s", 25)),
+        ),
+    ):
+        res = await retrieve_hybrid_chunks("fusion bound probe", "kb_fusion_1")
+
+    # 25 dense + 25 sparse (disjoint) fuse to 50; all single-list hits score
+    # 1/(rank+60), so the top 20 are exactly ranks 1..10 of each branch.
+    assert len(res) == fusion_top_k
+    assert {r["id"] for r in res} == {f"d-{i}" for i in range(10)} | {f"s-{i}" for i in range(10)}

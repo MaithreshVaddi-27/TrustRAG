@@ -86,17 +86,29 @@ def chunk_text(
                         end = i
                         break
 
-            chunk_content = text[start:end].strip()
+            raw_slice = text[start:end]
+            chunk_content = raw_slice.strip()
 
             if chunk_content:
+                # character_offset must index the chunk's first real character
+                # in the page (M4): .strip() removes leading whitespace, so the
+                # recorded offset was short by exactly that many characters and
+                # every provenance citation pointed at the wrong span.
+                leading_ws = len(raw_slice) - len(raw_slice.lstrip())
                 zone = detect_chunk_zone(chunk_content, page=page_num)
                 chunks.append(
                     {
                         "text": chunk_content,
                         "page": page_num,
                         "chunk_index": chunk_index,
-                        "character_offset": start,
+                        "character_offset": start + leading_ws,
                         "zone": zone,
+                        # Provenance: OCR fallback flags ride page → chunk.
+                        "ocr_used": bool(page_obj.get("ocr_used", False)),
+                        "ocr_confidence": page_obj.get("ocr_confidence"),
+                        # Phase 7: render bytes ride along (pipeline persists
+                        # once per page; never stored per chunk).
+                        "page_image_png": page_obj.get("page_image_png"),
                     }
                 )
                 chunk_index += 1

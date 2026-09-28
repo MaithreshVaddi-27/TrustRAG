@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import PlainTextResponse
 
 from app.api.deps import get_current_user
 from app.core.config import get_model_config, get_settings
@@ -24,6 +25,19 @@ from app.db.mongodb import health_check as mongo_health_check
 from app.db.qdrant import health_check as qdrant_health_check
 
 router = APIRouter(tags=["health"])
+
+
+@router.get(
+    "/metrics",
+    summary="Prometheus metrics exposition",
+    response_class=PlainTextResponse,
+    include_in_schema=False,
+)
+async def prometheus_metrics() -> PlainTextResponse:
+    """Phase 10: dependency-free Prometheus exposition (public, counters only — no secrets)."""
+    from app.core.metrics import render_prometheus
+
+    return PlainTextResponse(render_prometheus(), media_type="text/plain; version=0.0.4")
 
 
 @router.get("/health", summary="Public application health check")
@@ -36,6 +50,7 @@ async def health() -> dict:
     """
     mongo_ok = await mongo_health_check()
     qdrant_ok = await qdrant_health_check()
+    settings = get_settings()
 
     services = {
         "mongodb": "ok" if mongo_ok else "degraded",
@@ -47,8 +62,8 @@ async def health() -> dict:
     return {
         "status": overall_status,
         "timestamp": datetime.now(UTC).isoformat(),
-        "app": "TRUSTRAG",
-        "version": "0.1.0",
+        "app": settings.app_name,
+        "version": settings.app_version,
     }
 
 
@@ -81,8 +96,8 @@ async def health_detailed(current_user=Depends(get_current_user)) -> dict:
     return {
         "status": overall_status,
         "timestamp": datetime.now(UTC).isoformat(),
-        "app": "TRUSTRAG",
-        "version": "0.1.0",
+        "app": settings.app_name,
+        "version": settings.app_version,
         "environment": settings.app_env,
         "services": services,
         "models": registry_status(),

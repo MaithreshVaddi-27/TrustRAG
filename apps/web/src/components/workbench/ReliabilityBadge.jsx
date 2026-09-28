@@ -66,19 +66,3 @@ export function ClaimStateBadge({ state }) {
     </span>
   )
 }
-
-/**
- * StatusDot — animated dot for live/running states.
- */
-export function StatusDot({ status }) {
-  const map = {
-    running:   'bg-primary-400 animate-pulse',
-    completed: 'bg-green-400',
-    failed:    'bg-red-400',
-    abstained: 'bg-amber-400',
-    pending:   'bg-slate-500',
-  }
-  return (
-    <span className={clsx('inline-block w-2 h-2 rounded-full', map[status] ?? map.pending)} />
-  )
-}

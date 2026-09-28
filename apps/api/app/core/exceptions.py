@@ -65,10 +65,6 @@ class FileTooLargeError(IngestionError):
 # ─── AI / Retrieval ───────────────────────────────────────────────────────────
 
 
-class RetrievalError(TrustRAGError):
-    """Raised when retrieval from Qdrant fails."""
-
-
 class RetrievalOutageError(TrustRAGError):
     """
     Raised when the retrieval infrastructure itself is unavailable.
@@ -80,20 +76,8 @@ class RetrievalOutageError(TrustRAGError):
     """
 
 
-class EmbeddingError(TrustRAGError):
-    """Raised when embedding generation fails."""
-
-
 class GenerationError(TrustRAGError):
     """Raised when LLM generation fails."""
-
-
-class VerificationError(TrustRAGError):
-    """Raised when claim verification encounters an error."""
-
-
-class RecoveryError(TrustRAGError):
-    """Raised when the recovery workflow encounters an unrecoverable error."""
 
 
 class LLMUnavailableError(GenerationError):

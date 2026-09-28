@@ -252,6 +252,7 @@ async def test_individual_nli_fallback_is_capped(
             answer=" ".join(sentences),
             chunks=[{"text": "Refunds are permitted within thirty days."}],
             evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
+            provider="gemini",  # cloud tier → caps = 8
         )
 
     assert len(claims) == 8
@@ -521,6 +522,14 @@ def test_nli_verdict_alias_matrix():
     assert _verdict_of("REFUTED") == "CONTRADICTED"
     assert _verdict_of("UNKNOWN") == "NEUTRAL"
     assert _verdict_of("garbage-wobble") == "NEUTRAL"
+    # Reasoning-model shorthand/punctuation (live: verdict "S" on a
+    # supported claim, "SUPPORTED." with trailing period).
+    assert _verdict_of("S") == "SUPPORTED"
+    assert _verdict_of("SUPPORTED.") == "SUPPORTED"
+    assert _verdict_of("SUPPORTS") == "SUPPORTED"
+    assert _verdict_of("C") == "CONTRADICTED"
+    assert _verdict_of("CONTRADICT.") == "CONTRADICTED"
+    assert _verdict_of("N") == "NEUTRAL"
 
 
 def test_nli_verdict_text_segments_coerced_or_dropped():
@@ -847,3 +856,62 @@ async def test_fused_decompose_verify_returns_none_on_failure(mock_get_model):
         context_str="Segment 1 [Source, Page]\nSome context segment.",
     )
     assert res is None
+
+
+# ─── Audit B-3: Gemini structured-output caps must not be passed as call kwargs ──
+
+
+def test_structured_verifier_gemini_does_not_raise_on_cap_kwargs():
+    """Regression (audit B-3).
+
+    `_structured_verifier` used to call `model_obj.with_structured_output(schema,
+    **cap)`. `ChatGoogleGenerativeAI.with_structured_output` raises
+    `ValueError: Received unsupported arguments {...}` for ANY unexpected kwarg
+    (verified against langchain-google-genai 4.4.0). The moment a Gemini id
+    matched REASONING_MODEL_KEYWORDS, every decomposition and NLI call raised,
+    claims degraded to NEUTRAL, and the verdict was a permanent FAIL — with the
+    capability cap silently unreachable via any supported model id.
+    """
+    from app.verification.verifier import _structured_verifier
+
+    gemini_available = pytest.importorskip(
+        "langchain_google_genai",
+        reason="langchain-google-genai not installed",
+    )
+    from pydantic import BaseModel
+
+    class _Schema(BaseModel):
+        verdict: str
+
+    model = gemini_available.ChatGoogleGenerativeAI(
+        model="gemini-3.5-flash-thinking",
+        google_api_key="dummy-key-for-construction-only",
+    )
+
+    # Precondition: this is the exact call that used to explode.
+    with pytest.raises(ValueError, match="unsupported arguments"):
+        model.with_structured_output(_Schema, max_output_tokens=1024)
+
+    # The fixed path must build a runnable instead.
+    runnable = _structured_verifier(model, "gemini", _Schema, {"max_output_tokens": 1024})
+    assert runnable is not None
+
+    # And the shared registry instance must NOT have been mutated.
+    assert model.max_output_tokens is None
+
+
+def test_structured_verifier_local_path_unchanged():
+    """The local provider path forwards caps as call kwargs and must keep
+    doing so — `build_agent_graph` relies on `max_tokens` reaching the server."""
+    from pydantic import BaseModel
+
+    from app.verification.verifier import _structured_verifier
+
+    class _Schema(BaseModel):
+        verdict: str
+
+    model = MagicMock()
+    model.with_structured_output.return_value = "local-runnable"
+    result = _structured_verifier(model, "ollama", _Schema, {"max_tokens": 384})
+    assert result == "local-runnable"
+    model.with_structured_output.assert_called_once_with(_Schema, max_tokens=384)

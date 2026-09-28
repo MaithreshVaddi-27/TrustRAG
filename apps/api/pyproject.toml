@@ -4,13 +4,12 @@ version = "0.1.0"
 description = "TRUSTRAG — AI Reliability Workbench backend"
 # readme intentionally omitted: README.md lives at the repo root,
 # not inside apps/api/ — hatchling would fail to find it in the Docker build context.
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 
 dependencies = [
     # ── Web framework ────────────────────────────────────────────────────────
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
-    "orjson>=3.10.0",             # Fast JSON serializer (20-30% serialization savings)
     "python-multipart>=0.0.12",   # File uploads
 
     # ── Configuration & settings ─────────────────────────────────────────────
@@ -19,7 +18,8 @@ dependencies = [
     "pyyaml>=6.0.1",
 
     # ── Database ─────────────────────────────────────────────────────────────
-    "pymongo[srv]>=4.7.0",
+    "pymongo>=4.7.0",
+    "dnspython>=2.7.0",  # mongodb+srv / Atlas TLS (was pymongo[srv]; the srv extra no longer exists upstream)
     "motor>=3.4.0",               # Async MongoDB driver
     "certifi>=2024.2.2",          # Explicit CA bundle for Atlas TLS handshakes
 
@@ -43,6 +43,7 @@ dependencies = [
 
     # ── Document processing ──────────────────────────────────────────────────
     "pymupdf>=1.24.0",            # PDF parsing (fitz) — open source
+    "rapidocr-onnxruntime>=1.4.4",  # OCR fallback for scanned pages (ONNX, torch-free)
     "chardet>=5.2.0",             # Encoding detection for text files
     "defusedxml>=0.7.1",          # Defused XML parsing against XXE attacks
 
@@ -51,7 +52,6 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",            # Password hashing
     "slowapi>=0.1.9",                    # Rate limiting for FastAPI
     "email-validator>=2.0.0",            # Email format validation for Pydantic EmailStr
-    "hvac>=2.2.0",                       # HashiCorp Vault client (open source)
     "python-dotenv>=1.0.0",              # .env file loading
 
     # ── Observability ────────────────────────────────────────────────────────
@@ -63,15 +63,27 @@ dependencies = [
     # ── Utilities ────────────────────────────────────────────────────────────
     "python-dateutil>=2.9.0",
     "xxhash>=3.4.1",              # Fast hashing for content deduplication
+    "tiktoken>=0.8.0",            # Token counting for dynamic context sizing
 
     # ── Local embeddings (ONNX Runtime, torch-free) ──────────────────────────
-    "onnxruntime>=1.20.0",        # BGE-small via ONNX (EMBEDDING_PROVIDER=onnx)
+    "onnxruntime>=1.20.0",        # single embedding engine: BGE-small via ONNX
+    # Tokenizer ONLY (AutoTokenizer for ONNX inputs). Never imports torch:
+    # plain `transformers` installs hub + tokenizers + safetensors, no ML
+    # framework. Was an undeclared transitive dep — CI (pip install -e .)
+    # failed 17 onnx tests with ModuleNotFoundError while uv envs passed.
+    "transformers>=4.48.0",
 ]
 
 [project.optional-dependencies]
 local-models = [
     "sentence-transformers>=3.0.0",
     "langchain-huggingface>=0.1.0",
+    # One-time ONNX export (scripts/bootstrap.py / ensure_onnx_models.py /
+    # export_bge_onnx.py). Runtime stays torch-free via onnxruntime (main
+    # dependencies); `onnx` + `onnxscript` are only needed to run
+    # torch.onnx.export + checker.
+    "onnx>=1.16.0",
+    "onnxscript>=0.1.0",
 ]
 dev = [
     "pytest>=8.2.0",

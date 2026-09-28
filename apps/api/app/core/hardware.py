@@ -38,44 +38,51 @@ def get_llamacpp_launch_args() -> list[str]:
 
     args: list[str] = []
 
-    # Quantized KV cache: q8_0 halves KV-cache RAM with negligible quality loss
-    # (community-measured; safe default per llama.cpp docs). Travels with
-    # --flash-attn on — without FA the server dequantizes per attention op and
-    # the saving turns into a slowdown. CPU-only path keeps f16 (no FA there).
-    kv_quant_flags = ["-ctk", "q8_0", "-ctv", "q8_0"]
+    # Quantized KV cache: honors optimization.kv_cache_quantization
+    # (models.yaml, default q8_0 — halves KV-cache RAM with negligible quality
+    # loss, community-measured). Travels with --flash-attn on — without FA the
+    # server dequantizes per attention op and the saving turns into a
+    # slowdown. CPU-only path keeps f16 (no FA there). Unknown values fall
+    # back to q8_0 (e.g. "fp16" is not a valid llama-server k-quant).
+    try:
+        from app.core.config import get_model_config
+
+        _kv_quant = str(get_model_config().kv_cache_quantization or "q8_0").strip().lower()
+    except Exception:
+        _kv_quant = "q8_0"
+    if _kv_quant not in ("q8_0", "q4_0", "q4_1"):
+        logger.warning(
+            "Unsupported kv_cache_quantization; falling back to q8_0",
+            configured=_kv_quant,
+        )
+        _kv_quant = "q8_0"
+    kv_quant_flags = ["-ctk", _kv_quant, "-ctv", _kv_quant]
 
     if is_arm_mac:
         # Metal is native on Apple Silicon — no further probe needed.
         args += ["-ngl", "all", "--flash-attn", "on", *kv_quant_flags]
-    else:
+    elif _nvidia_smi_available():
         # CUDA only when a GPU both exists and responds.
-        smi = shutil.which("nvidia-smi")
-        if smi:
-            try:
-                subprocess.run(  # noqa: S603 — resolved binary path, fixed argv
-                    [smi],
-                    check=False,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=5,
-                )
-                args += [
-                    "-ngl",
-                    "all",
-                    "--flash-attn",
-                    "on",
-                    *kv_quant_flags,
-                    "--split-mode",
-                    "layer",
-                ]
-            except Exception as exc:
-                logger.debug("nvidia-smi probe failed; no GPU flags", error=str(exc))
+        args += [
+            "-ngl",
+            "all",
+            "--flash-attn",
+            "on",
+            *kv_quant_flags,
+            "--split-mode",
+            "layer",
+        ]
     # else: CPU-only — no GPU flags.
 
     # Context + concurrency budget by available memory.
     # KV cache ~ n_embd(2048) x 2 (K/V) x n_ctx x 4B x slots; conservative.
+    # llama-server divides -c evenly across -np slots, and the backend sends
+    # num_ctx=4096 requests through a single serial consumer
+    # (LOCAL_LLM_MAX_CONCURRENCY=1). So -np must keep n_ctx_slot >= 4096:
+    # measured on 8 GB (LFM2.5-1.2B): -np 2 gives 2x2048 slots (backend
+    # contexts overflow the slot) while -np 1 gives 1x4096 at the same RSS.
     if total_gb <= 8.5:
-        args += ["-c", "4096", "-np", "2"]
+        args += ["-c", "4096", "-np", "1"]
     elif total_gb <= 16.5:
         args += ["-c", "8192", "-np", "2"]
     else:
@@ -86,11 +93,22 @@ def get_llamacpp_launch_args() -> list[str]:
 
 def get_optimal_torch_device() -> str:
     """
-    Determine the highest-performance acceleration device available for PyTorch/Embeddings.
+    Determine the highest-performance acceleration device available for PyTorch.
+
     Returns:
         'cuda': If an NVIDIA GPU with CUDA is available.
         'mps':  If Apple Silicon Metal Performance Shaders is available.
         'cpu':  Fallback to multi-threaded CPU.
+
+    Torch-only by design. This helper is for the PyTorch code paths that
+    genuinely need a device (currently the `sentence_transformers` CrossEncoder
+    fallback in `model_registry.get_reranker`), and torch is already resident on
+    those paths.
+
+    Do NOT call this from `detect_hardware_profile()` or any other code reached
+    by the ONNX ingest/serving path. Importing torch costs ~177 MB RSS, and the
+    embedding stack is deliberately ONNX-based. Use `detect_accelerator()`
+    there instead — it is torch-free and answers the same question.
     """
     try:
         import torch
@@ -106,6 +124,65 @@ def get_optimal_torch_device() -> str:
     except Exception as exc:
         logger.debug("Torch device detection fallback to cpu", error=str(exc))
 
+    return "cpu"
+
+
+def _nvidia_smi_available() -> bool:
+    """True when an NVIDIA GPU exists and `nvidia-smi` responds. Torch-free."""
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        return False
+    try:
+        probe = subprocess.run(  # noqa: S603 — resolved binary path, fixed argv
+            [smi],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+    except Exception as exc:
+        logger.debug("nvidia-smi probe failed", error=str(exc))
+        return False
+    if probe.returncode != 0:
+        logger.debug("nvidia-smi returned non-zero; treating host as CPU-only")
+        return False
+    return True
+
+
+def _nvidia_vram_gb() -> float | None:
+    """Total GPU memory in GB, read from nvidia-smi. Torch-free."""
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        return None
+    try:
+        out = subprocess.run(  # noqa: S603 — resolved binary path, fixed argv
+            [smi, "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        ).stdout.decode()
+        first = out.strip().splitlines()[0].strip()
+        return round(int(first) / 1024, 2)
+    except Exception as exc:
+        logger.debug("nvidia-smi VRAM query failed", error=str(exc))
+        return None
+
+
+def detect_accelerator() -> str:
+    """
+    Identify the host accelerator WITHOUT importing torch.
+
+    Returns 'cuda' | 'mps' | 'cpu'. This is the probe `detect_hardware_profile()`
+    must use: the embedding path is ONNX-based, and `get_optimal_torch_device()`
+    would pull ~177 MB of PyTorch into a process that has no other use for it.
+    """
+    # Metal is native on Apple Silicon — no probe needed, same reasoning as
+    # get_llamacpp_launch_args().
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        return "mps"
+    if _nvidia_smi_available():
+        return "cuda"
     return "cpu"
 
 
@@ -128,7 +205,9 @@ def get_system_memory_info() -> dict[str, Any]:
     # macOS free memory calculation via vm_stat
     if sys.platform == "darwin":
         try:
-            vm = subprocess.check_output(["/usr/sbin/vm_stat"], stderr=subprocess.DEVNULL).decode()
+            vm = subprocess.check_output(
+                ["/usr/sbin/vm_stat"], stderr=subprocess.DEVNULL, timeout=5
+            ).decode()
             v_page_size = 4096
             free_pages = 0
             speculative_pages = 0
@@ -141,6 +220,7 @@ def get_system_memory_info() -> dict[str, Any]:
                     speculative_pages = int(line.split(":")[1].strip().rstrip("."))
             free_bytes = (free_pages + speculative_pages) * v_page_size
         except Exception:
+            logger.debug("vm_stat failed, estimating free memory as 25% of total")
             free_bytes = int(total_bytes * 0.25)
     # Linux free memory via /proc/meminfo
     elif sys.platform.startswith("linux") and os.path.exists("/proc/meminfo"):
@@ -151,6 +231,7 @@ def get_system_memory_info() -> dict[str, Any]:
                         free_bytes = int(line.split()[1]) * 1024
                         break
         except Exception:
+            logger.debug("/proc/meminfo read failed, estimating free memory as 25% of total")
             free_bytes = int(total_bytes * 0.25)
     else:
         free_bytes = int(total_bytes * 0.3)
@@ -207,20 +288,17 @@ def get_cached_hardware_profile() -> dict[str, Any]:
     return profile
 
 
-def clear_hardware_profile_cache() -> None:
-    """Clear the hardware profile cache (e.g., on admin request)."""
-    global _hardware_profile_cache
-    _hardware_profile_cache = None
-
-
 def detect_hardware_profile() -> dict[str, Any]:
     """
     Introspect full system hardware topology, accelerator capabilities, and memory.
     Generates intelligent model and concurrency recommendations tailored to the host.
+
+    Torch-free by design: the embedding/serving stack is ONNX-based, so this runs
+    on the ingest hot path. See `detect_accelerator()`.
     """
     os_name = platform.system()
     machine = platform.machine()
-    device = get_optimal_torch_device()
+    device = detect_accelerator()
     mem = get_system_memory_info()
 
     # Detailed device identity
@@ -228,31 +306,28 @@ def detect_hardware_profile() -> dict[str, Any]:
     vram_gb: float | None = None
 
     if device == "cuda":
-        try:
-            import torch
-
-            device_label = torch.cuda.get_device_name(0)
-            props = torch.cuda.get_device_properties(0)
-            vram_gb = round(props.total_memory / (1024**3), 2)
-        except Exception:
-            device_label = "NVIDIA CUDA GPU"
+        vram_gb = _nvidia_vram_gb()
+        device_label = "NVIDIA CUDA GPU" if vram_gb is None else f"NVIDIA CUDA GPU ({vram_gb} GB)"
     elif device == "mps":
         device_label = "Apple Silicon GPU (Metal Performance Shaders)"
         # On Apple Silicon, unified memory is shared between CPU and GPU
         vram_gb = mem["total_gb"]
 
-    # Classify memory tier
-    # 8GB Unified or low available memory requires lean quantized models
+    # Classify memory tier (L-1: each tier gets weights that fit it — a 64GB
+    # host must not be told to run the same model as an 8GB host). All IDs
+    # come from the configured local lists in config/models.yaml.
     total_ram = mem["total_gb"]
     if total_ram <= 8.5:
         tier = "lean_accelerated" if device in ("mps", "cuda") else "lean_cpu"
-        recommended_llm = "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
-        recommended_llm_alt = "granite4.2:3b-q4_K_M"
+        # 1B class (~1GB resident): the only safe weights for 8GB hosts.
+        recommended_llm = "ibm-granite/granite-4.0-h-1b-GGUF:Q4_K_M"
+        recommended_llm_alt = "gemma3:1b"  # ollama 1B fallback
         recommended_embedding = "BAAI/bge-small-en-v1.5"
         max_batch_size = 16
         max_concurrency = 2
     elif total_ram <= 16.5:
         tier = "standard_accelerated" if device in ("mps", "cuda") else "standard_cpu"
+        # 3B class (~2.2GB resident): best quality that fits 16GB hosts.
         recommended_llm = "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
         recommended_llm_alt = "granite4.2:3b-q4_K_M"
         recommended_embedding = "BAAI/bge-small-en-v1.5"
@@ -260,8 +335,10 @@ def detect_hardware_profile() -> dict[str, Any]:
         max_concurrency = 4
     else:
         tier = "high_performance"
+        # 3B class stays the local default (largest configured local weights);
+        # heavy work should route to cloud (nvidia 70B) — see model_nvidia.
         recommended_llm = "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
-        recommended_llm_alt = "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
+        recommended_llm_alt = "ggml-org/SmolLM3-3B-GGUF:Q4_K_M"
         recommended_embedding = "BAAI/bge-small-en-v1.5"
         max_batch_size = 64
         max_concurrency = 8

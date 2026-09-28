@@ -19,12 +19,28 @@ import sys
 from typing import Any
 
 from app.core.exceptions import RetrievalOutageError
+from app.core.llm_ledger import invoke_counted
 from app.core.logging import get_logger
 from app.db.mongodb import Collections, connect_db, get_collection
 from app.retrieval.retriever import retrieve_hybrid_chunks
 from app.verification.verifier import batch_verify_claims_nli
 
 logger = get_logger(__name__)
+
+# The three search tools take the same two arguments. Declared once and copied
+# per tool so a change to the query contract cannot land in only some of them.
+_SEARCH_INPUT_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "query": {"type": "string", "description": "Search query"},
+        "max_results": {
+            "type": "integer",
+            "description": "Maximum results to return (default: 5)",
+        },
+    },
+    "required": ["query"],
+}
+
 
 # Standard MCP Tool Definitions
 MCP_TOOLS: list[dict[str, Any]] = [
@@ -81,50 +97,25 @@ MCP_TOOLS: list[dict[str, Any]] = [
     {
         "name": "tavily_search",
         "description": "AI-native web search using Tavily for clean snippets and source URLs.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query"},
-                "max_results": {
-                    "type": "integer",
-                    "description": "Maximum results to return (default: 5)",
-                },
-            },
-            "required": ["query"],
-        },
+        "inputSchema": dict(_SEARCH_INPUT_SCHEMA),
     },
     {
         "name": "duckduckgo_search",
         "description": "100% free web search using DuckDuckGo (zero API key needed).",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query"},
-                "max_results": {
-                    "type": "integer",
-                    "description": "Maximum results to return (default: 5)",
-                },
-            },
-            "required": ["query"],
-        },
+        "inputSchema": dict(_SEARCH_INPUT_SCHEMA),
     },
     {
         "name": "hybrid_web_search",
         "description": "Concurrent search across Tavily and DuckDuckGo with deduplication.",
         "inputSchema": {
-            "type": "object",
+            **_SEARCH_INPUT_SCHEMA,
             "properties": {
-                "query": {"type": "string", "description": "Search query"},
-                "max_results": {
-                    "type": "integer",
-                    "description": "Maximum results to return (default: 5)",
-                },
+                **_SEARCH_INPUT_SCHEMA["properties"],
                 "provider": {
                     "type": "string",
                     "description": "Search provider: 'tavily', 'duckduckgo', or 'both'",
                 },
             },
-            "required": ["query"],
         },
     },
     {
@@ -169,22 +160,85 @@ MCP_TOOLS: list[dict[str, Any]] = [
 ]
 
 
-async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    """Execute an MCP tool call and return structured tool content."""
+async def handle_tool_call(
+    tool_name: str, arguments: dict[str, Any], *, _internal: bool = False
+) -> dict[str, Any]:
+    """Execute an MCP tool call and return structured tool content.
+
+    Args:
+        _internal: In-process pipeline calls (graph.py web grounding) run
+            inside the already-authenticated API process — no bearer token.
+            External stdio clients must supply service_token. Never exposed
+            over stdio: run_stdio_mcp_server() does not accept this flag.
+    """
+    from app.core.exceptions import AuthenticationError
+    from app.core.security import decode_service_token
     from app.services.search_service import duckduckgo_search, execute_web_search, tavily_search
 
+    def _clamp_results(value: Any, default: int = 5) -> int:
+        try:
+            return max(1, min(int(value), 10))
+        except (TypeError, ValueError):
+            return default
+
+    def _require_service_token(arguments: dict[str, Any]) -> dict[str, Any]:
+        """Extract and validate service token from arguments (returns payload)."""
+        if _internal:
+            return {"sub": "internal-pipeline"}
+        token = arguments.get("service_token")
+        if not token:
+            raise AuthenticationError(
+                "Service token required", detail="MCP tool requires service_token parameter"
+            )
+        try:
+            payload = decode_service_token(token)
+            if not isinstance(payload, dict):
+                raise AuthenticationError("Invalid service token", detail="malformed payload")
+            return payload
+        except AuthenticationError as exc:
+            raise AuthenticationError("Invalid service token", detail=str(exc)) from exc
+
+    async def _enforce_kb_tenant(payload: dict[str, Any], kb_id: str) -> None:
+        """Cross-tenant guard: a service token bound to a KB/user reads only that scope.
+
+        Mirrors the M-2 checks on internal_ingest_document. Unbound (service-level)
+        tokens keep full access; bound tokens are confined. Ownership failures map
+        to AuthenticationError so bound callers can't probe KB existence.
+        """
+        from app.core.exceptions import AuthorizationError, NotFoundError
+        from app.services.kb_service import get_kb
+
+        bound_kb = payload.get("bound_kb_id")
+        if bound_kb and str(bound_kb) != str(kb_id):
+            raise AuthenticationError(
+                "Service token not authorized for this knowledge base",
+                detail="token is bound to a different KB",
+            )
+        bound_user = payload.get("bound_user_id")
+        if bound_user:
+            try:
+                await get_kb(str(kb_id), str(bound_user))
+            except (NotFoundError, AuthorizationError) as exc:
+                raise AuthenticationError(
+                    "Service token not authorized for this knowledge base",
+                    detail="token is bound to a different user",
+                ) from exc
+
     if tool_name == "tavily_search":
-        count = arguments.get("max_results", 5)
+        _require_service_token(arguments)
+        count = _clamp_results(arguments.get("max_results", 5))
         res = await tavily_search(arguments["query"], max_results=count)
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
     elif tool_name == "duckduckgo_search":
-        count = arguments.get("max_results", 5)
+        _require_service_token(arguments)
+        count = _clamp_results(arguments.get("max_results", 5))
         res = await duckduckgo_search(arguments["query"], max_results=count)
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
     elif tool_name == "hybrid_web_search":
-        count = arguments.get("max_results", 5)
+        _require_service_token(arguments)
+        count = _clamp_results(arguments.get("max_results", 5))
         res = await execute_web_search(
             arguments["query"],
             provider=arguments.get("provider", "both"),
@@ -192,7 +246,9 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
         )
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
     if tool_name == "trustrag_search":
+        _payload = _require_service_token(arguments)
         kb_id = arguments["kb_id"]
+        await _enforce_kb_tenant(_payload, kb_id)
         query = arguments["query"]
         # Clamp client-supplied depth: retrieve_hybrid_chunks fans out to
         # dense+sparse searches plus rerank, so unbounded top_k is a DoS vector.
@@ -228,8 +284,9 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
         return {"content": [{"type": "text", "text": json.dumps(results, indent=2)}]}
 
     elif tool_name == "trustrag_verify_claim":
-        claims = arguments["claims"]
-        evidence_texts = arguments["evidence_texts"]
+        _require_service_token(arguments)
+        claims = arguments["claims"][:20]
+        evidence_texts = [t[:4000] for t in arguments["evidence_texts"][:20]]
         fake_chunks = [
             {"chunk_id": f"ev_{idx}", "text": text} for idx, text in enumerate(evidence_texts)
         ]
@@ -237,8 +294,21 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
         return {"content": [{"type": "text", "text": json.dumps(verdicts, indent=2)}]}
 
     elif tool_name == "trustrag_list_kbs":
+        _payload = _require_service_token(arguments)
         coll = get_collection(Collections.KNOWLEDGE_BASES)
-        cursor = coll.find({}, {"name": 1, "description": 1, "document_count": 1})
+        # Bound tokens enumerate only their tenant's KBs; unbound service
+        # tokens keep the full listing.
+        _filter: dict[str, Any] = {}
+        bound_user = _payload.get("bound_user_id")
+        if bound_user:
+            from bson import ObjectId
+
+            if not ObjectId.is_valid(str(bound_user)):
+                raise AuthenticationError(
+                    "Service token not authorized", detail="invalid bound user"
+                )
+            _filter = {"user_id": ObjectId(str(bound_user))}
+        cursor = coll.find(_filter, {"name": 1, "description": 1, "document_count": 1})
         kbs = []
         async for doc in cursor:
             kbs.append(
@@ -252,17 +322,27 @@ async def handle_tool_call(tool_name: str, arguments: dict[str, Any]) -> dict[st
         return {"content": [{"type": "text", "text": json.dumps(kbs, indent=2)}]}
 
     elif tool_name == "local_llm_chat":
+        _require_service_token(arguments)
+        from app.core.local_llm import LOCAL_LLM_PROVIDERS
         from app.core.model_registry import get_llm
 
-        provider = arguments.get("provider", "ollama")
+        # Local-only tool: never route a service-token call to metered cloud
+        # providers (a leaked token must not become a spend vector).
+        provider = str(arguments.get("provider", "ollama") or "ollama").strip().lower()
+        if provider not in LOCAL_LLM_PROVIDERS:
+            raise ValueError(
+                f"local_llm_chat supports local providers only "
+                f"({sorted(LOCAL_LLM_PROVIDERS)}), got '{provider}'"
+            )
         model = arguments.get("model")
-        prompt = arguments["prompt"]
+        prompt = str(arguments["prompt"])[:8000]
         llm = get_llm(provider=provider, model=model)
-        res = await llm.ainvoke(prompt)
+        res = await invoke_counted(llm, prompt)
         text = res.content if hasattr(res, "content") else str(res)
         return {"content": [{"type": "text", "text": text}]}
 
     elif tool_name == "local_llm_status":
+        _require_service_token(arguments)
         from app.core.config import get_settings
         from app.core.local_llm import check_llamacpp_status, check_ollama_status
 

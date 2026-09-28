@@ -136,9 +136,12 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
   )
 })
 
-function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
+export function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
   const [expanded, setExpanded] = useState(false)
-  const integrityOk = chunk.integrity_status === 'VERIFIED' || !chunk.integrity_status
+  // Fail-closed display: only an explicit VERIFIED earns the shield. Missing
+  // status (legacy rows) renders as UNVERIFIED, never as verified.
+  const integrityOk = chunk.integrity_status === 'VERIFIED'
+  const integrityLabel = chunk.integrity_status || 'UNVERIFIED'
   const isWeb = Boolean(chunk.url || chunk.method?.includes('web') || chunk.method?.includes('mcp') || chunk.chunk_id?.startsWith('web_'))
   const isLong = chunk.text && chunk.text.length > 260
 
@@ -179,10 +182,10 @@ function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
           </motion.button>
           {integrityOk
             ? <Shield size={13} className="text-emerald-400" title="Cryptographic provenance verified" />
-            : <ShieldAlert size={13} className="text-amber-400" title={chunk.integrity_status} />
+            : <ShieldAlert size={13} className="text-amber-400" title={integrityLabel} />
           }
-          {chunk.integrity_status && !integrityOk && (
-            <span className="text-xs text-amber-400">{chunk.integrity_status}</span>
+          {!integrityOk && (
+            <span className="text-xs text-amber-400">{integrityLabel}</span>
           )}
         </div>
       </div>

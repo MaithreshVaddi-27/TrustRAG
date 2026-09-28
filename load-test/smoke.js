@@ -5,6 +5,8 @@
  *   - GET /api/v1/health            (public liveness: {status} only)
  *   - GET /api/v1/health/detailed   (authenticated: services + models)
  *   - GET /api/v1/knowledge-bases   (authenticated, MongoDB read path)
+ *   - GET /api/v1/metrics           (Phase 10: public Prometheus exposition)
+ *   - GET /api/v1/analyses          (Phase 10: authenticated analyses list read path)
  *
  * Auth is minted once in setup() and shared across VUs to stay well under the
  * per-IP auth rate ceiling; /knowledge-bases is intentionally NOT rate-limited.
@@ -93,6 +95,20 @@ export default function (data) {
   check(kbs, {
     'knowledge-bases returns 200': (r) => r.status === 200,
     'knowledge-bases is a list': (r) => Array.isArray(JSON.parse(r.body).items ?? JSON.parse(r.body)),
+  })
+
+  // Phase 10: Prometheus exposition must stay cheap under load.
+  const metrics = http.get(`${API_BASE}/api/v1/metrics`)
+  check(metrics, {
+    'metrics returns 200': (r) => r.status === 200,
+    'metrics exposes http counters': (r) =>
+      (r.body || '').includes('trustrag_http_requests_total'),
+  })
+
+  // Phase 10: analyses list read path (no LLM — list only, no pipeline run).
+  const analyses = http.get(`${API_BASE}/api/v1/analyses`, { headers })
+  check(analyses, {
+    'analyses returns 200 or 404': (r) => r.status === 200 || r.status === 404,
   })
 
   sleep(0.1)

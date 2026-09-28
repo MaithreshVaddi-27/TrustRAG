@@ -32,7 +32,6 @@ class KBResponse(BaseModel):
     # Embedding space pin (set on first ingest). Analyses MUST query with this
     # model — cross-space queries return silent garbage. None = legacy KB.
     embedding_model: str | None = None
-    embedding_provider: str | None = None
     embedding_dim: int | None = None
 
 

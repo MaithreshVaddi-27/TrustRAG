@@ -14,6 +14,7 @@ from app.generation.generator import (
     format_context_with_chunk_indices,
     generate_grounded_answer,
     strip_stray_abstain,
+    strip_think_blocks,
 )
 
 
@@ -141,6 +142,22 @@ def test_strip_stray_abstain_matrix():
     assert strip_stray_abstain("ABSTAIN\nsee above") == "ABSTAIN"
 
 
+def test_strip_think_blocks_matrix():
+    """Thinking traces must never reach decomposition/NLI or the UI."""
+    answer = "The capital is Paris [Segment 1]."
+    assert strip_think_blocks(f"<think>Let me reason.</think>\n\n{answer}") == f"\n\n{answer}"
+    assert strip_think_blocks(f"{answer}\n<thinking>hmm</thinking>") == f"{answer}\n"
+    # Unclosed trailing opener (cut mid-thought): drop it and everything after.
+    assert strip_think_blocks(f"{answer}\n<think>unfinished") == f"{answer}\n"
+    # Case-insensitive + attributes.
+    assert strip_think_blocks('<THINK name="x">t</THINK>' + answer) == answer
+    # No markers: byte-identical passthrough.
+    assert strip_think_blocks(answer) == answer
+    assert strip_think_blocks("") == ""
+    # Prose mentioning "think" without tags survives.
+    assert strip_think_blocks("I think this is right.") == "I think this is right."
+
+
 def test_format_dedupes_punctuation_variants():
     """Boundary variants ('mined. in' vs 'mined in') must not consume budget twice."""
     base = (
@@ -167,3 +184,42 @@ def test_format_dedupes_punctuation_variants():
     context, indices = format_context_with_chunk_indices(chunks, max_chars=10000)
     assert len(indices) == 2
     assert "Segment 3" not in context
+
+
+def test_strip_citation_markers_removes_all_refs():
+    from app.generation.generator import strip_citation_markers
+
+    raw = (
+        "### Contents\n"
+        "The knowledge base holds domain knowledge [Segment 2].\n"
+        "* **Concept hierarchies:** organize attributes [Segment 6].\n"
+        "* **User beliefs:** assess interestingness [Segment 6]."
+    )
+    cleaned = strip_citation_markers(raw)
+
+    assert "[Segment" not in cleaned
+    assert "Segment 2" not in cleaned
+    # Prose and markdown structure survive; no double spaces or dangling spaces
+    assert "### Contents" in cleaned
+    assert "holds domain knowledge." in cleaned
+    assert "**Concept hierarchies:** organize attributes." in cleaned
+    assert "  " not in cleaned
+    assert " ." not in cleaned
+
+
+def test_strip_citation_markers_is_noop_without_markers():
+    from app.generation.generator import strip_citation_markers
+
+    plain = "### Answer\nA grounded sentence with no refs.\n* bullet two"
+    assert strip_citation_markers(plain) == plain
+    assert strip_citation_markers("") == ""
+
+
+def test_strip_citation_markers_leaves_bracketless_prose():
+    from app.generation.generator import strip_citation_markers
+
+    # Only the bracketed form is provenance; prose mentions are real content.
+    text = "Segment 2 states that patterns must be interesting [Segment 3]."
+    cleaned = strip_citation_markers(text)
+    assert "Segment 2 states" in cleaned
+    assert "[Segment 3]" not in cleaned

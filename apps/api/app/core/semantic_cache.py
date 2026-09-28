@@ -30,7 +30,7 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Cache directory for persistence. `parents[2]` resolves to apps/api/ — the same
+# Cache directory for persistence. `parents[2]` resolves to apps/api/ -- the same
 # base the embedding SQLite cache (disk_cache.py) and model-discovery snapshot
 # (local_llm.py) use, so CACHE_DIR coalesces all three caches into one directory.
 CACHE_DIR = Path(
@@ -41,13 +41,21 @@ CACHE_DIR = Path(
 )
 PERSISTENCE_FILE = CACHE_DIR / "semantic_cache.json"
 
+# Configurable limits (via env vars for lean/prod tiers)
+_MAX_CACHE_ENTRIES = int(os.getenv("SEMANTIC_CACHE_MAX_ENTRIES", "500"))
+_SEMANTIC_CACHE_TTL_SECONDS = int(
+    os.getenv("SEMANTIC_CACHE_TTL_SECONDS", str(24 * 3600))  # 24h default
+)
+_MAX_RESPONSE_SIZE_CHARS = int(
+    os.getenv("SEMANTIC_CACHE_MAX_RESPONSE_CHARS", "20000")  # cap response payload
+)
+
 # In-memory fast semantic cache storage using deque for O(1) FIFO eviction
-# Each entry: {"kb_id", "query", "vector", "response", "timestamp"} — see insert()
-_SEMANTIC_CACHE: deque[dict[str, Any]] = deque(maxlen=500)
+# Each entry: {"kb_id", "query", "vector", "response", "timestamp"} -- see insert()
+_SEMANTIC_CACHE: deque[dict[str, Any]] = deque(maxlen=_MAX_CACHE_ENTRIES)
 _CACHE_LOCK = threading.RLock()  # Guards all reads/writes to _SEMANTIC_CACHE
 _MATRIX_CACHE: np.ndarray | None = None  # Stacked vectors for vectorized cosine
 _MATRIX_DIRTY = True  # Flag to rebuild matrix when cache changes
-_MAX_CACHE_ENTRIES = 500
 _PERSISTENCE_INTERVAL_SECONDS = 300  # Persist every 5 minutes
 _last_persist_time = 0.0
 
@@ -97,6 +105,10 @@ def _load_persisted_cache() -> None:
         for entry in data:
             if not all(k in entry for k in ("kb_id", "query", "vector", "response", "timestamp")):
                 continue
+            # TTL filter on load (skip expired entries)
+            if _SEMANTIC_CACHE_TTL_SECONDS > 0:
+                if entry.get("timestamp", 0) < time.time() - _SEMANTIC_CACHE_TTL_SECONDS:
+                    continue
             # Convert vector back to numpy array
             entry["vector"] = np.array(entry["vector"], dtype=np.float32)
             _SEMANTIC_CACHE.append(entry)
@@ -151,6 +163,31 @@ def _maybe_persist() -> None:
         _persist_cache()
 
 
+def _cleanup_expired_entries() -> int:
+    """Remove entries older than TTL. Returns count removed."""
+    global _SEMANTIC_CACHE, _MATRIX_DIRTY
+    if _SEMANTIC_CACHE_TTL_SECONDS <= 0:
+        return 0
+    now = time.time()
+    cutoff = now - _SEMANTIC_CACHE_TTL_SECONDS
+    with _CACHE_LOCK:
+        original_len = len(_SEMANTIC_CACHE)
+        # Filter in-place
+        _SEMANTIC_CACHE = deque(
+            (e for e in _SEMANTIC_CACHE if e.get("timestamp", 0) >= cutoff),
+            maxlen=_MAX_CACHE_ENTRIES,
+        )
+        removed = original_len - len(_SEMANTIC_CACHE)
+        if removed > 0:
+            _MATRIX_DIRTY = True
+            logger.debug(
+                "Semantic cache TTL cleanup",
+                removed=removed,
+                ttl_seconds=_SEMANTIC_CACHE_TTL_SECONDS,
+            )
+        return removed
+
+
 def cosine_similarity(v1: list[float] | np.ndarray, v2: list[float] | np.ndarray) -> float:
     """Compute cosine similarity between two normalized or raw floating point vectors."""
     v1_arr = np.asarray(v1, dtype=np.float32)
@@ -168,32 +205,6 @@ def cosine_similarity(v1: list[float] | np.ndarray, v2: list[float] | np.ndarray
     return float(np.dot(v1_arr, v2_arr) / (norm_a * norm_b))
 
 
-def _vectorized_cosine(query_vector: np.ndarray) -> np.ndarray:
-    """
-    Compute cosine similarity of query vector vs all cached vectors (vectorized).
-
-    Returns array of similarity scores (one per cache entry).
-    """
-    global _MATRIX_CACHE, _MATRIX_DIRTY
-
-    if _MATRIX_DIRTY:
-        _rebuild_matrix()
-
-    if _MATRIX_CACHE is None or _MATRIX_CACHE.size == 0:
-        return np.array([])
-
-    # Normalize query vector
-    query_norm = np.linalg.norm(query_vector)
-    if query_norm == 0.0:
-        return np.zeros(_MATRIX_CACHE.shape[0], dtype=np.float32)
-
-    query_normalized = query_vector / query_norm
-
-    # Vectorized cosine similarity: matrix @ query_vector
-    similarities = _MATRIX_CACHE @ query_normalized
-    return similarities
-
-
 def check_semantic_cache(
     query: str,
     kb_id: str,
@@ -208,89 +219,78 @@ def check_semantic_cache(
     Entries are namespaced by embedding model so a re-index with a different
     embedding space can never serve stale vectors/answers (SEC correctness).
     """
-    if not query_vector:
-        return None
+    # Periodic TTL cleanup (cheap, runs under lock)
+    _cleanup_expired_entries()
 
-    query_arr = np.asarray(query_vector, dtype=np.float32)
-    model_key = (embedding_model or "").strip().lower()
-
-    def _entry_matches(entry: dict[str, Any]) -> bool:
-        if entry.get("kb_id") != kb_id:
-            return False
-        if model_key and str(entry.get("embedding_model", "") or "").strip().lower() != model_key:
-            return False
-        return True
-
+    # The stacked-vector fast path is positional: rebuild it from the current
+    # deque whenever mutations (insert/evict/TTL/load) flagged it dirty.
+    # Without this the matrix stays None forever and every lookup pays the
+    # scalar Python loop — or worse, a stale matrix misaligns with entries.
+    global _MATRIX_CACHE
     with _CACHE_LOCK:
-        # 1. Exact string fast path (check recent entries first)
-        normalized_q = query.strip().lower()
-        for entry in reversed(_SEMANTIC_CACHE):
-            if _entry_matches(entry):
-                if entry["query"].strip().lower() == normalized_q:
-                    if len(entry.get("vector", [])) != len(query_vector):
-                        continue  # dimension change: never serve stale space
-                    logger.info("Semantic cache exact hit", query=query, kb_id=kb_id)
-                    return entry["response"]
-
-        # 2. Vector cosine semantic similarity path using vectorized operations
-        if len(_SEMANTIC_CACHE) == 0:
-            return None
-
-        # Filter entries by kb_id (+ embedding model + vector dim) for
-        # vectorized search so mixed-dimension spaces never matmul.
-        kb_indices = [
-            i
-            for i, e in enumerate(_SEMANTIC_CACHE)
-            if _entry_matches(e) and len(e.get("vector", [])) == len(query_vector)
-        ]
-        if not kb_indices:
-            return None
-
-        # Get similarities for this KB's entries only
         if _MATRIX_DIRTY:
             _rebuild_matrix()
 
-        if _MATRIX_CACHE is not None:
-            # Use vectorized cosine for this KB's subset
-            kb_matrix = _MATRIX_CACHE[kb_indices]
-            query_norm = np.linalg.norm(query_arr)
-            if query_norm > 0:
-                query_normalized = query_arr / query_norm
-                similarities = kb_matrix @ query_normalized
-                best_idx = int(np.argmax(similarities))
-                best_sim = float(similarities[best_idx])
+    if not _SEMANTIC_CACHE:
+        return None
 
-                if best_sim >= similarity_threshold:
-                    best_entry = _SEMANTIC_CACHE[kb_indices[best_idx]]
-                    logger.info(
-                        "Semantic cache vector hit",
-                        query=query,
-                        matched_similarity=round(best_sim, 4),
-                        threshold=similarity_threshold,
-                        kb_id=kb_id,
-                    )
-                    return best_entry["response"]
-        else:
-            # Fallback to scalar cosine
-            best_sim = 0.0
-            best_match: dict[str, Any] | None = None
-            for idx in kb_indices:
-                entry = _SEMANTIC_CACHE[idx]
-                sim = cosine_similarity(query_arr, entry["vector"])
-                if sim > best_sim:
-                    best_sim = sim
-                    if sim >= similarity_threshold:
-                        best_match = entry["response"]
+    query_arr = np.asarray(query_vector, dtype=np.float32)
+    if query_arr.size == 0:
+        return None
 
-            if best_match and best_sim >= similarity_threshold:
+    # Filter by KB + embedding model namespace
+    model_ns = (embedding_model or "").strip().lower()
+    with _CACHE_LOCK:
+        kb_indices = [
+            i
+            for i, e in enumerate(_SEMANTIC_CACHE)
+            if e.get("kb_id") == kb_id and e.get("embedding_model", "").strip().lower() == model_ns
+        ]
+
+    if not kb_indices:
+        return None
+
+    # Fast path: vectorized cosine for same-dimension vectors
+    if _MATRIX_CACHE is not None and _MATRIX_CACHE.size > 0:
+        kb_matrix = _MATRIX_CACHE[kb_indices]
+        query_norm = np.linalg.norm(query_arr)
+        if query_norm > 0:
+            query_normalized = query_arr / query_norm
+            similarities = kb_matrix @ query_normalized
+            best_idx = int(np.argmax(similarities))
+            best_sim = float(similarities[best_idx])
+
+            if best_sim >= similarity_threshold:
+                best_entry = _SEMANTIC_CACHE[kb_indices[best_idx]]
                 logger.info(
-                    "Semantic cache vector hit (fallback)",
+                    "Semantic cache vector hit",
                     query=query,
                     matched_similarity=round(best_sim, 4),
                     threshold=similarity_threshold,
                     kb_id=kb_id,
                 )
-                return best_match
+                return best_entry["response"]
+    else:
+        # Fallback to scalar cosine
+        best_sim = 0.0
+        best_match: dict[str, Any] | None = None
+        for idx in kb_indices:
+            entry = _SEMANTIC_CACHE[idx]
+            sim = cosine_similarity(query_arr, entry["vector"])
+            if sim > best_sim:
+                best_sim = sim
+                if sim >= similarity_threshold:
+                    best_match = entry["response"]
+
+        if best_match and best_sim >= similarity_threshold:
+            logger.info(
+                "Semantic cache vector hit (fallback)",
+                query=query,
+                matched_similarity=round(best_sim, 4),
+                threshold=similarity_threshold,
+                kb_id=kb_id,
+            )
+            return best_match
 
     return None
 
@@ -318,7 +318,14 @@ def store_semantic_cache(
         return
 
     safe_response = _json_safe(response_data)
-    global _SEMANTIC_CACHE, _MATRIX_DIRTY
+    # Cap response size to prevent unbounded memory growth
+    if len(str(safe_response)) > _MAX_RESPONSE_SIZE_CHARS:
+        logger.debug("Semantic cache response too large, skipping", size=len(str(safe_response)))
+        return
+
+    # Periodic TTL cleanup
+    _cleanup_expired_entries()
+
     with _CACHE_LOCK:
         entry = {
             "kb_id": kb_id,
@@ -329,41 +336,54 @@ def store_semantic_cache(
             "embedding_model": (embedding_model or "").strip().lower(),
         }
         _SEMANTIC_CACHE.append(entry)
-        _MATRIX_DIRTY = True
+        _MATRIX_DIRTY = True  # noqa: N806 — module-level cache flag, UPPER by convention
 
     _maybe_persist()
-    logger.debug("Stored response in semantic cache", query=query, kb_id=kb_id)
 
 
-def invalidate_semantic_cache(kb_id: str) -> int:
-    """Remove all cached answers for a knowledge base and persist the removal."""
-    global _SEMANTIC_CACHE, _MATRIX_DIRTY
-    removed = 0
-    with _CACHE_LOCK:
-        kept: deque[dict[str, Any]] = deque(maxlen=_MAX_CACHE_ENTRIES)
-        while _SEMANTIC_CACHE:
-            entry = _SEMANTIC_CACHE.popleft()
-            if entry["kb_id"] == kb_id:
-                removed += 1
-            else:
-                kept.append(entry)
-        _SEMANTIC_CACHE = kept
-        _MATRIX_DIRTY = True
+def invalidate_kb_cache(kb_id: str, persist: bool = True) -> int:
+    """Remove all cached answers for a knowledge base and persist the removal.
 
-    if removed:
-        _persist_cache()
-        logger.info("Invalidated semantic cache entries", kb_id=kb_id, removed=removed)
-    return removed
-
-
-def clear_semantic_cache(persist: bool = False) -> None:
-    """Clear the semantic cache (useful for testing)."""
+    Returns:
+        Number of entries removed.
+    """
     global _SEMANTIC_CACHE, _MATRIX_DIRTY
     with _CACHE_LOCK:
-        _SEMANTIC_CACHE.clear()
+        original_len = len(_SEMANTIC_CACHE)
+        _SEMANTIC_CACHE = deque(
+            (e for e in _SEMANTIC_CACHE if e.get("kb_id") != kb_id),
+            maxlen=_MAX_CACHE_ENTRIES,
+        )
+        removed = original_len - len(_SEMANTIC_CACHE)
         _MATRIX_DIRTY = True
     if persist:
         _persist_cache()
+    return removed
+
+
+def load_cache() -> int:
+    """Load semantic cache from disk. Call explicitly at application startup.
+
+    Returns:
+        Number of entries loaded.
+    """
+    _load_persisted_cache()
+    return len(_SEMANTIC_CACHE)
+
+
+def reset_module_state() -> None:
+    """Completely reset module state for test isolation.
+
+    Clears in-memory cache, matrix, and persists empty state to disk.
+    Use in test fixtures for complete isolation between tests.
+    """
+    global _SEMANTIC_CACHE, _MATRIX_CACHE, _MATRIX_DIRTY, _last_persist_time
+    with _CACHE_LOCK:
+        _SEMANTIC_CACHE = deque(maxlen=_MAX_CACHE_ENTRIES)
+        _MATRIX_CACHE = None
+        _MATRIX_DIRTY = True
+        _last_persist_time = 0.0
+    _persist_cache()
 
 
 def prune_context_tokens(context: str, max_chars: int = 6000) -> str:
@@ -412,5 +432,5 @@ def prune_context_tokens(context: str, max_chars: int = 6000) -> str:
     return pruned
 
 
-# Load persisted cache on module import
-_load_persisted_cache()
+# Module-level cache is lazy-loaded; call load_cache() explicitly at startup
+# _load_persisted_cache()  # Disabled at import time for test isolation

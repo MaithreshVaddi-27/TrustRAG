@@ -1,18 +1,19 @@
 """
-TRUSTRAG — Local LLM Client implementations for Ollama and llama.cpp.
+TRUSTRAG — Local LLM Client implementations for Ollama, llama.cpp, and MLX.
 
 Provides first-class LangChain BaseChatModel interfaces with zero native
 compilation dependencies by communicating directly with Ollama's local REST API
-and llama.cpp's OpenAI-compatible server API via async httpx.
+and the OpenAI-compatible server APIs of llama.cpp (llama-server) and Apple
+MLX (mlx_lm.server) via async httpx.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
 import threading
+import time
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, TypeVar
@@ -25,7 +26,10 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field
 
+from app.core.concurrency import get_global_semaphore
+from app.core.config import get_model_config
 from app.core.exceptions import ConfigurationError, LLMUnavailableError
+from app.core.llm_ledger import invoke_counted
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -36,16 +40,17 @@ logger = get_logger(__name__)
 _HTTP_CLIENTS: dict[tuple[str, float, int], httpx.AsyncClient] = {}
 _HTTP_CLIENTS_LOCK = threading.Lock()
 
-# OPT (local-LLM load): local inference servers are serial (llama-server -np 2,
-# Ollama default queue). Without an LLM-level semaphore, 2 concurrent analyses
-# x ~9 sequential calls pile up into timeout cascades. Serialize local
-# generations here; the analysis-level semaphore in analysis_service.py is
-# per-process and too coarse to protect the single inference server.
-_LOCAL_LLM_SEMAPHORE = asyncio.Semaphore(int(os.getenv("LOCAL_LLM_MAX_CONCURRENCY", "1")))
+
+# Shared global semaphore for local LLM inference.
+# Managed by app.core.concurrency.get_global_semaphore() - hardware-aware
+# (2/4/8 based on RAM) with LOCAL_LLM_MAX_CONCURRENCY env override.
+def _get_local_llm_semaphore() -> asyncio.Semaphore:
+    """Get the global concurrency semaphore for local LLM inference."""
+    return get_global_semaphore()
 
 
 def _shared_http_client(base_url: str, timeout: float) -> httpx.AsyncClient:
-    """Return a per-event-loop, per-endpoint pooled AsyncClient."""
+    """Return a per-event-loop, per-endpoint pooled AsyncClient with connection limits."""
     try:
         loop_id = id(asyncio.get_running_loop())
     except RuntimeError:
@@ -54,7 +59,19 @@ def _shared_http_client(base_url: str, timeout: float) -> httpx.AsyncClient:
     with _HTTP_CLIENTS_LOCK:
         client = _HTTP_CLIENTS.get(key)
         if client is None or client.is_closed:
-            client = httpx.AsyncClient(timeout=timeout)
+            # Connection pooling: keep-alive for local inference servers.
+            # Split timeouts: a hung connect/pool acquisition fails fast
+            # (10 s) while slow generations keep the full read budget.
+            limits = httpx.Limits(
+                max_keepalive_connections=5,
+                max_connections=10,
+                keepalive_expiry=30.0,
+            )
+            client = httpx.AsyncClient(
+                timeout=httpx.Timeout(timeout, connect=10.0, pool=10.0),
+                limits=limits,
+                follow_redirects=True,
+            )
             _HTTP_CLIENTS[key] = client
         return client
 
@@ -78,7 +95,9 @@ T = TypeVar("T", bound=BaseModel)
 # Providers served by a local inference process (single-tenant, serial).
 # Output caps and concurrency guards apply ONLY here — cloud chat models use
 # different parameter names (e.g. max_output_tokens) and must not receive ours.
-LOCAL_LLM_PROVIDERS = frozenset({"ollama", "llama_cpp", "llamacpp"})
+# "mlx" (mlx_lm.server, Apple Silicon) speaks the same OpenAI-compatible
+# protocol as llama.cpp, so it shares the client, caps, and semaphore.
+LOCAL_LLM_PROVIDERS = frozenset({"ollama", "llama_cpp", "llamacpp", "mlx"})
 
 
 def local_cap_kwargs(provider: str | None, max_tokens: int) -> dict[str, int]:
@@ -90,6 +109,65 @@ def local_cap_kwargs(provider: str | None, max_tokens: int) -> dict[str, int]:
     """
     if (provider or "").strip().lower() in LOCAL_LLM_PROVIDERS:
         return {"max_tokens": int(max_tokens)}
+    return {}
+
+
+# Model ids whose thinking trace shares the completion budget with the
+# answer (observed live: muse-glimmer-30b spends ~475 tokens reasoning about
+# trivia; qwen3:1.7b on Ollama burns small num_predict budgets entirely in
+# the thinking trace → empty content → ABSTAIN). Verification caps sized
+# for direct-answer models truncate their verdict JSON → false NEUTRALs →
+# failed reliability checks.
+REASONING_MODEL_KEYWORDS = (
+    "glimmer",
+    "gpt-oss",
+    "reasoning",
+    "deepseek-r1",
+    "r1-",
+    "qwen3",
+    "qwq",
+    "think",
+)
+
+
+def is_reasoning_model(model: str | None) -> bool:
+    """True when the model id looks like a thinking/reasoning model."""
+    name = (model or "").lower()
+    return any(kw in name for kw in REASONING_MODEL_KEYWORDS)
+
+
+def verification_cap_kwargs(
+    provider: str | None, model: str | None, max_tokens: int
+) -> dict[str, int]:
+    """Task-sized output caps for verification calls on any provider.
+
+    Direct-answer models keep the lean caps. Thinking models (local or cloud)
+    get headroom with a 1024-token floor: live probes show muse-glimmer-30b
+    spending ~475 tokens reasoning about trivia and starving a 256-token
+    rewrite to empty, while 512+ succeeds — a starved call costs a full retry
+    spiral, dwarfing the extra tokens.
+
+    Cloud providers are capped per call too, using each client's own parameter
+    name. Falling back to the instance default here is NOT safe: the fused
+    decompose+verify call asks for 1024 tokens to serialise verdicts for up to
+    `cost_controls.cloud_tier.max_verification_claims` claims, but the instance
+    default is 512 (`verification.max_output_tokens`). The result is mid-JSON
+    truncation, the fused call returning None, and a silent fallback to the
+    two-step path — 3 billed calls instead of 1 on the common path.
+    """
+    norm = (provider or "").strip().lower()
+    roomy = max(int(max_tokens) * 2, 1024)
+    cap = roomy if is_reasoning_model(model) else int(max_tokens)
+
+    if norm in LOCAL_LLM_PROVIDERS:
+        return {"max_tokens": cap}
+    if norm in ("gemini", "google_genai"):
+        return {"max_output_tokens": cap}
+    if norm in ("nvidia", "nim"):
+        # ChatNVIDIA deprecates `max_tokens` (warns on every call); the
+        # OpenAI-compatible spelling is `max_completion_tokens` (audit B-18).
+        return {"max_completion_tokens": cap}
+    # Unknown provider: inject nothing rather than risk a foreign kwarg.
     return {}
 
 
@@ -181,18 +259,59 @@ class ChatOllamaClient(BaseChatModel):
         dict_messages = _convert_messages_to_dict(messages)
         endpoint = f"{self.base_url.rstrip('/')}/api/chat"
 
+        cfg = get_model_config()
+        # Use config values with env override, fallback to hardcoded defaults
+        default_num_ctx = cfg.local_llm_num_ctx
+        default_num_batch = cfg.local_llm_num_batch  # Not used by Ollama, but kept for consistency
+        default_keep_alive = cfg.local_llm_keep_alive
+
+        # Optimization flags from models.yaml
+        use_prompt_cache = cfg.prompt_caching
+
+        # Speculative Decoding / Early Exit (Phase 2.5)
+        min_p = cfg.local_llm_min_p
+        top_k = cfg.local_llm_top_k
+        early_exit_eos = cfg.local_llm_early_exit_eos
+
         options: dict[str, Any] = {
             "temperature": kwargs.get("temperature", self.temperature),
             "top_p": kwargs.get("top_p", self.top_p),
             # OPT (local-LLM load): 2048 overflowed with 3000-char contexts +
             # system prompt and produced truncated stubs. 4096 matches
             # llama-server -c 4096 and fits the reduced context budget.
-            "num_ctx": kwargs.get("num_ctx", 4096),
+            "num_ctx": kwargs.get("num_ctx", default_num_ctx),
             "num_predict": kwargs.get("max_tokens", 1024),
             "repeat_penalty": kwargs.get("repeat_penalty", self.repeat_penalty),
+            # Batch size for prompt processing (Ollama uses num_batch;
+            # accept n_batch alias since callers may use llama.cpp naming).
+            "num_batch": kwargs.get("num_batch", kwargs.get("n_batch", default_num_batch)),
+            # Min-p sampling: only tokens with p >= min_p * p_max are considered
+            "min_p": min_p if min_p > 0.0 else None,
+            # Top-k sampling: restrict to top K tokens
+            "top_k": top_k if top_k > 0 else None,
         }
+        # Clean up None values
+        options = {k: v for k, v in options.items() if v is not None}
+        # Ollama prompt caching: num_keep specifies how many prompt tokens to keep in KV cache
+        # -1 = keep all (full prompt caching), 0 = disable, N = keep first N tokens
+        if use_prompt_cache:
+            options["num_keep"] = kwargs.get("num_keep", -1)
+        # Early exit on EOS for Ollama (speculative decoding / early exit - Phase 2.5)
+        # Union with caller-provided stops instead of overwriting (P1-1 fix).
+        # NOTE: never add "\n\n" here — thinking models (qwen3, deepseek-r1)
+        # open with "<think>\n\n", so a blank-line stop decapitates every
+        # answer to a stub (observed live: qwen3:1.7b → empty content →
+        # deterministic ABSTAIN across all recovery retries). It also
+        # truncates ordinary multi-paragraph answers mid-way.
+        _ollama_stops: list[str] = []
+        if early_exit_eos:
+            # Real end-of-sequence tokens only.
+            _ollama_stops.extend(["<|endoftext|>", "<|eot_id|>"])
         if stop:
-            options["stop"] = stop
+            _ollama_stops.extend(stop)
+        if _ollama_stops:
+            seen = set()
+            options["stop"] = [s for s in _ollama_stops if not (s in seen or seen.add(s))]
 
         requested_model = kwargs.get("model", self.model)
         target_model = requested_model
@@ -202,7 +321,8 @@ class ChatOllamaClient(BaseChatModel):
             "messages": dict_messages,
             "stream": False,
             "options": options,
-            "keep_alive": kwargs.get("keep_alive", "5m"),  # Release GPU memory after 5 min idle
+            # Release GPU memory after idle period
+            "keep_alive": kwargs.get("keep_alive", default_keep_alive),
         }
 
         requested_format = kwargs.get("format", self.format)
@@ -210,7 +330,7 @@ class ChatOllamaClient(BaseChatModel):
             payload["format"] = requested_format
 
         try:
-            async with _LOCAL_LLM_SEMAPHORE:
+            async with _get_local_llm_semaphore():
                 client = _shared_http_client(self.base_url, self.timeout)
                 res = await client.post(endpoint, json=payload)
                 if res.status_code == 404:
@@ -265,7 +385,9 @@ class ChatOllamaClient(BaseChatModel):
 class ChatLlamaCppClient(BaseChatModel):
     """
     Client for llama.cpp HTTP server (llama-server) via its OpenAI-compatible
-    /v1/chat/completions API.
+    /v1/chat/completions API. Also serves Apple MLX (mlx_lm.server), which
+    speaks the same protocol — the registry constructs this client for the
+    `mlx` provider with the MLX base URL and model id.
     """
 
     base_url: str = Field(default="http://127.0.0.1:8080/v1")
@@ -310,6 +432,41 @@ class ChatLlamaCppClient(BaseChatModel):
         dict_messages = _convert_messages_to_dict(messages)
         endpoint = f"{self.base_url.rstrip('/')}/chat/completions"
 
+        cfg = get_model_config()
+        # Use config values with env override, fallback to hardcoded defaults
+        default_num_batch = cfg.local_llm_num_batch
+
+        # Optimization flags from models.yaml (Phase 1: wire existing flags)
+        kv_cache_quant = cfg.kv_cache_quantization
+        use_flash_attn = cfg.flash_attention
+        use_prompt_cache = cfg.prompt_caching
+
+        # Speculative Decoding / Early Exit (Phase 2.5)
+        min_p = cfg.local_llm_min_p
+        top_k = cfg.local_llm_top_k
+        early_exit_eos = cfg.local_llm_early_exit_eos
+
+        # num_ctx is advisory for llama.cpp/MLX: the server context is fixed at
+        # startup (-c). Log when the request needs more than the server offers.
+        requested_num_ctx = kwargs.get("num_ctx", kwargs.get("n_ctx"))
+        if requested_num_ctx is not None and int(requested_num_ctx) > cfg.local_llm_num_ctx:
+            logger.warning(
+                "Requested num_ctx exceeds configured server context",
+                requested=requested_num_ctx,
+                server_ctx=cfg.local_llm_num_ctx,
+            )
+
+        # n_batch / num_batch alias: callers may use either naming.
+        requested_batch = kwargs.get("n_batch", kwargs.get("num_batch", default_num_batch))
+
+        # Union early-exit EOS stops with caller-provided stops (P1-1 fix).
+        _llama_stops: list[str] = []
+        if early_exit_eos:
+            _llama_stops.extend(["<|endoftext|>", "<|im_end|>", "</s>"])
+        if stop:
+            _llama_stops.extend(stop)
+        _llama_stops = list(dict.fromkeys(_llama_stops)) or None  # type: ignore[assignment]
+
         payload: dict[str, Any] = {
             "model": kwargs.get("model", self.model),
             "messages": dict_messages,
@@ -317,17 +474,30 @@ class ChatLlamaCppClient(BaseChatModel):
             "top_p": kwargs.get("top_p", self.top_p),
             "max_tokens": kwargs.get("max_tokens", self.max_tokens),
             "stream": False,
-            "cache_prompt": True,
+            "cache_prompt": use_prompt_cache,
             "repeat_penalty": kwargs.get("repeat_penalty", self.repeat_penalty),
+            # llama.cpp-specific: prompt processing batch size (controls KV cache build parallelism)
+            "n_batch": requested_batch,
+            # KV cache quantization: q4_0, q8_0, fp16 (saves 50-75% context VRAM)
+            "cache_type_k": kv_cache_quant,
+            "cache_type_v": kv_cache_quant,
+            # Flash attention: computes attention in SRAM tiles (O(N) memory)
+            "flash_attention": use_flash_attn,
+            # Min-p sampling: only tokens with p >= min_p * p_max are considered
+            "min_p": min_p if min_p > 0.0 else None,
+            # Top-k sampling: restrict to top K tokens
+            "top_k": top_k if top_k > 0 else None,
+            # Early exit on EOS for n_predict streaming
+            "stop": _llama_stops,
         }
-        if stop:
-            payload["stop"] = stop
+        # Clean up None values
+        payload = {k: v for k, v in payload.items() if v is not None}
 
         if kwargs.get("format") == "json" or kwargs.get("response_format"):
             payload["response_format"] = {"type": "json_object"}
 
         try:
-            async with _LOCAL_LLM_SEMAPHORE:
+            async with _get_local_llm_semaphore():
                 client = _shared_http_client(self.base_url, self.timeout)
                 res = await client.post(endpoint, json=payload)
             res.raise_for_status()
@@ -366,8 +536,8 @@ class ChatLlamaCppClient(BaseChatModel):
 # ─── CLI model discovery (LLM-only) ────────────────────────────────────────────
 # NOTE: embedding models are intentionally EXCLUDED everywhere here.
 # `ollama list` feeds the Ollama LLM selector, `llama-server --cache-list` feeds
-# the llama.cpp LLM selector. Embeddings are fixed via EMBEDDING_* env / models.yaml
-# and pinned per-KB at ingest — never user-selected per request.
+# the llama.cpp LLM selector. Embeddings are fixed to the single models.yaml
+# model and pinned per-KB at ingest — never user-selected per request.
 
 # ─── Runtime model discovery cache ────────────────────────────────────────────
 # Only models actually discovered via `ollama list` and `llama-server --cache-list`
@@ -438,6 +608,12 @@ async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 
     if norm == "ollama":
         probe_url = f"{base}/api/tags"
         start_hint = "Start it with 'ollama serve' (then 'ollama pull <model>' if needed)."
+    elif norm == "mlx":
+        probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
+        start_hint = (
+            "Start it with 'mlx_lm.server --model <mlx-community/...-4bit>' "
+            "(Apple Silicon only; pip install mlx-lm)."
+        )
     else:
         probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
         start_hint = "Start it with './scripts/start_local_llm.sh' (llama-server on :8080)."
@@ -468,6 +644,153 @@ async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 
         ) from exc
 
 
+# ─── Cloud-model preflight ──────────────────────────────────────────────────
+# A stalled cloud model (observed: nvidia/nemotron-3.5-lightning-30b-a3b
+# returning zero bytes indefinitely) otherwise burns the full per-call
+# timeout across every sequential pipeline call before abstaining. One tiny
+# completion up front converts that into a fast 503 with an actionable
+# message. Gemini answers the same probe in seconds.
+CLOUD_PROBE_TIMEOUT_SECONDS = 60.0
+# A successful probe is reused for this long. Without it every analysis pays a
+# billed round-trip just to re-confirm a provider that was demonstrably alive
+# seconds ago — real spend on top of the 4-6 pipeline calls.
+CLOUD_PROBE_SUCCESS_TTL_SECONDS = 60.0
+_CLOUD_PROBE_OK: dict[tuple[str, str], float] = {}
+_CLOUD_PROBE_OK_LOCK = threading.Lock()
+
+
+def _probe_succeeded_recently(provider: str, model: str | None) -> bool:
+    key = (provider.strip().lower(), (model or "").strip())
+    now = time.monotonic()
+    with _CLOUD_PROBE_OK_LOCK:
+        stamp = _CLOUD_PROBE_OK.get(key)
+        if stamp is not None and now - stamp < CLOUD_PROBE_SUCCESS_TTL_SECONDS:
+            return True
+        if stamp is not None:
+            _CLOUD_PROBE_OK.pop(key, None)
+    return False
+
+
+def _record_probe_success(provider: str, model: str | None) -> None:
+    key = (provider.strip().lower(), (model or "").strip())
+    with _CLOUD_PROBE_OK_LOCK:
+        _CLOUD_PROBE_OK[key] = time.monotonic()
+
+
+def _status_code_of(exc: BaseException) -> int | None:
+    """Best-effort HTTP status from a vendor SDK / transport exception."""
+    for attr in ("status_code", "code", "status"):
+        value = getattr(exc, attr, None)
+        if isinstance(value, int):
+            return value
+    response = getattr(exc, "response", None)
+    if response is not None:
+        value = getattr(response, "status_code", None)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def _classify_cloud_probe_error(exc: BaseException, norm: str, model: str | None, hint: str) -> str:
+    """Map a probe failure onto an actionable, correctly-typed error.
+
+    The previous behaviour collapsed 401 (bad key), 403 (forbidden) and 429
+    (quota exhausted) into "is not reachable", which sent operators hunting a
+    networking problem that did not exist.
+    """
+    status = _status_code_of(exc)
+    if status in (401, 403):
+        return (
+            f"Cloud LLM '{norm}' rejected the request (HTTP {status}) for model "
+            f"'{model}'. The API key is missing, invalid, revoked, or not "
+            f"permitted for this model. Check the provider's API key and its "
+            f"model allowlist."
+        )
+    if status == 429:
+        return (
+            f"Cloud LLM '{norm}' model '{model}' is rate-limited or out of quota (HTTP 429). {hint}"
+        )
+    if status is not None and 500 <= status < 600:
+        return f"Cloud LLM '{norm}' model '{model}' returned a server error (HTTP {status}). {hint}"
+    return f"Cloud LLM '{norm}' model '{model}' is not reachable. {hint}"
+
+
+async def probe_cloud_llm(
+    provider: str, model: str | None, timeout: float = CLOUD_PROBE_TIMEOUT_SECONDS
+) -> None:
+    """Fail fast when a cloud chat model (nvidia, gemini) is not responding.
+
+    Sends a minimal 8-token completion bounded by ``timeout``, and reuses a
+    recent success for ``CLOUD_PROBE_SUCCESS_TTL_SECONDS`` so a burst of
+    analyses does not pay one billed call each. Raises LLMUnavailableError
+    (→ 503) on stall/unreachable/quota; lets ConfigurationError (missing API
+    key) propagate unchanged — it already names the fix.
+
+    Args:
+        provider: 'nvidia'/'nim' or 'gemini'/'google_genai'.
+        model: Explicit model id (already resolved by the caller).
+        timeout: Probe budget in seconds. 60s distinguishes a dead endpoint
+            (no first byte) from a merely slow one.
+    """
+    from app.core.model_registry import get_llm  # lazy: avoids import cycle
+
+    norm = (provider or "").strip().lower()
+    hint = (
+        "The model endpoint may be capacity-limited — retry in a few minutes, "
+        "or switch provider (gemini, ollama, llama_cpp)."
+    )
+    if _probe_succeeded_recently(norm, model):
+        logger.debug("Cloud LLM probe: recent success reused", provider=norm, model=model)
+        return
+    try:
+        llm = get_llm(provider=norm, model=model)
+    except ConfigurationError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            "Cloud LLM probe: model init failed", provider=norm, model=model, exc_info=exc
+        )
+        raise LLMUnavailableError(
+            f"Cloud LLM '{norm}' model '{model}' could not be initialized. {hint}"
+        ) from exc
+
+    # Provider-correct output cap (mirrors generator._invoke_kwargs_for_provider).
+    cap = {"max_output_tokens": 8} if norm in ("gemini", "google_genai") else {"max_tokens": 8}
+    try:
+        await asyncio.wait_for(
+            invoke_counted(llm, "Reply with the word OK.", **cap), timeout=timeout
+        )
+    except TimeoutError as exc:  # asyncio.wait_for raises builtin TimeoutError (3.11+)
+        logger.warning(
+            "Cloud LLM probe timed out",
+            provider=norm,
+            model=model,
+            timeout=timeout,
+            exc_info=exc,
+        )
+        raise LLMUnavailableError(
+            f"Cloud LLM '{norm}' model '{model}' is not responding "
+            f"(no output after {timeout:g}s). {hint}"
+        ) from exc
+    except (LLMUnavailableError, ConfigurationError):
+        raise
+    except Exception as exc:
+        # Log the real cause: the previous line dropped `exc` entirely, so a
+        # 401 and a 500 produced byte-identical, equally useless log records.
+        status = _status_code_of(exc)
+        logger.warning(
+            "Cloud LLM probe failed",
+            provider=norm,
+            model=model,
+            status_code=status,
+            error_type=type(exc).__name__,
+            error=str(exc),
+            exc_info=exc,
+        )
+        raise LLMUnavailableError(_classify_cloud_probe_error(exc, norm, model, hint)) from exc
+    _record_probe_success(norm, model)
+
+
 def get_discovered_llms(provider: str) -> frozenset[str]:
     """Return cached live-discovered model ids for a provider (empty if unknown)."""
     with _DISCOVERED_LLMS_LOCK:
@@ -476,7 +799,7 @@ def get_discovered_llms(provider: str) -> frozenset[str]:
 
 # ─── Discovery snapshot (cross-process seeding) ──────────────────────────────
 # The discovery cache above is in-memory per process. A process started later
-# (e.g. the backend after scripts/discover_local_models.py) re-seeds from this
+# (e.g. the backend after scripts/bootstrap.py) re-seeds from this
 # JSON snapshot so a pre-run discovery script actually warms the server.
 _DISCOVERY_SNAPSHOT_PATH = Path(__file__).resolve().parents[2] / "data" / "discovered_models.json"
 
@@ -509,7 +832,10 @@ def save_discovery_snapshot() -> None:
         }
     try:
         _DISCOVERY_SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _DISCOVERY_SNAPSHOT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        # Atomic write (tmp + rename) so concurrent seeders never interleave.
+        tmp_path = _DISCOVERY_SNAPSHOT_PATH.with_suffix(".json.tmp")
+        tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        tmp_path.replace(_DISCOVERY_SNAPSHOT_PATH)
         logger.debug("Persisted model discovery snapshot", path=str(_DISCOVERY_SNAPSHOT_PATH))
     except Exception as exc:
         logger.debug("Failed to persist model discovery snapshot", error=str(exc))
@@ -541,10 +867,11 @@ async def seed_local_model_discovery() -> dict[str, list[str]]:
     Sources (CLI-only, no server dependency):
       - ollama    -> `ollama list`
       - llama_cpp -> `llama-server --cache-list`
+      - mlx       -> HuggingFace hub scan for `mlx-community` / `*mlx*` weights
 
     Loads any previously-persisted snapshot, refreshes the in-process cache from
     the live CLIs, then persists the result so a backend started later seeds
-    identically. Runs at API startup and standalone via scripts/discover_local_models.py.
+    identically. Runs at API startup and standalone via scripts/bootstrap.py.
     """
     load_discovery_snapshot()
 
@@ -554,12 +881,14 @@ async def seed_local_model_discovery() -> dict[str, list[str]]:
     llamacpp_models = [
         m for m in await discover_llamacpp_cache_models() if not _is_embedding_model_name(m)
     ]
+    mlx_models = [m for m in discover_mlx_cache_models() if not _is_embedding_model_name(m)]
 
     merge_discovered_llms("ollama", ollama_models)
     merge_discovered_llms("llama_cpp", llamacpp_models)
+    merge_discovered_llms("mlx", mlx_models)
     save_discovery_snapshot()
 
-    return {"ollama": ollama_models, "llama_cpp": llamacpp_models}
+    return {"ollama": ollama_models, "llama_cpp": llamacpp_models, "mlx": mlx_models}
 
 
 async def discover_ollama_cli_models() -> list[str]:
@@ -638,6 +967,24 @@ def discover_hf_hub_gguf_models() -> list[str]:
             if "gguf" in dir_name.lower():
                 gguf_models.append(dir_name)
     return gguf_models
+
+
+def discover_mlx_cache_models() -> list[str]:
+    """Scan the local HuggingFace cache for downloaded MLX weights.
+
+    MLX models ship as `.safetensors` (not GGUF), so the GGUF scan misses
+    them. Matches `mlx-community` builds and any repo id containing `mlx`
+    (case-insensitive); embedding models are filtered out by callers.
+    Apple Silicon only — elsewhere the cache simply won't contain any.
+    """
+    mlx_models: list[str] = []
+    hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
+    if hf_cache.exists():
+        for model_dir in hf_cache.glob("models--*"):
+            dir_name = model_dir.name.replace("models--", "").replace("--", "/")
+            if "mlx" in dir_name.lower() and "gguf" not in dir_name.lower():
+                mlx_models.append(dir_name)
+    return sorted(set(mlx_models))
 
 
 async def check_ollama_status(base_url: str = "http://localhost:11434") -> dict[str, Any]:
@@ -739,6 +1086,69 @@ async def check_llamacpp_status(base_url: str = "http://127.0.0.1:8080/v1") -> d
     return {
         "connected": connected,
         "provider": "llama_cpp",
+        "base_url": base_url,
+        "models": combined,
+        "cache_models": cache_models,
+        "default_model": default_model,
+    }
+
+
+async def check_mlx_status(
+    base_url: str = "http://127.0.0.1:8090/v1", max_ports: int = 5
+) -> dict[str, Any]:
+    """
+    Discover MLX status and GENERATIVE models by checking multiple MLX server ports.
+    MLX only supports 1 model per server, so we check ports 8090, 8091, 8092...
+    and aggregate all discovered models for UI selection.
+    """
+    cache_models = discover_mlx_cache_models()
+
+    all_api_models: list[str] = []
+    any_connected = False
+
+    # Check consecutive ports starting from base_url port
+    import re
+
+    base_port_match = re.search(r":(\d+)", base_url)
+    start_port = int(base_port_match.group(1)) if base_port_match else 8090
+
+    for port_offset in range(max_ports):
+        port = start_port + port_offset
+        endpoint = f"http://127.0.0.1:{port}/v1/models"
+
+        try:
+            res = await _fetch_json_with_retry(endpoint)
+            if res.status_code == 200:
+                any_connected = True
+                data = res.json()
+                models = [m.get("id") for m in data.get("data", []) if m.get("id")]
+                all_api_models.extend(models)
+        except (httpx.ConnectError, httpx.TimeoutException):
+            continue
+
+    api_llms = [m for m in all_api_models if not _is_embedding_model_name(m)]
+
+    # MLX server serves ONLY the model(s) passed via --model (reported by
+    # /v1/models). Cached/HF blobs are NOT servable until loaded, so when the
+    # server is connected the selector lists exactly the API set — otherwise
+    # users pick phantom models that fail at generation time.
+    if any_connected and api_llms:
+        combined = list(dict.fromkeys(api_llms))
+    else:
+        # Combine API-discovered + cached (deduplicated) when server is not connected
+        combined = list(dict.fromkeys(api_llms + cache_models))
+
+    default_model = (
+        "mlx-community/Llama-3.2-1B-Instruct-4bit"
+        if "mlx-community/Llama-3.2-1B-Instruct-4bit" in combined
+        else (combined[0] if combined else "")
+    )
+
+    merge_discovered_llms("mlx", combined, replace=True)
+
+    return {
+        "connected": any_connected,
+        "provider": "mlx",
         "base_url": base_url,
         "models": combined,
         "cache_models": cache_models,

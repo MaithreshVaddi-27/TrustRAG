@@ -5,34 +5,49 @@ Export BGE-small-en-v1.5 to ONNX format for ONNX Runtime inference.
 This removes the need for PyTorch/sentence-transformers in the API process,
 cutting ~500-1000 MB RSS (torch + tokenizer + model weights).
 
+The exported graph MUST contain transformer + CLS pooling + L2 normalization:
+app/core/onnx_embeddings.py assumes `session.run(...)` returns ready-to-use
+L2-normalized vectors (see "Already L2 normalized by the model"). A bare
+backbone export (e.g. via optimum) yields raw hidden states and silently
+corrupts every vector — scripts/ensure_onnx_models.py verifies this.
+
 Usage:
     python scripts/export_bge_onnx.py
-    # Outputs to apps/api/data/models/bge-small-en-v1.5.onnx
+    # Outputs to apps/api/.model_cache/bge-small-en-v1.5.onnx (canonical;
+    # the backend reads exactly this path — see app/core/model_registry.py)
+
+    python scripts/bootstrap.py   # preferred: checks cache first, exports only if missing
 """
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
-import torch
-from sentence_transformers import SentenceTransformer
-
 # ─── Config ─────────────────────────────────────────────────────────────────────
-MODEL_NAME = "BAAI/bge-small-en-v1.5"
-OUTPUT_DIR = Path(__file__).parent.parent / "apps" / "api" / "data" / "models"
-OUTPUT_PATH = OUTPUT_DIR / "bge-small-en-v1.5.onnx"
+DEFAULT_MODEL_NAME = "BAAI/bge-small-en-v1.5"
+_API_ROOT = Path(__file__).resolve().parents[1] / "apps" / "api"
+OUTPUT_PATH = _API_ROOT / ".model_cache" / "bge-small-en-v1.5.onnx"
 MAX_SEQ_LENGTH = 512
 BATCH_SIZE = 1  # Dynamic batch axis
 
+# Back-compat alias (older scripts/docs import MODEL_NAME).
+MODEL_NAME = DEFAULT_MODEL_NAME
 
-def export_bge_to_onnx() -> None:
-    """Export BGE model to ONNX with dynamic batch size."""
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"Loading {MODEL_NAME}...")
-    model = SentenceTransformer(MODEL_NAME)
+def export_bge_to_onnx(
+    output_path: Path | None = None, model_name: str | None = None
+) -> Path:
+    """Export BGE model to ONNX with dynamic batch size. Returns the model path."""
+    import torch
+    from sentence_transformers import SentenceTransformer
+
+    resolved_model = model_name or DEFAULT_MODEL_NAME
+    out_path = Path(output_path) if output_path else OUTPUT_PATH
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"Loading {resolved_model}...")
+    model = SentenceTransformer(resolved_model)
     model.max_seq_length = MAX_SEQ_LENGTH
     # Force CPU for ONNX export (MPS not supported by torch.export)
     model.to("cpu")
@@ -61,7 +76,7 @@ def export_bge_to_onnx() -> None:
     print(f"Input shapes: input_ids={input_ids.shape}, attention_mask={attention_mask.shape}")
 
     # Export to ONNX
-    print(f"Exporting to {OUTPUT_PATH}...")
+    print(f"Exporting to {out_path}...")
 
     # We need to export the full pipeline: tokenize -> transformer -> pooling -> normalize
     # For simplicity, export the transformer + pooling, handle tokenization in Python.
@@ -102,7 +117,7 @@ def export_bge_to_onnx() -> None:
     torch.onnx.export(
         wrapper,
         (input_ids, attention_mask),
-        str(OUTPUT_PATH),
+        str(out_path),
         export_params=True,
         opset_version=17,
         do_constant_folding=True,
@@ -114,13 +129,14 @@ def export_bge_to_onnx() -> None:
         external_data=False,
     )
 
-    print(f"✅ Exported to {OUTPUT_PATH}")
-    print(f"   File size: {OUTPUT_PATH.stat().st_size / (1024*1024):.1f} MB")
+    print(f"Exported to {out_path}")
+    print(f"   File size: {out_path.stat().st_size / (1024 * 1024):.1f} MB")
 
     # Verify the ONNX model
     print("Verifying ONNX model...")
     import onnx
-    onnx_model = onnx.load(str(OUTPUT_PATH))
+
+    onnx_model = onnx.load(str(out_path))
     onnx.checker.check_model(onnx_model)
     print("   ONNX model check passed!")
 
@@ -128,7 +144,7 @@ def export_bge_to_onnx() -> None:
     print("Testing with ONNX Runtime...")
     import onnxruntime as ort
 
-    session = ort.InferenceSession(str(OUTPUT_PATH), providers=["CPUExecutionProvider"])
+    session = ort.InferenceSession(str(out_path), providers=["CPUExecutionProvider"])
 
     # Test encode
     test_inputs = ["Test query for ONNX Runtime", "Another test sentence"]
@@ -163,10 +179,12 @@ def export_bge_to_onnx() -> None:
     diff = abs(embeddings - pt_embeddings).max()
     print(f"   Max difference vs PyTorch: {diff:.6f}")
     if diff < 1e-4:
-        print("   ✅ Numerical parity verified!")
+        print("   Numerical parity verified!")
     else:
-        print("   ⚠️  Difference exceeds threshold - check export")
+        print("   WARNING: Difference exceeds threshold - check export")
+    return out_path
 
 
 if __name__ == "__main__":
     export_bge_to_onnx()
+    sys.exit(0)

@@ -29,75 +29,9 @@ logger = get_logger(__name__)
 RETRIEVAL_BRANCH_TIMEOUT = 45.0
 
 
-# ─── Query Ambiguity Detection ──────────────────────────────────────────────
-# Detects ambiguous queries using score entropy and adjusts retrieval depth.
-
-
-class AmbiguityDetector:
-    """Detects query ambiguity based on retrieval score distribution."""
-
-    def __init__(self, entropy_threshold: float = 1.5, low_score_threshold: float = 0.5):
-        self.entropy_threshold = entropy_threshold
-        self.low_score_threshold = low_score_threshold
-
-    def detect(self, scores: list[float]) -> dict[str, Any]:
-        """
-        Detect ambiguity in retrieval scores.
-
-        Args:
-            scores: List of retrieval scores from initial fetch
-
-        Returns:
-            dict with 'is_ambiguous', 'entropy', 'avg_score', 'recommendation'
-        """
-        if not scores:
-            return {
-                "is_ambiguous": False,
-                "entropy": 0.0,
-                "avg_score": 0.0,
-                "recommendation": "none",
-            }
-
-        import math
-
-        # Calculate Shannon entropy of score distribution
-        positive_scores = [max(0, s) for s in scores]
-        min_score = min(positive_scores) if positive_scores else 0
-        adjusted_scores = [s - min_score + 0.001 for s in positive_scores]
-
-        total = sum(adjusted_scores)
-        if total == 0:
-            probabilities = [1.0 / len(adjusted_scores)] * len(adjusted_scores)
-        else:
-            probabilities = [s / total for s in adjusted_scores]
-
-        entropy = -sum(p * math.log2(p) for p in probabilities if p > 0)
-        avg_score = sum(scores) / len(scores)
-
-        is_ambiguous = entropy > self.entropy_threshold or avg_score < self.low_score_threshold
-
-        if is_ambiguous and avg_score < self.low_score_threshold:
-            recommendation = "increase_k"
-        elif is_ambiguous and entropy > self.entropy_threshold:
-            recommendation = "diversify"
-        else:
-            recommendation = "none"
-
-        return {
-            "is_ambiguous": is_ambiguous,
-            "entropy": round(entropy, 2),
-            "avg_score": round(avg_score, 3),
-            "recommendation": recommendation,
-        }
-
-
-def detect_query_ambiguity(scores: list[float]) -> dict[str, Any]:
-    """Detect ambiguity in query retrieval scores.
-
-    Convenience function for external use.
-    """
-    detector = AmbiguityDetector()
-    return detector.detect(scores)
+# NOTE (Phase 6): the AmbiguityDetector post-retrieval entropy heuristic lived
+# here with zero callers — pre-retrieval deterministic routing
+# (app/agent/router.py) supersedes it, so it was removed, not adopted.
 
 
 class QueryEmbeddingLRUCache:
@@ -123,6 +57,11 @@ class QueryEmbeddingLRUCache:
                 if len(self._cache) >= self._capacity:
                     self._cache.popitem(last=False)
             self._cache[query] = vector
+
+    def clear(self) -> None:
+        """Empty the cache (test isolation)."""
+        with self._lock:
+            self._cache.clear()
 
 
 _query_cache = QueryEmbeddingLRUCache(capacity=1024)
@@ -153,8 +92,6 @@ async def dense_search(
     query: str,
     kb_id: str,
     top_k: int = 20,
-    embedding_provider: str | None = None,
-    embedding_model: str | None = None,
 ) -> list[Any]:
     """Retrieve top_k chunks using dense vector embeddings with LRU cache.
 
@@ -164,6 +101,11 @@ async def dense_search(
             that the knowledge base lacks matching content — callers must
             distinguish it from an empty result list.
     """
+    if top_k <= 0:
+        # Zero budget disables the dense leg (single-leg ablations, e.g.
+        # sparse-only via dense_top_k=0). Successful empty — never an outage —
+        # so the surviving leg's results flow through RRF untouched.
+        return []
     try:
         client = await get_qdrant_client()
     except Exception as exc:
@@ -174,18 +116,34 @@ async def dense_search(
     collection_name = get_collection_name(kb_id)
 
     try:
+        # Resolve the collection's expected dimension FIRST (metadata call is
+        # cached in _collection_dimension_cache) so a stale query-vector cache
+        # hit from a previous embedding space is invalidated — never served.
+        try:
+            target_dim = await _get_collection_dimension(client, collection_name)
+        except Exception as col_err:
+            logger.debug("Could not inspect collection dimensions", error=str(col_err))
+            target_dim = None
+
         # Check LRU cache first to eliminate redundant computation.
         # Normalized key avoids repeat embeddings for case/whitespace variants.
-        cache_key = (
-            f"{(embedding_provider or '').strip().lower()}:"
-            f"{(embedding_model or '').strip().lower()}:{query.strip().lower()}"
-        )
+        # Stored as (dim, vec): a hit with a mismatched dim means the embedding
+        # space changed under us — discard and re-embed. The model is the
+        # single models.yaml value, so the key needs no provider segment.
+        cache_key = f"onnx:{query.strip().lower()}"
         cached_vec = _query_cache.get(cache_key)
-        if cached_vec is not None:
+        if cached_vec is not None and (not target_dim or len(cached_vec) == target_dim):
             query_vector = cached_vec
         else:
+            if cached_vec is not None:
+                logger.warning(
+                    "Query-vector cache dimension mismatch — re-embedding",
+                    cached_dim=len(cached_vec),
+                    collection_dim=target_dim,
+                    kb_id=kb_id,
+                )
             try:
-                embed_model = get_embedding_model(embedding_provider, embedding_model)
+                embed_model = get_embedding_model()
                 # Embed query text in background thread to avoid freezing asyncio event loop
                 query_vector = await asyncio.to_thread(embed_model.embed_query, query)
                 _query_cache.set(cache_key, query_vector)
@@ -200,34 +158,30 @@ async def dense_search(
         # NOTE: truncate/pad across embedding spaces returns plausible-looking
         # garbage — the create-analysis pin guard (422) is the real defense;
         # this alignment is a last resort, so any mismatch is logged loudly.
-        try:
-            target_dim = await _get_collection_dimension(client, collection_name)
-            if target_dim:
-                if len(query_vector) > target_dim:
-                    logger.warning(
-                        "Query/collection dimension mismatch — truncating",
-                        query_dim=len(query_vector),
-                        collection_dim=target_dim,
-                        kb_id=kb_id,
-                    )
-                    query_vector = query_vector[:target_dim]
-                    # Re-normalize truncated vector to unit length
-                    # for accurate cosine similarity
-                    import math
+        if target_dim:
+            if len(query_vector) > target_dim:
+                logger.warning(
+                    "Query/collection dimension mismatch — truncating",
+                    query_dim=len(query_vector),
+                    collection_dim=target_dim,
+                    kb_id=kb_id,
+                )
+                query_vector = query_vector[:target_dim]
+                # Re-normalize truncated vector to unit length
+                # for accurate cosine similarity
+                import math
 
-                    norm = math.sqrt(sum(x * x for x in query_vector))
-                    if norm > 0:
-                        query_vector = [x / norm for x in query_vector]
-                elif len(query_vector) < target_dim:
-                    logger.warning(
-                        "Query/collection dimension mismatch — zero-padding",
-                        query_dim=len(query_vector),
-                        collection_dim=target_dim,
-                        kb_id=kb_id,
-                    )
-                    query_vector = query_vector + [0.0] * (target_dim - len(query_vector))
-        except Exception as col_err:
-            logger.debug("Could not inspect collection dimensions", error=str(col_err))
+                norm = math.sqrt(sum(x * x for x in query_vector))
+                if norm > 0:
+                    query_vector = [x / norm for x in query_vector]
+            elif len(query_vector) < target_dim:
+                logger.warning(
+                    "Query/collection dimension mismatch — zero-padding",
+                    query_dim=len(query_vector),
+                    collection_dim=target_dim,
+                    kb_id=kb_id,
+                )
+                query_vector = query_vector + [0.0] * (target_dim - len(query_vector))
 
         response = await client.query_points(
             collection_name=collection_name,
@@ -247,13 +201,22 @@ async def dense_search(
 
 
 async def sparse_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
-    """Retrieve top_k chunks using token-frequency sparse representations.
+    """Retrieve top_k chunks using BM25-style sparse representations.
+
+    Client vectors carry saturated TF weights (see app/ingestion/sparse_vector.py);
+    Qdrant multiplies query-time IDF from collection statistics
+    (sparse-text uses Modifier.IDF).
 
     Raises:
         RetrievalOutageError: When the vector store is unavailable. An empty
             sparse representation (query with no indexable tokens) is genuine
             "no evidence" and returns [] instead.
     """
+    if top_k <= 0:
+        # Zero budget disables the sparse leg (single-leg ablations, e.g.
+        # dense-only via sparse_top_k=0). Qdrant rejects limit=0, so never
+        # send the query: successful empty — never an outage.
+        return []
     try:
         client = await get_qdrant_client()
     except Exception as exc:
@@ -347,6 +310,13 @@ def reciprocal_rank_fusion(
                 "chunk_index": payload.get("chunk_index", 0),
                 "document_id": payload.get("document_id"),
                 "knowledge_base_id": payload.get("knowledge_base_id"),
+                # Phase 7 provenance: OCR flags + image ref + version ride the
+                # fused row so answers stay traceable to page images.
+                "ocr_used": bool(payload.get("ocr_used", False)),
+                "ocr_confidence": payload.get("ocr_confidence"),
+                "page_image_ref": payload.get("page_image_ref"),
+                "document_version": payload.get("document_version"),
+                "is_snapshot": bool(payload.get("is_snapshot", False)),
                 "dense_score": entry["dense_score"],
                 "sparse_score": entry["sparse_score"],
                 "rrf_score": rrf_score,
@@ -378,7 +348,7 @@ async def apply_temporal_filtering(
     if not doc_ids:
         return results
 
-    # Fetch document metadata records from MongoDB
+    # Fetch document metadata records from MongoDB (batched)
     from bson import ObjectId
     from bson.errors import InvalidId
 
@@ -389,6 +359,7 @@ async def apply_temporal_filtering(
         with contextlib.suppress(InvalidId):
             doc_objs.append(ObjectId(did))
 
+    # Batch fetch all document metadata in parallel
     docs_cursor = doc_coll.find({"_id": {"$in": doc_objs}})
     docs_map = {}
     async for d in docs_cursor:
@@ -396,11 +367,18 @@ async def apply_temporal_filtering(
 
     filtered_results = []
     for r in results:
-        doc_id_str = r["document_id"]
+        doc_id_str = r.get("document_id")
         doc_meta = docs_map.get(doc_id_str)
 
+        if doc_meta is None and doc_id_str is not None:
+            # Retrieval-time stale-evidence guard (Phase 7 residual): the
+            # parent document record is gone (deleted/rolled-back) but its
+            # vectors still serve — drop the point, never serve it.
+            logger.debug("Dropping orphan point with no parent document", doc_id=doc_id_str)
+            continue
+
         if not doc_meta:
-            # Fallback: keep if doc record is missing
+            # No document_id at all: unjudgeable legacy point — fail open.
             filtered_results.append(r)
             continue
 
@@ -411,6 +389,9 @@ async def apply_temporal_filtering(
         r["filename"] = doc_meta.get("filename")
         r["effective_from"] = eff_from
         r["effective_until"] = eff_until
+        # Phase 7 chain: live version truth comes from the parent record.
+        r["document_version"] = doc_meta.get("version", "1.0")
+        r["is_snapshot"] = bool(doc_meta.get("is_snapshot", False))
 
         # Apply boundary checks (normalize naive datetimes to UTC-aware
         # so legacy Mongo records never raise TypeError on comparison).
@@ -435,8 +416,6 @@ async def retrieve_hybrid_chunks(
     kb_id: str,
     reference_time: datetime | None = None,
     top_k_override: int | None = None,
-    embedding_provider: str | None = None,
-    embedding_model: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Primary hybrid dense + sparse retrieval coordinator.
@@ -453,6 +432,10 @@ async def retrieve_hybrid_chunks(
 
     dense_top = top_k_override if top_k_override is not None else cfg.dense_top_k
     sparse_top = top_k_override if top_k_override is not None else cfg.sparse_top_k
+
+    # Adaptive Top-K: If enabled, we can dynamically adjust fusion_top_k based on confidence
+    # This will be applied after fusion when we have scores
+    adaptive_enabled = cfg.adaptive_top_k
 
     # Run dense + sparse searches concurrently with a hard budget so a
     # hung embedding/Qdrant call cannot pin a worker (OPT: local-LLM load).
@@ -478,8 +461,6 @@ async def retrieve_hybrid_chunks(
                         query,
                         kb_id,
                         top_k=dense_top,
-                        embedding_provider=embedding_provider,
-                        embedding_model=embedding_model,
                     ),
                     "dense",
                 ),
@@ -506,5 +487,32 @@ async def retrieve_hybrid_chunks(
 
     # Apply temporal document boundaries
     filtered = await apply_temporal_filtering(fused, reference_time)
+
+    # Adaptive Top-K: Reduce fusion_top_k when retrieval confidence is high
+    # This reduces context sent to LLM, saving tokens and latency.
+    # NOTE: RRF scores live on a tiny scale (with rrf_k=60 the max for a
+    # result ranked #1 in both legs is 2/61 ≈ 0.033), so the threshold must
+    # sit in RRF units — 0.82 here would be dead code.
+    fusion_top_k = cfg.fusion_top_k
+    if adaptive_enabled and filtered:
+        # Check if top result has high confidence (dense_score + sparse_score / RRF)
+        top_rrf = filtered[0].get("rrf_score", 0.0)
+        # High RRF ≈ top result ranked near #1 in both dense and sparse legs.
+        if top_rrf >= 0.02:
+            # High confidence: cap at 4 instead of full fusion_top_k
+            adaptive_k = min(4, fusion_top_k)
+            logger.debug(
+                "Adaptive Top-K: high confidence, reducing fusion_top_k",
+                top_rrf=top_rrf,
+                original_k=fusion_top_k,
+                adaptive_k=adaptive_k,
+            )
+            fusion_top_k = adaptive_k
+
+    # Bound the fused candidate set (models.yaml: retrieval.fusion_top_k).
+    # Truncation happens AFTER temporal filtering so stale drops cannot push
+    # fresh evidence out of the budget.
+    if fusion_top_k > 0:
+        filtered = filtered[:fusion_top_k]
 
     return filtered

@@ -17,14 +17,19 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Optional psutil for accurate current RSS; falls back to resource.ru_maxrss (peak)
+# Optional psutil for accurate current RSS; falls back to resource.ru_maxrss (peak).
+# `resource` is Unix-only: on Windows without psutil the import itself would
+# crash module load, so guard it (get_memory_usage_mb() then returns 0.0).
 try:
     import psutil
 
     _PSUTIL_AVAILABLE = True
 except ImportError:
     _PSUTIL_AVAILABLE = False
-    import resource
+    try:
+        import resource
+    except ImportError:  # Windows without psutil
+        resource = None  # type: ignore[assignment]
 
 
 def trim_memory() -> None:
@@ -69,15 +74,8 @@ def get_memory_usage_mb() -> float:
             return round(usage / (1024 * 1024), 2)
         return round(usage / 1024, 2)
     except Exception:
+        logger.debug("psutil RSS read failed; falling back to resource")
         return 0.0
-
-
-def idle_trim_memory() -> None:
-    """
-    Proactive idle-time memory trim: GC + malloc_trim.
-    Call after ingestion batches, analysis completion, or on a periodic timer.
-    """
-    trim_memory()
 
 
 def check_and_enforce_memory_guard(max_rss_mb: float = 3000.0) -> dict[str, Any]:

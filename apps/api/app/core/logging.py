@@ -9,6 +9,7 @@ Sensitive values (tokens, passwords, API keys) must never be logged.
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from typing import Any
 
@@ -31,12 +32,47 @@ _SENSITIVE_KEYS = frozenset(
     }
 )
 
+# ─── Value patterns for secrets embedded in free text ─────────────────────────
+# Key-name scrubbing alone is not enough. Vendor SDKs and pydantic embed the
+# offending value inside the *message*: a failed ChatGoogleGenerativeAI
+# construction yields "... input_value=<the api key> ...", which then reaches
+# logger.error(..., error=str(exc)). That is a log-side credential leak
+# (audit B-17). These patterns catch the value wherever it appears.
+_SECRET_VALUE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"AIza[0-9A-Za-z_\-]{35}"),  # Google / Gemini API key
+    re.compile(r"nvapi-[A-Za-z0-9_\-]{16,}"),  # NVIDIA NIM API key
+    re.compile(r"sk-[A-Za-z0-9_\-]{20,}"),  # OpenAI-style key
+    re.compile(r"(?i)bearer\s+[A-Za-z0-9._\-]{16,}"),  # Authorization header echo
+    re.compile(r"hf_[A-Za-z0-9]{20,}"),  # HuggingFace token
+)
+
+_REDACTED = "[REDACTED]"
+
+
+def scrub_secret_values(text: str) -> str:
+    """Replace anything matching a known credential shape inside free text.
+
+    Used by the structlog processor and safe to call directly on an exception
+    string before it is logged.
+    """
+    if not text:
+        return text
+    for pattern in _SECRET_VALUE_PATTERNS:
+        text = pattern.sub(_REDACTED, text)
+    return text
+
 
 def _scrub_sensitive(logger: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-    """Structlog processor: replace sensitive values with [REDACTED]."""
+    """Structlog processor: redact sensitive keys AND secret-shaped values."""
     for key in list(event_dict.keys()):
         if any(sensitive in key.lower() for sensitive in _SENSITIVE_KEYS):
-            event_dict[key] = "[REDACTED]"
+            event_dict[key] = _REDACTED
+            continue
+        value = event_dict[key]
+        # Scrub long strings too: exception text and message fields are where a
+        # vendor SDK most often echoes the credential back at us.
+        if isinstance(value, str):
+            event_dict[key] = scrub_secret_values(value)
     return event_dict
 
 

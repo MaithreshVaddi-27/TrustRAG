@@ -152,6 +152,35 @@ class TestModelConfig:
         # Spec: prevent infinite loops — must be a small positive number
         assert 0 < cfg.max_recovery_attempts <= 10
 
+    def test_mlx_model_for_prefers_yaml_default(self, monkeypatch) -> None:
+        """llm_model_for('mlx') resolves the yaml model_mlx default."""
+        monkeypatch.delenv("MLX_MODEL", raising=False)
+        cfg = self._make_config()
+        assert cfg.llm_model_for("mlx") == "mlx-community/Llama-3.2-1B-Instruct-4bit"
+        assert cfg.verification_model_for("mlx") == "mlx-community/Llama-3.2-1B-Instruct-4bit"
+
+    def test_mlx_model_for_env_override_wins(self, monkeypatch) -> None:
+        """MLX_MODEL env beats the yaml default (exact id the server serves)."""
+        monkeypatch.setenv("MLX_MODEL", "mlx-community/LFM2.5-1.2B-Instruct-4bit")
+        cfg = self._make_config()
+        assert cfg.llm_model_for("mlx") == "mlx-community/LFM2.5-1.2B-Instruct-4bit"
+        assert cfg.verification_model_for("mlx") == "mlx-community/LFM2.5-1.2B-Instruct-4bit"
+
+    def test_mlx_base_url_default_and_env(self, monkeypatch) -> None:
+        """MLX uses dedicated port 8090; env overrides it."""
+        from app.core.config import get_settings, reload_settings
+
+        # get_settings() is an lru_cached singleton — reload between env states.
+        try:
+            monkeypatch.delenv("MLX_BASE_URL", raising=False)
+            reload_settings()
+            assert get_settings().mlx_base_url == "http://127.0.0.1:8090/v1"
+            monkeypatch.setenv("MLX_BASE_URL", "http://127.0.0.1:8091/v1")
+            reload_settings()
+            assert get_settings().mlx_base_url == "http://127.0.0.1:8091/v1"
+        finally:
+            reload_settings()
+
 
 # ─── Settings tests ───────────────────────────────────────────────────────────
 
@@ -269,6 +298,24 @@ class TestAnalysisModelPolicy:
         )
         assert request.llm_model == "huggingface/SmolLM3-3B-GGUF:Q4_K_M"
 
+    def test_runtime_discovered_mlx_model_is_allowed(self, monkeypatch) -> None:
+        """MLX weights served by mlx_lm.server must be selectable per request."""
+        from app.api.v1.schemas.analysis import AnalysisCreate
+
+        discovered = {"mlx-community/LFM2.5-1.2B-Instruct-4bit"}
+        monkeypatch.setattr(
+            "app.core.local_llm.get_discovered_llms",
+            lambda provider: frozenset(discovered) if provider == "mlx" else frozenset(),
+        )
+
+        request = AnalysisCreate(
+            knowledge_base_id="64ee39d09c6292376e191983",
+            query="Analyze using the MLX model",
+            llm_provider="mlx",
+            llm_model="mlx-community/LFM2.5-1.2B-Instruct-4bit",
+        )
+        assert request.llm_model == "mlx-community/LFM2.5-1.2B-Instruct-4bit"
+
     def test_non_discovered_model_still_rejected_with_empty_caches(self) -> None:
         """Without discovery or static allowlist matches, requests stay rejected."""
         from pydantic import ValidationError
@@ -283,6 +330,40 @@ class TestAnalysisModelPolicy:
                 llm_model="attacker/arbitrary-model",
             )
 
+    def test_current_gemini_model_is_allowed(self) -> None:
+        """Cloud allowlists come from models.yaml, not a hardcoded set.
+
+        Regression for: gemini-3.8-flash (shipped in models.yaml +
+        recent Gemini releases) was rejected with "Model is not enabled
+        for provider 'gemini'" because the schema hardcoded the previous
+        generation's model IDs.
+        """
+        from app.api.v1.schemas.analysis import AnalysisCreate
+        from app.core.config import get_model_config
+
+        assert "gemini-3.8-flash" in get_model_config().supported_gemini_models
+        request = AnalysisCreate(
+            knowledge_base_id="64ee39d09c6292376e191983",
+            query="Describe the knowledge base and its contents",
+            llm_provider="gemini",
+            llm_model="gemini-3.8-flash",
+        )
+        assert request.llm_model == "gemini-3.8-flash"
+
+    def test_unknown_gemini_model_still_rejected(self) -> None:
+        """The yaml-driven allowlist must still block arbitrary cloud models."""
+        from pydantic import ValidationError
+
+        from app.api.v1.schemas.analysis import AnalysisCreate
+
+        with pytest.raises(ValidationError, match="not enabled"):
+            AnalysisCreate(
+                knowledge_base_id="64ee39d09c6292376e191983",
+                query="This must stay blocked",
+                llm_provider="gemini",
+                llm_model="gemini-99-ultra",
+            )
+
     def test_merge_discovered_llms_filters_embedding_models(self) -> None:
         from app.core.local_llm import get_discovered_llms, merge_discovered_llms
 
@@ -292,11 +373,12 @@ class TestAnalysisModelPolicy:
         assert "nomic-embed-text" not in discovered
 
     def test_arbitrary_embedding_repository_is_rejected(self, monkeypatch) -> None:
-        from pydantic import ValidationError
-
-        # Patch discovered models so the LLM validation passes
+        # No per-request embedding choice exists: attacker-controlled model IDs
+        # in the payload are dropped (extra='ignore') and can never reach a
+        # model loader. The engine always serves models.yaml `embedding.model`.
         import app.core.local_llm as _llm_mod
         from app.api.v1.schemas.analysis import AnalysisCreate
+        from app.core.config import get_model_config
 
         _orig_get_discovered = _llm_mod.get_discovered_llms
         _llm_mod.get_discovered_llms = lambda provider: frozenset(
@@ -310,17 +392,17 @@ class TestAnalysisModelPolicy:
         )
 
         try:
-            with pytest.raises(
-                ValidationError,
-                match="Embedding model is not enabled for provider 'huggingface'",
-            ):
-                AnalysisCreate(
-                    knowledge_base_id="64ee39d09c6292376e191983",
-                    query="Embed this",
-                    llm_provider="ollama",
-                    llm_model="granite4.2:3b-q4_K_M",
-                    embedding_provider="huggingface",
-                    embedding_model="attacker/untrusted-code",
-                )
+            schema = AnalysisCreate(
+                **{
+                    "knowledge_base_id": "64ee39d09c6292376e191983",
+                    "query": "Embed this",
+                    "llm_provider": "ollama",
+                    "llm_model": "granite4.2:3b-q4_K_M",
+                    "embedding_provider": "huggingface",
+                    "embedding_model": "attacker/untrusted-code",
+                }
+            )
+            assert not hasattr(schema, "embedding_model")
+            assert get_model_config().embedding_model == "BAAI/bge-small-en-v1.5"
         finally:
             _llm_mod.get_discovered_llms = _orig_get_discovered

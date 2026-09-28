@@ -1,850 +1,620 @@
-# TrustRAG
+# TrustRAG — Local-First RAG Reliability Workbench
 
-> **Your local-first RAG reliability workbench** — catch hallucinations, audit evidence, and self-heal low-confidence answers using an adaptive LangGraph loop. Everything runs on your machine. No API keys required.
+**Detect hallucinations. Audit evidence integrity. Self-heal low-confidence answers.**
 
-[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![Ollama](https://img.shields.io/badge/Ollama-Local_Offline-000000?logo=ollama&logoColor=white)](https://ollama.com)
-[![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF_Server-orange)](https://github.com/ggerganov/llama.cpp)
-[![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-Embeddings-005CED?logo=onnx&logoColor=white)](https://onnxruntime.ai)
-[![Tests](https://img.shields.io/badge/Backend%20Tests-219%20Passing-brightgreen)](apps/api/tests)
-[![Tests](https://img.shields.io/badge/Frontend%20Tests-22%20Passing-brightgreen)](apps/web)
-[![E2E](https://img.shields.io/badge/Playwright%20E2E-2%20Passing-brightgreen)](apps/web/e2e)
-[![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+TrustRAG adds a verification layer between your LLM and your data: answers are split into atomic claims, each claim is checked against retrieved evidence with Natural Language Inference (NLI), sources are audited with SHA-256 hashes, and the system self-heals — or safely abstains — when evidence is insufficient.
 
----
+![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)
+![Node 22+](https://img.shields.io/badge/node-22%2B-339933.svg)
+![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688.svg)
+![React 18](https://img.shields.io/badge/frontend-React%2018-61dafb.svg)
+![Docker](https://img.shields.io/badge/deploy-Docker-2496ED.svg)
 
-## What is this?
-
-Standard RAG systems fail silently. They grab some context, generate an answer, and present it as fact — even when the answer is wrong. There's no audit trail, no verification, no way to know if you can trust the output.
-
-TrustRAG fixes that. It's a full reliability pipeline that:
-
-1. **Decomposes** responses into individual factual claims — and verifies each one against your documents in the same step (fused NLI, so small local models answer in one call instead of two).
-2. **Validates** every claim against retrieved evidence, tolerating the quirky JSON small models emit, and falling back gracefully instead of failing silently.
-3. **Audits** source integrity with SHA-256 hashes and temporal validity windows.
-4. **Self-heals** when confidence is low — rewriting queries and expanding search via a LangGraph state machine, then either returning a grounded answer or safely abstaining.
-
-Think of it as a fact-checking layer for RAG. It runs 100% locally on your machine with Ollama or llama.cpp — your documents never leave your laptop, there are no per-query bills, and no API keys are needed unless you want cloud models for the heavy lifting.
-
----
-
-## Quick Links
-
-| Service | URL | What it does |
-|---|---|---|
-| **Frontend Workbench** | [http://localhost:5173](http://localhost:5173) | The React UI — upload docs, ask questions, see verification results |
-| **Backend API** | [http://localhost:8000](http://localhost:8000) | FastAPI engine — all the RAG, NLI, and LangGraph magic |
-| **Interactive Docs** | [http://localhost:8000/docs](http://localhost:8000/docs) | Swagger UI — test every endpoint right in your browser |
-| **Health Check** | [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) | Public status (detailed view at `/health/detailed` with auth) |
+**Repository:** <https://github.com/MaithreshVaddi-27/TrustRAG> · **Version:** 0.1.0 · **License:** MIT ([LICENSE](LICENSE))
 
 ---
 
 ## Table of Contents
 
-- [What is this?](#what-is-this)
-- [Quick Links](#quick-links)
-- [How the self-healing loop works](#how-the-self-healing-loop-works)
-- [Pipeline stages in detail](#pipeline-stages-in-detail)
-- [Reliability, verdicts & recovery](#reliability-verdicts--recovery)
-- [Getting Started](#getting-started)
-  - [What you need](#what-you-need)
-  - [Step 1 — Install platform tools](#step-1--install-platform-tools)
-  - [Step 2 — Clone and configure](#step-2--clone-and-configure)
-  - [Step 3 — Start services](#step-3--start-services)
-  - [Step 4 — Open the UI](#step-4--open-the-ui)
-- [Try it from the command line](#try-it-from-the-command-line)
-- [Architecture](#architecture)
-- [API reference](#api-reference)
-- [Configuration reference](#configuration-reference)
-- [Technology stack](#technology-stack)
+- [Overview](#overview)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+  - [macOS](#macos)
+  - [Linux (Ubuntu/Debian)](#linux-ubuntudebian)
+  - [Windows (PowerShell)](#windowspowershell)
+  - [Docker (any OS)](#docker-any-os-recommended-for-demos)
+- [Configuration](#configuration)
+- [Usage](#usage)
+  - [End-to-end via API](#end-to-end-via-api)
+  - [Via the Playground UI](#via-the-playground-ui)
+- [Supported LLM Providers](#supported-llm-providers)
+- [API Reference](#api-reference)
 - [Testing](#testing)
-- [CI/CD](#cicd)
-- [Frontend pages](#frontend-pages)
+- [Audit Tracker](#audit-tracker)
+- [Deployment](#deployment)
+- [Optimization](#optimization)
+- [Security](#security)
 - [Troubleshooting](#troubleshooting)
-- [Documentation](#documentation)
-- [License](#license)
+- [Contributing](#contributing)
+- [Note](#note)
 
 ---
 
-## How the self-healing loop works
+## Overview
+
+Standard RAG pipelines fail silently — confident-sounding answers with wrong or fabricated facts. TrustRAG closes that gap with an 8-stage pipeline:
 
 ```
-                        Your Question
-                             │
-                             ▼
-               ┌───────────────────────────┐
-               │ 1. Text Normalization     │  clean up noise, fix hyphens, strip fluff
-               │    & Document Zoning      │  weight titles/headers higher than body
-               └─────────────┬─────────────┘
-                             │
-                             ▼
-               ┌───────────────────────────┐
-               │ 2. Hybrid Retrieval       │  Dense vectors (BGE, 384d) + BM25 keywords
-               │    + Reciprocal Fusion    │  combined with RRF scoring
-               └─────────────┬─────────────┘
-                             │
-                             ▼
-               ┌───────────────────────────┐
-               │ 3. Grounded Generation    │  LLM answer, strictly conditioned on evidence
-               └─────────────┬─────────────┘
-                             │
-                             ▼
-               ┌───────────────────────────┐
-               │ 4. Claim Decomposition    │  break answer into atomic facts
-               │    + Batch NLI Verify     │  SUPPORTED | CONTRADICTED | NEUTRAL
-               └─────────────┬─────────────┘
-                             │
-                             ▼
-               ┌───────────────────────────┐
-               │ 5. SHA-256 Hash Audit     │  tamper detection on source chunks
-               │    + Reliability Scoring  │  coverage vs contradiction thresholds
-               └─────────────┬─────────────┘
-                             │
-              ┌──────────────┴──────────────┐
-              │                             │
-     [Meets Thresholds]            [Below Threshold]
-              │                             │
-              ▼                             ▼
-    ┌───────────────────┐        ┌────────────────────────────┐
-    │  Grounded Answer  │        │ 6. Adaptive Recovery Loop  │
-    │  + Evidence Cards │        │    rewrite query, expand   │
-    │  + Citations      │        │    search, retry (1 round) │
-    └───────────────────┘        └────────────┬───────────────┘
-                                              │
-                                    ┌─────────┴─────────┐
-                                    │                   │
-                              [Recovered]      [Recovery Exhausted]
-                                    │                   │
-                                    ▼                   ▼
-                          ┌───────────────┐   ┌───────────────┐
-                          │  Grounded     │   │  Safe         │
-                          │  Answer       │   │  ABSTAIN      │
-                          └───────────────┘   └───────────────┘
+Query → Route → Retrieve (hybrid) → Generate (grounded) → Decompose
+      → Verify (NLI) → Audit (SHA-256) → Recover or Answer / Abstain
 ```
 
-When the system isn't confident in its answer, it doesn't guess. It either heals itself or tells you it doesn't know. That's the point.
+1. **Route** — deterministic query classification (no LLM call).
+2. **Retrieve** — dense vectors (BGE-small, 384-d) + BM25 sparse + RRF fusion, optional cross-encoder rerank.
+3. **Generate** — LLM answers only from retrieved chunks, each factual sentence pinned to a source segment for verification.
+4. **Decompose** — answer split into atomic, checkable claims.
+5. **Verify** — each claim judged `SUPPORTED` / `CONTRADICTED` / `NEUTRAL`.
+6. **Audit** — SHA-256 tamper detection + temporal validity on sources.
+7. **Recover** — budget-aware LangGraph loop (rewrite → re-retrieve → regenerate, ≤2 attempts).
+8. **Answer or abstain** — returns the grounded answer, or refuses to guess.
+
+The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local embeddings + embedded Qdrant + local MongoDB). No API keys required — Gemini, NVIDIA NIM, and Tavily search are optional.
 
 ---
 
-## Pipeline stages in detail
+## Features
 
-Each stage below names the code that runs it and the `config/models.yaml` knob that tunes it. Env vars always win over YAML.
-
-| # | Stage | What happens | Key knobs |
-|---|---|---|---|
-| 1 | **Normalize & zone** | Noise cleanup, hyphen repair, filler stripping; text split into ~512-char chunks (64-char overlap, word-boundary snapped) with zone tags — titles/headers score higher than body | `ingestion.chunk_size: 512`, `chunk_overlap: 64` |
-| 2 | **Hybrid retrieval** | Dense vectors (`BAAI/bge-small-en-v1.5`, 384d — HuggingFace/torch or torch-free ONNX Runtime via `EMBEDDING_PROVIDER=onnx`) + BM25 sparse vectors fused with Reciprocal Rank Fusion; embedding model is **pinned per KB at ingest** | `retrieval.dense_top_k: 20`, `sparse_top_k: 20`, `rrf_k: 60`, `fusion_top_k: 20` |
-| 3 | **Rerank (optional)** | Cross-encoder rescoring of fused candidates; **off by default** until you baseline retrieval quality | `reranker.enabled: false`, `model: cross-encoder/ms-marco-MiniLM-L-6-v2`, `top_k: 8` |
-| 4 | **Integrity audit** | SHA-256 tamper check per chunk + temporal validity windows (`effective_from`/`effective_until`); corrupted segments are excluded before generation | — (always on) |
-| 5 | **Grounded generation** | Answer strictly conditioned on ≤8 surviving chunks within a 3000-char context budget (fits small-model windows); empty/insufficient context → `ABSTAIN`, never a guess | `retrieval.max_context_chunks: 8`, `llm.temperature: 0.2` |
-| 6 | **Claim decomposition + NLI** | Answer split into ≤8 atomic, self-contained claims; each judged `SUPPORTED` / `CONTRADICTED` / `NEUTRAL` against the evidence in one batch call, with full per-claim fallback if the batch fails | `cost_controls.max_verification_claims: 8`, `max_individual_nli_fallback: 8`, `verification.temperature: 0.0` |
-| 7 | **Verdict & recovery** | Coverage/contradiction scored against thresholds (see below); on FAIL one recovery round runs, then either a grounded answer or safe `ABSTAIN` | `reliability.*`, `recovery.max_recovery_attempts: 1` |
-
-> **Single-document note:** with one short document, any query retrieves roughly the same chunks. If verification still fails 0/8, suspect the NLI judge or truncated context — not retrieval. Check the Claims tab explanations and the analysis trace.
-
----
-
-## Reliability, verdicts & recovery
-
-### Thresholds (`reliability` in `models.yaml`)
-
-| Threshold | Default | Meaning |
-|---|---|---|
-| `minimum_evidence_coverage` | `0.80` | ≥80% of claims must be SUPPORTED (7 of 8) |
-| `maximum_contradiction_rate` | `0.20` | ≤20% of claims may be CONTRADICTED |
-| `abstain_below` | `0.50` | Scores below this → abstain instead of answering |
-
-Reliability score = `coverage × (1 − contradiction_rate)`. These are engineering defaults, not calibrated probabilities.
-
-### Verdicts
-
-| Status | Meaning |
-|---|---|
-| `TRUSTED` | Passed coverage and contradiction thresholds |
-| `UNCERTAIN` | Failed thresholds but score ≥ `abstain_below` — shown with warnings |
-| `FAILED` | Failed thresholds and score < `abstain_below` |
-| `ABSTAINED` | Model explicitly abstained — correct behavior on zero evidence, not an error |
-
-Failure diagnoses: `RETRIEVAL_FAILURE` (no usable evidence), `RETRIEVAL_OUTAGE` (search infra down — distinct from "no evidence"), `EVIDENCE_CONFLICT` (too many contradictions), `LOW_COVERAGE` (too few supported claims).
-
-### Recovery strategies (one round, in priority order)
-
-| Strategy | What it does | When it wins |
-|---|---|---|
-| `query_rewrite` | LLM expands acronyms/synonyms targeting the unverified claims (5–12 words) | Missing-fact failures |
-| `re_retrieve` | Doubles search width (`top_k`, context) for thin evidence | Genuinely thin evidence |
-| `regenerate` | Retries generation on saved chunks with zero retrieval spend | Evidence already sufficient (auto-downgraded from `re_retrieve`) |
-
-Configure via `recovery.strategy_priority`. The rewrite is sanitized — instruction echoes collapse back to the original query instead of polluting retrieval.
+| Area | Highlights |
+|------|------------|
+| **Verification** | 8-stage pipeline: route → retrieve → rerank → generate → decompose → verify → audit → recover |
+| **Retrieval** | Hybrid dense + BM25 with server-side IDF and RRF fusion; deterministic router; 4 chunking strategies |
+| **Ingestion** | PDF, DOCX, CSV, JSON, HTML, TXT, MD + RapidOCR fallback for scanned pages |
+| **Reliability** | LangGraph self-heal loop with token/latency budgets; safe abstention; conflict detection |
+| **Auth & security** | JWT (HS256, `iss`/`aud`), bcrypt, JTI revocation, login lockout, rate limits, SSRF guards |
+| **Integrations** | MCP server (JSON-RPC 2.0) for Claude Desktop / Cursor / Windsurf; SSE live-progress streaming |
+| **Workbench UI** | Dashboard, Playground, knowledge bases, evidence, claims, conflicts, experiments, trace viewer |
+| **Efficiency** | ONNX embedding runtime (torch-free, ~500–1000 MB RAM saved); Metal/CUDA auto-detection |
+| **Inference Acceleration** | KV cache quantization (q8_0 default), flash attention, prompt caching, context compression |
+| **Ops** | KB snapshots + rollback; Prometheus `/metrics`; A/B experiments with feature flags |
 
 ---
 
-## Getting Started
+## Tech Stack
 
-Plan on about 15 minutes end to end: install the platform tools once, configure one file, start three terminals, and you'll be asking questions of your own documents. If anything misbehaves, `./scripts/setup.sh` diagnoses your machine and tells you the exact fix.
-
-### What you need
-
-| Tool | Version | Why |
-|---|---|---|
-| **Python** | 3.11+ | Backend runtime |
-| **Node.js** | 22+ | Frontend build tools (see `engines` in `apps/web/package.json`) |
-| **MongoDB** | 7.0+ | Document & metadata storage |
-| **Ollama** or **llama.cpp** | Latest | Local LLM inference (zero API keys) |
-| **Git** | Any recent | Clone the repo |
-
-Optional (only if you want cloud features):
-- Google Gemini API key — for cloud LLM reasoning
-- NVIDIA NIM API key — for enterprise NIM models
-- Tavily API key — for AI-powered web search (DuckDuckGo is free and works without a key)
-
-**Optional (ultra-low RAM embeddings):**
-- ONNX Runtime BGE-small — set `EMBEDDING_PROVIDER=onnx` in `.env` (no PyTorch in API process, ~500-1000 MB RSS savings). Requires one-time export: `python scripts/export_bge_onnx.py` and model at `apps/api/.model_cache/bge-small-en-v1.5.onnx`.
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | React 18, Vite 6, Tailwind CSS 3, TanStack Query 5, React Router 7 |
+| **Backend** | FastAPI 0.115, Python 3.11+, Pydantic v2, LangGraph, LangChain |
+| **LLM** | Ollama / llama.cpp / **MLX** (local, default) · Gemini / NVIDIA NIM (optional cloud) |
+| **Embeddings** | `BAAI/bge-small-en-v1.5` via ONNX Runtime (torch-free, default) |
+| **Reranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` via ONNX Runtime (int8) |
+| **Storage** | Qdrant (vectors) + MongoDB 7 (documents, async `motor`) |
+| **Quality gates** | Ruff, ESLint, pytest, Vitest, Playwright, k6 |
 
 ---
 
-### Step 1 — Install platform tools
-
-Pick your operating system and run the commands. This installs everything TrustRAG needs.
-
-<details>
-<summary><b>macOS (Apple Silicon or Intel)</b></summary>
-
-```bash
-# 1. Xcode command line tools (if not already installed)
-xcode-select --install
-
-# 2. Homebrew (the macOS package manager)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# 3. Core tools
-brew install git python@3.11 node mongodb-community ollama
-
-# 4. Start MongoDB (runs in background on boot)
-brew services start mongodb-community
-
-# 5. Start Ollama (runs in background)
-brew services start ollama
-
-# 6. Pull the default local LLM (~815MB)
-ollama pull gemma3:1b
-
-# 7. (Optional) llama.cpp — for GGUF models
-#    Option A: Install via Homebrew
-brew install llama.cpp
-
-#    Option B: Build from source for latest features
-git clone https://github.com/ggml-org/llama.cpp /tmp/llama.cpp
-cd /tmp/llama.cpp
-cmake -B build -DGGML_NATIVE=on
-cmake --build build -j$(sysctl -n hw.ncpu)
-# The binary is at build/bin/llama-server — add to PATH or use the full path
-```
-
-</details>
-
-<details>
-<summary><b>Linux (Ubuntu / Debian)</b></summary>
-
-```bash
-# 1. System packages
-sudo apt update && sudo apt install -y \
-  git python3.11 python3.11-venv python3-pip \
-  build-essential cmake curl jq
-
-# 2. Node.js 22+ (via NodeSource — the frontend requires Node >= 22)
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt install -y nodejs
-node --version    # must print v22.x or newer
-
-# 3. MongoDB 7.0
-curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
-  sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
-echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] \
-  https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
-  sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
-sudo apt update && sudo apt install -y mongodb-org
-sudo systemctl enable --now mongod
-
-# 4. Ollama
-curl -fsSL https://ollama.com/install.sh | sh
-# Start the daemon in background
-ollama serve &
-sleep 2
-
-# 5. Pull the default local LLM (~815MB)
-ollama pull gemma3:1b
-
-# 6. (Optional) llama.cpp — build from source
-git clone https://github.com/ggml-org/llama.cpp /tmp/llama.cpp
-cd /tmp/llama.cpp
-cmake -B build -DGGML_NATIVE=on
-cmake --build build -j$(nproc)
-# Binary at build/bin/llama-server — add to PATH or use the full path
-```
-
-</details>
-
-<details>
-<summary><b>Windows 11 (PowerShell + winget)</b></summary>
-
-```powershell
-# 1. Install core tools via winget
-winget install --id Git.Git -e --source winget
-winget install --id OpenJS.NodeJS.LTS -e --source winget
-winget install --id Python.Python.3.12 -e --source winget
-winget install --id MongoDB.CommunityServer -e --source winget
-winget install --id Ollama.Ollama -e --source winget
-
-# 2. Restart your terminal, then verify
-python --version    # 3.11 or newer
-node --version      # v22 or newer (if winget gave you an older LTS, grab "Node.js 22" from nodejs.org)
-git --version
-
-# 3. Start MongoDB
-#    Open PowerShell as Administrator:
-Get-Service MongoDB | Start-Service
-
-# 4. Start Ollama (opens a background terminal)
-ollama serve
-
-# 5. In a NEW terminal, pull the default LLM (~815MB)
-ollama pull gemma3:1b
-
-# 6. (Optional) llama.cpp — download a prebuilt release
-#    Go to: https://github.com/ggml-org/llama.cpp/releases
-#    Download the latest Windows zip (e.g. llama-*-bin-win-x64.zip)
-#    Extract it and add the folder to your system PATH
-#    Verify: llama-server --help
-```
-
-> **Note for Windows users:** TrustRAG uses bash scripts (`scripts/start_local_llm.sh`, `scripts/setup.sh`). Install **Git for Windows** (which includes Git Bash) and run those scripts — plus every `curl` example in this guide — from **Git Bash, not PowerShell**. (PowerShell has its own `curl` alias that speaks a different dialect and will mangle the commands below; if you must stay in PowerShell, use `curl.exe`.) Python/Node/`winget` commands work in both shells.
-
-</details>
-
----
-
-### Step 2 — Clone and configure
-
-```bash
-# Clone the repo
-git clone https://github.com/MaithreshVaddi-27/TrustRAG.git
-cd TrustRAG
-
-# Create your local environment file
-cp .env.example .env
-
-# Generate a JWT secret (required for authentication)
-python3 -c "import secrets; print(secrets.token_hex(64))"
-# Windows (no python3 alias): py -c "import secrets; print(secrets.token_hex(64))"
-
-# Copy that output into your .env file as JWT_SECRET
-# Open .env in your editor and paste it:
-#   JWT_SECRET=<the output from above>
-```
-
-> **Tip:** Run the setup checker to see if you missed anything:
-> ```bash
-> ./scripts/setup.sh
-> ```
-> It'll tell you exactly what's missing and how to fix it.
-
----
-
-### Step 3 — Start services
-
-You have two options: **Native** (recommended for development — faster, lighter) or **Docker** (good for staging/production testing).
-
-#### Option A: Native (recommended)
-
-Open **three terminal tabs**:
-
-**Terminal 1 — Local LLM server (pick one):**
-
-```bash
-# Using Ollama (easiest — just make sure it's running)
-ollama serve    # if not already running via brew services / systemctl
-
-# OR using llama.cpp (auto-detects Metal on Mac, CUDA on Linux;
-# on Windows, run this from Git Bash)
-./scripts/start_local_llm.sh
-```
-
-> **Which one?** Ollama is the smoothest start on all three OSes. Pick llama.cpp when you want explicit control over quantized GGUF models and KV-cache budgets on tight hardware (e.g. 8 GB unified memory). On Linux you can keep Ollama alive across reboots with `sudo systemctl enable --now ollama`.
-
-**Terminal 2 — Backend API:**
-
-```bash
-cd apps/api
-
-# Create virtual environment (first time only)
-python3 -m venv .venv            # Windows: py -3.11 -m venv .venv  (or: python -m venv .venv)
-source .venv/bin/activate        # Windows Git Bash: source .venv/Scripts/activate
-# local-models = torch + sentence-transformers for the default HuggingFace
-# embeddings (also needed once for the optional ONNX export below).
-pip install -e ".[dev,local-models]"
-
-# Optional: discover installed models so they show up in the UI immediately
-python ../../scripts/discover_local_models.py
-
-# Start the server (hot-reload enabled)
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-**Terminal 3 — Frontend:**
-
-```bash
-cd apps/web
-npm ci          # clean, reproducible install from package-lock.json
-npm run dev     # open http://localhost:5173
-```
-
-#### Option B: Docker Compose
-
-```bash
-# Starts three containers: Qdrant (vector store), the FastAPI backend,
-# and the React frontend. MongoDB is NOT containerized — it must already
-# be running on your host (see Step 1), reached via host.docker.internal.
-docker compose up -d --build
-
-# Check health (public endpoint, no auth needed)
-curl -s http://localhost:8000/api/v1/health | jq
-
-# Follow the backend logs if something looks off
-docker compose logs -f api
-
-# Stop everything
-docker compose down
-```
-
-> Prefer running the frontend locally (`npm run dev` in `apps/web`) while developing — hot-reload is instant and you can keep the backend in Docker. Just point it at the same API with `VITE_API_URL=http://localhost:8000`.
-
----
-
-### Step 4 — Open the UI
-
-Open **http://localhost:5173** in your browser. You'll see the TrustRAG workbench.
-
-1. **Register** a new account (first time only — your credentials never leave `localhost`).
-2. **Create a Knowledge Base** and upload some documents (.pdf, .txt, .md, .docx, .csv, .json, .html). Watch the trace stream while it ingests.
-3. **Ask a question** — TrustRAG retrieves evidence, drafts a grounded answer, splits it into atomic claims, and checks every single one against your documents. Open the **Claims** tab to see each verdict with its citations, and **Trace** to watch the self-healing loop think.
-
-The default local model is `gemma3:1b` via Ollama (or `LiquidAI/LFM2.5-1.2B-Instruct-GGUF` via llama.cpp). Both run on your CPU — no GPU required.
-
----
-
-## Try it from the command line
-
-No UI needed — here's the full flow via `curl`. (On Windows, run these from **Git Bash** — PowerShell's built-in `curl` alias will mangle the quoting. On all three OSes, `/tmp/sample.txt` can be any scratch path with write access.)
-
-```bash
-BASE=http://localhost:8000/api/v1
-
-# 1. Register
-curl -s -X POST $BASE/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"you@example.com","password":"Password123!","full_name":"Your Name"}'
-
-# 2. Login (grab the token)
-TOKEN=$(curl -s -X POST $BASE/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"you@example.com","password":"Password123!"}' \
-  | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
-
-# 3. Create a knowledge base
-KB_ID=$(curl -s -X POST $BASE/knowledge-bases \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"My Documents","description":"Test KB"}' \
-  | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
-
-# 4. Upload a document
-cat << 'EOF' > /tmp/sample.txt
-Effective from: 2026-01-01
-Effective until: 2026-12-31
-
-# Refund Policy
-Annual contract customers can get a full refund within 30 days.
-Monthly subscriptions can be canceled anytime with immediate effect.
-Data backups are retained for 90 days after deactivation.
-EOF
-
-curl -s -X POST $BASE/knowledge-bases/$KB_ID/documents \
-  -H "Authorization: Bearer $TOKEN" \
-  -F "file=@/tmp/sample.txt;type=text/plain"
-
-# 5. Ask a question
-sleep 2  # let indexing finish
-ANALYSIS_ID=$(curl -s -X POST $BASE/analyses \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"What is the refund policy?\"}" \
-  | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
-
-# 6. Stream the live execution trace. The JWT never goes in the URL —
-# mint a short-lived single-use ticket first, then stream with it.
-TICKET=$(curl -s -X POST $BASE/analyses/$ANALYSIS_ID/stream-ticket \
-  -H "Authorization: Bearer $TOKEN" \
-  | python3 -c "import json,sys; print(json.load(sys.stdin)['ticket'])")
-curl -N "$BASE/analyses/$ANALYSIS_ID/stream?ticket=$TICKET"
-
-# 7. Get the final answer
-curl -s $BASE/analyses/$ANALYSIS_ID -H "Authorization: Bearer $TOKEN" | jq
-```
-
----
-
-## Architecture
+## Project Structure
 
 ```
 TrustRAG/
 ├── apps/
-│   ├── api/                        # FastAPI backend
+│   ├── api/                    # FastAPI backend (Python 3.11+)
 │   │   ├── app/
-│   │   │   ├── agent/              # LangGraph state machine & recovery loop
-│   │   │   ├── api/                # Routers, auth, Pydantic schemas
-│   │   │   ├── core/               # Config, logging, security, model registry, ONNX embeddings, memory guard
-│   │   │   ├── db/                 # MongoDB (async) & Qdrant clients
-│   │   │   ├── generation/         # LLM prompts and grounded generation
-│   │   │   ├── ingestion/          # PDF/DOCX/TXT/MD/CSV/JSON/HTML parsers, chunker
-│   │   │   ├── retrieval/          # Dense search, BM25, RRF fusion
-│   │   │   ├── services/           # Business logic: KB, analysis, auth
-│   │   │   └── verification/       # Batch NLI verifier & SHA-256 auditor
-│   │   ├── config/models.yaml      # Model IDs, thresholds, tuning
-│   │   └── tests/                  # 219 tests (all passing)
-│   │
-│   └── web/                        # React 18 + Vite 6 frontend
-│       ├── src/
-│       │   ├── components/         # ClaimInspector, EvidenceViewer, ExecutionTrace
-│       │   ├── layouts/            # AppLayout, Sidebar, AuthGuard
-│       │   ├── pages/              # 13 lazy-loaded pages
-│       │   └── lib/                # API client, auth store, SSE streaming
-│       └── package.json
-│
-├── docs/                           # Project documentation
-│   ├── TRUSTRAG_specs.md           # Full product specification
-│   ├── architecture/               # System design, ADRs
-│   ├── audits/                     # Unified senior audit (2026-09-11)
-│   ├── deployment/                 # Deployment guide
-│   ├── security/                   # Threat model, security controls
-│   └── evaluation/                 # Methodology
-│
-├── scripts/
-│   ├── discover_local_models.py    # Pre-boot model discovery snapshot
-│   ├── export_bge_onnx.py          # Export BGE-small to ONNX (torch-free embeddings)
-│   ├── eval_embedding_parity.py    # Prove torch-vs-ONNX vector parity before switching
-│   ├── start_local_llm.sh          # Hardware-aware llama-server launcher
-│   ├── apply_ports.py              # Propagate port changes everywhere
-│   ├── setup.sh                    # Prerequisite checker
-│   └── clear_qdrant.py             # Qdrant collection purge utility
-│
-├── load-test/
-│   └── smoke.js                    # k6 smoke test
-│
-├── config/ports.yaml               # Single source of truth for service ports
-├── docker-compose.yml              # Qdrant + FastAPI backend + React frontend (MongoDB stays on the host)
-└── .env.example                    # Environment template
+│   │   │   ├── agent/          # LangGraph self-heal loop + query router
+│   │   │   ├── api/v1/         # REST routes (auth, KBs, analyses, claims, …)
+│   │   │   ├── core/           # config, security, LLM, embeddings, metrics
+│   │   │   ├── db/             # MongoDB + Qdrant clients
+│   │   │   ├── generation/     # grounded answer generator
+│   │   │   ├── ingestion/      # parsers, chunkers, OCR fallback
+│   │   │   ├── mcp/            # MCP tool server (JSON-RPC 2.0)
+│   │   │   ├── retrieval/      # hybrid retriever + reranker
+│   │   │   ├── services/       # analysis, KB, auth, experiment services
+│   │   │   └── verification/   # NLI verifier + SHA-256 integrity audit
+│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.21)
+│   │   ├── tests/              # backend suite (mocked, no live services)
+│   │   └── pyproject.toml
+│   └── web/                    # React frontend (Node 22+)
+│       ├── src/{pages,components,services,lib,store,hooks,layouts,styles}/
+│       └── e2e/                # Playwright specs
+├── config/ports.yaml           # canonical port registry
+├── scripts/                    # bootstrap.py, setup.sh, start_local_llm.sh, apply_ports.py, …
+├── docs/                       # specs, architecture, ADRs, evaluation, deployment
+├── load-test/smoke.js          # k6 smoke test
+├── docker-compose.yml          # api + web + qdrant
+└── .env.example                # documented env template (copy to .env)
 ```
 
----
-
-## API reference
-
-Base URL: `http://localhost:8000/api/v1`. Interactive docs at `/docs`. Auth is Bearer JWT (`POST /auth/login` → `Authorization: Bearer <token>`). Rate limits: 10 analyses/min, 20 auth/min, 10 uploads/min, 10 URL ingests/min.
-
-### Auth (`/auth`)
-
-| Method & path | Purpose |
-|---|---|
-| `POST /auth/register` | Create account |
-| `POST /auth/login` | Verify credentials, return access JWT |
-| `GET /auth/me` | Current user profile |
-| `POST /auth/logout` | Revoke current token |
-
-### Knowledge bases & documents
-
-| Method & path | Purpose |
-|---|---|
-| `POST /knowledge-bases` | Create a KB |
-| `GET /knowledge-bases` | List your KBs |
-| `GET /knowledge-bases/{kb_id}` | KB metadata |
-| `DELETE /knowledge-bases/{kb_id}` | Delete a KB (cascades) |
-| `GET /knowledge-bases/{kb_id}/documents` | List documents in a KB |
-| `POST /knowledge-bases/{kb_id}/documents` | Upload a document (.pdf/.txt/.md/.docx/.csv/.json/.html) |
-| `POST /knowledge-bases/{kb_id}/documents/from-url` | Ingest a document from URL |
-| `GET /documents/{doc_id}` | Document details |
-| `DELETE /documents/{doc_id}` | Delete a document |
-
-### Analyses — the RAG pipeline
-
-| Method & path | Purpose |
-|---|---|
-| `POST /analyses` | Start an analysis run (201) |
-| `GET /analyses` | Paginated history (`limit` ≤ 200, `skip`) |
-| `GET /analyses/{id}` | Run details + verdict |
-| `GET /analyses/{id}/claims` | Atomic claims with NLI verdicts |
-| `GET /analyses/{id}/evidence` | Retrieved segments with scores |
-| `GET /analyses/{id}/trace` | Step-by-step execution timeline |
-| `GET /analyses/{id}/detail` | Answer + claims + evidence + trace in one call |
-| `GET /analyses/{id}/export` | Audit & compliance dossier |
-| `POST /analyses/{id}/stream-ticket` | Short-lived SSE ticket |
-| `GET /analyses/{id}/stream` | Live execution trace (Server-Sent Events) |
-
-### Verification artifacts, experiments & ops
-
-| Method & path | Purpose |
-|---|---|
-| `GET /claims`, `GET /evidence`, `GET /conflicts` | Cross-run claim/evidence/conflict listings |
-| `POST /experiments`, `GET /experiments`, `GET /experiments/{exp_id}` | Experiment runs |
-| `GET /experimentation/flags` | Feature flags |
-| `GET /models/providers` | AI provider status + installed models |
-| `GET /models/hardware` | Hardware acceleration & resource profile |
-| `POST /models/memory/trim` | Heap compaction + GC |
-| `GET /health` | Public health (status, version — for load balancers) |
-| `GET /health/detailed` | Detailed health (services, models, hardware — requires auth) |
-| `/internal/*` (`tokens`, `ingest/*`, `search`, `verify/claims`, `health`, `status`) | Service-to-service diagnostics — not for UI use |
+Model weights (`apps/api/.model_cache/*.onnx`, `*.gguf`, Hugging Face
+snapshots) are **never committed to git** — every machine fetches them once
+via `scripts/bootstrap.py` (see [Installation](#installation)).
 
 ---
 
-## Configuration reference
+## Prerequisites
 
-Two files own all non-secret config. **Env vars always win** over both.
-
-| File | Owns | Example knobs |
-|---|---|---|
-| `apps/api/config/models.yaml` | Model IDs, thresholds, tuning | LLM/embedding model IDs, `retrieval.*`, `reliability.*`, `recovery.*`, `cost_controls.*`, `optimization.*` |
-| `config/ports.yaml` | Ports + derived base URLs | backend `8000`, frontend `5173`, Ollama `11434`, llama.cpp `8080`, MongoDB `27017`, Qdrant `6335:6333` host:container |
-
-Change a port in `ports.yaml`, then run `python3 scripts/apply_ports.py` (CI enforces with `--check`).
-
-**`.env` holds secrets + deploy overrides only** (see `.env.example`): `JWT_SECRET` (required, ≥32 chars), `MONGODB_URI`, `QDRANT_URL` (`local` = embedded, no server), `CORS_ORIGINS`, plus optional `AI_PROVIDER` / `EMBEDDING_PROVIDER` / model overrides and cloud keys (`GEMINI_API_KEY`, `NVIDIA_API_KEY`, `TAVILY_API_KEY`). Accepted aliases (e.g. `OLLAMA_HOST` for `OLLAMA_BASE_URL`) are listed in `.env.example` — note a globally-exported `OLLAMA_HOST` is picked up automatically.
-
-**Embedding providers:** `EMBEDDING_PROVIDER=huggingface` (default, PyTorch) or `EMBEDDING_PROVIDER=onnx` (ONNX Runtime, torch-free, ultra-low RAM). `EMBEDDING_MODEL` must match KB pin.
-
-> **Embedding pin:** the embedding model is pinned per knowledge base at ingest time. Switching `EMBEDDING_MODEL` afterwards requires re-creating the KB — old vectors won't match the new dimensionality.
+| Requirement | Version | Purpose |
+|-------------|---------|---------|
+| Python | 3.11–3.12 | Backend (3.13+ breaks the torch/onnxscript ONNX export) |
+| Node.js (+ npm) | 22+ | Frontend |
+| MongoDB | 7.0 | Document store (local or Atlas) |
+| Ollama **or** llama.cpp **or** MLX | latest | Local LLM (at least one) |
+| Docker + Compose | latest | Docker path only |
+| Git | latest | Clone |
+| Disk / RAM | ~8 GB free · 8 GB RAM min (16 GB recommended) | Models: embeddings ~120 MB, LLM ~1–5 GB |
 
 ---
 
-## Technology stack
+## Installation
 
-| Layer | What | Details |
-|---|---|---|
-| **Frontend** | React 18 + Vite 6 | Tailwind CSS, Motion springs, dark glassmorphic theme |
-| **Backend** | FastAPI + Python 3.11 | Async REST API, Pydantic v2, SSE streaming |
-| **Local LLMs** | Ollama / llama.cpp | `gemma3:1b` (Ollama) or `LiquidAI/LFM2.5-1.2B` (llama.cpp) |
-| **Cloud LLMs** | Gemini / NVIDIA NIM | Optional — for when you want cloud-scale reasoning |
-| **Embeddings** | BAAI/bge-small-en-v1.5 | 384d local vectors, zero API cost; **ONNX Runtime** or HuggingFace (PyTorch) |
-| **Vector Store** | Qdrant | Embedded Rust engine, INT8 quantization, on-disk vectors |
-| **Database** | MongoDB 7.0 | Metadata, chunks, claims, execution traces |
-| **Agent Protocol** | MCP (JSON-RPC 2.0) | Universal tool interface for AI coding agents |
-| **State Machine** | LangGraph | Multi-node adaptive recovery loop |
-| **Auth** | JWT + Bcrypt | HS256 tokens, 12-round hashing, rate limiting |
+### 1. Clone and configure (all platforms)
+
+```bash
+git clone https://github.com/MaithreshVaddi-27/TrustRAG.git
+cd TrustRAG
+cp .env.example .env
+python3 -c "import secrets; print(secrets.token_hex(64))"
+# Paste the output as JWT_SECRET=<value> in .env (min 32 chars)
+```
+
+### 2a. macOS
+
+```bash
+# Prerequisites
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew tap mongodb/brew   # required once for the mongodb-community formula
+brew install python@3.11 node@22 mongodb-community ollama
+
+# Services
+brew services start mongodb-community
+ollama serve &
+ollama pull gemma3:1b        # lightweight default (or: ollama pull llama3)
+
+# llama.cpp (local GGUF models) — hardware-aware launcher
+brew install llama.cpp   # provides the `llama-server` binary used below
+./scripts/start_local_llm.sh   # auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
+
+# MLX (Apple Silicon only, optional) — see [MLX on Mac](docs/PERFORMANCE-GUIDE.md#4-mlx-on-mac-apple-silicon-free-fastest-toks-per-watt)
+pipx install mlx-lm
+mlx_lm.server --model mlx-community/Llama-3.2-1B-Instruct-4bit --port 8090
+
+# Backend (terminal 1)
+cd apps/api
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,local-models]"
+python ../../scripts/bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
+uvicorn app.main:app --reload --port 8000
+
+# Frontend (terminal 2)
+cd apps/web
+npm install && npm run dev   # http://localhost:5173
+```
+
+> **8 GB RAM Macs:** before `ollama serve`, export `OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1 OLLAMA_MAX_LOADED_MODELS=1 OLLAMA_NUM_PARALLEL=1`. Metal acceleration is auto-detected on Apple Silicon.
+
+### 2b. Linux (Ubuntu/Debian)
+
+```bash
+# Prerequisites (Ubuntu 22.04 jammy; on 24.04 noble or other distros adjust
+# the MongoDB repo line below. Stock Ubuntu ≤22.04 ships Python ≤3.10 — add
+# the deadsnakes PPA first: sudo add-apt-repository ppa:deadsnakes/ppa)
+sudo apt update && sudo apt install -y python3.11 python3.11-venv python3.11-dev \
+  python3-pip build-essential curl git
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# MongoDB 7.0
+curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
+  sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] \
+  https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
+  sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+sudo apt update && sudo apt install -y mongodb-org
+sudo systemctl enable --now mongod   # no systemd (WSL2/Docker)? use: sudo service mongod start
+
+# Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull gemma3:1b        # or: ollama pull llama3
+
+# llama.cpp (local GGUF models) — hardware-aware launcher
+# Install the binary first: download a release from
+# https://github.com/ggerganov/llama.cpp/releases (needs `llama-server` on PATH)
+./scripts/start_local_llm.sh   # auto-detects CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
+
+# Backend (terminal 1)
+cd apps/api
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,local-models]"
+python ../../scripts/bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
+uvicorn app.main:app --reload --port 8000
+
+# Frontend (terminal 2)
+cd apps/web
+npm install && npm run dev   # http://localhost:5173
+```
+
+> CUDA is auto-detected with NVIDIA drivers. For low-RAM hosts set `TOKENIZERS_PARALLELISM=false` in `.env`.
+
+### 2c. Windows (PowerShell)
+
+```powershell
+winget install Python.Python.3.11
+winget install OpenJS.NodeJS.LTS
+winget install MongoDB.Server
+winget install Ollama.Ollama
+winget install Git.Git
+# Close and reopen PowerShell, then:
+net start MongoDB
+ollama pull gemma3:1b
+```
+
+```powershell
+# llama.cpp (local GGUF models) — use the provided startup script or run llama-server directly
+# For now, use WSL2 for llama.cpp on Windows (see Linux instructions)
+# Start: wsl ./scripts/start_local_llm.sh
+```
+
+```powershell
+# Backend (terminal 1)
+cd apps\api
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev,local-models]"
+python ..\..\scripts\bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
+uvicorn app.main:app --reload --port 8000
+```
+
+```powershell
+# Frontend (terminal 2)
+cd apps\web
+npm install
+npm run dev   # http://localhost:5173
+```
+
+> Execution-policy error → `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`. Prefer WSL2? Run `wsl --install` and follow the Linux steps inside it.
+
+### 2d. Docker (any OS, recommended for demos)
+
+MongoDB and the LLM stay on the host; `api` reaches them via `host.docker.internal`, Qdrant runs in a container.
+
+```bash
+cp .env.example .env   # set JWT_SECRET (see step 1)
+# One-time on the HOST (the api image is torch-free and cannot export itself):
+apps/api/.venv/bin/python scripts/bootstrap.py   # Windows: apps\api\.venv\Scripts\python.exe scripts\bootstrap.py
+docker compose up -d
+# One-time: copy the host-exported weights into the api container's cache volume:
+docker cp apps/api/.model_cache/. trustrag_api:/app/.model_cache/
+docker compose logs -f
+docker compose down        # stop (keeps volumes)
+docker compose down -v     # stop + fresh start
+```
+
+- Frontend: <http://localhost:5173> · API docs: <http://localhost:8000/docs> · Health: <http://localhost:8000/api/v1/health>
+
+### 3. Fetch model weights (all platforms, one-time)
+
+Model weights are **never committed to git** — every machine (new clone or
+fresh `git pull`) fetches them once: ~120 MB ONNX embeddings + reranker.
+Multi-GB LLM blobs stay with ollama / llama-server and are never
+auto-downloaded.
+
+```bash
+# From the repo root, using the backend venv (macOS/Linux):
+apps/api/.venv/bin/python scripts/bootstrap.py
+# Check only, no downloads (also covered by ./scripts/setup.sh):
+apps/api/.venv/bin/python scripts/bootstrap.py --verify
+# Windows PowerShell:
+apps\api\.venv\Scripts\python.exe scripts\bootstrap.py
+```
+
+What it does: verifies `apps/api/.model_cache/` (canonical
+`bge-small-en-v1.5.onnx` + `reranker-ms-marco-MiniLM-L-6-v2_int8.onnx`),
+exports anything missing with ONNX as the default provider, and snapshots
+your installed local LLMs so the backend serves them from the first request.
+Already cached → exits in ~1 s. After `git pull`, re-run it: a changed
+`models.yaml` model ID is detected automatically and only the new weights are
+fetched (`--force` rebuilds everything).
+
+### 4. Verify the install
+
+```bash
+./scripts/setup.sh                          # prerequisite checker (prints fixes)
+curl http://localhost:8000/api/v1/health   # → {"status":"ok"}
+# Open http://localhost:5173 in your browser
+```
+
+> **Run both llama.cpp and MLX simultaneously (Apple Silicon):**
+> ```bash
+> # Terminal 1: llama.cpp on :8080
+> ./scripts/start_local_llm.sh
+>
+> # Terminal 2: MLX on :8090 (id must match MLX_MODEL in .env / model_mlx in models.yaml)
+> mlx_lm.server --model mlx-community/Llama-3.2-3B-Instruct-4bit --port 8090
+>
+> # Terminal 3: Backend (auto-detects both)
+> cd apps/api && source .venv/bin/activate && uvicorn app.main:app --reload --port 8000
+> ```
+>
+> Both servers appear in `/api/v1/models/providers` and the Playground dropdown independently.
+
+---
+
+## Configuration
+
+Resolution order: `apps/api/config/models.yaml` (defaults) → `config/ports.yaml` (ports) → `.env` (secrets + overrides win).
+
+### Required (`.env`)
+
+```bash
+JWT_SECRET=<output of: python3 -c "import secrets; print(secrets.token_hex(64))">
+MONGODB_URI=mongodb://localhost:27017
+MONGODB_DATABASE=trustrag_db
+```
+
+### Common optional overrides (full list in [.env.example](.env.example))
+
+```bash
+LLM_PROVIDER=llama_cpp            # ollama | llama_cpp | mlx | gemini | nvidia
+LLM_MODEL=LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
+MLX_MODEL=mlx-community/Llama-3.2-1B-Instruct-4bit   # Apple Silicon only
+# Embeddings: single ONNX engine (BAAI/bge-small-en-v1.5, 384d) from
+# apps/api/config/models.yaml `embedding.model` — no provider choice, no env flag.
+QDRANT_URL=local                  # local (embedded) | http://localhost:6335 (Docker) | cloud URL
+TAVILY_API_KEY=                   # empty → DuckDuckGo fallback for web grounding
+VITE_API_URL=http://localhost:8000
+APP_ENV=production                # production requires QDRANT_API_KEY
+CORS_ORIGINS=https://your-domain.com
+```
+
+Default ports: API `8000` · Vite `5173` · llama-server `8080` · **MLX server `8090`** · Ollama `11434` · MongoDB `27017` · Qdrant `6335→6333`. Change ports in `config/ports.yaml`, then run `python3 scripts/apply_ports.py` (enforced in CI with `--check`).
+
+---
+
+## Usage
+
+### End-to-end via API
+
+```bash
+# 1. Register (returns the user profile — NOT a token)
+curl -s -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"Str0ng!Passphrase2026","full_name":"You"}'
+
+# 2. Log in to get the JWT (registration does not return one)
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"Str0ng!Passphrase2026"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# 3. Create a knowledge base
+KB_ID=$(curl -s -X POST http://localhost:8000/api/v1/knowledge-bases \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"My First KB","description":"Test knowledge base"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+
+# 4. Upload a document (PDF, DOCX, CSV, JSON, HTML, TXT, MD — 20 MB max)
+curl -X POST "http://localhost:8000/api/v1/knowledge-bases/$KB_ID/documents" \
+  -H "Authorization: Bearer $TOKEN" -F "file=@./my_document.pdf"
+
+# 5. Run a verified analysis
+ANALYSIS_ID=$(curl -s -X POST http://localhost:8000/api/v1/analyses \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"What is this document about?\"}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+
+# 6. Inspect verified claims, evidence, and the execution trace
+curl -s "http://localhost:8000/api/v1/analyses/$ANALYSIS_ID/claims" \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+curl -s "http://localhost:8000/api/v1/analyses/$ANALYSIS_ID/evidence" \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+```
+
+> **Password rules.** Registration enforces complexity: at least 12 characters,
+> with an uppercase letter, a lowercase letter, a digit, and a special
+> character, and at most 72 bytes (the bcrypt limit). A password that fails
+> these is rejected with `422` and a specific message. `Str0ng!Passphrase2026`
+> above satisfies all of them.
+
+> **Status codes.** Analysis runs are asynchronous — `POST /analyses` returns
+> immediately with `status: "pending"`. Poll `GET /analyses/{id}` (or stream
+> `GET /analyses/{id}/stream`) until the status settles, otherwise the claims
+> and evidence endpoints will return nothing useful.
+
+On Windows PowerShell, use `Invoke-RestMethod` / `Invoke-WebRequest` against the same endpoints.
+
+### Via the Playground UI
+
+Open <http://localhost:5173/playground> → pick a knowledge base → ask a question → inspect the answer side-by-side with per-claim verdicts, evidence cards, reliability badges, conflict flags, and the full LangGraph trace. Other pages: `/dashboard`, `/knowledge-bases`, `/evidence`, `/claims`, `/conflicts`, `/experiments`, `/traces/:id`, `/settings`.
+
+---
+
+## Supported LLM Providers
+
+TrustRAG supports multiple LLM providers interchangeably. Switch via `LLM_PROVIDER` env var or per-request `llm_provider` parameter.
+
+| Provider | Models | RAM | Notes |
+|----------|--------|-----|-------|
+| **llama_cpp** | LFM2.5-1.2B, Granite-4.2-3B, SmolLM3-3B, EXAONE-2.4B, SmolLM2-1.7B | 2–4 GB | Default. Hardware-aware `scripts/start_local_llm.sh` auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 concurrent model on 8 GB |
+| **ollama** | gemma3:1b, qwen3:1.7b, llama3 | 1–3 GB | `ollama serve` + `ollama pull <model>`. Set `OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1` for 8 GB RAM |
+| **mlx** | Llama-3.2-1B-4bit, Llama-3.2-3B-4bit, LFM2.5-1.2B-4bit | 1–3 GB | Apple Silicon only. `mlx_lm.server --model <id> --port 8090`. Runs alongside llama.cpp on :8080 |
+| **gemini** | gemini-3.5-flash-lite | Cloud | Requires `GEMINI_API_KEY`. Fast, cheap, supports structured output natively |
+| **nvidia** | openai/gpt-oss-20b | Cloud | Requires `NVIDIA_API_KEY`. NVIDIA NIM endpoint. Verified live 2026-09-21 |
+
+### Per-tier caps (auto-selected by provider + RAM)
+
+| Tier | `max_verification_claims` | `max_context_chunks` | `max_claim_retrievals` |
+|------|---------------------------|----------------------|------------------------|
+| Lean (≤8 GB) | 5 | 5 | 2 |
+| Balanced (≤16 GB) | 8 | 8 | 3 |
+| Cloud | 8 | 8 | 3 |
+
+### Provider-aware temperature
+
+For factual/verification queries with local models, temperature is automatically set to **0.0** to minimize hallucination. Generation uses 0.2 by default.
+
+---
+
+## API Reference
+
+Interactive docs: <http://localhost:8000/docs> (Swagger) · `/redoc`. Base URL `http://localhost:8000`.
+
+| Group | Endpoints |
+|-------|-----------|
+| **Auth** | `POST /api/v1/auth/register` · `POST /api/v1/auth/login` · `GET /api/v1/auth/me` · `POST /api/v1/auth/logout` |
+| **Knowledge bases** | `POST/GET /api/v1/knowledge-bases` · `GET/DELETE /api/v1/knowledge-bases/{id}` · `POST …/{id}/documents` · `POST …/{id}/documents/from-url` · `POST …/{id}/snapshots` · `POST …/{id}/rollback/{snapshot_id}` |
+| **Analyses** | `POST/GET /api/v1/analyses` · `GET /api/v1/analyses/{id}` · `…/{id}/claims` · `…/{id}/evidence` · `…/{id}/trace` · `…/{id}/detail` · `…/{id}/export` · `POST …/{id}/stream-ticket` · `GET …/{id}/stream` (SSE) |
+| **Evidence & claims** | `GET /api/v1/evidence` · `GET /api/v1/claims` · `GET /api/v1/conflicts` |
+| **Experiments** | `POST/GET /api/v1/experiments` · `GET /api/v1/experiments/{exp_id}` |
+| **Documents** | `GET/DELETE /api/v1/documents/{id}` |
+| **Ops** | `GET /api/v1/health` · `GET /api/v1/health/detailed` · `GET /api/v1/metrics` · `GET /api/v1/models/providers` · `GET /api/v1/models/hardware` · `POST /api/v1/internal/ingest/document` · `POST /api/v1/internal/ingest/url` · `POST /api/v1/internal/search` · `POST /api/v1/internal/verify/claims` (service-token auth) |
 
 ---
 
 ## Testing
 
-TrustRAG has 219 backend tests, 22 frontend tests, and 2 E2E tests — all passing.
-
-**Backend (same on all three OSes — run from Git Bash on Windows):**
 ```bash
-cd apps/api
-source .venv/bin/activate      # Windows Git Bash: source .venv/Scripts/activate
-
-# Run all tests (mocked — no MongoDB, LLM, or Qdrant needed)
-pytest tests/ -q
-
-# Lint + format check (CI enforces both)
-ruff check app/ tests/
-ruff format --check app/ tests/
+# Backend — pytest (no live services needed; mocked). macOS/Linux:
+cd apps/api && source .venv/bin/activate && python3 -m pytest -v
+# Windows:
+cd apps\api; .\.venv\Scripts\Activate.ps1; python -m pytest -v
+# With coverage: python3 -m pytest -v --cov=app --cov-report=term-missing
 ```
 
-**Frontend:**
 ```bash
-cd apps/web
+# Frontend — Vitest unit tests
+cd apps/web && npm test
 
-# Unit & component tests
-npm run test
+# End-to-end — Playwright (needs the live stack running)
+npx playwright install    # first time only
+npm run test:e2e          # headless · npm run test:e2e:ui (interactive)
 
-# E2E tests (starts backend + browser automatically)
-npm run test:e2e
-
-# Lint & type check
-npm run lint
-
-# Production build
-npm run build
-```
-
-**Load testing (requires k6 — install it first):**
-```bash
-# macOS:
-brew install k6
-
-# Linux (Ubuntu/Debian):
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/k6-archive-keyring.gpg
-echo "deb [signed-by=/etc/apt/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
-sudo apt update && sudo apt install k6
-
-# Windows: choco install k6   (or grab the installer from the link below)
-# Full instructions for every platform: https://grafana.com/docs/k6/set-up/install-k6/
-```
-```bash
-# Backend must be running first (Terminal 2), then:
+# Load — k6 (repo root)
 k6 run load-test/smoke.js
-# Thresholds: <1% failures, p95 < 300ms, p99 < 500ms
 ```
 
-### What each backend test file covers
+Lint: `cd apps/api && ruff check app/ tests/ && ruff format --check app/ tests/` · `cd apps/web && npm run lint`.
 
-| File | Covers |
-|---|---|
-| `test_agent.py` | LangGraph nodes: retrieval, generation, verification, recovery, query-rewrite sanitization |
-| `test_analyses.py` / `test_auth.py` / `test_kb.py` / `test_experiments.py` / `test_health.py` | REST endpoints for analyses, auth, knowledge bases, experiments, health |
-| `test_config.py` | `models.yaml`/`ports.yaml` loading, validation, snapshots |
-| `test_ports.py` | Port-registry drift (`apply_ports.py --check` equivalent) |
-| `test_generation.py` | Grounded answer generation, ABSTAIN rules, scaffold stripping |
-| `test_verification.py` | Claim decomposition, fused + batch/individual NLI, tolerant near-miss parsing, fallback budget, verdict math |
-| `test_integrity.py` | SHA-256 evidence audit, temporal windows |
-| `test_retrieval.py` / `test_preprocessor.py` / `test_ingestion.py` | Hybrid retrieval, text normalization, chunking, ingestion pipeline |
-| `test_local_llm.py` / `test_hardware.py` | Ollama/llama.cpp clients, model registry, hardware profiles |
-| `test_disk_cache.py` / `test_semantic_cache.py` | Embedding disk cache, semantic answer cache |
-| `test_rate_limit.py` | Per-route rate limiting |
-| `test_search_mcp.py` | MCP web-search tools (Tavily/DuckDuckGo/hybrid) |
-| `test_internal.py` | Internal service endpoint input contracts (422s, not 500s) |
+> **Toolchain notes:** backend Python 3.11–3.12 with `uv` (`uv sync`), frontend Node 22+ (`engines`-pinned — Vitest breaks on Node 20). CI runs Ubuntu jobs plus a Windows + macOS smoke matrix (`cross-platform`), all gated in `ci-gate`.
 
 ---
 
-## CI/CD
+## Audit Tracker
 
-Every push/PR to `main`, `develop`, or `ui-redesign` runs two workflows (least-privilege tokens, concurrency-cancelled):
-
-**CI (`.github/workflows/ci.yml`)** — `backend-lint` (ruff + format + ports drift) → `backend-test` (pytest) → `backend-config-validate` (`models.yaml` schema + secret scan) → `frontend-lint` (eslint + vitest) → `frontend-build` → `e2e` (Playwright + k6 against MongoDB service + live backend) → `docker-build` (API image + advisory Trivy HIGH/CRITICAL SARIF to code scanning) → `ci-gate` (fails on any failure/cancel/skip).
-
-**Security (`.github/workflows/security.yml`)** — weekly Monday scan plus every push: `python-audit` (`pip-audit`, strict), `npm-audit` (high+), `secret-scan` (rejects committed `.env`, scans `models.yaml`), `sast` (Bandit on `app/`).
+All bug/error/issue/dead-code findings live in [`docs/audit-2026-09-28-ui-redesign-full.md`](docs/audit-2026-09-28-ui-redesign-full.md) — severity, fix, and verification evidence per item, including the ingestion audit (H1–H2/M1–M5/L1–L2), ONNX-only enforcement, test hermeticity, and the CI triage (CI-1–CI-3). It supersedes the removed point-in-time reports (history preserved in git).
 
 ---
 
-## Frontend pages
+## Deployment
 
-All 13 pages are lazy-loaded and auth-guarded (public: landing/login/register only):
+| Component | Local dev | Docker Compose | Production |
+|-----------|-----------|----------------|------------|
+| **LLM** | Ollama / llama.cpp on host | Host via `host.docker.internal` | Self-hosted Ollama, Gemini, or NVIDIA NIM |
+| **Embeddings** | ONNX BGE-small via `scripts/bootstrap.py` (~120 MB, one-time) | Host-exported ONNX via `docker cp` into the cache volume | Same as dev |
+| **Vectors** | Qdrant embedded (`local`) | `qdrant` container + volume | Qdrant Cloud |
+| **Database** | Host MongoDB | Host via `host.docker.internal` | MongoDB Atlas |
+| **API** | `uvicorn … --reload` | `api` container (non-root, hot-reload) | Cloud Run / Render / Railway / Fly.io |
+| **Web** | `npm run dev` (HMR) | `web` container (Node 22 Alpine) | Cloudflare Pages / Vercel (`npm run build`) |
 
-| Route | Page | Purpose |
-|---|---|---|
-| `/` | Landing | Product intro |
-| `/login`, `/register` | Auth | Sign in / create account |
-| `/dashboard` | Dashboard | Overview of KBs, runs, reliability |
-| `/playground` | Playground | Ask questions, watch live verification + recovery |
-| `/knowledge-bases` | Knowledge Bases | Create KBs, upload documents |
-| `/evidence` | Evidence | Retrieved segments across runs |
-| `/claims` | Claims | Atomic claims with NLI verdicts |
-| `/conflicts` | Conflicts | Source & claim contradictions |
-| `/experiments` | Experiments | Experiment runs |
-| `/traces/:id` | Trace | Per-analysis execution timeline |
-| `/settings` | Settings | Providers, models, preferences |
-| `*` | NotFound | 404 |
+Production checklist: `APP_ENV=production` (+ `QDRANT_API_KEY`), `CORS_ORIGINS` locked to your domain, `SERVICE_TOKEN` set for `/internal/*`. Full runbook: [docs/deployment/DEPLOYMENT_GUIDE.md](docs/deployment/DEPLOYMENT_GUIDE.md).
+
+---
+
+## Optimization
+
+TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.21**) with environment variable overrides.
+
+### Inference Acceleration
+
+| Feature | Description | Config Key | Default |
+|---------|-------------|------------|---------|
+| **KV Cache Quantization** | Quantize KV cache to q8_0/q4_0/q4_1, honored by `start_local_llm.sh` (saves 50-75% VRAM) | `optimization.kv_cache_quantization` | `"q8_0"` |
+| **Flash Attention** | O(N) memory attention via SRAM tiling (llama.cpp) | `optimization.flash_attention` | `true` |
+| **Prompt Caching** | Reuse KV cache for static prompt prefixes (llama.cpp `cache_prompt`, Ollama `num_keep`) | `optimization.prompt_caching` | `true` |
+| **Sampling Knobs** | Min-p / top-k sampling (disabled by default: `0.0`/`0` = off) + early EOS exit for faster generation | `local_llm.min_p`, `local_llm.top_k`, `local_llm.early_exit_eos` | `0.0`, `0`, `true` |
+| **Batch Prompt Processing** | `n_batch` controls prompt encoding parallelism | `local_llm.num_batch` | `512` |
+| **Connection Pooling** | HTTP keep-alive (30s) with connection limits for local servers | Internal | `5 keepalive / 10 max` |
+
+### Memory Optimization
+
+| Feature | Description | Config Key | Default |
+|---------|-------------|------------|---------|
+| **Dynamic Context Sizing** | Token-aware `num_ctx` per request using tiktoken | `local_llm.num_ctx` (base) | `4096` |
+| **Aggressive Model Eviction** | Registry limits instances by RAM: 1 (≤8GB) / 2 (≤16GB) / 4 (32GB+) | Internal | Dynamic |
+| **ONNX Reranker (int8)** | 3-4x CPU speedup, torch-free inference | `reranker.use_onnx` | `true` |
+| **ONNX Embeddings** | Single torch-free embedding engine, ~500-1000 MB RAM saved | `embedding.model` | `BAAI/bge-small-en-v1.5` |
+| **Context Compression** | Hierarchical summarization before LLM call (50% reduction target) | `optimization.context_compression_enabled`, `optimization.context_compression_target_reduction` | `true`, `0.5` |
+| **Adaptive Top-K** | Reduces retrieval when confidence high (RRF > 0.02) | `optimization.adaptive_top_k` | `true` |
+| **Reranker Result Caching** | LRU cache for query-document scores | `reranker.cache_size` | `500` |
+| **Cache TTL + VACUUM** | Embedding & semantic caches auto-expire & reclaim disk | `EMBEDDING_CACHE_TTL_SECONDS`, `SEMANTIC_CACHE_TTL_SECONDS` | 30d, 24h |
+
+### Environment Variable Overrides
+
+All config options support env overrides:
+
+| Config | Env Variable |
+|--------|-------------|
+| KV Cache Quantization | `KV_CACHE_QUANTIZATION` |
+| Flash Attention | `FLASH_ATTENTION` |
+| Prompt Caching | `PROMPT_CACHING` |
+| Adaptive Top-K | `ADAPTIVE_TOP_K` |
+| Context Compression | `CONTEXT_COMPRESSION_ENABLED`, `CONTEXT_COMPRESSION_TARGET_REDUCTION`, `MAX_CONTEXT_TOKENS` |
+| Local LLM Params | `LOCAL_LLM_NUM_CTX`, `LOCAL_LLM_NUM_BATCH`, `LOCAL_LLM_KEEP_ALIVE`, `LOCAL_LLM_MIN_P`, `LOCAL_LLM_TOP_K`, `LOCAL_LLM_EARLY_EXIT_EOS` |
+| Reranker | `RERANKER_USE_ONNX`, `RERANKER_ONNX_MODEL_PATH`, `RERANKER_CACHE_SIZE` |
+| Embedding model | `embedding.model` in `apps/api/config/models.yaml` (single engine, no env flag) |
+| Cache TTL | `EMBEDDING_CACHE_TTL_SECONDS`, `SEMANTIC_CACHE_TTL_SECONDS`, `EMBEDDING_CACHE_CLEANUP_INTERVAL` |
+
+---
+
+## Security
+
+- **JWT** — HS256, `iss`/`aud` validation, JTI revocation denylist, 60 min expiry
+- **Passwords** — bcrypt cost 12, timing-safe comparison
+- **Login lockout** — MongoDB TTL collection (`failed_logins`), configurable attempts/window
+- **Rate limiting** — SlowAPI with Redis backend (prod) or in-memory (dev), per-endpoint caps
+- **SSRF protection** — URL validation with DNS allowlist, IP pinning, host-header guard
+- **MCP auth** — Service token required for all tools, prompt/model caps
+- **CORS** — Origins from `CORS_ORIGINS`, credentials allowed
+- **Input validation** — Pydantic v2, filename sanitization, size limits, charset detection on sample
 
 ---
 
 ## Troubleshooting
 
-**MongoDB won't connect:**
-```bash
-# macOS
-brew services start mongodb-community
+Full per-OS field guide (20-row failure table): [docs/ONBOARDING-TROUBLESHOOTING.md](docs/ONBOARDING-TROUBLESHOOTING.md).
 
-# Linux
-sudo systemctl enable --now mongod
-
-# Windows (PowerShell as Admin)
-Get-Service MongoDB | Start-Service
-
-# Verify it's running
-mongosh --eval "db.runCommand({ ping: 1 })"
-```
-
-**Ollama not responding:**
-```bash
-# Check if it's running
-curl http://localhost:11434/api/tags
-
-# If not, start it
-ollama serve    # or: brew services start ollama (macOS)
-```
-
-**No offline warning / empty model list:**
-The Playground reads `/models/providers` — if that request fails you get an empty dropdown with no explanation. First check the backend is running **current** code (`uvicorn` without `--reload` serves stale code after `git pull`), then hard-refresh the browser (stale bundle). The endpoint degrades instead of 500ing, so a persistent empty list means the API itself is unreachable — see `useBackendHealth` / the API Online pill.
-
-**llama-server running but analyses fail (503):**
-Distinguish the two cases before restarting anything:
-```bash
-curl -m 5 http://127.0.0.1:8080/v1/models
-```
-- Fails instantly → server is down: `./scripts/start_local_llm.sh`
-- Hangs → server is overloaded/starting: wait, then retry (the preflight probe retries once; a cold model on a busy host can miss the first sample)
-- Instant 200 but UI still red → stale backend/frontend processes; restart them
-- 503 says "not answering" (not "not reachable") → slow server, not a dead one — do not reinstall models for this
-
-**Port already in use:**
-```bash
-# Find what's using the port
-lsof -i :8000     # macOS/Linux
-netstat -ano | findstr :8000    # Windows
-
-# Kill it or change the port in config/ports.yaml
-```
-
-**Firewall blocks localhost (per OS):**
-The first launch often triggers a firewall prompt — that's expected, not an error. Allow private-network access and reload the page:
-- **macOS:** System Settings → Network → Firewall → allow incoming connections for `Python` / `node` when prompted.
-- **Linux:** `sudo ufw allow 8000/tcp && sudo ufw allow 5173/tcp` — but only if `ufw` is active (check with `sudo ufw status` first).
-- **Windows:** Windows Defender Firewall will prompt for Python and Node.js — tick **Private networks** (leave Public unchecked) and continue.
-
-**Windows: `python3` not recognized / venv won't activate:**
-Windows installs the launcher as `py`, not `python3`. Create the environment with `py -3.11 -m venv .venv`, then activate with `source .venv/Scripts/activate` (Git Bash) or `.venv\Scripts\Activate.ps1` (PowerShell). If PowerShell refuses the script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once — or simply do everything in Git Bash.
-
-**After `git pull` (existing users):**
-```bash
-cd apps/api && source .venv/bin/activate && pip install -e ".[dev,local-models]"  # picks up new deps (e.g. onnxruntime)
-cd ../web && npm ci
-```
-No database migration is needed (Mongo/Qdrant schemas unchanged; new `models.yaml` keys have safe defaults). If you modified `models.yaml` locally, `git` may ask you to resolve the conflict — keep your values and copy any new keys (e.g. `fused_decompose_verify`, `max_seq_length`) from `models.yaml` in the pull.
-
-**Qdrant port confusion:**
-When running via Docker, Qdrant maps host port `6335` to container port `6333`. From your host, use `http://localhost:6335`. Inside Docker, services talk directly to `http://qdrant:6333`.
-
-**Embedding model download on first boot:**
-The BGE embedding model (~120MB) downloads automatically from HuggingFace on the first API startup. It's cached at `~/.cache/huggingface` after that. If you hit rate limits, set `HF_TOKEN` in your `.env`.
-
-**Wrong Ollama host picked up:**
-`OLLAMA_HOST` is an accepted alias for `OLLAMA_BASE_URL` — if it's exported globally (Ollama sets it on some installs), the backend uses it silently. Unset it or set `OLLAMA_BASE_URL` explicitly in `.env` to override.
-
-**Changed embedding model, retrieval looks off:**
-Vectors are pinned per knowledge base at ingest. After switching `EMBEDDING_MODEL`/`EMBEDDING_DIM`, re-create the KB and re-upload — old vectors won't match.
-
-**0% FAILED even with evidence present:**
-Open the Claims tab and read the per-claim explanations: `NEUTRAL` with "Verification could not be completed" means the local NLI judge failed to emit a verdict (check the model server logs), while "fallback budget exhausted" would mean claims were never attempted. Verification judges the same ~3000-char context the answer was generated from — claims drawn from beyond it can't verify.
+| Issue | Fix |
+|-------|-----|
+| `LLM_UNAVAILABLE` (llama.cpp) | Start `scripts/start_local_llm.sh --max 1` |
+| `LLM_UNAVAILABLE` (ollama) | `ollama serve` + `ollama pull <model>` |
+| `LLM_UNAVAILABLE` (gemini/nvidia) | Check API key, retry, or switch provider |
+| `LLM_UNAVAILABLE` (MLX) | `mlx_lm.server --model <id> --port 8090` (Apple Silicon) |
+| `Database not initialized` | Ensure MongoDB running; check `MONGODB_URI` |
+| `503 Service Unavailable` | DB not connected; check `connect_db()` in lifespan |
+| OOM on 8 GB | `export OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1 OLLAMA_MAX_LOADED_MODELS=1` |
+| ONNX weights missing / stale after `git pull` | `apps/api/.venv/bin/python scripts/bootstrap.py` (`--verify` to check, `--force` to rebuild) |
+| ONNX export fails (`No module named 'onnxscript'` / `torch` / `onnx`) | Reinstall export deps: `cd apps/api && .venv/bin/pip install -e ".[local-models]"`, then re-run bootstrap |
 
 ---
 
-## Documentation
+## Contributing
 
-| Document | What's in it |
-|---|---|
-| [Architecture](docs/architecture/architecture.md) | Technical design of the LangGraph state machine, hybrid search, claim decomposition |
-| [Decision Log](docs/architecture/decision-log.md) | 22 ADRs explaining technology choices and tradeoffs |
-| [Security Controls](docs/security/security-controls.md) | JWT auth, anti-IDOR, SSRF defense, defensive headers |
-| [Threat Model](docs/security/threat-model.md) | STRIDE analysis, attack surface, countermeasures |
-| [Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md) | Production container setup, cloud hosting, env management |
-| [System Audit](docs/audits/2026-09-11_unified_senior_audit.md) | Multi-role senior audit: frontend, backend, AI/ML, security, optimization, testing |
-| [Implementation Status](docs/IMPLEMENTATION_STATUS_2026-09-11.md) | What was fixed, test state, remaining work |
-| [Roadmap](docs/ROADMAP.md) | Milestones, completed phases, upcoming work |
+See [CONTRIBUTING.md](CONTRIBUTING.md) (workflow: `READ → PLAN → BUILD → VERIFY → FIX → DOCUMENT → NEXT`; model IDs in `apps/api/config/models.yaml`, secrets in `.env` only; conventional commits `feat:`/`fix:`/`docs:`/`test:`/`refactor:`). Security policy: [SECURITY.md](SECURITY.md).
+
+```bash
+./scripts/setup.sh
+cd apps/api && ruff check app/ tests/ && python3 -m pytest -v
+cd apps/web && npm run lint && npm test
+```
 
 ---
 
-## License
+## Note
 
-MIT — see [LICENSE](LICENSE).
+- For **macOS**, use the provided brew commands and remember to set environment variables for JVM/Ollama tuning on low-memory machines.
+- For **Linux**, ensure MongoDB service is enabled and started; Ollama service can be managed via systemd if preferred.
+- For **Windows**, PowerShell execution policy may need adjustment; using WSL2 is recommended for a native Linux-like experience.
+- Docker setup simplifies evaluation but expects MongoDB and LLM on the host; adjust `.env` for production secrets and external services.
+- MLX is Apple‑Silicon only; ensure you have the appropriate hardware and follow the [MLX on Mac guide](docs/PERFORMANCE-GUIDE.md#4-mlx-on-mac-apple-silicon-free-fastest-toks-per-watt) if you wish to use it alongside Ollama or llama.cpp.

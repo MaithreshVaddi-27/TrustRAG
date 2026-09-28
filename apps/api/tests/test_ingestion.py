@@ -84,9 +84,12 @@ def test_sparse_vectorizer_generation():
     assert "values" in sparse_vec
     assert len(sparse_vec["indices"]) == len(sparse_vec["values"])
 
-    # "refund" appears twice out of 4 tokens (refund, processing, refund, window)
-    # TF weight should be 2/4 = 0.5
-    assert 0.5 in sparse_vec["values"]
+    # BM25-style TF, not linear TF: "refund" appears twice in 4 tokens.
+    # sat(2) = 2*2.2/(2+1.2) = 1.375; length norm for 4 tokens against the
+    # 128-token reference = 0.25 + 0.75*(4/128). Linear TF would give 0.5.
+    expected_refund = 1.375 / (0.25 + 0.75 * (4 / 128))
+    assert max(sparse_vec["values"]) == pytest.approx(expected_refund)
+    assert 0.5 not in sparse_vec["values"]
 
 
 @patch("app.ingestion.pipeline.init_kb_collection", AsyncMock())
@@ -114,6 +117,7 @@ async def test_indexing_pipeline_execution(mock_create_indexes, mock_connect, mo
         }
     )
     mock_collection.update_one = AsyncMock()
+    mock_collection.delete_many = AsyncMock()
     mock_collection.insert_many = AsyncMock()
 
     with (
@@ -136,8 +140,9 @@ async def test_indexing_pipeline_execution(mock_create_indexes, mock_connect, mo
             chunks=chunks,
         )
 
-        # Asserts status updates: processing + completed + KB embedding pin
-        assert mock_collection.update_one.call_count == 3
+        # Asserts status updates: processing + completed + KB embedding pin + KB
+        # embedding model/provider pin
+        assert mock_collection.update_one.call_count == 4
         # Verify Qdrant client was called for upsert
         mock_client.upsert.assert_called_once()
 

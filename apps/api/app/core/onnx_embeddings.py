@@ -12,6 +12,7 @@ import os
 from typing import Any
 
 import numpy as np
+import structlog
 
 try:
     import onnxruntime as ort
@@ -23,13 +24,25 @@ except ImportError:
 
 from langchain_core.embeddings import Embeddings
 
+from app.core.config import get_settings
+
+logger = structlog.get_logger(__name__)
+
 # Pinned tokenizer revision (commit SHA of BAAI/bge-small-en-v1.5 on the Hub).
 # Bandit B615 requires revision pinning to block supply-chain substitution of
 # tokenizer files; override via HF_TOKENIZER_REVISION only to move forward
 # deliberately (e.g. after re-exporting the ONNX model against the new vocab).
-_HF_TOKENIZER_REVISION = os.environ.get(
-    "HF_TOKENIZER_REVISION", "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
-)
+# An earlier revision of this file kept the same env read and the same default
+# SHA in a module-level constant as well. Only this function is ever called.
+_DEFAULT_TOKENIZER_REVISION = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
+
+
+def _get_tokenizer_revision() -> str:
+    """Get tokenizer revision from settings with fallback to environment variable."""
+    settings = get_settings()
+    if settings.hf_tokenizer_revision:
+        return settings.hf_tokenizer_revision
+    return os.environ.get("HF_TOKENIZER_REVISION", _DEFAULT_TOKENIZER_REVISION)
 
 
 class ONNXBGEEmbeddings(Embeddings):
@@ -63,7 +76,7 @@ class ONNXBGEEmbeddings(Embeddings):
 
         self.tokenizer = AutoTokenizer.from_pretrained(
             tokenizer_name,
-            revision=_HF_TOKENIZER_REVISION,
+            revision=_get_tokenizer_revision(),
             trust_remote_code=False,
         )
 
@@ -80,32 +93,68 @@ class ONNXBGEEmbeddings(Embeddings):
         self._is_bge = "bge" in tokenizer_name.lower()
         self._query_instruction = "Represent this sentence for searching relevant passages: "
 
+        # Output width, read from the graph's declared output shape. Derived rather
+        # than hardcoded so a non-384 model (or a re-export with a different head)
+        # still returns correctly-shaped rows — including on the empty path.
+        # Falls back to 384 only if the session does not declare its shape.
+        self.embedding_dim = self._detect_embedding_dim()
+
+    def _detect_embedding_dim(self) -> int:
+        """Infer the embedding width from the ONNX graph's output declaration."""
+        default = 384
+        try:
+            outputs = self.session.get_outputs()
+            if not outputs:
+                return default
+            shape = getattr(outputs[0], "shape", None)
+            if not shape:
+                return default
+            # Shapes may carry symbolic dims (str) or None for dynamic axes; only
+            # a concrete trailing integer is trustworthy.
+            tail = shape[-1]
+            if isinstance(tail, int) and tail > 0:
+                return tail
+        except Exception as exc:
+            # A session that will not describe its output shape is unusual but not
+            # fatal; fall back to the BGE-small default rather than refusing to load.
+            logger.debug("Could not detect ONNX output dim, defaulting to 384", exc_info=exc)
+        return default
+
     def _encode_batch(self, texts: list[str], is_query: bool = False) -> np.ndarray:
-        """Encode a batch of texts to embeddings."""
+        """Encode a batch of texts to embeddings (internally chunked ≤32 to bound RAM)."""
         if is_query and self._is_bge:
             texts = [
                 self._query_instruction + t if not t.startswith(self._query_instruction) else t
                 for t in texts
             ]
 
-        # Tokenize
-        encoded = self.tokenizer(
-            texts,
-            padding=True,
-            truncation=True,
-            max_length=self.max_seq_length,
-            return_tensors="np",
+        import numpy as _np
+
+        out: list[np.ndarray] = []
+        for start in range(0, len(texts), 32):
+            sub = texts[start : start + 32]
+            # Tokenize
+            encoded = self.tokenizer(
+                sub,
+                padding=True,
+                truncation=True,
+                max_length=self.max_seq_length,
+                return_tensors="np",
+            )
+
+            # Run ONNX inference
+            ort_inputs = {
+                "input_ids": encoded["input_ids"],
+                "attention_mask": encoded["attention_mask"],
+            }
+            ort_outputs = self.session.run(self.output_names, ort_inputs)
+            embeddings = ort_outputs[0]  # Already L2 normalized by the model
+            out.append(embeddings)
+        return (
+            _np.concatenate(out, axis=0)
+            if out
+            else _np.zeros((0, self.embedding_dim), dtype=_np.float32)
         )
-
-        # Run ONNX inference
-        ort_inputs = {
-            "input_ids": encoded["input_ids"],
-            "attention_mask": encoded["attention_mask"],
-        }
-        ort_outputs = self.session.run(self.output_names, ort_inputs)
-        embeddings = ort_outputs[0]  # Already L2 normalized by the model
-
-        return embeddings
 
     def embed_query(self, text: str) -> list[float]:
         """Embed a single query text."""
@@ -155,6 +204,17 @@ class ONNXBGEEmbeddingsWrapper:
         self._max_size = max_cache_size
         self._model_name = model_name
 
+    @staticmethod
+    def _mem_key(text: str, mode: str) -> str:
+        """Namespace the in-memory cache by mode as well as text.
+
+        Query and document embeddings of the same string are different vectors
+        (the BGE query instruction is prepended only for queries), so they must
+        not share a cache slot. Sharing it meant whichever call ran first won
+        and the other silently got the wrong vector.
+        """
+        return f"{mode}\x00{text.strip().lower()}"
+
     def _lookup_mem(self, key: str) -> list[float] | None:
         with self._mem_lock:
             value = self._cache.get(key)
@@ -170,46 +230,66 @@ class ONNXBGEEmbeddingsWrapper:
                 self._cache.popitem(last=False)
 
     def embed_query(self, text: str) -> list[float]:
-        cached = self._lookup_mem(text)
+        from app.core.disk_cache import (
+            EMBEDDING_MODE_QUERY,
+            get_cached_embedding,
+            set_cached_embedding,
+        )
+
+        key = self._mem_key(text, EMBEDDING_MODE_QUERY)
+        cached = self._lookup_mem(key)
         if cached is not None:
             return cached
 
-        from app.core.disk_cache import get_cached_embedding, set_cached_embedding
-
-        disk_hit = get_cached_embedding(text, self._model_name)
+        disk_hit = get_cached_embedding(text, self._model_name, EMBEDDING_MODE_QUERY)
         if disk_hit:
-            self._store_mem(text, disk_hit)
+            self._store_mem(key, disk_hit)
             return disk_hit
 
         vec = self._base.embed_query(text)
-        self._store_mem(text, vec)
-        set_cached_embedding(text, self._model_name, vec)
+        self._store_mem(key, vec)
+        set_cached_embedding(text, self._model_name, vec, EMBEDDING_MODE_QUERY)
         return vec
 
     async def aembed_query(self, text: str) -> list[float]:
-        cached = self._lookup_mem(text)
+        from app.core.disk_cache import (
+            EMBEDDING_MODE_QUERY,
+            get_cached_embedding,
+            set_cached_embedding,
+        )
+
+        key = self._mem_key(text, EMBEDDING_MODE_QUERY)
+        cached = self._lookup_mem(key)
         if cached is not None:
             return cached
 
-        from app.core.disk_cache import get_cached_embedding, set_cached_embedding
-
-        disk_hit = await asyncio.to_thread(get_cached_embedding, text, self._model_name)
+        disk_hit = await asyncio.to_thread(
+            get_cached_embedding, text, self._model_name, EMBEDDING_MODE_QUERY
+        )
         if disk_hit:
-            self._store_mem(text, disk_hit)
+            self._store_mem(key, disk_hit)
             return disk_hit
 
         vec = await self._base.aembed_query(text)
-        self._store_mem(text, vec)
-        await asyncio.to_thread(set_cached_embedding, text, self._model_name, vec)
+        self._store_mem(key, vec)
+        await asyncio.to_thread(
+            set_cached_embedding, text, self._model_name, vec, EMBEDDING_MODE_QUERY
+        )
         return vec
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
 
-        from app.core.disk_cache import get_cached_embeddings_batch, set_cached_embeddings_batch
+        from app.core.disk_cache import (
+            EMBEDDING_MODE_DOCUMENT,
+            get_cached_embeddings_batch,
+            set_cached_embeddings_batch,
+        )
 
-        cached_map, missing_indices = get_cached_embeddings_batch(texts, self._model_name)
+        cached_map, missing_indices = get_cached_embeddings_batch(
+            texts, self._model_name, EMBEDDING_MODE_DOCUMENT
+        )
         if not missing_indices:
             return [cached_map[i] for i in range(len(texts))]
 
@@ -217,12 +297,14 @@ class ONNXBGEEmbeddingsWrapper:
         computed_vectors = self._base.embed_documents(missing_texts)
 
         # Batch write to disk cache
-        set_cached_embeddings_batch(missing_texts, self._model_name, computed_vectors)
+        set_cached_embeddings_batch(
+            missing_texts, self._model_name, computed_vectors, EMBEDDING_MODE_DOCUMENT
+        )
 
         for i, idx in enumerate(missing_indices):
             vec = computed_vectors[i]
             cached_map[idx] = vec
-            self._store_mem(texts[idx], vec)
+            self._store_mem(self._mem_key(texts[idx], EMBEDDING_MODE_DOCUMENT), vec)
 
         return [cached_map[i] for i in range(len(texts))]
 
@@ -230,10 +312,14 @@ class ONNXBGEEmbeddingsWrapper:
         if not texts:
             return []
 
-        from app.core.disk_cache import get_cached_embeddings_batch, set_cached_embeddings_batch
+        from app.core.disk_cache import (
+            EMBEDDING_MODE_DOCUMENT,
+            get_cached_embeddings_batch,
+            set_cached_embeddings_batch,
+        )
 
         cached_map, missing_indices = await asyncio.to_thread(
-            get_cached_embeddings_batch, texts, self._model_name
+            get_cached_embeddings_batch, texts, self._model_name, EMBEDDING_MODE_DOCUMENT
         )
         if not missing_indices:
             return [cached_map[i] for i in range(len(texts))]
@@ -243,13 +329,17 @@ class ONNXBGEEmbeddingsWrapper:
 
         # Batch write to disk cache
         await asyncio.to_thread(
-            set_cached_embeddings_batch, missing_texts, self._model_name, computed_vectors
+            set_cached_embeddings_batch,
+            missing_texts,
+            self._model_name,
+            computed_vectors,
+            EMBEDDING_MODE_DOCUMENT,
         )
 
         for i, idx in enumerate(missing_indices):
             vec = computed_vectors[i]
             cached_map[idx] = vec
-            self._store_mem(texts[idx], vec)
+            self._store_mem(self._mem_key(texts[idx], EMBEDDING_MODE_DOCUMENT), vec)
 
         return [cached_map[i] for i in range(len(texts))]
 

@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# TRUSTRAG — hardware-aware local LLM launcher.
+# TRUSTRAG — hardware-aware local LLM launcher (router server mode).
 #
-# Detects the host GPU (Metal on Apple Silicon, CUDA on NVIDIA) and boots
-# llama-server with full GPU offload plus memory-tier context/concurrency
-# budgets, so the model runs on the GPU without saturating unified memory.
+# Starts llama-server in router mode to serve multiple models from cache.
+# Models are loaded on-demand when selected from UI.
 #
 # Usage:
-#   ./scripts/start_local_llm.sh [model_repo[:quant]]
-#   Default model: repo's llama_cpp config default (see models.yaml).
+#   ./scripts/start_local_llm.sh [--max N] [--port PORT]
+#   --max N : maximum concurrent loaded models (default: RAM-aware — 1 on
+#             ≤8 GB hosts, 2 on ≤16 GB, 4 above; an explicit --max always wins)
+#   --port PORT : port to serve on (default: 8080)
+#   Default: serves all cached GGUF models from HuggingFace cache.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,24 +20,70 @@ if [ ! -x "$PY" ]; then
   exit 1
 fi
 
-# Resolve flags + default model via the API's hardware/config layer.
-# Two-line output: line 1 = flags (space-separated), line 2 = default model id.
-OUT="$(cd "$API_DIR" && "$PY" - <<'PYEOF'
-from app.core.config import get_model_config
+# Resolve hardware-specific launch flags.
+# NOTE: app logging (structlog) writes to stdout (see app/core/logging.py),
+# so these one-liners can emit log lines before the value line — e.g.
+# "2026-09-27 ... vm_stat failed ...". `tail -n 1` keeps only the value line;
+# without it, log words leak into llama-server argv and it dies with
+# "error: invalid argument: 2026-09-27". pipefail + set -e still abort when
+# the Python itself fails (tail never masks a non-zero python exit).
+_LAUNCH_FLAGS_LINE=$(cd "$API_DIR" && "$PY" -c "
 from app.core.hardware import get_llamacpp_launch_args
+print(' '.join(get_llamacpp_launch_args()))
+" | tail -n 1)
+read -ra LAUNCH_FLAGS <<< "$_LAUNCH_FLAGS_LINE"
 
-print(" ".join(get_llamacpp_launch_args()))
-print(get_model_config().llm_model_for("llama_cpp"))
-PYEOF
-)"
-LAUNCH_FLAGS=$(echo "$OUT" | sed -n '1p')
-DEFAULT_MODEL=$(echo "$OUT" | sed -n '2p')
-MODEL="${1:-$DEFAULT_MODEL}"
+# Parse args.
+MAX_MODELS=""
+PORT=8080
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --max) MAX_MODELS="${2:-4}"; shift 2 ;;
+    --port) PORT="${2:-8080}"; shift 2 ;;
+    *) echo "Unknown arg: $1" >&2; exit 1 ;;
+  esac
+done
 
-echo "[start_local_llm] model : $MODEL"
-echo "[start_local_llm] flags : $LAUNCH_FLAGS"
-echo "[start_local_llm] port  : 8080"
+# Default --max follows host RAM (each resident GGUF + its KV cache is GBs;
+# on 8 GB hosts a second model means swap). Matches the -c/-np tiers in
+# app/core/hardware.py:get_llamacpp_launch_args.
+if [ -z "$MAX_MODELS" ]; then
+  # Same stdout-log caveat as LAUNCH_FLAGS above: keep the value line only.
+  MAX_MODELS=$(cd "$API_DIR" && "$PY" -c "
+from app.core.hardware import get_system_memory_info
+total = get_system_memory_info()['total_gb']
+print(1 if total <= 8.5 else (2 if total <= 16.5 else 4))
+" | tail -n 1)
+fi
 
-# Split flags on whitespace into argv (words only, no globbing).
-# shellcheck disable=SC2086
-exec llama-server -hf "$MODEL" --port 8080 $LAUNCH_FLAGS
+# Models directory (HuggingFace cache where GGUF models are stored).
+# Created on demand: a fresh machine has no GGUFs yet, and the router
+# autoloads models as they arrive — so start anyway and tell the user how
+# to fetch one instead of hard-failing.
+MODELS_DIR="${HF_HUB_CACHE:-$HOME/.cache/huggingface/hub}"
+if [ ! -d "$MODELS_DIR" ]; then
+  echo "[start_local_llm] creating empty models dir: $MODELS_DIR"
+  mkdir -p "$MODELS_DIR"
+  echo "[start_local_llm] no GGUF models cached yet — fetch one, e.g.:"
+  echo "    hf download LiquidAI/LFM2.5-1.2B-Instruct-GGUF --include '*Q4_K_M*' --local-dir '$MODELS_DIR'"
+  echo "  (needs 'pip install -U \"huggingface_hub[cli]\"'; router picks it up on select)"
+fi
+
+if ! command -v llama-server >/dev/null 2>&1; then
+  echo "ERROR: 'llama-server' not found on PATH." >&2
+  echo "  macOS:  brew install llama.cpp" >&2
+  echo "  Linux:  download a release from https://github.com/ggerganov/llama.cpp/releases" >&2
+  echo "  Windows: run this script under WSL (native .cmd wrapper is not shipped)." >&2
+  exit 1
+fi
+
+echo "[start_local_llm] router mode: serving from $MODELS_DIR"
+echo "[start_local_llm] max concurrent models: $MAX_MODELS"
+echo "[start_local_llm] port : $PORT"
+
+exec llama-server \
+  --models-dir "$MODELS_DIR" \
+  --models-max "$MAX_MODELS" \
+  --models-autoload \
+  --port "$PORT" \
+  "${LAUNCH_FLAGS[@]}"

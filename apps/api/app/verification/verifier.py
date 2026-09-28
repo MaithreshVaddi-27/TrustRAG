@@ -7,6 +7,7 @@ against candidate evidence chunks using structured output mappings.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import threading
@@ -17,12 +18,63 @@ from bson import ObjectId
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.config import get_model_config
-from app.core.local_llm import local_cap_kwargs
+from app.core.llm_ledger import invoke_counted, llm_budget_exhausted
+from app.core.local_llm import is_reasoning_model, verification_cap_kwargs
 from app.core.logging import get_logger
 from app.core.model_registry import get_verification_model
 from app.db.mongodb import Collections, get_collection
 
 logger = get_logger(__name__)
+
+# ─── Per-call NLI timeout ────────────────────────────────────────────────────
+# A single hung local-LLM call must never eat the whole verification-node
+# budget (node-level wait_for cancels mid-persist → recovery repeats the same
+# spiral). Each NLI call gets its own cap and degrades to NEUTRAL/empty on
+# timeout; the node budget remains the backstop, but cancellation now lands
+# between calls instead of mid-write.
+NLI_PER_CALL_TIMEOUT_SECONDS = 90
+
+# Cloud NLI calls get a longer, provider-configured budget instead. The 90s cap
+# above defends against a *hung local* server, but applying it to a billed cloud
+# request cancels generation the provider has already started work on — and a
+# cancelled Gemini/NVIDIA request is not free (audit B-18). A slow cloud call is
+# normally progressing, not hung, so we defer to the configured llm timeout.
+_CLOUD_PROVIDERS = frozenset({"gemini", "google_genai", "nvidia", "nim"})
+
+
+def _nli_timeout_seconds() -> int:
+    """Per-call NLI budget, scaled by provider.
+
+    Local: 90s (a dead local socket is the failure mode being defended against).
+    Cloud: the configured `llm.timeout_seconds` (180s), so a large, slow, billed
+    model is allowed to finish rather than being cancelled mid-generation.
+    """
+    try:
+        from app.core.config import get_model_config, normalize_provider
+
+        cfg = get_model_config()
+        if normalize_provider(cfg.verification_provider) in _CLOUD_PROVIDERS:
+            configured = int(getattr(cfg, "llm_timeout_seconds", 0) or 0)
+            if configured > NLI_PER_CALL_TIMEOUT_SECONDS:
+                return configured
+    except Exception:  # pragma: no cover - config must never break verification
+        logger.debug("NLI timeout: falling back to default", exc_info=True)
+    return NLI_PER_CALL_TIMEOUT_SECONDS
+
+
+async def _await_nli_call(coro, *, what: str):  # type: ignore[no-untyped-def]
+    """Await one NLI LLM call with a per-call timeout (TimeoutError propagates)."""
+    timeout_s = _nli_timeout_seconds()
+    try:
+        return await asyncio.wait_for(coro, timeout=timeout_s)
+    except TimeoutError:
+        logger.warning(
+            "NLI call timed out",
+            what=what,
+            timeout_s=timeout_s,
+        )
+        raise
+
 
 # ─── NLI batch-failure metric ────────────────────────────────────────────────
 # Counts batch-NLI calls that fail totally (raise → retry → individual
@@ -41,6 +93,67 @@ def get_nli_metrics() -> dict[str, int]:
     """Return NLI verification counters (batch_total_failures)."""
     with _NLI_METRICS_LOCK:
         return {"batch_total_failures": _NLI_BATCH_TOTAL_FAILURES}
+
+
+def _apply_cap_via_model_copy(model_obj: Any, cap: dict[str, Any]) -> Any:
+    """Return a copy of `model_obj` with output-cap fields applied.
+
+    Needed for `ChatGoogleGenerativeAI`, whose `with_structured_output` rejects
+    every unexpected kwarg with `ValueError: Received unsupported arguments
+    {...}` (verified against langchain-google-genai 4.4.0). Since
+    `bind()` returns a RunnableBinding — which has no `with_structured_output` —
+    the only way to carry the cap is to set the generation field on the model
+    itself. `model_copy` is a non-mutating pydantic v2 copy, so the shared
+    registry instance is left untouched.
+    """
+    if not cap:
+        return model_obj
+    fields = getattr(type(model_obj), "model_fields", None)
+    if not fields:
+        return model_obj
+    applicable = {k: v for k, v in cap.items() if k in fields}
+    if not applicable:
+        return model_obj
+    try:
+        return model_obj.model_copy(update=applicable)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("model_copy cap application failed", error=str(exc))
+        return model_obj
+
+
+def _structured_verifier(model_obj: Any, provider: str | None, schema: Any, cap: dict[str, Any]):
+    """Structured-output runnable with per-provider transport.
+
+    Native tool-calling structured output is reliable for local and Gemini
+    models, but NVIDIA unknown-type models have flaky server-side
+    constrained decoding (observed live on muse-glimmer-30b: HTTP 400 on
+    guided_json, partial verdict arrays). Those go through the prompt-based
+    JSON path proven for local models (response_format json_object + the
+    shared repair logic) — verified 3/3 SUPPORTED twice where native
+    returned 2/3 and intermittently 400'd on the same prompt.
+    """
+    norm = (provider or get_model_config().verification_provider or "").strip().lower()
+    if norm not in ("nvidia", "nim"):
+        if norm in ("gemini", "google_genai"):
+            # Gemini's with_structured_output raises ValueError on any extra
+            # kwarg, so the cap must ride on the model, not the call.
+            return _apply_cap_via_model_copy(model_obj, cap).with_structured_output(schema)
+        return model_obj.with_structured_output(schema, **cap)
+
+    from langchain_core.outputs import ChatGeneration, ChatResult
+
+    from app.core.llm_utils import build_structured_output_runnable
+
+    async def _generate_via_ainvoke(messages: Any, **kwargs: Any) -> ChatResult:
+        ai_message = await invoke_counted(model_obj, messages, **kwargs)
+        return ChatResult(generations=[ChatGeneration(message=ai_message)])
+
+    return build_structured_output_runnable(
+        generate_fn=_generate_via_ainvoke,
+        schema=schema,
+        json_format_kwargs={"response_format": {"type": "json_object"}},
+        extra_kwargs=dict(cap),
+    )
 
 
 # ─── Meta-claim filter ─────────────────────────────────────────────────────────
@@ -82,8 +195,10 @@ _META_CLAIM_PATTERNS = (
 # Evidence-layout references only when digit-anchored ("Segment 2 states…",
 # "Page 8 lists…", "Path A (…"), so subject-matter uses of these words
 # ("network segment", "landing page", "career path") pass through.
+# The segment pattern excludes bracketed Phase-4 citations ("[Segment 1]"),
+# which are legitimate provenance markers, not scaffold echo.
 _META_CLAIM_REGEXES = (
-    re.compile(r"\bsegments?\s+\d"),
+    re.compile(r"(?<!\[)\bsegments?\s+\d"),
     re.compile(r"\bpage\s+\d"),
     re.compile(r"\bpath\s+[a-c0-9]\b"),
 )
@@ -158,6 +273,11 @@ _VERDICT_ALIASES = {
     "ENTAILED": "SUPPORTED",
     "CONFIRMED": "SUPPORTED",
     "VALID": "SUPPORTED",
+    # Verb/noun forms and single-letter shorthands reasoning models emit
+    # (observed live: verdict "S" for a supported claim).
+    "SUPPORT": "SUPPORTED",
+    "SUPPORTS": "SUPPORTED",
+    "S": "SUPPORTED",
     # → CONTRADICTED
     "REFUTED": "CONTRADICTED",
     "FALSE": "CONTRADICTED",
@@ -167,6 +287,10 @@ _VERDICT_ALIASES = {
     "CONTRADICTS": "CONTRADICTED",
     "REFUTES": "CONTRADICTED",
     "DENIED": "CONTRADICTED",
+    "CONTRADICT": "CONTRADICTED",
+    "REFUTE": "CONTRADICTED",
+    "DISPROVE": "CONTRADICTED",
+    "C": "CONTRADICTED",
     # → NEUTRAL
     "UNCERTAIN": "NEUTRAL",
     "UNKNOWN": "NEUTRAL",
@@ -176,6 +300,7 @@ _VERDICT_ALIASES = {
     "N/A": "NEUTRAL",
     "NA": "NEUTRAL",
     "NONE": "NEUTRAL",
+    "N": "NEUTRAL",
 }
 
 _CANONICAL_VERDICTS = ("SUPPORTED", "CONTRADICTED", "NEUTRAL")
@@ -184,7 +309,10 @@ _CANONICAL_VERDICTS = ("SUPPORTED", "CONTRADICTED", "NEUTRAL")
 def _normalize_verdict_value(value: Any) -> Any:
     """Map verdict aliases / junk to canonical SUPPORTED | CONTRADICTED | NEUTRAL."""
     if isinstance(value, str):
-        upper = value.strip().upper()
+        # Reasoning models append punctuation ("SUPPORTED.") or emit
+        # single-letter shorthands ("S") — strip decoration first so the
+        # canonical/alias lookup sees the bare token.
+        upper = value.strip().upper().rstrip(".:;!,")
         if upper in _CANONICAL_VERDICTS:
             return upper
         mapped = _VERDICT_ALIASES.get(upper)
@@ -570,13 +698,16 @@ async def decompose_answer_to_claims(
         # Local-RAM: ≤15 short claim strings fit in 512 tokens; looping
         # small models hit the cap instead of running to 1024. Truncation
         # falls back to single-claim verification (bounded), never a spiral.
-        cap = local_cap_kwargs(provider or get_model_config().verification_provider, max_tokens=512)
-        structured_llm = model_obj.with_structured_output(ClaimDecomposition, **cap)
+        cap = verification_cap_kwargs(
+            provider or get_model_config().verification_provider, model, max_tokens=512
+        )
+        structured_llm = _structured_verifier(model_obj, provider, ClaimDecomposition, cap)
 
         logger.info("Running answer claim decomposition", answer_len=len(answer))
 
-        response = await structured_llm.ainvoke(
-            [("system", DECOMPOSITION_PROMPT), ("human", f"Text to decompose:\n{answer}")]
+        response = await invoke_counted(
+            structured_llm,
+            [("system", DECOMPOSITION_PROMPT), ("human", f"Text to decompose:\n{answer}")],
         )
 
         claims = [c.strip() for c in response.claims if c.strip()]
@@ -620,14 +751,16 @@ async def verify_claim_nli(
 
         model_obj = get_verification_model(provider=provider, model=model)
         # Local-RAM: one verdict JSON (~100 tokens) — cap the runaway default.
-        cap = local_cap_kwargs(provider or get_model_config().verification_provider, max_tokens=384)
-        structured_nli = model_obj.with_structured_output(NLIVerdict, **cap)
+        cap = verification_cap_kwargs(
+            provider or get_model_config().verification_provider, model, max_tokens=384
+        )
+        structured_nli = _structured_verifier(model_obj, provider, NLIVerdict, cap)
 
         prompt_str = NLI_PROMPT_TEMPLATE.format(context_str=context_str, claim=claim)
 
         logger.debug("Running NLI verification for claim", claim_len=len(claim))
 
-        response = await structured_nli.ainvoke([("human", prompt_str)])
+        response = await invoke_counted(structured_nli, [("human", prompt_str)])
 
         return {
             "verdict": response.verdict,
@@ -682,12 +815,14 @@ async def batch_verify_claims_nli(
     # Local-RAM: 8 verdicts fit comfortably in 768 tokens; the 1024 default
     # only grows KV cache. (Kept generous — a truncated batch JSON costs a
     # retry plus up to 5 fallback calls, which would dwarf the saving.)
-    cap = local_cap_kwargs(provider or get_model_config().verification_provider, max_tokens=768)
-    structured_batch = model_obj.with_structured_output(BatchNLIVerdict, **cap)
+    cap = verification_cap_kwargs(
+        provider or get_model_config().verification_provider, model, max_tokens=768
+    )
+    structured_batch = _structured_verifier(model_obj, provider, BatchNLIVerdict, cap)
 
     try:
         logger.info("Executing batch NLI verification", claim_count=len(claims))
-        response = await structured_batch.ainvoke([("human", prompt_str)])
+        response = await invoke_counted(structured_batch, [("human", prompt_str)])
 
         results: dict[int, dict[str, Any]] = {}
         for item in response.verdicts:
@@ -742,12 +877,14 @@ async def fused_decompose_verify(
     # Fused output carries claims AND verdicts for up to max_verification_claims
     # items — it needs headroom a single verdict call does not. Truncation
     # degrades to the two-step fallback (bounded), never a spiral.
-    cap = local_cap_kwargs(provider or get_model_config().verification_provider, max_tokens=1024)
-    structured_fused = model_obj.with_structured_output(FusedDecomposeVerify, **cap)
+    cap = verification_cap_kwargs(
+        provider or get_model_config().verification_provider, model, max_tokens=1024
+    )
+    structured_fused = _structured_verifier(model_obj, provider, FusedDecomposeVerify, cap)
 
     try:
         logger.info("Executing fused decompose+verify", answer_len=len(answer))
-        response = await structured_fused.ainvoke([("human", prompt_str)])
+        response = await invoke_counted(structured_fused, [("human", prompt_str)])
         items = [
             {
                 "claim": item.claim.strip(),
@@ -765,6 +902,119 @@ async def fused_decompose_verify(
         return None
 
 
+def _chunk_identity(chunk: dict[str, Any]) -> tuple[str, Any, str]:
+    """Stable dedup key for retrieved chunks across retrieval rounds."""
+    return (
+        str(chunk.get("document_id") or ""),
+        chunk.get("chunk_index"),
+        (chunk.get("text") or "")[:80],
+    )
+
+
+async def retrieve_evidence_for_claim(
+    claim_text: str,
+    kb_id_str: str,
+    seen_keys: set[tuple[str, Any, str]],
+    top_k: int = 5,
+) -> list[dict[str, Any]]:
+    """Targeted hybrid retrieval for one unverified claim.
+
+    Searches the same KB with the claim text (not the original query) and
+    drops chunks already present in the analysis context. Fail-closed:
+    any outage returns [] and the claim keeps its original verdict.
+    """
+    from app.retrieval.retriever import retrieve_hybrid_chunks
+
+    try:
+        results = await retrieve_hybrid_chunks(claim_text, kb_id_str, top_k_override=top_k)
+    except Exception as exc:
+        logger.warning(
+            "Targeted claim retrieval failed; keeping original verdict",
+            error=str(exc),
+        )
+        return []
+    fresh = [c for c in results if _chunk_identity(c) not in seen_keys]
+    return fresh[:top_k]
+
+
+def _safe_object_id(value: Any) -> ObjectId | None:
+    """Convert to ObjectId, returning None for missing/malformed ids (web chunks)."""
+    if not value:
+        return None
+    try:
+        return value if isinstance(value, ObjectId) else ObjectId(str(value))
+    except Exception:
+        logger.debug("Invalid ObjectId format: %s", value)
+        return None
+
+
+async def _persist_claim_evidence(
+    analysis_id: ObjectId,
+    user_id_str: str | None,
+    chunks: list[dict[str, Any]],
+) -> list[tuple[dict[str, Any], ObjectId]]:
+    """Integrity-audit, deduplicate, and persist targeted-retrieval chunks.
+
+    Returns (chunk, evidence_id) pairs for VERIFIED chunks only, so callers can
+    map fresh mini-context segment numbers onto persisted evidence IDs.
+    """
+    from app.verification.integrity import audit_evidence_integrity
+
+    audited = await audit_evidence_integrity(chunks)
+    verified = [c for c in audited if c.get("integrity_status") == "VERIFIED"]
+    if not verified:
+        return []
+
+    evidence_coll = get_collection(Collections.EVIDENCE)
+    pairs: list[tuple[dict[str, Any], ObjectId]] = []
+    missing_docs: list[dict[str, Any]] = []
+    missing_positions: list[int] = []
+    for position, chunk in enumerate(verified):
+        doc_id = _safe_object_id(chunk.get("document_id"))
+        existing = await evidence_coll.find_one(
+            {"analysis_id": analysis_id, "document_id": doc_id, "text": chunk.get("text", "")}
+        )
+        if existing is not None and existing.get("_id") is not None:
+            pairs.append((chunk, existing["_id"]))
+        else:
+            missing_positions.append(position)
+            missing_docs.append(
+                {
+                    "analysis_id": analysis_id,
+                    "user_id": ObjectId(user_id_str) if user_id_str else None,
+                    "text": chunk.get("text", ""),
+                    "document_id": doc_id,
+                    "filename": chunk.get("filename"),
+                    "url": chunk.get("url"),
+                    "retrieval_score": chunk.get("dense_score", 0.0),
+                    "fusion_score": chunk.get("rrf_score", 0.0),
+                    "rerank_score": chunk.get("rerank_score"),
+                    "method": chunk.get("method", "claim_retrieval"),
+                    "integrity_status": "VERIFIED",
+                    "effective_from": chunk.get("effective_from"),
+                    "effective_until": chunk.get("effective_until"),
+                    "created_at": datetime.now(UTC),
+                }
+            )
+
+    if missing_docs:
+        try:
+            insert_res = await evidence_coll.insert_many(missing_docs)
+            new_ids = list(insert_res.inserted_ids)
+        except TypeError:
+            new_ids = []
+            for doc in missing_docs:
+                res = await evidence_coll.insert_one(doc)
+                new_ids.append(res.inserted_id)
+        for position, new_id in zip(missing_positions, new_ids, strict=False):
+            pairs.append((verified[position], new_id))
+
+    # Preserve chunk order so mini-context indices stay aligned.
+    order = {id(chunk): i for i, chunk in enumerate(verified)}
+    pairs.sort(key=lambda pair: order[id(pair[0])])
+    return pairs
+
+
 async def execute_claim_verification(
     analysis_id_str: str,
     answer: str,
@@ -774,6 +1024,7 @@ async def execute_claim_verification(
     provider: str | None = None,
     model: str | None = None,
     attempt: int = 0,
+    kb_id_str: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Decompose answer, execute NLI verifications, and save claims to MongoDB.
@@ -782,6 +1033,9 @@ async def execute_claim_verification(
     Links claim records to the appropriate persisted Evidence object IDs.
     `attempt` tags the recovery round so readers can show the final round only
     (earlier rounds verified superseded answers).
+    When `kb_id_str` is provided, NEUTRAL claims (missing evidence — never
+    CONTRADICTED, which existing evidence already refutes) get one bounded
+    targeted-retrieval round each before persistence.
     """
     analysis_id = ObjectId(analysis_id_str)
     claims_coll = get_collection(Collections.CLAIMS)
@@ -792,7 +1046,9 @@ async def execute_claim_verification(
     from app.generation.generator import format_context_with_chunk_indices
 
     cfg = get_model_config()
-    max_claims = cfg.max_verification_claims or 15
+    # Use tier-aware caps based on provider
+    caps = cfg.tier_caps(provider)
+    max_claims = caps["max_verification_claims"]
     context_str, context_chunk_indices = format_context_with_chunk_indices(chunks)
 
     claims_texts: list[str] = []
@@ -803,13 +1059,26 @@ async def execute_claim_verification(
     # (verification.fused_decompose_verify / FUSED_DECOMPOSE_VERIFY=0) restores
     # the classic two-step path. Any total failure (None) or empty result falls
     # through to two-step below, so worst case costs one extra call.
-    fused_enabled = getattr(cfg, "fused_decompose_verify", True)
-    if isinstance(fused_enabled, str):
-        fused_enabled = fused_enabled.strip().lower() in ("1", "true", "yes", "on")
-    if fused_enabled and answer and not is_refusal_answer(answer):
-        fused_items = await fused_decompose_verify(
-            answer, chunks, provider=provider, model=model, context_str=context_str
-        )
+    # Reasoning models skip fused outright: the fused payload (claims AND
+    # verdicts) is the largest structured output, and thinking traces overflow
+    # even doubled caps (verified live: truncated mid-JSON at 2048 budget).
+    # Skipping saves a doomed call plus its latency; two-step is the designed
+    # path, not a fallback, for these models.
+    # cfg.fused_decompose_verify is a typed bool property (config.py) —
+    # no str-parsing needed (getattr default only guards foreign configs).
+    fused_enabled = bool(getattr(cfg, "fused_decompose_verify", True))
+    if is_reasoning_model(model):
+        logger.debug("Skipping fused path for reasoning model (two-step directly)", model=model)
+    if fused_enabled and answer and not is_refusal_answer(answer) and not is_reasoning_model(model):
+        try:
+            fused_items = await _await_nli_call(
+                fused_decompose_verify(
+                    answer, chunks, provider=provider, model=model, context_str=context_str
+                ),
+                what="fused_decompose_verify",
+            )
+        except TimeoutError:
+            fused_items = None
         if fused_items is not None:
             fused_items = [
                 it for it in fused_items if it.get("claim") and not _is_meta_claim(it["claim"])
@@ -834,7 +1103,13 @@ async def execute_claim_verification(
 
     if not results_map:
         # 1. Classic two-step path: decompose into atomic assertions first.
-        claims_texts = await decompose_answer_to_claims(answer, provider=provider, model=model)
+        try:
+            claims_texts = await _await_nli_call(
+                decompose_answer_to_claims(answer, provider=provider, model=model),
+                what="decompose_answer_to_claims",
+            )
+        except TimeoutError:
+            claims_texts = [answer] if answer and answer.strip() else []
         if not claims_texts and answer and not is_refusal_answer(answer):
             # Empty-structured backstop: ≤3B models often return valid-but-empty
             # {"claims": []} JSON. Deterministic sentence split instead — zero LLM
@@ -882,7 +1157,10 @@ async def execute_claim_verification(
             "context_str": context_str,
         }
         try:
-            results_map = await batch_verify_claims_nli(claims_texts, chunks, **batch_kwargs)
+            results_map = await _await_nli_call(
+                batch_verify_claims_nli(claims_texts, chunks, **batch_kwargs),
+                what="batch_verify_claims_nli",
+            )
         except Exception as exc:
             # Small local models frequently fail structured batch output transiently
             # (truncated JSON). One retry costs 1 call and usually succeeds; without
@@ -892,12 +1170,88 @@ async def execute_claim_verification(
                 error=str(exc),
             )
             try:
-                results_map = await batch_verify_claims_nli(claims_texts, chunks, **batch_kwargs)
+                results_map = await _await_nli_call(
+                    batch_verify_claims_nli(claims_texts, chunks, **batch_kwargs),
+                    what="batch_verify_claims_nli(retry)",
+                )
             except Exception as retry_exc:
                 logger.warning(
                     "Batch verification retry failed, falling back to individual checks",
                     error=str(retry_exc),
                 )
+
+    # 2b. Targeted retrieval for NEUTRAL claims (missing evidence). Bounded by
+    # tier-aware cost_controls.max_claim_retrievals; CONTRADICTED claims are excluded —
+    # existing evidence already refutes them, and re-searching for support
+    # would cherry-pick. Each targeted claim costs at most 1 retrieval + 1 NLI.
+    claim_evidence_ids: dict[int, list[ObjectId]] = {}
+    if kb_id_str:
+        neutral_positions = [
+            i
+            for i in range(1, len(claims_texts) + 1)
+            if str(results_map.get(i, {}).get("verdict", "")).upper() == "NEUTRAL"
+        ]
+        retrieval_budget = min(max(0, caps["max_claim_retrievals"]), len(neutral_positions))
+        if retrieval_budget:
+            from app.generation.generator import format_context_with_chunk_indices as _fmt
+
+            seen_keys = {_chunk_identity(c) for c in chunks}
+            claim_top_k = int(cfg.claim_retrieval_top_k or 5)
+            for position in neutral_positions[:retrieval_budget]:
+                claim_text = claims_texts[position - 1]
+                try:
+                    fresh = await _await_nli_call(
+                        retrieve_evidence_for_claim(
+                            claim_text, kb_id_str, seen_keys, top_k=claim_top_k
+                        ),
+                        what="retrieve_evidence_for_claim",
+                    )
+                except TimeoutError:
+                    continue
+                if not fresh:
+                    continue
+                seen_keys.update(_chunk_identity(c) for c in fresh)
+                pairs = await _persist_claim_evidence(analysis_id, user_id_str, fresh)
+                if not pairs:
+                    continue
+                mini_chunks = [chunk for chunk, _ in pairs]
+                mini_str, mini_indices = _fmt(mini_chunks)
+                try:
+                    re_res = await _await_nli_call(
+                        verify_claim_nli(
+                            claim_text,
+                            mini_chunks,
+                            provider=provider,
+                            model=model,
+                            context_str=mini_str,
+                        ),
+                        what="verify_claim_nli(targeted)",
+                    )
+                except TimeoutError:
+                    continue
+                re_verdict = str(re_res.get("verdict", "")).upper()
+                if re_verdict in ("SUPPORTED", "CONTRADICTED"):
+                    mapped: list[ObjectId] = []
+                    for idx in re_res.get("supporting_segments", []):
+                        if isinstance(idx, int) and 0 < idx <= len(mini_indices):
+                            mini_pos = mini_indices[idx - 1]
+                            if 0 <= mini_pos < len(pairs):
+                                mapped.append(pairs[mini_pos][1])
+                    # NOTE: supporting_segments here are mini-context-relative and
+                    # already consumed into claim_evidence_ids above — store [] so
+                    # the persistence loop below does not re-map them against the
+                    # ORIGINAL context (that would link the wrong evidence).
+                    results_map[position] = {
+                        "verdict": re_res.get("verdict", "NEUTRAL"),
+                        "supporting_segments": [],
+                        "explanation": f"{re_res.get('explanation', '')} [targeted retrieval]",
+                    }
+                    claim_evidence_ids[position] = mapped
+                    logger.info(
+                        "Targeted claim retrieval flipped verdict",
+                        claim_position=position,
+                        verdict=re_res.get("verdict"),
+                    )
 
     # 3. Process each claim and persist to MongoDB (Batch Optimized)
     # Bound the per-claim fallback: each miss costs a full LLM call, so cap it
@@ -905,6 +1259,17 @@ async def execute_claim_verification(
     # OPT (local-LLM load): early-exit — if the batch already proves the
     # contradiction rate is over the threshold, skip all individual fallbacks.
     fallback_budget = max(0, int(cfg.max_individual_nli_fallback or 0))
+    if attempt > 0 and fallback_budget:
+        # Recovery rounds re-verify a regenerated answer: the batch path above
+        # already ran (twice on failure). Per-claim re-verification would
+        # repeat up to 8 serial local calls inside a node that already timed
+        # out once — skip it and keep batch verdicts (NEUTRAL where missing).
+        logger.info(
+            "Skipping individual-NLI fallback on recovery attempt",
+            attempt=attempt,
+            saved_calls=fallback_budget,
+        )
+        fallback_budget = 0
     try:
         _threshold = float(getattr(cfg, "maximum_contradiction_rate", 0.2) or 0.2)
         _contra = sum(
@@ -924,16 +1289,41 @@ async def execute_claim_verification(
         if i in results_map:
             nli_res = results_map[i]
         elif fallback_budget > 0:
-            fallback_budget -= 1
-            # Fallback to individual claim verification (same provider/model —
-            # cfg defaults would silently switch engines mid-analysis otherwise)
-            nli_res = await verify_claim_nli(
-                text,
-                chunks,
-                provider=provider,
-                model=model,
-                context_str=context_str,
-            )
+            # Spend guard (audit B-4): this loop is the biggest single
+            # multiplier in the pipeline — up to max_individual_nli_fallback
+            # serial calls per round, times the recovery rounds. Stop rather
+            # than bill past the per-analysis cap; remaining claims stay
+            # NEUTRAL, which is the pre-existing safe default.
+            if llm_budget_exhausted():
+                logger.warning(
+                    "Skipping per-claim NLI fallback: LLM call budget exhausted",
+                    claim_index=i,
+                )
+                fallback_budget = 0
+            else:
+                fallback_budget -= 1
+                # Fallback to individual claim verification (same provider/model —
+                # cfg defaults would silently switch engines mid-analysis otherwise)
+                try:
+                    nli_res = await _await_nli_call(
+                        verify_claim_nli(
+                            text,
+                            chunks,
+                            provider=provider,
+                            model=model,
+                            context_str=context_str,
+                        ),
+                        what="verify_claim_nli(fallback)",
+                    )
+                except TimeoutError:
+                    nli_res = {
+                        "verdict": "NEUTRAL",
+                        "supporting_segments": [],
+                        "explanation": (
+                            "Verification skipped: per-call NLI timeout "
+                            f"({NLI_PER_CALL_TIMEOUT_SECONDS}s)."
+                        ),
+                    }
         else:
             nli_res = {
                 "verdict": "NEUTRAL",
@@ -954,6 +1344,23 @@ async def execute_claim_verification(
             chunk_idx = context_chunk_indices[idx - 1]
             if 0 <= chunk_idx < len(evidence_ids):
                 supporting_evidence_ids.append(evidence_ids[chunk_idx])
+
+        # Targeted-retrieval linkage from step 2b (freshly persisted evidence).
+        for extra_id in claim_evidence_ids.get(i, []):
+            if extra_id not in supporting_evidence_ids:
+                supporting_evidence_ids.append(extra_id)
+
+        # Inline provenance markers surviving in the claim text (Phase-4
+        # "[Segment N]" citations) link their segments too.
+        from app.generation.generator import extract_citations
+
+        for cited_num in extract_citations(text):
+            if 1 <= cited_num <= len(context_chunk_indices):
+                chunk_idx = context_chunk_indices[cited_num - 1]
+                if 0 <= chunk_idx < len(evidence_ids):
+                    cited_id = evidence_ids[chunk_idx]
+                    if cited_id not in supporting_evidence_ids:
+                        supporting_evidence_ids.append(cited_id)
 
         subj, pred, obj = extract_claim_triple_heuristic(text)
         claim_doc = {

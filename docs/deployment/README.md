@@ -20,7 +20,7 @@
 ## Prerequisites
 
 - Python 3.11+
-- Node.js 20+
+- Node.js 22+
 - Docker + Docker Compose (for local dev)
 - Git
 
@@ -53,7 +53,8 @@ cp .env.example .env
 | `RATE_LIMIT_*_PER_MINUTE` | No | Per-client ceilings (analyses/auth/upload/url-ingest) |
 | `CACHE_DIR` | No | SQLite embedding + semantic-cache directory |
 | `LOCAL_LLM_MAX_CONCURRENCY` | No | Concurrent local generations, default 1 (raise only on parallel servers) |
-| `AI_PROVIDER`, `EMBEDDING_PROVIDER` (`huggingface`\|`onnx`), `SEARCH_PROVIDER`, `*_MODEL`, `*_BASE_URL`, `EMBEDDING_DIM` | No | Per-deploy overrides; env wins over models.yaml/ports.yaml (see `.env.example`) |
+| `AI_PROVIDER`, `SEARCH_PROVIDER`, `*_MODEL`, `*_BASE_URL`, `EMBEDDING_DIM` | No | Per-deploy overrides; env wins over models.yaml/ports.yaml (see `.env.example`) |
+| `FUSED_DECOMPOSE_VERIFY` | No | `1`/`0` kill-switch for the fused decompose+verify fast path |
 | `MALLOC_ARENA_MAX`, `TOKENIZERS_PARALLELISM` | No | Allocator tuning (`1`, `false`) to cut glibc/tokenizer RAM overhead |
 | `OLLAMA_KV_CACHE_TYPE`, `OLLAMA_FLASH_ATTENTION`, `OLLAMA_MAX_LOADED_MODELS`, `OLLAMA_NUM_PARALLEL` | No | Ollama **server** memory tuning — set in the shell before `ollama serve`, not read by the backend |
 
@@ -93,8 +94,8 @@ curl http://localhost:8000/api/v1/health
 cd apps/api
 python -m venv .venv
 source .venv/bin/activate
-# local-models = torch for default HuggingFace embeddings (also needed once
-# for the optional ONNX export below).
+# local-models = torch for the one-time ONNX export (the API runtime itself
+# is torch-free and serves the exported .onnx).
 pip install -e ".[dev,local-models]"
 uvicorn app.main:app --reload --port 8000
 
@@ -104,7 +105,11 @@ npm ci
 npm run dev
 ```
 
-> **Embeddings:** TRUSTRAG runs local BGE (384d) embeddings — zero cloud cost, zero keys. `EMBEDDING_PROVIDER=huggingface` (PyTorch, via the `local-models` extra) or `onnx` (torch-free ONNX Runtime; one-time export with `python scripts/export_bge_onnx.py`, then `EMBEDDING_PROVIDER=onnx`). Cloud embeddings were removed. (`EMBEDDING_MODEL` selects between BGE and MiniLM.)
+> **Embeddings:** TRUSTRAG runs one local embedding engine — ONNX BGE (`BAAI/bge-small-en-v1.5`, 384d) from `embedding.model` in `models.yaml`. Zero cloud cost, zero keys, no provider choice. One-time fetch with `apps/api/.venv/bin/python scripts/bootstrap.py`. Cloud embeddings were removed.
+>
+> **OCR:** scanned/image PDF pages fall back to local RapidOCR-ONNX (`rapidocr-onnxruntime`, a default `pyproject.toml` dependency reusing the shipped `onnxruntime` — no Dockerfile change, no system binaries). Models download once to `~/.onnx` on the first scanned page and are cached afterwards: **pre-warm on deploy** (ingest one scanned PDF) or the first scanned upload stalls on the download. Disable per-deploy with `ingestion.ocr.enabled: false` in `models.yaml` if scanned input is out of scope.
+>
+> **Re-index windows (combine into one operator re-upload):** pre-IDF Qdrant collections recreate empty on next init (sparse values are scoring-incompatible); the newline-preserving normalization change shifts chunk text/embeddings; switching `ingestion.chunking_strategy` changes boundaries. All three require document re-upload.
 
 ---
 
@@ -138,12 +143,14 @@ QDRANT_API_KEY=   # empty = no auth
 
 ---
 
-## Gemini API Setup
+## Gemini API Setup (conditional — only if a Gemini provider/model is selected)
+
+The default stack is fully local (llama.cpp/Ollama + BGE embeddings) and boots with zero keys.
 
 1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
 2. Create an API key (free tier available)
 3. Set `GEMINI_API_KEY` in `.env`
-4. Verify the configured model ID (`gemini-3.5-flash-lite` in `config/models.yaml`) is available for your API key
+4. Verify the configured model ID (`gemini-2.5-flash` family in `config/models.yaml`) is available for your API key
 
 > **Model ID verification:** Run `python -c "from app.core.model_registry import get_llm; print(get_llm())"` after setting up credentials.
 
@@ -184,7 +191,7 @@ Deploy directly using `apps/api/Dockerfile`:
 
 ```bash
 docker build -t trustrag-api ./apps/api
-docker run -p 8080:8080 --env-file .env trustrag-api
+docker run -p 8000:8000 --env-file .env trustrag-api
 ```
 
 ---
@@ -282,6 +289,57 @@ When you change the embedding model in `models.yaml`:
 3. Re-ingest documents: delete the old Qdrant collection and re-upload documents
 4. The system will detect embedding version mismatches and warn
 
+The same re-upload applies when the **sparse config changes** (pre-IDF collections
+recreate empty on next init), when **normalization/chunking changes** (chunk text and
+embeddings shift), or when switching **`ingestion.chunking_strategy`**. Combine all
+three into a single operator re-upload window.
+
+---
+
+## Pre-Production Checklist & Rollback (Phase 13)
+
+Run through this list before every production deploy. All items verified
+2026-09-19 against `ca10bb6` (381 backend tests green, k6 live gate green).
+
+### Pre-deploy
+- [ ] `pytest tests/ -q` green in `apps/api` (381 passed, 8 warnings)
+- [ ] `ruff check app/ tests/` + `ruff format --check` clean
+- [ ] `uv lock --check` clean (direct deps only: no `hvac`/`orjson` pins)
+- [ ] No DB migration needed (Mongo schemaless + idempotent indexes; Qdrant
+  collections self-migrate on IDF-config mismatch — re-upload KB docs instead)
+- [ ] Kill-switches known (all safe defaults; flip via env or `models.yaml`):
+  | Flag | Off state |
+  |---|---|
+  | `FUSED_DECOMPOSE_VERIFY=0` | Classic decompose→batch verification path |
+  | `pre_request_budget_enforcement: false` | Over-budget queries run instead of 422 |
+  | `retrieval.query_router.enabled: false` | Single hybrid call, no fan-out |
+  | `reranker.enabled: false` (default) | RRF order, no cross-encoder |
+- [ ] Rollback plan ready: KB-level `POST /knowledge-bases/{id}/rollback/{snap}`
+  for bad ingests; `git revert` + redeploy for bad code (no migrations to unwind)
+
+### Deploy verification (staging = local stack, then prod)
+- [ ] `GET /api/v1/health` → `{"status":"ok",...}` (public, Docker HEALTHCHECK)
+- [ ] k6 gate: `API_BASE_URL=<backend> k6 run load-test/smoke.js` → 0% failed,
+  p95 < 300ms (measured 2026-09-19: 7282 reqs, 0.00% failed, p95 9.28ms —
+  includes `/metrics` + `/analyses` read paths)
+- [ ] Key flows live: register → login → create KB → upload → analysis completes
+- [ ] `GET /api/v1/metrics` exposes `trustrag_*` counters (public, no secrets)
+
+### Rollback triggers (decide before deploy, not during)
+- HTTP error rate > 1% sustained 5 min
+- k6/API p95 latency > 300ms sustained
+- `/health` reports `degraded` (Mongo/Qdrant down)
+- Abstention rate spikes vs the `docs/evaluation/methodology.md` baseline row
+- Any 5xx on auth/upload/analyses creation paths
+
+### Observability
+- `GET /api/v1/metrics` — Prometheus exposition (request counts/latency,
+  analyses by status, recovery by strategy, claim verdicts, token estimates,
+  budget rejections). Scrape it; alert on the triggers above.
+- `GET /api/v1/health/detailed` (authed) — services, models, RSS, NLI metrics.
+- Every response carries `X-Response-Time`; requests slower than 500ms are
+  trace-logged server-side.
+
 ---
 
 ## Troubleshooting
@@ -298,24 +356,17 @@ Verify `MONGODB_URI` is correct and Atlas IP whitelist includes your server IP.
 
 ### Embedding latency & zero-GPU operation
 
-By default TRUSTRAG uses local HuggingFace BGE (`BAAI/bge-small-en-v1.5`, 384d) via PyTorch — zero cloud cost and zero required credentials. On Apple Silicon it rides the Metal (MPS) device; on NVIDIA it picks CUDA; CPU hosts fall back cleanly. An in-memory thread-safe LRU cache serves repeat queries instantly.
-
-For sub-16GB hosts or to remove PyTorch from the API process entirely (~500–1000 MB RSS savings), switch to torch-free ONNX Runtime embeddings:
+TRUSTRAG uses one local embedding engine — ONNX BGE (`BAAI/bge-small-en-v1.5`, 384d, torch-free ONNX Runtime) — zero cloud cost and zero required credentials. CPU hosts run cleanly; an in-memory thread-safe LRU cache serves repeat queries instantly.
 
 ```bash
-# One-time export (needs torch + sentence-transformers locally)
-python scripts/export_bge_onnx.py
-cp apps/api/data/models/bge-small-en-v1.5.onnx apps/api/.model_cache/
-
-# Enable in .env
-EMBEDDING_PROVIDER=onnx
+# One-time fetch/export (needs the backend venv + network, once)
+apps/api/.venv/bin/python scripts/bootstrap.py
 ```
 
-Cloud embeddings (Gemini/NVIDIA) were removed — embeddings are local-only. Knowledge bases indexed with a retired provider must be re-uploaded.
+Knowledge bases indexed with a retired embedding model must be re-uploaded.
 
 > **Docker note:** the API image ships `onnxruntime` but neither PyTorch nor model
-> weights, so `EMBEDDING_PROVIDER=huggingface` cannot load inside the container —
-> use `EMBEDDING_PROVIDER=onnx` and copy the exported model into the running
+> weights — copy the exported model into the running
 > container once (see the `model_cache` volume comment in `docker-compose.yml`).
 > The tokenizer still downloads from the Hub on first boot (pinned revision).
 
@@ -324,10 +375,10 @@ Cloud embeddings (Gemini/NVIDIA) were removed — embeddings are local-only. Kno
 - Start llama.cpp: `./scripts/start_local_llm.sh` (auto-detects Metal/CUDA)
 - Or start Ollama: `ollama serve` (only needed when `AI_PROVIDER=ollama`)
 
-### Gemini API errors
+### Gemini API errors (only when a Gemini provider/model is selected)
 
 - Verify `GEMINI_API_KEY` is set
-- Verify `gemini-3.5-flash-lite` model is available in your region/plan at [AI Studio](https://aistudio.google.com)
+- Verify the `gemini-2.5-flash` family model ID is available in your region/plan at [AI Studio](https://aistudio.google.com)
 - Check rate limits (Gemini free tier: 15 RPM, 1M tokens/day)
 
 ### CORS errors in browser

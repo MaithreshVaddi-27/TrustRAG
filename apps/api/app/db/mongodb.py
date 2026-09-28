@@ -41,6 +41,36 @@ _CONNECT_MAX_ATTEMPTS = 12
 _CONNECT_INITIAL_BACKOFF_SECONDS = 3.0
 _CONNECT_MAX_BACKOFF_SECONDS = 20.0
 
+
+def _validate_mongodb_uri(uri: str) -> None:
+    """Reject a permanently unusable MONGODB_URI before entering the retry loop.
+
+    Two distinct failures live here, and neither is worth retrying:
+
+    * `pymongo` raises ``InvalidURI`` (a PyMongoError) straight from the client
+      constructor for a syntactically broken address.
+    * An out-of-range port raises a plain ``ValueError`` — notably NOT a
+      PyMongoError, so without this check it escapes the retry handler entirely
+      and bypasses the DatabaseError translation.
+
+    Both surface as a config typo, so the error says so and names the variable.
+    """
+    from pymongo.uri_parser import parse_uri
+
+    try:
+        parse_uri(uri)
+    except ValueError as exc:
+        raise DatabaseError(
+            f"MONGODB_URI is not a valid MongoDB connection string: {exc}",
+            detail="Fix the MONGODB_URI value in .env (for example mongodb://localhost:27017).",
+        ) from exc
+    except Exception as exc:  # InvalidURI and friends
+        raise DatabaseError(
+            f"MONGODB_URI is not a valid MongoDB connection string: {exc}",
+            detail="Fix the MONGODB_URI value in .env (for example mongodb://localhost:27017).",
+        ) from exc
+
+
 # ─── Collection name constants ────────────────────────────────────────────────
 # These names must never be scattered as string literals through the codebase.
 
@@ -56,9 +86,11 @@ class Collections:
     RECOVERY_RUNS = "recovery_runs"
     TRACE_EVENTS = "trace_events"
     EXPERIMENTS = "experiments"
+    FEATURE_FLAGS = "feature_flags"
     FEEDBACK = "feedback"
     REVOKED_TOKENS = "revoked_tokens"
     STREAM_TICKETS = "stream_tickets"
+    FAILED_LOGINS = "failed_logins"
 
 
 # ─── Client singleton ─────────────────────────────────────────────────────────
@@ -88,7 +120,18 @@ async def connect_db() -> None:
     backoff = _CONNECT_INITIAL_BACKOFF_SECONDS
     last_exc: Exception | None = None
 
+    # Fail fast on a permanently invalid URI. A malformed address is not a
+    # transient outage: retrying it 12 times with exponential backoff just delays
+    # the same fatal error by minutes and buries it under retry warnings. Doing
+    # this before the loop also means the actionable message below names the
+    # actual problem (a typo in MONGODB_URI) rather than "check your config".
+    _validate_mongodb_uri(settings.mongodb_uri)
+
     for attempt in range(1, _CONNECT_MAX_ATTEMPTS + 1):
+        # Bound before the try: AsyncIOMotorClient itself can raise (a malformed
+        # but syntactically parseable URI raises InvalidURI from the constructor),
+        # in which case the except handler must not reference an unbound name.
+        candidate_client: AsyncIOMotorClient | None = None
         try:
             uri_lower = settings.mongodb_uri.lower()
             is_local = (
@@ -111,7 +154,7 @@ async def connect_db() -> None:
             if "mongodb+srv" in uri_lower or "tls=true" in uri_lower or "ssl=true" in uri_lower:
                 client_kwargs["tlsCAFile"] = certifi.where()
 
-            candidate_client: AsyncIOMotorClient = AsyncIOMotorClient(
+            candidate_client = AsyncIOMotorClient(
                 settings.mongodb_uri,
                 **client_kwargs,
             )
@@ -127,9 +170,18 @@ async def connect_db() -> None:
                 attempt=attempt,
             )
             return
-        except PyMongoError as exc:
+        except (PyMongoError, ValueError) as exc:
+            # ValueError is included deliberately: pymongo raises it for an
+            # out-of-range port ("Port must be an integer between 0 and 65535")
+            # and that is NOT a PyMongoError, so without it a typo'd URI escapes
+            # this handler entirely — skipping the retry/backoff policy and the
+            # DatabaseError translation below.
             last_exc = exc
-            candidate_client.close()
+            if candidate_client is not None:
+                try:
+                    candidate_client.close()
+                except Exception as close_exc:  # pragma: no cover - best effort
+                    logger.debug("MongoDB client close failed", error=str(close_exc))
             if attempt == _CONNECT_MAX_ATTEMPTS:
                 break
             logger.warning(
@@ -142,13 +194,23 @@ async def connect_db() -> None:
             await asyncio.sleep(backoff)
             backoff = min(backoff * 1.5, _CONNECT_MAX_BACKOFF_SECONDS)
 
+    from urllib.parse import urlsplit
+
+    try:
+        _uri = settings.mongodb_uri
+        _host_hint = urlsplit(_uri).hostname or _uri.split("@")[-1].split("/")[0][:60]
+    except Exception:
+        _host_hint = "unknown host"
     logger.error(
         "MongoDB connection failed after all retries",
         attempts=_CONNECT_MAX_ATTEMPTS,
         error=str(last_exc),
     )
     raise DatabaseError(
-        "Failed to connect to MongoDB after repeated retries",
+        f"Failed to connect to MongoDB at {_host_hint} after repeated retries. "
+        "Check MONGODB_URI and ensure mongod is running "
+        "(macOS: brew services start mongodb-community; "
+        "Linux: sudo systemctl enable --now mongod; Windows: net start MongoDB).",
         detail=str(last_exc),
     ) from last_exc
 
@@ -246,6 +308,7 @@ async def create_indexes() -> None:
         db[Collections.DOCUMENT_CHUNKS].create_index(
             [("document_id", pymongo.ASCENDING), ("chunk_index", pymongo.ASCENDING)],
             name="chunk_doc_index",
+            unique=True,
         )
     )
     index_tasks.append(
@@ -401,10 +464,28 @@ async def create_indexes() -> None:
         )
     )
 
-    # Execute all index creations in parallel. Failures are logged, never
+    # ── failed_logins ──────────────────────────────────────────────────
+    # Login-lockout counters. Server double-checks window_expires at read
+    # time; TTL is the janitor for abandoned docs. Created here (once at
+    # startup) instead of per-request inside auth_service.
+    index_tasks.append(
+        db[Collections.FAILED_LOGINS].create_index(
+            [("window_expires", pymongo.ASCENDING)],
+            name="ttl_window_expires",
+            expireAfterSeconds=0,
+        )
+    )
+
+    # Execute index creations in small sequential batches (not all-parallel).
+    # 30 parallel create_index calls throttle M0 free-tier; batches of 5 keep
+    # startup fast without hammering the cluster. Failures are logged, never
     # silent — a failed unique index (e.g. duplicate legacy rows) would
     # otherwise leave the DB under-indexed with a success message.
-    results = await asyncio.gather(*index_tasks, return_exceptions=True)
+    results: list = []
+    for _i in range(0, len(index_tasks), 5):
+        batch = index_tasks[_i : _i + 5]
+        batch_results = await asyncio.gather(*batch, return_exceptions=True)
+        results.extend(batch_results)
     failures = [r for r in results if isinstance(r, Exception)]
     if failures:
         logger.warning(

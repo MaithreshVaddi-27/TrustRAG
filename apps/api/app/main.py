@@ -77,7 +77,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     # ── Startup ──────────────────────────────────────────────────────────
     configure_logging()
-    settings = get_settings()
+    try:
+        settings = get_settings()
+    except Exception as exc:
+        # First-run trap: no .env (JWT_SECRET/MONGODB_URI missing) surfaces
+        # as a bare pydantic ValidationError. Point at the fix before re-raise.
+        logger.error(
+            "Settings validation failed — fresh clone? Copy '.env.example' to "
+            "'.env' and set JWT_SECRET (64 hex chars) and MONGODB_URI",
+            error=str(exc)[:500],
+        )
+        raise
 
     # Enforce strict offline operation for all auxiliary tools & telemetry.
     # Offline model loading is only forced when the embedding weights are
@@ -88,26 +98,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _model_cached = False
     try:
         cfg_probe = get_model_config()
-        if cfg_probe.embedding_provider in ("huggingface", "local", "splade"):
-            from pathlib import Path as _Path
+        from pathlib import Path as _Path
 
-            hub_snapshot = (
-                _Path.home()
-                / ".cache"
-                / "huggingface"
-                / "hub"
-                / ("models--" + cfg_probe.embedding_model.replace("/", "--"))
-            )
-            cache_dir = _Path(cfg_probe.embedding_cache_dir)
-            # Real weight files only — a stray config.json must not count as cached.
-            has_weights = hub_snapshot.exists() or (
-                cache_dir.exists()
-                and any(cache_dir.rglob(p) for p in ("*.safetensors", "*.bin", "*.pt"))
-            )
-            if has_weights:
-                _model_cached = True
-        else:
-            _model_cached = True  # cloud embeddings need no local weights
+        hub_snapshot = (
+            _Path.home()
+            / ".cache"
+            / "huggingface"
+            / "hub"
+            / ("models--" + cfg_probe.embedding_model.replace("/", "--"))
+        )
+        cache_dir = _Path(cfg_probe.embedding_cache_dir)
+        # Real weight files only — a stray config.json must not count as cached.
+        # .onnx counts: the engine is always ONNX, whose weights live as
+        # <cache>/bge-small-en-v1.5.onnx (see scripts/ensure_onnx_models.py).
+        # cache_dir may be relative (".model_cache") — anchor to apps/api.
+        if not cache_dir.is_absolute():
+            cache_dir = _Path(__file__).resolve().parent.parent / cache_dir
+        has_weights = hub_snapshot.exists() or (
+            cache_dir.exists()
+            and any(cache_dir.rglob(p) for p in ("*.safetensors", "*.bin", "*.pt", "*.onnx"))
+        )
+        if has_weights:
+            _model_cached = True
     except Exception:
         _model_cached = False
     if _model_cached:
@@ -130,19 +142,46 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         "Effective model configuration (env overrides models.yaml)",
         llm_provider=cfg.llm_provider,
         llm_model=cfg.llm_model,
-        embedding_provider=cfg.embedding_provider,
         embedding_model=cfg.embedding_model,
         verification_provider=cfg.verification_provider,
         verification_model=cfg.verification_model,
     )
+
+    # Fail loudly on a missing ONNX bake: without embedding weights every
+    # query 500s, and without reranker weights reranking silently degrades to
+    # RRF order. Both are deploy-time problems (run scripts/bootstrap.py and
+    # bake .model_cache into the image) — never per-request surprises.
+    from app.core.model_registry import onnx_model_status
+
+    onnx_status = onnx_model_status()
+    if not onnx_status["embedding_onnx_present"]:
+        logger.error(
+            "ONNX embedding weights missing — every query will fail. "
+            "Run 'python scripts/bootstrap.py' (or "
+            "'python scripts/ensure_onnx_models.py') then bake "
+            "apps/api/.model_cache into the image",
+            path=onnx_status["embedding_onnx_path"],
+        )
+    if cfg.reranker_enabled and cfg.reranker_use_onnx and not onnx_status["reranker_onnx_present"]:
+        logger.warning(
+            "ONNX reranker weights missing — reranking degrades to RRF order. "
+            "Run 'python scripts/ensure_onnx_models.py' to enable it",
+            path=onnx_status["reranker_onnx_path"],
+        )
 
     # The model registry owns one cached embedding instance. A separate startup
     # manager used to load a second copy that no serving path consumed.
     await connect_db()
     await create_indexes()
 
+    # Load semantic cache from disk (lazy-loaded at import, now explicit)
+    from app.core.semantic_cache import load_cache
+
+    loaded = load_cache()
+    logger.info("Semantic cache loaded", entries=loaded)
+
     # Seed the local-model discovery cache from the persisted snapshot so a
-    # pre-run `scripts/discover_local_models.py` (or any earlier process) is
+    # pre-run `scripts/bootstrap.py` (or any earlier process) is
     # honored before the server answers its first request.
     from app.core.local_llm import load_discovery_snapshot, seed_local_model_discovery
 
@@ -167,6 +206,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 error=str(warm_err),
             )
 
+    async def _cleanup_caches() -> None:
+        """Run periodic cache cleanup on startup (embedding + semantic)."""
+        try:
+            from app.core.disk_cache import maybe_cleanup_cache
+            from app.core.semantic_cache import _cleanup_expired_entries
+
+            maybe_cleanup_cache()
+            _cleanup_expired_entries()
+            logger.debug("Cache TTL cleanup completed on startup")
+        except Exception as exc:
+            logger.debug("Startup cache cleanup skipped", error=str(exc))
+
     async def _warmup_hardware() -> None:
         # OPT-H9: Run the expensive hardware probe once at startup so the first
         # /models/* request never pays the subprocess cost.
@@ -189,6 +240,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await _warmup_hardware()
         logger.info("Startup warmup: embeddings", rss_mb=get_memory_usage_mb())
         await _warmup_embeddings()
+        await _cleanup_caches()
         logger.info("Startup warmup complete", rss_mb=get_memory_usage_mb())
 
     warmup_task = asyncio.create_task(_async_warmup())
@@ -203,7 +255,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.core.model_registry import close_all_llm_instances
 
     await close_local_llm_clients()
-    close_all_llm_instances()
+    await close_all_llm_instances(seal=True)
     await disconnect_db()
 
 
@@ -285,11 +337,16 @@ def _register_exception_handlers(app: FastAPI) -> None:
     async def configuration_error_handler(
         request: Request, exc: ConfigurationError
     ) -> JSONResponse:
+        # Actionable by design: our ConfigurationError messages are written
+        # for operators (missing ONNX bake, missing API key, retired provider)
+        # and carry no secrets — surfacing them saves a log round-trip on
+        # first-run misconfigurations. Only the optional detail is redacted
+        # when it looks like a connection string or path.
         logger.error("Configuration error", error=exc.message)
         return _error_response(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "CONFIGURATION_ERROR",
-            "Service configuration error. Contact support.",
+            exc.message,
         )
 
     @app.exception_handler(DatabaseError)
@@ -331,11 +388,27 @@ def _register_exception_handlers(app: FastAPI) -> None:
             method=request.method,
             exc_info=True,
         )
-        return _error_response(
+        response = _error_response(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "INTERNAL_ERROR",
             "An unexpected error occurred.",
         )
+        # FastAPI wires this handler to ServerErrorMiddleware, the OUTERMOST
+        # layer, so an unhandled error never re-enters request_id_middleware and
+        # the response would otherwise carry no X-Request-ID. The id is still
+        # recoverable here: request_id_middleware bound it into structlog
+        # contextvars before dispatch. Echoing it keeps 500s correlatable from
+        # the client side, which is the whole point of the header.
+        try:
+            from structlog.contextvars import get_contextvars
+
+            request_id = get_contextvars().get("request_id")
+            if request_id:
+                response.headers["X-Request-ID"] = str(request_id)
+        except Exception:  # pragma: no cover - never let telemetry break a 500
+            # Header is best-effort: the 500 itself must still be delivered.
+            logger.debug("Could not attach X-Request-ID to error response", exc_info=True)
+        return response
 
 
 # ─── Request ID middleware ─────────────────────────────────────────────────────
@@ -371,9 +444,9 @@ def create_app() -> FastAPI:
     settings = get_settings()
 
     app = FastAPI(
-        title="TRUSTRAG API",
+        title=f"{settings.app_name} API",
         description="AI Reliability Workbench — Retrieval, Verification, Diagnosis, Recovery",
-        version="0.1.0",
+        version=settings.app_version,
         lifespan=lifespan,
         # NOTE: no custom default_response_class — FastAPI ≥0.115 serializes
         # typed endpoints directly to JSON bytes via Pydantic (faster than a
@@ -395,8 +468,14 @@ def create_app() -> FastAPI:
     cors_kwargs = {
         "allow_origins": settings.cors_origins_list,
         "allow_credentials": True,
-        "allow_methods": ["*"],
-        "allow_headers": ["*"],
+        "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        "allow_headers": [
+            "Authorization",
+            "Content-Type",
+            "Accept",
+            "X-Request-ID",
+            "X-Requested-With",
+        ],
         "expose_headers": ["X-Request-ID", "Content-Type", "Content-Disposition"],
     }
     if not settings.is_production():

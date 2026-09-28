@@ -8,6 +8,8 @@ and updates document ingestion status in MongoDB.
 from __future__ import annotations
 
 import asyncio
+import threading
+import weakref
 from datetime import UTC, datetime
 from typing import Any
 
@@ -19,22 +21,33 @@ from app.core.logging import get_logger
 from app.core.model_registry import get_embedding_model
 from app.db.mongodb import Collections, get_collection
 from app.db.qdrant import get_collection_name, get_qdrant_client, init_kb_collection
-from app.ingestion.chunking_strategies import ChunkingStrategy, get_chunking_strategy
+from app.ingestion.chunking_strategies import ChunkingStrategy
 from app.ingestion.sparse_vector import generate_sparse_vector
 
 logger = get_logger(__name__)
 
 # Ingestion can run several CPU/embedding-heavy background jobs at once. Keep
 # it serialized per event loop so uploads cannot starve the local model or API.
-_INGESTION_SEMAPHORES: dict[int, asyncio.Semaphore] = {}
+# Keyed by the loop *object* in a WeakKeyDictionary, not by id(loop): CPython
+# reuses ids of collected objects, so an id-keyed map can hand a semaphore
+# bound to a dead loop to a brand-new loop (M5: documents wedged in
+# "processing" forever). Weak keys also drop the entry when the loop closes.
+# Same pattern as app/core/concurrency.py.
+_INGESTION_SEMAPHORES: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+    weakref.WeakKeyDictionary()
+)
+_INGESTION_SEMAPHORE_LOCK = threading.Lock()
 
 
 def _get_ingestion_semaphore() -> asyncio.Semaphore:
-    loop_id = id(asyncio.get_running_loop())
-    semaphore = _INGESTION_SEMAPHORES.get(loop_id)
+    loop = asyncio.get_running_loop()
+    semaphore = _INGESTION_SEMAPHORES.get(loop)
     if semaphore is None:
-        semaphore = asyncio.Semaphore(1)
-        _INGESTION_SEMAPHORES[loop_id] = semaphore
+        with _INGESTION_SEMAPHORE_LOCK:
+            semaphore = _INGESTION_SEMAPHORES.get(loop)
+            if semaphore is None:
+                semaphore = asyncio.Semaphore(1)
+                _INGESTION_SEMAPHORES[loop] = semaphore
     return semaphore
 
 
@@ -77,21 +90,78 @@ async def _index_parsed_chunks(
         if doc:
             user_id = doc.get("user_id")
             doc_filename = doc.get("filename", "Document")
+        # Phase 7 provenance: parent-document version rides into every chunk
+        # record + vector payload so answers stay traceable to a version.
+        doc_version = doc.get("version", "1.0") if doc else "1.0"
+        doc_is_snapshot = bool(doc.get("is_snapshot", False)) if doc else False
 
-        # Use configured chunking strategy (or default sliding_window)
-        chunking_strategy = strategy or get_chunking_strategy()
+        # NOTE: chunking happens at upload time (knowledge_bases.py selects the
+        # configured strategy via get_chunking_strategy()). The `strategy`
+        # parameter is kept for backward compatibility and ignored here —
+        # this stage only embeds and indexes the chunks it receives.
 
-        # Re-chunk if needed (if original chunks were generated with different params)
-        if chunking_strategy:
-            # Regenerate chunks using the selected strategy
-            # We need page data - extract from existing chunks or fetch from source
-            # For now, use existing chunks but respect the strategy configuration
-            logger.info("Using chunking strategy", strategy=type(chunking_strategy).__name__)
+        # Phase 7 chain: persist each OCR page render ONCE (many chunks share
+        # one render). Fail-open: disk trouble must never fail ingestion.
+        page_image_refs: dict[Any, str | None] = {}
+        if get_model_config().ocr_store_page_images:
+            from app.ingestion.page_images import save_page_image
+
+            for c in chunks:
+                pg = c.get("page")
+                png = c.get("page_image_png")
+                if pg in page_image_refs:
+                    continue
+                ref: str | None = None
+                if png:
+                    try:
+                        ref = save_page_image(kb_id_str, doc_id_str, int(pg), png)
+                    except (ValueError, OSError) as exc:
+                        logger.warning(
+                            "Page-image persist failed; chunk keeps no image ref",
+                            doc_id=doc_id_str,
+                            page=pg,
+                            error=str(exc),
+                        )
+                page_image_refs[pg] = ref
+
+        # Pin check BEFORE any writes: never mix embedding spaces in one
+        # collection (retriever would truncate/pad garbage). Fail loudly so the
+        # operator re-uploads into a NEW KB instead of corrupting this one.
+        # Runs before Mongo insert + Qdrant upsert so a mismatch leaves no
+        # orphan chunks behind. The model is the single models.yaml value —
+        # a pinned KB keeps working, and a config change requires re-upload.
+        cfg_early = get_model_config()
+        _kb_coll_early = get_collection(Collections.KNOWLEDGE_BASES)
+        _existing_kb_early = await _kb_coll_early.find_one({"_id": ObjectId(kb_id_str)})
+        _pinned_model = (_existing_kb_early or {}).get("embedding_model")
+        # Single embedding engine: the server always runs the models.yaml
+        # default. A pinned KB with a different id means re-upload.
+        effective_embedding_model = cfg_early.embedding_model
+        _pinned_norm = _pinned_model.strip().lower() if _pinned_model else ""
+        if _pinned_model and _pinned_norm != effective_embedding_model.strip().lower():
+            raise RuntimeError(
+                f"Embedding model mismatch: KB pinned to "
+                f"{_pinned_model} but current is "
+                f"{effective_embedding_model}. Re-upload into a NEW KB to migrate."
+            )
+        if _existing_kb_early is not None and not _pinned_model:
+            await _kb_coll_early.update_one(
+                {"_id": ObjectId(kb_id_str)},
+                {
+                    "$set": {
+                        "embedding_model": effective_embedding_model,
+                        "embedding_dim": cfg_early.embedding_dimensionality,
+                    }
+                },
+            )
 
         # Store chunks in MongoDB for future integrity audits
+        # Dedup on retry/re-ingest: Qdrant upsert is idempotent (deterministic
+        # point IDs) but Mongo insert_many is not — clear this doc's chunks first.
         import hashlib
 
         chunks_coll = get_collection(Collections.DOCUMENT_CHUNKS)
+        await chunks_coll.delete_many({"document_id": doc_id})
         mongo_chunks = []
         for c in chunks:
             mongo_chunks.append(
@@ -105,6 +175,11 @@ async def _index_parsed_chunks(
                     "character_offset": c["character_offset"],
                     "zone": c.get("zone", "body"),
                     "text_hash": hashlib.sha256(c["text"].encode("utf-8")).hexdigest(),
+                    "ocr_used": bool(c.get("ocr_used", False)),
+                    "ocr_confidence": c.get("ocr_confidence"),
+                    "page_image_ref": page_image_refs.get(c.get("page")),
+                    "document_version": doc_version,
+                    "is_snapshot": doc_is_snapshot,
                 }
             )
         if mongo_chunks:
@@ -113,9 +188,8 @@ async def _index_parsed_chunks(
         # 2. Ensure Qdrant collection is initialized
         await init_kb_collection(kb_id_str)
 
-        # 3. Load embedding model (cached)
+        # 3. Load embedding model (cached) — single models.yaml model.
         embed_model = get_embedding_model()
-        cfg = get_model_config()
 
         # Zero-Cost Contextual Prefixing (Anthropic SOTA pattern):
         # Prepend document filename and zone to resolve chunk ambiguity without extra LLM cost
@@ -164,14 +238,15 @@ async def _index_parsed_chunks(
         # 4. Construct Qdrant points
         points = []
         for i, chunk in enumerate(chunks):
-            # Compute sparse TF vector with zone weighting over contextual text
+            # Sparse TF over RAW text only: the [file | ZONE] prefix is for
+            # dense (Anthropic contextual) — filename terms would dominate BM25.
             chunk_zone = chunk.get("zone", "body")
-            sparse_vec = generate_sparse_vector(contextual_texts[i], zone=chunk_zone)
+            sparse_vec = generate_sparse_vector(chunk["text"], zone=chunk_zone)
 
             # Unique deterministic ID for Qdrant point (based on doc ID and chunk index)
             point_id = hashlib_qdrant_id(doc_id_str, chunk["chunk_index"])
 
-            # Payload contains metadata + text + zone
+            # Payload contains metadata + text + zone + OCR provenance
             payload = {
                 "document_id": doc_id_str,
                 "knowledge_base_id": kb_id_str,
@@ -181,6 +256,11 @@ async def _index_parsed_chunks(
                 "character_offset": chunk["character_offset"],
                 "zone": chunk_zone,
                 "text": chunk["text"],
+                "ocr_used": bool(chunk.get("ocr_used", False)),
+                "ocr_confidence": chunk.get("ocr_confidence"),
+                "page_image_ref": page_image_refs.get(chunk.get("page")),
+                "document_version": doc_version,
+                "is_snapshot": doc_is_snapshot,
             }
 
             points.append(
@@ -212,34 +292,20 @@ async def _index_parsed_chunks(
         await doc_coll.update_one({"_id": doc_id}, {"$set": {"ingestion_status": "completed"}})
         logger.info("Ingestion completed successfully", doc_id=doc_id_str, chunks=len(points))
 
-        # 6. Pin the embedding space on the KB record so future analyses can
-        # NEVER silently query these vectors with a different embedding model.
-        # (Cross-space queries return plausible-looking garbage → recovery spiral.)
-        # Pin-once: re-uploading one doc after a provider change must NOT
-        # silently re-pin while older vectors stay in the old space.
+        # 6. Record embedding dimensionality on the KB (pin itself was
+        # enforced before any writes above; this only stamps dim/pinned_at
+        # using the effective model, never re-pinning across spaces).
         if dense_vectors:
             kb_coll = get_collection(Collections.KNOWLEDGE_BASES)
-            existing_kb = await kb_coll.find_one({"_id": ObjectId(kb_id_str)})
-            if existing_kb and existing_kb.get("embedding_model"):
-                if existing_kb.get("embedding_model") != cfg.embedding_model:
-                    logger.warning(
-                        "Ingest uses a different embedding model than the KB pin; "
-                        "keeping the original pin — re-upload into a NEW KB to migrate",
-                        kb_pin=existing_kb.get("embedding_model"),
-                        current=cfg.embedding_model,
-                    )
-            else:
-                await kb_coll.update_one(
-                    {"_id": ObjectId(kb_id_str)},
-                    {
-                        "$set": {
-                            "embedding_model": cfg.embedding_model,
-                            "embedding_provider": cfg.embedding_provider,
-                            "embedding_dim": len(dense_vectors[0]),
-                            "embedding_pinned_at": datetime.now(UTC),
-                        }
-                    },
-                )
+            await kb_coll.update_one(
+                {"_id": ObjectId(kb_id_str)},
+                {
+                    "$set": {
+                        "embedding_dim": len(dense_vectors[0]),
+                        "embedding_pinned_at": datetime.now(UTC),
+                    }
+                },
+            )
 
     except Exception as exc:
         logger.error("Ingestion pipeline failed", doc_id=doc_id_str, error=str(exc))
@@ -269,13 +335,33 @@ async def index_parsed_chunks(
     strategy: ChunkingStrategy | None = None,
 ) -> None:
     """Run one ingestion job at a time per API process."""
-    async with _get_ingestion_semaphore():
-        await _index_parsed_chunks(
-            doc_id_str=doc_id_str,
-            kb_id_str=kb_id_str,
-            chunks=chunks,
-            strategy=strategy,
-        )
+    try:
+        async with _get_ingestion_semaphore():
+            await _index_parsed_chunks(
+                doc_id_str=doc_id_str,
+                kb_id_str=kb_id_str,
+                chunks=chunks,
+                strategy=strategy,
+            )
+    except Exception as exc:
+        # The semaphore acquire sits outside the inner handler's try/except,
+        # so an acquire failure used to strand the document in "processing"
+        # forever (M5). Mark it failed here instead — same envelope as inside.
+        logger.error("Ingestion semaphore acquire failed", doc_id=doc_id_str, error=str(exc))
+        try:
+            doc_coll = get_collection(Collections.DOCUMENTS)
+            err_type = type(exc).__name__
+            await doc_coll.update_one(
+                {"_id": ObjectId(doc_id_str)},
+                {
+                    "$set": {
+                        "ingestion_status": "failed",
+                        "error_message": f"Ingestion error ({err_type}). See server logs.",
+                    }
+                },
+            )
+        except Exception:
+            logger.error("Failed to mark document failed after semaphore error", doc_id=doc_id_str)
 
 
 def hashlib_qdrant_id(doc_id_str: str, chunk_index: int) -> str:

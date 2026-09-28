@@ -163,6 +163,7 @@ export function ResultsPanel({
             type="button"
             onClick={handleExportDossier}
             title="Export Verification Audit Report (JSON-LD)"
+            aria-label="Export verification audit report"
             className="px-3 py-1.5 text-xs border border-slate-700 hover:border-cyan-500/50 rounded-xl text-slate-300 hover:text-white flex items-center gap-1.5 transition-all bg-surface-800/90 hover:bg-surface-700/80 shadow-sm"
           >
             <Download size={13} className="text-cyan-400" />
@@ -240,6 +241,7 @@ export function ResultsPanel({
                     onClick={handleCopyAnswer}
                     className="text-xs text-slate-400 hover:text-cyan-300 flex items-center gap-1.5 transition-all px-3 py-1.5 rounded-lg bg-surface-800/90 border border-slate-700/60 hover:border-cyan-500/50 shadow-sm"
                     title="Copy answer to clipboard"
+                    aria-label="Copy answer to clipboard"
                   >
                     {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                     <span className={copied ? 'text-emerald-400 font-medium' : ''}>

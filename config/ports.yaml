@@ -17,6 +17,7 @@
 # Reserved allocation (do NOT overlap):
 #   8000 = FastAPI backend   (was 8080 — moved so llama-server owns 8080)
 #   8080 = llama-server (llama.cpp OpenAI-compatible API)
+#   8090 = MLX server (mlx_lm.server, Apple Silicon)
 #   5173 = Vite frontend dev server
 #   11434 = Ollama daemon
 #   27017 = MongoDB
@@ -30,6 +31,7 @@ ports:
   frontend: 5173
   ollama: 11434
   llamacpp: 8080
+  mlx: 8090
   mongodb: 27017
   qdrant_http_host: 6335
   qdrant_http_container: 6333
