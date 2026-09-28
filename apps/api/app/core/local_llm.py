@@ -363,7 +363,9 @@ def verification_cap_kwargs(
     if norm in ("gemini", "google_genai"):
         return {"max_output_tokens": cap}
     if norm in ("nvidia", "nim"):
-        return {"max_tokens": cap}
+        # ChatNVIDIA deprecates `max_tokens` (warns on every call); the
+        # OpenAI-compatible spelling is `max_completion_tokens` (audit B-18).
+        return {"max_completion_tokens": cap}
     # Unknown provider: inject nothing rather than risk a foreign kwarg.
     return {}
 

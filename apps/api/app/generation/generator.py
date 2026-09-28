@@ -56,8 +56,10 @@ def _invoke_kwargs_for_provider(
         return kwargs
     if norm in ("gemini", "google_genai"):
         return {"max_output_tokens": int(max_tokens)}
-    # nvidia/nim (OpenAI-style) and any future provider: max_tokens.
-    return {"max_tokens": int(max_tokens)}
+    # nvidia/nim speak the OpenAI dialect, where the non-deprecated spelling is
+    # `max_completion_tokens`; `max_tokens` emits a DeprecationWarning per call
+    # from langchain-nvidia-ai-endpoints (audit B-18).
+    return {"max_completion_tokens": int(max_tokens)}
 
 
 # ─── Token Counting Utilities ──────────────────────────────────────────────────

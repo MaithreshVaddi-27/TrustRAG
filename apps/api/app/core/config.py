@@ -55,6 +55,27 @@ def _load_models_yaml() -> dict[str, Any]:
     return data
 
 
+# Canonical provider spellings. Several aliases are accepted on input
+# (`google_genai`, `nim`, `llamacpp`); normalizing in one place keeps the
+# allowlist check, the resolved model, the persisted document, and downstream
+# provider switches from disagreeing about the provider's name (audit B-15/B-18).
+_PROVIDER_ALIASES = {
+    "google_genai": "gemini",
+    "nim": "nvidia",
+    "llamacpp": "llama_cpp",
+    "llama-cpp": "llama_cpp",
+}
+
+SUPPORTED_LLM_PROVIDERS = frozenset({"ollama", "llama_cpp", "mlx", "gemini", "nvidia"})
+
+
+def normalize_provider(provider: str | None) -> str:
+    """Canonical lowercase provider name. Unknown names pass through lowercased
+    so the caller can reject them with a useful message."""
+    p = (provider or "").strip().lower()
+    return _PROVIDER_ALIASES.get(p, p)
+
+
 def _load_ports_yaml() -> dict[str, int]:
     """Load repo-root config/ports.yaml. Returns {} if absent (dev fallback)."""
     try:

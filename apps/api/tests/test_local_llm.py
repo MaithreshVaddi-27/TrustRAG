@@ -277,7 +277,7 @@ def test_verification_cap_kwargs_reasoning_headroom():
     assert _llm_mod.verification_cap_kwargs("llama_cpp", "any-model", 768) == {"max_tokens": 768}
     # Cloud direct-answer: capped per call, provider-correct name.
     assert _llm_mod.verification_cap_kwargs("nvidia", "google/gemma-4-31b-it", 384) == {
-        "max_tokens": 384
+        "max_completion_tokens": 384
     }
     assert _llm_mod.verification_cap_kwargs("gemini", "gemini-3.5-flash-lite", 384) == {
         "max_output_tokens": 384
@@ -286,21 +286,21 @@ def test_verification_cap_kwargs_reasoning_headroom():
         "max_output_tokens": 384
     }
     assert _llm_mod.verification_cap_kwargs("nim", "meta/llama-3.3-70b-instruct", 768) == {
-        "max_tokens": 768
+        "max_completion_tokens": 768
     }
     # A model id is optional; the provider alone still yields a correct cap.
-    assert _llm_mod.verification_cap_kwargs("nvidia", None, 384) == {"max_tokens": 384}
+    assert _llm_mod.verification_cap_kwargs("nvidia", None, 384) == {"max_completion_tokens": 384}
     # Unknown provider: inject nothing rather than risk a foreign kwarg.
     assert _llm_mod.verification_cap_kwargs("some-future-cloud", "m", 384) == {}
     # Reasoning: 2x with 1024 floor, provider-correct names.
     assert _llm_mod.verification_cap_kwargs("nvidia", "meta/muse-glimmer-30b", 384) == {
-        "max_tokens": 1024
+        "max_completion_tokens": 1024
     }
     assert _llm_mod.verification_cap_kwargs("nvidia", "openai/gpt-oss-20b", 512) == {
-        "max_tokens": 1024
+        "max_completion_tokens": 1024
     }
     assert _llm_mod.verification_cap_kwargs("nvidia", "openai/gpt-oss-20b", 768) == {
-        "max_tokens": 1536
+        "max_completion_tokens": 1536
     }
     assert _llm_mod.verification_cap_kwargs("gemini", "some-reasoning-model", 384) == {
         "max_output_tokens": 1024
@@ -314,8 +314,8 @@ def test_verification_cap_covers_fused_call_budget():
     for provider, key in (
         ("gemini", "max_output_tokens"),
         ("google_genai", "max_output_tokens"),
-        ("nvidia", "max_tokens"),
-        ("nim", "max_tokens"),
+        ("nvidia", "max_completion_tokens"),
+        ("nim", "max_completion_tokens"),
     ):
         cap = _llm_mod.verification_cap_kwargs(provider, "gemini-3.8-flash", 1024)
         assert cap.get(key) == 1024, f"{provider} fused cap wrong: {cap}"

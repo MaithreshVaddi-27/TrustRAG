@@ -4,6 +4,7 @@ Pydantic schemas for Analysis runs, claims, and evidence.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from typing import Any
 
@@ -45,18 +46,19 @@ class AnalysisCreate(BaseModel):
         only select models exposed by this deployment. This prevents arbitrary
         Hugging Face downloads and unbudgeted cloud model invocations.
         """
-        from app.core.config import get_model_config, get_settings
+        from app.core.config import (
+            SUPPORTED_LLM_PROVIDERS,
+            get_model_config,
+            get_settings,
+            normalize_provider,
+        )
         from app.core.local_llm import get_discovered_llms
 
         cfg = get_model_config()
         settings = get_settings()
 
-        provider = (self.llm_provider or cfg.llm_provider).lower()
-        provider = {"llamacpp": "llama_cpp", "nim": "nvidia", "google_genai": "gemini"}.get(
-            provider, provider
-        )
-        allowed_providers = {"ollama", "llama_cpp", "mlx", "gemini", "nvidia"}
-        if provider not in allowed_providers:
+        provider = normalize_provider(self.llm_provider or cfg.llm_provider)
+        if provider not in SUPPORTED_LLM_PROVIDERS:
             raise ValueError(f"Unsupported LLM provider: {provider}")
 
         # Local providers use models discovered from the running server /
@@ -104,6 +106,47 @@ class AnalysisCreate(BaseModel):
         )
         if requested_llm_model and requested_llm_model not in allowed_llms[provider]:
             raise ValueError(f"Model is not enabled for provider '{provider}'")
+
+        # Validate the EFFECTIVE model, not just the optional request field
+        # (audit B-15). The old check returned early when `llm_model` was
+        # omitted: for a cloud provider `requested_llm_model` is then None, so
+        # no allowlist check ran at all and the resolved config default went
+        # through unvalidated. Whatever model will actually be used must be in
+        # the allowlist.
+        effective_llm_model = requested_llm_model or cfg.llm_model_for(provider)
+        if effective_llm_model and effective_llm_model not in allowed_llms[provider]:
+            raise ValueError(
+                f"Model '{effective_llm_model}' is not enabled for provider '{provider}'. "
+                f"Allowed: {sorted(allowed_llms[provider]) or '(none discovered)'}."
+            )
+
+        # Apply the same allowlist to the resolved VERIFICATION model (audit
+        # B-15). The verifier runs its own billed, long-timeout calls, and until
+        # now nothing constrained which cloud model those calls could target —
+        # an operator-set (or drifted) verification model would silently bill an
+        # unbudgeted model that the generation allowlist already forbids.
+        #
+        # Only cloud providers are checked here. A local server can only serve
+        # weights already on disk, so a local verification model is inherently
+        # bounded — the same argument made for the generation model above.
+        v_provider = normalize_provider(cfg.verification_provider)
+        if v_provider not in SUPPORTED_LLM_PROVIDERS:
+            raise ValueError(f"Unsupported verification provider: {v_provider}")
+        if v_provider in ("gemini", "nvidia"):
+            v_allowed = set(allowed_llms[v_provider])
+            # An explicit env override is an operator decision, same trust level
+            # as settings.<provider>_model above: honour it rather than 422.
+            env_v_model = os.environ.get("GEMINI_VERIFICATION_MODEL") or os.environ.get(
+                "VERIFICATION_MODEL"
+            )
+            if env_v_model:
+                v_allowed.add(env_v_model)
+            v_model = cfg.verification_model_for(v_provider)
+            if v_model and v_model not in v_allowed:
+                raise ValueError(
+                    f"Verification model '{v_model}' is not enabled for provider "
+                    f"'{v_provider}'. Allowed: {sorted(v_allowed)}."
+                )
         return self
 
 

@@ -22,7 +22,7 @@ from app.api.v1.schemas.analysis import (
     TraceEventResponse,
 )
 from app.core.concurrency import get_global_semaphore
-from app.core.config import get_model_config, get_settings
+from app.core.config import get_model_config, get_settings, normalize_provider
 from app.core.exceptions import AuthorizationError, InputValidationError, NotFoundError
 from app.core.logging import get_logger
 from app.db.mongodb import Collections, get_collection
@@ -262,7 +262,11 @@ async def create_analysis(
     # consumer: HUD chips, trace, export dossier) must name what will actually
     # run — not the raw nullable request fields (previously stored "" → the UI
     # rendered "DEFAULT" and audits couldn't tell granite from EXAONE).
-    effective_llm_provider = (schema.llm_provider or cfg.llm_provider or "").strip().lower()
+    # Normalize the provider to its canonical spelling: the request validator
+    # already does this, so persisting the raw value stored "google_genai" /
+    # "nim" / "llamacpp" while the allowlist check ran against "gemini" /
+    # "nvidia" / "llama_cpp" (audit B-15/B-18).
+    effective_llm_provider = normalize_provider(schema.llm_provider or cfg.llm_provider or "")
     effective_llm_model = schema.llm_model or cfg.llm_model_for(effective_llm_provider)
     effective_embedding_model = cfg.embedding_model
 

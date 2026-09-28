@@ -246,6 +246,10 @@ def _create_llm(
                     # was silently ignored.
                     base_url=cfg.nvidia_base_url or settings.nvidia_base_url,
                     temperature=temperature,
+                    # Local clients receive top_p; omitting it here made cloud
+                    # sampling silently diverge from the configured value
+                    # (audit B-18).
+                    top_p=top_p if top_p is not None else cfg.llm_top_p,
                     max_completion_tokens=(
                         max_completion_tokens or max_tokens or cfg.llm_max_output_tokens
                     ),

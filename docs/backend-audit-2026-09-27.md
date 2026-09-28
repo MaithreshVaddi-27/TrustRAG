@@ -20,9 +20,9 @@ Findings marked **VERIFIED** were checked against the exact line numbers quoted.
 
 # Status
 
-Remediation tracker. **Waves 1 and 2 are complete, plus five Wave 4/5 items.** Waves 3 and the rest of 4–5 are not started. All work is on `ui-redesign` and is **uncommitted** unless stated otherwise.
+Remediation tracker. **Waves 1 and 2 are complete, plus the five Wave 4/5 items in `1bc7b00` and a further round covering B-8 (upload/URL-ingest), B-11 (lifespan), B-15 (effective-model allowlist + canonical provider), and B-18 (`top_p` / `max_completion_tokens`).** Wave 3 and the residual items below are not started. All work is on `ui-redesign`; `1bc7b00` is committed, the second round is **uncommitted**.
 
-Test suite: **431 → 512 backend passed (+81)**, **25 → 33 frontend passed (+8)**, backend coverage **70% → 72%**. `ruff check` / `ruff format` clean, `scripts/apply_ports.py --check` clean.
+Test suite: **431 → 542 backend passed (+111)**, **25 → 33 frontend passed (+8)**, backend coverage **70% → 74%** (8521 statements, 2204 missed). `ruff check` / `ruff format` clean, `scripts/apply_ports.py --check` clean. `app/main.py` 50% → **78%**; the two heaviest untested write handlers now have 15 route tests.
 
 ## Wave 1 — complete
 
@@ -81,12 +81,13 @@ Three guards are **meta-tests** that keep the other guards from going vacuous �
 | Wave | IDs | Theme |
 |---|---|---|
 | **3** | L-1 … L-12 | Local-model portability: per-tier model recommendations, per-model context window, llama.cpp flags, adaptive timeouts, local provider tests. **Needs hardware validation.** |
-| **4 (rest)** | B-8, B-11, B-12, T-2, T-4, T-5, T-8 | Remaining structural gaps: the 22 untested routes (upload + URL-ingest are the heaviest), `app/main.py` lifespan, ONNX fake fixture |
-| **5 (rest)** | B-15, B-18, ~28 shape-only tests | Allowlist hole when `llm_model` is omitted; provider asymmetries (`top_p`, `max_completion_tokens`, alias persistence, adaptive timeouts) |
+| **4 (rest)** | B-12, T-2, T-4, T-5, T-8, ~28 shape-only tests | Remaining structural gaps: `execute_agentic_rag_flow` entrypoint (100% untested), ONNX fake fixture, the five `/analyses/{{id}}` read endpoints, the `main.py` exception handlers |
+| **5 (rest)** | B-18 (`ChatNVIDIA` has no `max_retries`) | NVIDIA lacks a langchain-level retry; adding it without capping Gemini would increase spend, so this needs a cost decision |
 
 ### Known follow-ups
 
-- **B-15** (allowlist hole) is a genuine security finding and is still open.
+- **B-12** is now the largest single coverage hole: `execute_agentic_rag_flow` and `build_agent_graph` are 100% untested.
+- `app/services/analysis_service.py` sits at **40%** coverage — the service that owns B-15's fix is the least-tested file in the API.
 - **L-1** (the same 3B model recommended for every RAM tier) is user-visible and still open; it needs a product decision on which models to recommend.
 - Adding a generic `openai_compatible` provider would need a new `langchain-openai` dependency — deliberately not added without agreement.
 
@@ -261,11 +262,15 @@ With `max_chars=3000` in `format_context_with_chunk_indices` (`generator.py:567`
 
 ---
 
-## B-8 · MEDIUM · 22 of 46 API endpoints have no route-level test (VERIFIED count)
+## B-8 · MEDIUM · Route-level test gaps (was 22 of 46 endpoints; now 20)
 
-`app/api/v1/` contains exactly **46** route decorators (author-verified by counting `@router.<method>` across the 12 routers), plus `/metrics` in `app/main.py`. **22 of the 46** have no route-level test. Full inventory in Part 5.2. The two heaviest untested paths are `POST /knowledge-bases/{id}/documents` (`knowledge_bases.py:157-228`, 72 statements — the primary user-facing write path, including **all** of the 413/415/422 branches) and `POST /knowledge-bases/{id}/documents/from-url` (`knowledge_bases.py:264-359`, the SSRF-guarded ingest path).
+`app/api/v1/` contains exactly **46** route decorators (author-verified by counting `@router.<method>` across the 12 routers), plus `/metrics` in `app/main.py`. **22 of the 46** had no route-level test at the time of the audit; 2 of the heaviest are now covered (see RESOLVED below), leaving **20**. Full inventory in Part 5.2. The two heaviest untested paths are `POST /knowledge-bases/{id}/documents` (`knowledge_bases.py:157-228`, 72 statements — the primary user-facing write path, including **all** of the 413/415/422 branches) and `POST /knowledge-bases/{id}/documents/from-url` (`knowledge_bases.py:264-359`, the SSRF-guarded ingest path).
 
 Also untested: the four read endpoints the workbench calls on every finalize (`/analyses/{id}`, `/claims`, `/evidence`, `/trace`, `/detail` at `analyses.py:110-165`) — including `/trace`, which is the polling fallback when SSE drops.
+
+**RESOLVED (upload + URL-ingest).** `apps/api/tests/test_kb_upload.py` (15 tests) now covers both heavy handlers: 201 happy paths asserting the document record is written *and* the chunker is invoked (a missing background task is the silent "stored but never searchable" failure); content-hash stability for de-duplication; path-traversal and NUL stripping in the client-supplied filename; the 415 unsupported-extension branch; the 413 streaming size guard; cross-tenant (403) and missing-KB (404) refusals via the real `kb_service.get_kb` ownership check; the full SSRF matrix (`127.0.0.1`, `169.254.169.254` cloud metadata, `file://`, `[::1]`); fetch-failure reporting; and the remote-oversize cap. All 15 pass.
+
+**Remaining:** the five `/analyses/{id}` read endpoints (`analyses.py:110-165`), including `/trace`.
 
 ---
 
@@ -292,6 +297,10 @@ There is no reference to `openapi` anywhere in `apps/api/tests/`. Renaming or re
 ## B-11 · MEDIUM · `app/main.py` lifespan is entirely untested (VERIFIED, 0% for `79-259`)
 
 `app/main.py` is at 50% coverage with the **entire** startup path uncovered: settings validation, ONNX preflight, database connect, index creation, and every exception handler (`main.py:298-414`). No test ever runs startup. A missing `JWT_SECRET` or a failed index creation would not be caught by any test.
+
+**RESOLVED (lifespan).** `apps/api/tests/test_lifespan.py` (5 tests) drives the real `lifespan` context manager with only the heavy externals stubbed, and asserts the decisions that matter: startup completes and yields (the server actually served); `connect_db` precedes `create_indexes`; all three shutdown steps (LLM pool close, client-instance close, DB disconnect) run; a missing ONNX embedding-weight file produces an **error** log naming bootstrap (not a warning — every query 500s without it); `HF_TOKEN`/`HUGGING_FACE_HUB_TOKEN` are exported to the child-process environment; `LANGCHAIN_TRACING_V2` is forced off for strict offline operation; and a `get_settings` failure is reported as the first-run `.env` trap rather than surfacing as a bare pydantic error. All 5 pass; `app/main.py` rose from 50% to **78%**.
+
+**Remaining:** the exception handlers (`main.py:298-414`).
 
 ---
 
@@ -327,6 +336,10 @@ Consequence: a mis-wired edge (e.g. recovery looping into retrieval when it shou
 
 **Fix:** validate the *resolved effective* model against `cfg.supported_*_models`, and apply the allowlist to the resolved verification model too.
 
+**RESOLVED (both halves).** `apps/api/app/core/config.py` gained a canonical `normalize_provider()` plus a `SUPPORTED_LLM_PROVIDERS` set, so aliases (`nim`, `google_genai`, `llamacpp`, …) resolve consistently. `AnalysisCreate` now validates the **effective resolved model** even when the request omits `llm_model`, and the same allowlist is applied to the resolved **verification** model — the verifier runs its own billed, long-timeout calls, and nothing previously constrained which cloud model those calls could target, so a drifted verification model could bill a model the generation allowlist already forbids. Local providers are deliberately exempt (a local server can only serve on-disk weights), and an explicit `GEMINI_VERIFICATION_MODEL` / `VERIFICATION_MODEL` env override is honoured as an operator decision, matching the existing `settings.<provider>_model` trust level. `analysis_service.py` persists the **canonical** provider name. Covered by normalization / effective-model / verification-allowlist / env-override / cross-provider tests in `tests/test_wave2_cloud_resilience.py` (57 pass in that file).
+
+**Remaining:** `app/services/analysis_service.py` is still the lowest-covered service at **40%**.
+
 ---
 
 ## B-16 · MEDIUM · Cloud clients are closed mid-request by the RAM-based LRU (EVIDENCE)
@@ -354,6 +367,10 @@ The structlog scrubber at `app/core/logging.py:20-40` matches on **key names onl
 - **VERIFIED:** `ChatNVIDIA` has **no `max_retries` field at all**, so NVIDIA relies solely on the app's own retries while Gemini gets both langchain's and the app's — a double-retry path on the more expensive provider.
 - `analysis.py:55-57` normalizes the provider alias for the allowlist, but `analysis_service.py:259` persists the **un-normalized** value, so downstream provider switches see two spellings.
 - `local_llm.py:843,881`: `asyncio.wait_for(..., 60)` cancels an HTTP request Gemini may already be generating — **cancelled requests are not free**.
+
+**RESOLVED (4 of 5 sub-items).** Fixed: (1) NVIDIA now receives the configured `top_p`, matching the local path; (2) NVIDIA generation **and** verification now use `max_completion_tokens` instead of the deprecated `max_tokens` (Gemini and local keep their own correct names); (3) the canonical provider is persisted, so downstream sees one spelling; (4) the per-call NLI timeout in `verifier.py` is now **provider-aware** — local keeps the 90s guard that defends against a hung local socket, while cloud defers to the configured `llm.timeout_seconds` (180s). The 90s cap existed to stop a dead local server from eating the whole verification budget; applying it to a billed cloud request cancelled generation the provider had already started, and a cancelled Gemini/NVIDIA request is still billed. The floor is one-directional: a misconfigured short cloud timeout can never shorten the local guard. Regression tests cover the token-parameter names per provider, NVIDIA `top_p` propagation, the cloud/long and local/short timeout selection, and the floor.
+
+**Remaining:** `ChatNVIDIA` still has **no `max_retries` field**, so NVIDIA has no langchain-level retry while Gemini gets both langchain's and the app's — a double-retry path on the more expensive provider. Left open deliberately: adding retries to NVIDIA without also capping Gemini would *increase* spend.
 
 ---
 
@@ -668,12 +685,16 @@ See **B-9**. Proof that it passes while generation is broken: the suite touches 
 
 B-7 (compression default), B-8/B-14/B-15 (allowlist + context windows), B-13 (`nvidia_base_url` + generic OpenAI-compatible provider), B-12 provider asymmetries (`top_p`, `max_completion_tokens`, alias normalization, adaptive timeouts), plus the ~28 shape-only tests.
 
+**Second round (uncommitted).** B-8 upload + URL-ingest (15 tests), B-11 lifespan (5 tests), B-15 effective-model allowlist + canonical provider persistence, B-18 `top_p` + `max_completion_tokens` + **provider-aware NLI timeout** (local 90s guard vs. billed cloud at the configured 180s), and B-15's verification-model allowlist. Three stale `tests/test_local_llm.py` assertions that encoded the pre-B-18 NVIDIA `max_tokens` name were updated to match the intentional change.
+
 ---
 
 ## Appendix — what was verified vs. what needs a live environment
 
 **Verified by the author (source + installed package + measurement):** B-1 (incl. 176.9 MB measurement), B-2, B-3 (mechanism + latency classification), B-4 (pre-request half), B-8 (46 v1 routes counted directly, 22 untested), B-9, B-10, B-11, B-12, B-19, the **431 passed / 70% / 8185 stmts / 2464 missed** baseline (re-run, 33.46s), the absence of skips, `langchain-google-genai` 4.4.0 `ValueError` on unexpected kwargs, `ChatNVIDIA` lacking both `max_retries` and `max_completion_tokens`, and the reasoning-keyword cross-check for all 7 Gemini + 3 NVIDIA ids.
 
-**Code-evidence only (not re-run):** B-4 recovery half, B-5, B-6, B-7, B-13 through B-18, C-7 through C-13, and all of Part 3. These follow directly from the cited lines but were not independently reproduced.
+**Verified by execution (fix + regression test, all passing):** B-1 through B-11, B-13, B-14, B-16, B-17, B-19, the **542 passed / 74% / 8521 stmts / 2204 missed** result (re-run, 33.19s), and the frontend **33 passed** in 8 files. The B-8 route tests exercise the real SSRF validator and the real `kb_service` ownership check rather than mocking them; the B-11 tests drive the real `lifespan` context manager.
+
+**Code-evidence only (not re-run):** B-4 recovery half, B-12 (`execute_agentic_rag_flow` — still 100% untested, so its *absence* of a defect is not established), B-18's residual `ChatNVIDIA` `max_retries` gap, C-7 through C-13, and all of Part 3. These follow directly from the cited lines but were not independently reproduced.
 
 **Requires a live environment to confirm:** any timeout/backoff behaviour (needs slow or failing endpoints); actual memory for RAM-3 … RAM-8 (needs a peak-RSS profile on the target hardware tier); MLX behaviour (needs Apple Silicon); real cloud error codes and billing (needs live keys). Do not report these as proven defects without that evidence.

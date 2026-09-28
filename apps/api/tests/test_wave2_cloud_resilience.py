@@ -10,6 +10,7 @@ Covers:
 
 from __future__ import annotations
 
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -516,3 +517,253 @@ def test_num_ctx_is_never_sent_to_cloud_clients():
     for provider in ("ollama", "llama_cpp", "mlx"):
         kwargs = _invoke_kwargs_for_provider(provider, 512, num_ctx=8192)
         assert kwargs.get("num_ctx") == 8192
+
+
+# ─── B-15: the effective model must always be allowlist-checked ───────────────
+
+
+def test_provider_normalization_is_canonical():
+    """Aliases must resolve identically wherever they are handled, so the
+    allowlist check, the resolved model, the persisted document, and downstream
+    provider switches cannot disagree (audit B-15/B-18)."""
+    from app.core.config import normalize_provider
+
+    assert normalize_provider("google_genai") == "gemini"
+    assert normalize_provider("nim") == "nvidia"
+    assert normalize_provider("llamacpp") == "llama_cpp"
+    assert normalize_provider("llama-cpp") == "llama_cpp"
+    assert normalize_provider("  GEMINI ") == "gemini"
+    assert normalize_provider(None) == ""
+    assert normalize_provider("mystery") == "mystery"
+
+
+def test_effective_cloud_model_is_validated_even_when_request_omits_it():
+    """Regression (audit B-15): with `llm_model` omitted, the old check resolved
+    to None and skipped the allowlist entirely, so the config default went
+    through unvalidated. The EFFECTIVE model must always be checked."""
+    from pydantic import ValidationError
+
+    from app.api.v1.schemas.analysis import AnalysisCreate
+    from app.core.config import get_model_config
+
+    real = get_model_config()
+    base = {"knowledge_base_id": "64ee39d09c6292376e191982", "query": "hello"}
+
+    class _CfgStub:
+        """Minimal stand-in: the validator builds allowlists for every provider."""
+
+        llm_provider = "gemini"
+        supported_gemini_models: ClassVar[list[str]] = ["gemini-allowed-only"]
+        supported_nvidia_models: ClassVar[list[str]] = ["nvidia-allowed-only"]
+        embedding_dimensionality = real.embedding_dimensionality
+        embedding_model = real.embedding_model
+
+        def __init__(self, resolved: str):
+            self._resolved = resolved
+
+        def llm_model_for(self, _provider):
+            return self._resolved
+
+        # The validator also allowlists the resolved verification model
+        # (B-15); keep it inside the allowlist so this test isolates the
+        # generation-model check rather than tripping the verifier one.
+        @property
+        def verification_provider(self) -> str:
+            return "llama_cpp"
+
+        def verification_model_for(self, _provider):
+            return "some/local-verifier"
+
+    # 1. Config default outside the allowlist is rejected even with no
+    #    llm_model supplied by the caller.
+    with patch("app.core.config.get_model_config", return_value=_CfgStub("gemini-not-allowed")):
+        with pytest.raises(ValidationError, match="not enabled"):
+            AnalysisCreate(llm_provider="gemini", **base)
+
+    # 2. The same request passes when the resolved default IS allowed.
+    with patch("app.core.config.get_model_config", return_value=_CfgStub("gemini-allowed-only")):
+        with patch("app.core.local_llm.get_discovered_llms", return_value=frozenset()):
+            ok = AnalysisCreate(llm_provider="gemini", **base)
+    assert ok.llm_model is None  # the caller did not ask for a specific model
+
+
+def test_cross_provider_mismatch_is_still_rejected():
+    from pydantic import ValidationError
+
+    from app.api.v1.schemas.analysis import AnalysisCreate
+    from app.core.config import get_model_config
+
+    gemini = get_model_config().supported_gemini_models
+    if not gemini:
+        pytest.skip("no Gemini models configured")
+    with patch("app.core.local_llm.get_discovered_llms", return_value=frozenset()):
+        with pytest.raises(ValidationError):
+            AnalysisCreate(
+                knowledge_base_id="64ee39d09c6292376e191982",
+                query="hi",
+                llm_provider="nvidia",
+                llm_model=gemini[0],
+            )
+
+
+# ─── B-18: provider asymmetries ──────────────────────────────────────────────
+
+
+def test_nvidia_uses_the_non_deprecated_token_parameter():
+    """`max_tokens` emits a DeprecationWarning on every call from
+    langchain-nvidia-ai-endpoints; the OpenAI-compatible spelling is
+    `max_completion_tokens`."""
+    from app.core.local_llm import verification_cap_kwargs
+    from app.generation.generator import _invoke_kwargs_for_provider
+
+    for kwargs in (
+        _invoke_kwargs_for_provider("nvidia", 512),
+        _invoke_kwargs_for_provider("nim", 512),
+        verification_cap_kwargs("nvidia", "meta/llama-3.3-70b-instruct", 512),
+        verification_cap_kwargs("nim", "meta/llama-3.3-70b-instruct", 512),
+    ):
+        assert "max_completion_tokens" in kwargs, kwargs
+        assert "max_tokens" not in kwargs, f"deprecated parameter still used: {kwargs}"
+
+
+def test_gemini_and_local_keep_their_own_token_parameters():
+    from app.generation.generator import _invoke_kwargs_for_provider
+
+    assert "max_output_tokens" in _invoke_kwargs_for_provider("gemini", 512)
+    assert "max_output_tokens" in _invoke_kwargs_for_provider("google_genai", 512)
+    # Local OpenAI-compatible servers do still take max_tokens.
+    assert "max_tokens" in _invoke_kwargs_for_provider("ollama", 512)
+    assert "max_tokens" in _invoke_kwargs_for_provider("llama_cpp", 512)
+
+
+def test_nvidia_client_receives_top_p():
+    """Omitting top_p made cloud sampling silently diverge from the configured
+    value that local clients receive."""
+    from app.core import model_registry as mr
+    from app.core.config import get_settings
+
+    captured = {}
+
+    def _fake(**kwargs):
+        captured.update(kwargs)
+        return MagicMock()
+
+    settings = get_settings()
+    with (
+        patch.dict("sys.modules", {"langchain_nvidia_ai_endpoints": MagicMock(ChatNVIDIA=_fake)}),
+        patch.object(settings, "nvidia_api_key", "dummy-key", create=True),
+        patch.object(mr, "get_settings", return_value=settings),
+    ):
+        mr._create_llm(provider="nvidia", model="m/x", temperature=0.0, max_tokens=512, timeout=30)
+    assert "top_p" in captured, f"NVIDIA client got no top_p: {sorted(captured)}"
+
+
+def test_verification_model_allowlist_rejects_unbudgeted_cloud_model(monkeypatch):
+    """The verifier runs its own billed calls. Nothing used to constrain WHICH
+    cloud model those calls targeted, so a drifted verification model could
+    bill a model the generation allowlist already forbids (audit B-15)."""
+    from app.api.v1.schemas.analysis import AnalysisCreate
+    from app.core import config as cfgmod
+
+    real = cfgmod.get_model_config()
+
+    class _CfgStub:
+        """Cloud generation allowlist stays valid; the verifier is the offender."""
+
+        llm_provider = "gemini"
+        supported_gemini_models: ClassVar[list[str]] = ["gemini-allowed-only"]
+        supported_nvidia_models: ClassVar[list[str]] = ["nvidia-allowed-only"]
+        embedding_dimensionality = real.embedding_dimensionality
+        embedding_model = real.embedding_model
+
+        def __init__(self, resolved: str):
+            self._resolved = resolved
+
+        def llm_model_for(self, provider: str) -> str:
+            return self._resolved
+
+        @property
+        def verification_provider(self) -> str:
+            return "gemini"
+
+        def verification_model_for(self, provider: str) -> str:
+            return "some-unbudgeted-expensive-model"
+
+    monkeypatch.setattr(cfgmod, "get_model_config", lambda: _CfgStub("gemini-allowed-only"))
+    monkeypatch.delenv("GEMINI_VERIFICATION_MODEL", raising=False)
+    monkeypatch.delenv("VERIFICATION_MODEL", raising=False)
+    monkeypatch.delenv("AI_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+
+    with pytest.raises(ValueError, match="Verification model"):
+        AnalysisCreate(knowledge_base_id="kb1", query="q", llm_provider="gemini")
+
+
+def test_verification_model_allowlist_allows_env_operator_override(monkeypatch):
+    """An explicit env override is an operator decision, same trust level as
+    settings.<provider>_model — honour it rather than rejecting the request."""
+    from app.api.v1.schemas.analysis import AnalysisCreate
+    from app.core import config as cfgmod
+
+    real = cfgmod.get_model_config()
+
+    class _CfgStub:
+        llm_provider = "gemini"
+        supported_gemini_models: ClassVar[list[str]] = ["gemini-allowed-only"]
+        supported_nvidia_models: ClassVar[list[str]] = ["nvidia-allowed-only"]
+        embedding_dimensionality = real.embedding_dimensionality
+        embedding_model = real.embedding_model
+
+        def llm_model_for(self, provider: str) -> str:
+            return "gemini-allowed-only"
+
+        @property
+        def verification_provider(self) -> str:
+            return "gemini"
+
+        def verification_model_for(self, provider: str) -> str:
+            return "operator-chosen-verifier"
+
+    monkeypatch.setattr(cfgmod, "get_model_config", lambda: _CfgStub())
+    monkeypatch.setenv("GEMINI_VERIFICATION_MODEL", "operator-chosen-verifier")
+    monkeypatch.delenv("AI_PROVIDER", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+
+    created = AnalysisCreate(knowledge_base_id="kb1", query="q", llm_provider="gemini")
+    assert created.llm_provider == "gemini"
+
+
+def test_nli_timeout_is_longer_for_billed_cloud_calls(monkeypatch):
+    """A fixed 90s cap cancelled cloud NLI generation mid-flight. Cancelled
+    Gemini/NVIDIA requests are still billed, so cloud must use the configured
+    provider budget (audit B-18)."""
+    from app.verification import verifier
+
+    class _CloudCfg:
+        verification_provider = "gemini"
+        llm_timeout_seconds = 180
+
+    class _LocalCfg:
+        verification_provider = "llama_cpp"
+        llm_timeout_seconds = 180
+
+    monkeypatch.setattr(verifier, "NLI_PER_CALL_TIMEOUT_SECONDS", 90)
+
+    with patch("app.core.config.get_model_config", return_value=_CloudCfg()):
+        assert verifier._nli_timeout_seconds() == 180
+
+    with patch("app.core.config.get_model_config", return_value=_LocalCfg()):
+        assert verifier._nli_timeout_seconds() == 90
+
+
+def test_nli_timeout_never_goes_below_the_local_floor(monkeypatch):
+    """A misconfigured short cloud timeout must not shorten the local guard."""
+    from app.verification import verifier
+
+    class _ShortCfg:
+        verification_provider = "nvidia"
+        llm_timeout_seconds = 10
+
+    monkeypatch.setattr(verifier, "NLI_PER_CALL_TIMEOUT_SECONDS", 90)
+    with patch("app.core.config.get_model_config", return_value=_ShortCfg()):
+        assert verifier._nli_timeout_seconds() == 90

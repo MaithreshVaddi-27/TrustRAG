@@ -34,16 +34,44 @@ logger = get_logger(__name__)
 # between calls instead of mid-write.
 NLI_PER_CALL_TIMEOUT_SECONDS = 90
 
+# Cloud NLI calls get a longer, provider-configured budget instead. The 90s cap
+# above defends against a *hung local* server, but applying it to a billed cloud
+# request cancels generation the provider has already started work on — and a
+# cancelled Gemini/NVIDIA request is not free (audit B-18). A slow cloud call is
+# normally progressing, not hung, so we defer to the configured llm timeout.
+_CLOUD_PROVIDERS = frozenset({"gemini", "google_genai", "nvidia", "nim"})
+
+
+def _nli_timeout_seconds() -> int:
+    """Per-call NLI budget, scaled by provider.
+
+    Local: 90s (a dead local socket is the failure mode being defended against).
+    Cloud: the configured `llm.timeout_seconds` (180s), so a large, slow, billed
+    model is allowed to finish rather than being cancelled mid-generation.
+    """
+    try:
+        from app.core.config import get_model_config, normalize_provider
+
+        cfg = get_model_config()
+        if normalize_provider(cfg.verification_provider) in _CLOUD_PROVIDERS:
+            configured = int(getattr(cfg, "llm_timeout_seconds", 0) or 0)
+            if configured > NLI_PER_CALL_TIMEOUT_SECONDS:
+                return configured
+    except Exception:  # pragma: no cover - config must never break verification
+        logger.debug("NLI timeout: falling back to default", exc_info=True)
+    return NLI_PER_CALL_TIMEOUT_SECONDS
+
 
 async def _await_nli_call(coro, *, what: str):  # type: ignore[no-untyped-def]
     """Await one NLI LLM call with a per-call timeout (TimeoutError propagates)."""
+    timeout_s = _nli_timeout_seconds()
     try:
-        return await asyncio.wait_for(coro, timeout=NLI_PER_CALL_TIMEOUT_SECONDS)
+        return await asyncio.wait_for(coro, timeout=timeout_s)
     except TimeoutError:
         logger.warning(
             "NLI call timed out",
             what=what,
-            timeout_s=NLI_PER_CALL_TIMEOUT_SECONDS,
+            timeout_s=timeout_s,
         )
         raise
 
