@@ -195,6 +195,11 @@ Phases completed in RAG order (preprocessing → retrieval → augmentation → 
 
 ### PHASE 6 — Security
 - Scan clean: no hardcoded keys in `app/`, `tests/`, `web/src`, `scripts/`; `.env` + `.model_cache/` gitignored. Hardened 3 `detail=str(exc)` bson-echo sites (`deps.py`, `documents.py` ×2) to static `"malformed id"`.
+- **Fixed S-1 (found while closing this phase):** `JWT_SECRET=REPLACE_WITH_…` in `.env.example` is 44 chars, so it passed the existing 32-char strength check — copying the template into production would have silently set a publicly-known HMAC signing key (full auth bypass / forged stream tickets). `production_must_have_qdrant_key` now also rejects `REPLACE_WITH*`/`CHANGE_ME*`; 3 new tests cover placeholder rejection, missing-Qdrant, and happy path.
+
+### PHASE 6b — `.gitignore` / `.env.example` hygiene
+- `.gitignore`: `!**/.env.example` (the `.env.*` rule silently matched nested templates, so a new app's template would be untrackable), plus `qdrant_storage/`, `*.sqlite3-journal`, `*.rdb`, `.freebuff/` (external CLI scratch dir found in repo root).
+- `.env.example`: closed the docs gap — 11 vars read by `config.py` were undocumented (`KV_CACHE_QUANTIZATION`, `PROMPT_CACHING`, `CONTEXT_COMPRESSION_*`, `LOCAL_LLM_EARLY_EXIT_EOS`, `LOCAL_LLM_MODEL_UNLOAD_ENABLED`, `RERANKER_USE_ONNX`, `RERANKER_ONNX_MODEL_PATH`, `NIM_BASE_URL`/`NVIDIA_BASE_URL`, `VERIFICATION_MAX_RETRIES`). Now 30/30 `config.py` env names are documented; script-checked.
 
 ### PHASE 7 — DevOps/docs
 - `apply_ports.py --check` exit 0. README v1.21 → v1.23 + new-knob rows/env table; `.env.example` documents all new vars (`RETRIEVAL_*`, `ADAPTIVE_*`, `QDRANT_UPSERT_BATCH`, `RERANKER_MAX_SEQ_LENGTH`).
@@ -210,6 +215,23 @@ Phases completed in RAG order (preprocessing → retrieval → augmentation → 
 
 - Commits are **local only** — owner pushes after final review. No `git push`, no PR creation in this pass.
 - Model weights (`apps/api/.model_cache/`) and `.env` are never committed (gitignored, verified).
+
+## 10b. Current status (2026-09-28, end of this pass)
+
+| Phase | Area | Status |
+|-------|------|--------|
+| 1 | Frontend loaders / visual system | ✅ DONE — orbs, skeletons, stream-beam; manual per-page review + eslint/build/33 vitest |
+| 2 | Preprocessing (pipeline, chunker) | ✅ DONE — imports, no dead 429 backoff, upsert batch centralized |
+| 3 | Retrieval (timeouts, adaptive K, cache) | ✅ DONE — all budgets in `models.yaml` v1.23 + env overrides |
+| 4 | Augmentation + generation | ✅ DONE — imports hoisted, patch-compat preserved, suite-caught 503 fixed |
+| 5 | Backend hardening (routes/services/MCP) | ✅ DONE — intentional lazies documented inline |
+| 6 | Security | ✅ DONE — S-1 JWT placeholder fixed; 3 bson-echo details made static |
+| 6b | `.gitignore` / `.env.example` hygiene | ✅ DONE — nested template rule, 4 ignore gaps, 11 undocumented vars closed |
+| 7 | DevOps + docs | ✅ DONE — ports check green, README v1.23, audit log current |
+| — | Verification (this pass) | ✅ 677 backend passed · ruff clean · web eslint/build/vitest green |
+| — | Commits | ✅ `35c076e` (ONNX config) · `0dce6d4` (phase pass) · security/ignore commit below |
+
+**Not done / out of scope for this pass:** manual browser review of the new loader animations (built + tested, not clicked through), live k6 budget run, ONNX arena-off profile measurement on 512 MB containers.
 
 ## 11. Follow-ups (ordered backlog, not started)
 

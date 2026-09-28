@@ -328,8 +328,17 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def production_must_have_qdrant_key(self) -> Settings:
-        if self.app_env == "production" and not self.qdrant_api_key:
-            raise ValueError("QDRANT_API_KEY must be set in production")
+        if self.app_env == "production":
+            if not self.qdrant_api_key:
+                raise ValueError("QDRANT_API_KEY must be set in production")
+            # The .env.example placeholder is 44 chars, so it clears the
+            # length check above — without this it would silently become the
+            # production signing key for anyone who copies the template.
+            if self.jwt_secret.upper().startswith(("REPLACE_WITH", "CHANGE_ME", "CHANGEME")):
+                raise ValueError(
+                    "JWT_SECRET is still the .env.example placeholder. "
+                    'Generate a real one: python -c "import secrets; print(secrets.token_hex(64))"'
+                )
         return self
 
     def is_production(self) -> bool:

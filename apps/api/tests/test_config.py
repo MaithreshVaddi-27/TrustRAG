@@ -241,6 +241,26 @@ class TestSettings:
         assert settings.is_development()
         assert not settings.is_production()
 
+    def test_production_requires_qdrant_key(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="QDRANT_API_KEY must be set in production"):
+            self._make_settings(app_env="production", qdrant_api_key="")
+
+    def test_production_rejects_env_example_jwt_placeholder(self) -> None:
+        """The shipped template placeholder is 44 chars, so it clears the
+        length check — production must reject it explicitly."""
+        from pydantic import ValidationError
+
+        placeholder = "REPLACE_WITH_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS"
+        assert len(placeholder) >= 32
+        with pytest.raises(ValidationError, match="placeholder"):
+            self._make_settings(app_env="production", qdrant_api_key="k", jwt_secret=placeholder)
+
+    def test_production_accepts_real_jwt_secret(self) -> None:
+        settings = self._make_settings(app_env="production", qdrant_api_key="k")
+        assert settings.is_production()
+
 
 class TestAnalysisModelPolicy:
     def test_known_local_model_override_is_allowed(self, monkeypatch) -> None:
