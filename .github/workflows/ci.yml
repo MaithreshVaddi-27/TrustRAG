@@ -33,7 +33,9 @@ jobs:
           cache: pip
 
       - name: Install ruff
-        run: pip install ruff
+        # Pinned: unpinned `ruff` broke CI when 0.16.9 added E402 coverage
+        # (conftest import order). Bump deliberately with a lint pass.
+        run: pip install "ruff==0.16.9"
 
       - name: Lint
         run: ruff check app/ tests/

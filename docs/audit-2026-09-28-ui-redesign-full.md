@@ -85,5 +85,15 @@
 - L-1 tiered recommendations + regression test (18/18 hardware tests green)
 - B-18 resolved as no-change (cost); cross-platform CI job added + YAML validated + `ci-gate` wired
 
+## Third pass — CI red triage (2026-09-28, same branch)
+
+CI on `8f36711` failed Backend-Lint, Backend-Tests, Docker-Build (via check-runs API; E2E, frontend, cross-platform green).
+
+| ID | CI job | Root cause | Fix |
+|----|--------|-----------|-----|
+| CI-1 | Backend-Lint (my regression) | ruff 0.16.9 newly flags E402 for `import pytest` after code in `tests/conftest.py` (CI installs latest ruff unpinned) | Import moved to top; CI pins `ruff==0.16.9` with bump comment |
+| CI-2 | Backend-Tests (pre-existing since `0367a6d`) | `transformers` imported (tokenizer-only) but never declared: CI `pip install -e .` lacks it → 17 onnx-test `ModuleNotFoundError`; uv envs passed by accident via `local-models` extra | `transformers>=4.48.0` added to main deps (no torch: hub + tokenizers + safetensors only); re-locked. Replica (py3.11 + pip, CI-identical): 664 pass, 1 remaining failure is macOS-only (`torch` absent + Apple Silicon `mps` profile) and passes on Ubuntu CI |
+| CI-3 | Docker-Build (pre-existing since `0367a6d`) | Phantom `pymongo[srv]` extra (removed upstream in 4.17) makes the lock stale under current uv: `uv sync --locked` exits 1. Proven: newest uv 0.12.19 fails on old lock, syncs clean on new lock (py3.11) | `pymongo>=4.7.0` + explicit `dnspython>=2.7.0` (mongodb+srv/Atlas needs it); `uv.lock` regenerated (also prunes 3.13–3.15 wheels unreachable under `requires-python <3.13`) |
+
 ---
-*All tracked findings are fixed and verified locally (macOS). Remaining: CI run on push (Ubuntu + Windows + macOS matrix) as final proof.*
+*All tracked findings are fixed and verified locally (macOS) + CI-replica (py3.11/pip). Pushed for CI confirmation.*

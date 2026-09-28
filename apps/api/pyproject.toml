@@ -18,7 +18,8 @@ dependencies = [
     "pyyaml>=6.0.1",
 
     # ── Database ─────────────────────────────────────────────────────────────
-    "pymongo[srv]>=4.7.0",
+    "pymongo>=4.7.0",
+    "dnspython>=2.7.0",  # mongodb+srv / Atlas TLS (was pymongo[srv]; the srv extra no longer exists upstream)
     "motor>=3.4.0",               # Async MongoDB driver
     "certifi>=2024.2.2",          # Explicit CA bundle for Atlas TLS handshakes
 
@@ -66,6 +67,11 @@ dependencies = [
 
     # ── Local embeddings (ONNX Runtime, torch-free) ──────────────────────────
     "onnxruntime>=1.20.0",        # single embedding engine: BGE-small via ONNX
+    # Tokenizer ONLY (AutoTokenizer for ONNX inputs). Never imports torch:
+    # plain `transformers` installs hub + tokenizers + safetensors, no ML
+    # framework. Was an undeclared transitive dep — CI (pip install -e .)
+    # failed 17 onnx tests with ModuleNotFoundError while uv envs passed.
+    "transformers>=4.48.0",
 ]
 
 [project.optional-dependencies]

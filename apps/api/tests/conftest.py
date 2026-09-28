@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 # Hermetic provider config: a developer's local .env (e.g. AI_PROVIDER=ollama)
 # must not leak into the suite — tests assert models.yaml defaults
 # (test_create_analysis expects llama_cpp). Pop, don't default: an ambient
@@ -38,9 +40,6 @@ os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 
 
 # Clear global caches between tests to avoid cross-test pollution
-import pytest
-
-
 def _clear_all_caches() -> None:
     """Reset every process-global cache that can leak state between tests."""
     # Provider hermeticity: app/core/config.py runs load_dotenv() at import,
