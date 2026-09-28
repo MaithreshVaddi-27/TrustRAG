@@ -20,9 +20,13 @@ Findings marked **VERIFIED** were checked against the exact line numbers quoted.
 
 # Status
 
-Remediation tracker. **Waves 1 and 2 are complete, plus the five Wave 4/5 items in `1bc7b00` and a further round covering B-8 (upload/URL-ingest), B-11 (lifespan), B-15 (effective-model allowlist + canonical provider), and B-18 (`top_p` / `max_completion_tokens`).** Wave 3 and the residual items below are not started. All work is on `ui-redesign`; `1bc7b00` is committed, the second round is **uncommitted**.
+Remediation tracker. **Waves 1 and 2 are complete.** Also resolved: B-8, B-11, B-12, B-15, B-18 (3 of 4 sub-items), T-8, and the T-2 tests that could hide regressions. Eight further runtime defects were found by a targeted audit sweep after the original waves closed and are fixed — see "Post-audit defect sweep" below.
 
-Test suite: **431 → 619 backend passed (+188)**, **25 → 33 frontend passed (+8)**, backend coverage **70% → 75%** (8543 statements, 2135 missed). `ruff check` / `ruff format` clean, `scripts/apply_ports.py --check` clean. `app/main.py` 50% → **78%**; `onnx_embeddings.py` 48% → near-complete; `onnx_reranker.py` 29% → near-complete.
+All work is on `ui-redesign` and committed. **657 backend tests pass.**
+
+Test suite: **431 → 657 backend passed (+226)**, **25 → 33 frontend passed (+8)**, backend coverage **70% → 76%** (8577 statements, 2038 missed). `ruff check` / `ruff format` clean, `scripts/apply_ports.py --check` clean. `app/main.py` 50% → **78%**; `onnx_embeddings.py` 48% → near-complete; `onnx_reranker.py` 29% → near-complete.
+
+**Two items remain open, and both need a decision rather than a code change** — see "Open decisions".
 
 ## Wave 1 — complete
 
@@ -78,19 +82,18 @@ Three guards are **meta-tests** that keep the other guards from going vacuous �
 
 ## Not started
 
-| Wave | IDs | Theme |
+| Wave | IDs | State |
 |---|---|---|
-| **3** | L-1 … L-12 | Local-model portability: per-tier model recommendations, per-model context window, llama.cpp flags, adaptive timeouts, local provider tests. **Needs hardware validation.** |
-| **5 (rest)** | B-18 (`ChatNVIDIA` has no `max_retries`) | NVIDIA lacks a langchain-level retry; adding it without capping Gemini would increase spend, so this needs a cost decision |
-| **2** | T-2 | ~28 shape-only tests. The ones that could let a real regression through are fixed (hardware profile coherence, tier→batch-size mapping, auth status codes); the rest are low-leverage `assert x is not None` cleanups. |
-| **3** | L-1 … L-12 | Local-model portability. **Blocked on a product decision** (which models to recommend per RAM tier) and on hardware validation. |
+| **2 (rest)** | T-2 | The shape-only tests that could let a real regression through are fixed (hardware-profile coherence, tier→batch-size mapping, auth status codes, README quickstart). The remaining ~23 are low-leverage `assert x is not None` cleanups with no defect behind them. |
+| **3** | L-1 … L-12 | Local-model portability. **Blocked**: needs a product decision on which models to recommend per RAM tier, plus hardware validation. |
+| **5 (rest)** | B-18 (`ChatNVIDIA` has no `max_retries`) | **Needs a cost decision.** Adding langchain-level retry to NVIDIA without also capping Gemini would increase spend on the more expensive provider. |
 
-### Known follow-ups
+### Open decisions (not code changes)
 
-- **L-1 is the only remaining user-visible defect** (the same 3B model recommended for every RAM tier). It needs a product decision, not a code change.
-- **B-12, B-8, B-11, T-8 are resolved.** `app/services/analysis_service.py` remains the least-covered service, but its authorization path is now pinned by tests that fail if the ownership check is removed.
-- **L-1** (the same 3B model recommended for every RAM tier) is user-visible and still open; it needs a product decision on which models to recommend.
-- Adding a generic `openai_compatible` provider would need a new `langchain-openai` dependency — deliberately not added without agreement.
+1. **L-1 — the only remaining user-visible defect.** The same 3B model is recommended for every RAM tier, so a 64 GB host is told to run the same weights as an 8 GB host. Fixing it means choosing which models to recommend per tier, which is a product call.
+2. **B-18 `ChatNVIDIA` retries.** See above.
+3. **Generic `openai_compatible` provider.** Would require a new `langchain-openai` dependency — deliberately not added without agreement.
+4. **`docs/config/ports.yaml`.** An untracked, byte-identical duplicate of `config/ports.yaml` left over from an earlier mistake. Nothing references it. It should be deleted, but that is a deletion so it is left for an explicit go-ahead.
 
 ## Incidental
 
@@ -682,6 +685,41 @@ See **B-9**. Proof that it passes while generation is broken: the suite touches 
 | B-11 | Lifespan/startup tests. |
 | B-12 | Graph topology tests. |
 
+## Post-audit defect sweep
+
+The original audit closed on coverage and cost. A follow-up sweep was run over
+areas it had not examined, and it found eight further defects. All are fixed and
+regression-tested. Recorded here because the original audit would not have caught
+them, and because several were silent-wrong-answer rather than loud-failure
+class.
+
+| # | Severity | Defect | Fix |
+|---|---|---|---|
+| 1 | **HIGH** | **Embedding cache served document vectors to queries.** `embed_query` prepends the BGE retrieval instruction, `embed_documents` does not, so one string yields two different vectors. Both the in-memory LRU and the SQLite cache keyed on `(model, text)` with no discriminator, so whichever ran first won the slot and the other silently received the wrong vector — degraded retrieval with no error surface, persisted for the life of the cache. | Keys namespaced by mode under a `v2` prefix. The prefix also invalidates pre-existing rows, which carry no mode and so cannot be trusted. |
+| 2 | MEDIUM | **`connect_db()` crashed with `UnboundLocalError` instead of retrying.** `candidate_client` was assigned inside the `try` but referenced unconditionally in the `except`; a URI that makes `AsyncIOMotorClient(...)` itself raise left the name unbound, killing the documented retry/backoff and `DatabaseError` translation. | Bound before the `try`, guarded close. |
+| 3 | MEDIUM | **Invalid-port URIs escaped the error handler entirely.** pymongo raises a plain `ValueError` for an out-of-range port, which is **not** a `PyMongoError`, so `except PyMongoError` did not catch it. | `MONGODB_URI` is now validated before the retry loop, which also stops a permanently invalid address from burning 12 exponential-backoff retries. A typo'd URI fails in 0.00 s naming the variable. |
+| 4 | MEDIUM | **SSE streams never terminated on retrieval outage.** The pipeline is finished when it emits `analysis.outage`, but that event was missing from `terminal_events`, so the generator spun on heartbeats to its 360-tick bound — a ~6 minute idle connection per subscriber, per outage. | `analysis.outage` added to the terminal set. |
+| 5 | MEDIUM | **Global concurrency semaphore was bound to one event loop.** asyncio primitives bind to the loop that first awaits them, and the sync `.generate()` path wraps its coroutine in `asyncio.run()`, creating a new loop. Surfaces only under contention — i.e. when the limiter is saturated and a request is already waiting on a paid endpoint. | Keyed per loop in a `WeakKeyDictionary`. Deliberately **not** keyed by `id(loop)`: CPython reuses ids after collection, which can hand a dead loop's semaphore to a new one. This matches how `_shared_http_client()` already keys its pools. |
+| 6 | LOW | **`rate_limit_storage_uri` was read but never defined.** `getattr(..., "", ...)` silently swallowed the miss, so `RATE_LIMIT_STORAGE_URI` in `.env` did nothing and the limiter stayed in-process — per-worker buckets, so a multi-worker deploy enforces N x the intended limit. | Field added; documented in `.env.example`. |
+| 7 | LOW | **Self-heal failures were invisible.** The bookkeeping block in `retrieval_node` swallowed every exception with one warning log. The resilience is correct, but a half-reindexed collection and a skipped empty-KB guard looked identical to a healthy run in the UI. | Emits a `retrieval.self_heal_failed` trace event. |
+| 8 | LOW | **`AnalysisResponse.status` advertised a status the service never writes.** The docstring said "pending, running, completed, failed, abstained"; the code writes `processing`, never `running`. It is rendered in `/docs`, which the README points users at, so a consumer polling for `running` would read an in-flight analysis as finished and fetch empty results. | Corrected, and pinned by a test that extracts the statuses actually written and fails on any undocumented one. |
+
+### Verification method
+
+Every fix above was reproduced before it was changed, and every regression test
+was mutation-checked by reverting the fix and confirming the intended test fails.
+Two of these checks failed the first time and were corrected rather than accepted:
+
+- The cross-loop semaphore test initially passed against the shared singleton,
+  because an *uncontended* acquire never touches the event loop. The test was
+  rewritten to make each loop an actual waiter, which is the only way the real
+  `RuntimeError` surfaces. It also initially used `id(loop)` as the map key and
+  then failed intermittently in the full suite — that is what exposed the
+  id-reuse hazard, and the production key was changed to a `WeakKeyDictionary`.
+- The `connect_db` "no pre-flight check" mutation did not fail, it *hung* — the
+  test spent the full retry budget. That is the severity of the original bug
+  demonstrated rather than a passing check.
+
 ## Wave 5 — cleanup
 
 B-7 (compression default), B-8/B-14/B-15 (allowlist + context windows), B-13 (`nvidia_base_url` + generic OpenAI-compatible provider), B-12 provider asymmetries (`top_p`, `max_completion_tokens`, alias normalization, adaptive timeouts), plus the ~28 shape-only tests.
@@ -698,8 +736,8 @@ Every new test was mutation-checked: broken edge map, fail-open verdict default,
 
 **Verified by the author (source + installed package + measurement):** B-1 (incl. 176.9 MB measurement), B-2, B-3 (mechanism + latency classification), B-4 (pre-request half), B-8 (46 v1 routes counted directly, 22 untested), B-9, B-10, B-11, B-12, B-19, the **431 passed / 70% / 8185 stmts / 2464 missed** baseline (re-run, 33.46s), the absence of skips, `langchain-google-genai` 4.4.0 `ValueError` on unexpected kwargs, `ChatNVIDIA` lacking both `max_retries` and `max_completion_tokens`, and the reasoning-keyword cross-check for all 7 Gemini + 3 NVIDIA ids.
 
-**Verified by execution (fix + regression test, all passing):** B-1 through B-11, B-13, B-14, B-16, B-17, B-19, the **619 passed / 75% / 8543 stmts / 2135 missed** result (re-run, 38.67s), and the frontend **33 passed** in 8 files. The B-8 route tests exercise the real SSRF validator and the real `kb_service` ownership check rather than mocking them; the B-11 tests drive the real `lifespan` context manager.
+**Verified by execution (fix + regression test, all passing):** B-1 through B-11, B-13, B-14, B-16, B-17, B-19, the **657 passed / 76% / 8577 stmts / 2038 missed** result (re-run, 42.33s), and the frontend **33 passed** in 8 files. The B-8 route tests exercise the real SSRF validator and the real `kb_service` ownership check rather than mocking them; the B-11 tests drive the real `lifespan` context manager.
 
-**Code-evidence only (not re-run):** B-4 recovery half, B-12 (`execute_agentic_rag_flow` — still 100% untested, so its *absence* of a defect is not established), B-18's residual `ChatNVIDIA` `max_retries` gap, C-7 through C-13, and all of Part 3. These follow directly from the cited lines but were not independently reproduced.
+**Code-evidence only (not re-run):** B-4 recovery half, B-18's residual `ChatNVIDIA` `max_retries` gap, C-7 through C-13, and all of Part 3 (Wave 3 local-model portability). These follow directly from the cited lines but were not independently reproduced.
 
 **Requires a live environment to confirm:** any timeout/backoff behaviour (needs slow or failing endpoints); actual memory for RAM-3 … RAM-8 (needs a peak-RSS profile on the target hardware tier); MLX behaviour (needs Apple Silicon); real cloud error codes and billing (needs live keys). Do not report these as proven defects without that evidence.
