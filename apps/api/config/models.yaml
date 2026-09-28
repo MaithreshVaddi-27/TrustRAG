@@ -182,6 +182,20 @@ retrieval:
   rrf_k: 60                 # RRF constant (standard default)
   fusion_top_k: 20
   max_context_chunks: 8     # Maximum evidence chunks sent to LLM
+  # Time budgets (seconds). 0 = use built-in fallback (branch 45s / hybrid
+  # 60s). One hung branch degrades to the other branch; both timing out is
+  # a hard outage. Env wins: RETRIEVAL_BRANCH_TIMEOUT_SECONDS,
+  # RETRIEVAL_HYBRID_TIMEOUT_SECONDS.
+  branch_timeout_seconds: 0
+  hybrid_timeout_seconds: 0
+  # Adaptive Top-K accuracy levers (RRF units: max ≈ 0.033 at rrf_k=60).
+  # High-confidence queries cap fused candidates at adaptive_top_k_cap.
+  adaptive_top_k_threshold: 0.02
+  adaptive_top_k_cap: 4
+  # Query-vector LRU capacity (RAM-bounded; entries are 384-float vectors).
+  # Lower (256) on ≤8GB hosts; raise (2048) on 32GB+ hosts.
+  # Env wins: RETRIEVAL_QUERY_CACHE_CAPACITY.
+  query_cache_capacity: 1024
   # Deterministic query router (no LLM call): simple → 1 call; temporal → 1 call +
   # reference_time; comparison/complex → bounded parallel fan-out merged by RRF.
   query_router:
@@ -211,6 +225,9 @@ ingestion:
     - html
     - htm
   max_file_size_mb: 20
+  # Qdrant upsert batch: points per upsert call (prevents network timeouts
+  # on large documents). Lower (50) on flaky networks; raise (200) on LAN.
+  qdrant_upsert_batch: 100
   # OCR fallback (RapidOCR-ONNX): native extraction stays the default; only
   # pages with less than min_native_chars of native text are OCR-rendered.
   # Page text below min_confidence is dropped (never becomes evidence).

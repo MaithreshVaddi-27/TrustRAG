@@ -97,7 +97,7 @@ export function ResultsPanel({
           embeddingModel={selectedEmbeddingModel}
         />
 
-        <div className="flex-1 min-h-0 flex flex-col rounded-2xl border border-slate-800 bg-surface-900/50 backdrop-blur-sm p-4 overflow-hidden shadow-lg shadow-black/20">
+        <div className="border-beam stream-beam flex-1 min-h-0 flex flex-col rounded-2xl border border-slate-800 bg-surface-900/50 backdrop-blur-sm p-4 overflow-hidden shadow-lg shadow-black/20">
           <div className="flex items-center justify-between pb-3 mb-2 border-b border-slate-800/80 shrink-0">
             <div className="flex items-center gap-2">
               <span className="section-heading !mb-0 text-slate-200">Real-Time Event Stream</span>

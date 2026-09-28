@@ -21,6 +21,7 @@ from app.core.llm_utils import normalize_llm_content
 from app.core.local_llm import LOCAL_LLM_PROVIDERS, local_cap_kwargs
 from app.core.logging import get_logger
 from app.core.model_registry import get_llm
+from app.core.semantic_cache import prune_context_tokens
 
 logger = get_logger(__name__)
 
@@ -630,8 +631,6 @@ def format_context_with_chunk_indices(
     """
     if not chunks:
         return "No context segments available.", []
-
-    from app.core.semantic_cache import prune_context_tokens
 
     formatted = []
     chunk_indices: list[int] = []

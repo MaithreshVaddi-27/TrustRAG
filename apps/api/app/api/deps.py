@@ -54,7 +54,8 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> Mappin
     try:
         user_id = ObjectId(user_id_str)
     except Exception as exc:
-        raise AuthenticationError("Invalid user identity format", detail=str(exc)) from exc
+        # Static detail: bson's message echoes the malformed input back.
+        raise AuthenticationError("Invalid user identity format", detail="malformed id") from exc
 
     user = await get_collection(Collections.USERS).find_one({"_id": user_id})
     if not user:

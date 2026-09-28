@@ -15,14 +15,24 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from bson import ObjectId
+from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.core.config import get_model_config
+from app.core import config as config_mod
+from app.core.config import get_model_config, normalize_provider
 from app.core.llm_ledger import invoke_counted, llm_budget_exhausted
+from app.core.llm_utils import build_structured_output_runnable
 from app.core.local_llm import is_reasoning_model, verification_cap_kwargs
 from app.core.logging import get_logger
 from app.core.model_registry import get_verification_model
 from app.db.mongodb import Collections, get_collection
+from app.generation.generator import (
+    extract_citations,
+    format_context,
+    format_context_with_chunk_indices,
+)
+from app.retrieval import retriever as retriever_mod
+from app.verification import integrity as integrity_mod
 
 logger = get_logger(__name__)
 
@@ -50,9 +60,9 @@ def _nli_timeout_seconds() -> int:
     model is allowed to finish rather than being cancelled mid-generation.
     """
     try:
-        from app.core.config import get_model_config, normalize_provider
-
-        cfg = get_model_config()
+        # Resolved via the config MODULE (not the top-level binding) so
+        # operator overrides and test doubles on app.core.config are honored.
+        cfg = config_mod.get_model_config()
         if normalize_provider(cfg.verification_provider) in _CLOUD_PROVIDERS:
             configured = int(getattr(cfg, "llm_timeout_seconds", 0) or 0)
             if configured > NLI_PER_CALL_TIMEOUT_SECONDS:
@@ -139,10 +149,6 @@ def _structured_verifier(model_obj: Any, provider: str | None, schema: Any, cap:
             # kwarg, so the cap must ride on the model, not the call.
             return _apply_cap_via_model_copy(model_obj, cap).with_structured_output(schema)
         return model_obj.with_structured_output(schema, **cap)
-
-    from langchain_core.outputs import ChatGeneration, ChatResult
-
-    from app.core.llm_utils import build_structured_output_runnable
 
     async def _generate_via_ainvoke(messages: Any, **kwargs: Any) -> ChatResult:
         ai_message = await invoke_counted(model_obj, messages, **kwargs)
@@ -745,8 +751,6 @@ async def verify_claim_nli(
         # Format candidate segments unless the caller already built the exact
         # prompt context and segment-to-chunk mapping for this verification round.
         if context_str is None:
-            from app.generation.generator import format_context
-
             context_str = format_context(chunks)
 
         model_obj = get_verification_model(provider=provider, model=model)
@@ -802,8 +806,6 @@ async def batch_verify_claims_nli(
         return {}
 
     if context_str is None:
-        from app.generation.generator import format_context
-
         context_str = format_context(chunks)
     claims_list_str = "\n".join(f"{i}. {text}" for i, text in enumerate(claims, start=1))
 
@@ -865,8 +867,6 @@ async def fused_decompose_verify(
         return None
 
     if context_str is None:
-        from app.generation.generator import format_context
-
         context_str = format_context(chunks)
 
     prompt_str = FUSED_DECOMPOSE_VERIFY_PROMPT_TEMPLATE.format(
@@ -923,10 +923,10 @@ async def retrieve_evidence_for_claim(
     drops chunks already present in the analysis context. Fail-closed:
     any outage returns [] and the claim keeps its original verdict.
     """
-    from app.retrieval.retriever import retrieve_hybrid_chunks
-
     try:
-        results = await retrieve_hybrid_chunks(claim_text, kb_id_str, top_k_override=top_k)
+        results = await retriever_mod.retrieve_hybrid_chunks(
+            claim_text, kb_id_str, top_k_override=top_k
+        )
     except Exception as exc:
         logger.warning(
             "Targeted claim retrieval failed; keeping original verdict",
@@ -958,9 +958,7 @@ async def _persist_claim_evidence(
     Returns (chunk, evidence_id) pairs for VERIFIED chunks only, so callers can
     map fresh mini-context segment numbers onto persisted evidence IDs.
     """
-    from app.verification.integrity import audit_evidence_integrity
-
-    audited = await audit_evidence_integrity(chunks)
+    audited = await integrity_mod.audit_evidence_integrity(chunks)
     verified = [c for c in audited if c.get("integrity_status") == "VERIFIED"]
     if not verified:
         return []
@@ -1042,9 +1040,6 @@ async def execute_claim_verification(
 
     # Shared setup for both paths: claim ceiling + prompt context. NLI segment
     # numbers refer to the sorted/deduplicated context, not the raw rerank order.
-    from app.core.config import get_model_config
-    from app.generation.generator import format_context_with_chunk_indices
-
     cfg = get_model_config()
     # Use tier-aware caps based on provider
     caps = cfg.tier_caps(provider)
@@ -1193,8 +1188,6 @@ async def execute_claim_verification(
         ]
         retrieval_budget = min(max(0, caps["max_claim_retrievals"]), len(neutral_positions))
         if retrieval_budget:
-            from app.generation.generator import format_context_with_chunk_indices as _fmt
-
             seen_keys = {_chunk_identity(c) for c in chunks}
             claim_top_k = int(cfg.claim_retrieval_top_k or 5)
             for position in neutral_positions[:retrieval_budget]:
@@ -1215,7 +1208,7 @@ async def execute_claim_verification(
                 if not pairs:
                     continue
                 mini_chunks = [chunk for chunk, _ in pairs]
-                mini_str, mini_indices = _fmt(mini_chunks)
+                mini_str, mini_indices = format_context_with_chunk_indices(mini_chunks)
                 try:
                     re_res = await _await_nli_call(
                         verify_claim_nli(
@@ -1352,8 +1345,6 @@ async def execute_claim_verification(
 
         # Inline provenance markers surviving in the claim text (Phase-4
         # "[Segment N]" citations) link their segments too.
-        from app.generation.generator import extract_citations
-
         for cited_num in extract_citations(text):
             if 1 <= cited_num <= len(context_chunk_indices):
                 chunk_idx = context_chunk_indices[cited_num - 1]

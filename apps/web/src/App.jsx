@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 // Public Landing page
 const LandingPage = lazy(() => import('@/pages/LandingPage'))
@@ -27,7 +27,7 @@ function PageLoading() {
   return (
     <div className="min-h-screen supports-[min-height:100dvh]:min-h-dvh bg-surface-950 flex flex-col items-center justify-center">
       <div className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-surface-900 border border-slate-800 shadow-2xl">
-        <Loader2 className="w-5 h-5 text-primary-400 animate-spin" />
+        <ThinkingOrbs size="md" />
         <span className="text-sm font-medium text-slate-300">Loading module...</span>
       </div>
     </div>

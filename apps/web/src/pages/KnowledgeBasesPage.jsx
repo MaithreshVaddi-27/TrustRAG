@@ -8,6 +8,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { kbService } from '@/services/api'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 import { formatDistanceToNow } from 'date-fns'
 
 export default function KnowledgeBasesPage() {
@@ -104,8 +105,8 @@ export default function KnowledgeBasesPage() {
 
         {/* Loading State */}
         {isLoading && (
-          <div className="p-16 flex flex-col items-center justify-center space-y-3">
-            <Loader2 size={32} className="animate-spin text-primary-400" />
+          <div className="p-16 flex flex-col items-center justify-center space-y-4">
+            <ThinkingOrbs size="md" />
             <p className="text-sm font-mono text-slate-400">Querying cluster collections...</p>
           </div>
         )}

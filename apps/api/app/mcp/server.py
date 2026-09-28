@@ -18,11 +18,28 @@ import json
 import sys
 from typing import Any
 
-from app.core.exceptions import RetrievalOutageError
+from bson import ObjectId
+
+from app.core import model_registry as model_registry_mod
+from app.core.config import get_settings
+from app.core.exceptions import (
+    AuthenticationError,
+    AuthorizationError,
+    NotFoundError,
+    RetrievalOutageError,
+)
 from app.core.llm_ledger import invoke_counted
+from app.core.local_llm import (
+    LOCAL_LLM_PROVIDERS,
+    check_llamacpp_status,
+    check_ollama_status,
+)
 from app.core.logging import get_logger
+from app.core.security import decode_service_token
 from app.db.mongodb import Collections, connect_db, get_collection
 from app.retrieval.retriever import retrieve_hybrid_chunks
+from app.services import kb_service as kb_service_mod
+from app.services import search_service as search_service_mod
 from app.verification.verifier import batch_verify_claims_nli
 
 logger = get_logger(__name__)
@@ -171,9 +188,6 @@ async def handle_tool_call(
             External stdio clients must supply service_token. Never exposed
             over stdio: run_stdio_mcp_server() does not accept this flag.
     """
-    from app.core.exceptions import AuthenticationError
-    from app.core.security import decode_service_token
-    from app.services.search_service import duckduckgo_search, execute_web_search, tavily_search
 
     def _clamp_results(value: Any, default: int = 5) -> int:
         try:
@@ -205,9 +219,6 @@ async def handle_tool_call(
         tokens keep full access; bound tokens are confined. Ownership failures map
         to AuthenticationError so bound callers can't probe KB existence.
         """
-        from app.core.exceptions import AuthorizationError, NotFoundError
-        from app.services.kb_service import get_kb
-
         bound_kb = payload.get("bound_kb_id")
         if bound_kb and str(bound_kb) != str(kb_id):
             raise AuthenticationError(
@@ -217,7 +228,7 @@ async def handle_tool_call(
         bound_user = payload.get("bound_user_id")
         if bound_user:
             try:
-                await get_kb(str(kb_id), str(bound_user))
+                await kb_service_mod.get_kb(str(kb_id), str(bound_user))
             except (NotFoundError, AuthorizationError) as exc:
                 raise AuthenticationError(
                     "Service token not authorized for this knowledge base",
@@ -227,19 +238,19 @@ async def handle_tool_call(
     if tool_name == "tavily_search":
         _require_service_token(arguments)
         count = _clamp_results(arguments.get("max_results", 5))
-        res = await tavily_search(arguments["query"], max_results=count)
+        res = await search_service_mod.tavily_search(arguments["query"], max_results=count)
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
     elif tool_name == "duckduckgo_search":
         _require_service_token(arguments)
         count = _clamp_results(arguments.get("max_results", 5))
-        res = await duckduckgo_search(arguments["query"], max_results=count)
+        res = await search_service_mod.duckduckgo_search(arguments["query"], max_results=count)
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
 
     elif tool_name == "hybrid_web_search":
         _require_service_token(arguments)
         count = _clamp_results(arguments.get("max_results", 5))
-        res = await execute_web_search(
+        res = await search_service_mod.execute_web_search(
             arguments["query"],
             provider=arguments.get("provider", "both"),
             max_results=count,
@@ -301,8 +312,6 @@ async def handle_tool_call(
         _filter: dict[str, Any] = {}
         bound_user = _payload.get("bound_user_id")
         if bound_user:
-            from bson import ObjectId
-
             if not ObjectId.is_valid(str(bound_user)):
                 raise AuthenticationError(
                     "Service token not authorized", detail="invalid bound user"
@@ -323,9 +332,6 @@ async def handle_tool_call(
 
     elif tool_name == "local_llm_chat":
         _require_service_token(arguments)
-        from app.core.local_llm import LOCAL_LLM_PROVIDERS
-        from app.core.model_registry import get_llm
-
         # Local-only tool: never route a service-token call to metered cloud
         # providers (a leaked token must not become a spend vector).
         provider = str(arguments.get("provider", "ollama") or "ollama").strip().lower()
@@ -336,16 +342,13 @@ async def handle_tool_call(
             )
         model = arguments.get("model")
         prompt = str(arguments["prompt"])[:8000]
-        llm = get_llm(provider=provider, model=model)
+        llm = model_registry_mod.get_llm(provider=provider, model=model)
         res = await invoke_counted(llm, prompt)
         text = res.content if hasattr(res, "content") else str(res)
         return {"content": [{"type": "text", "text": text}]}
 
     elif tool_name == "local_llm_status":
         _require_service_token(arguments)
-        from app.core.config import get_settings
-        from app.core.local_llm import check_llamacpp_status, check_ollama_status
-
         settings = get_settings()
         prov = arguments.get("provider", "both")
         status_res: dict[str, Any] = {}

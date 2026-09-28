@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
-import { Activity, CheckCircle2, Cpu, Database, Globe, Layers, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
+import { Activity, CheckCircle2, Cpu, Database, Globe, Layers, ShieldCheck, Sparkles } from 'lucide-react'
 import { compactTraceEvents, displayMessage } from './traceEvents'
 import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
+import { ThinkingOrbs } from './ThinkingOrbs'
 
 /**
  * PipelineTelemetryHUD — Ultra-premium, executive live telemetry HUD.
@@ -176,7 +177,7 @@ function StageCard({ title, subtitle, subtitleTitle, icon: Icon, done, active })
         {done ? (
           <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
         ) : active ? (
-          <Loader2 size={13} className="text-cyan-400 animate-spin shrink-0" />
+          <ThinkingOrbs size="sm" className="shrink-0" />
         ) : (
           <span className="w-2 h-2 rounded-full bg-slate-700 shrink-0" />
         )}

@@ -1,8 +1,10 @@
 """
 ONNX central-config regression tests (hermetic — no model files needed).
 
-Guards the v1.23 `onnx:` block + shared session factory:
-- every ORT knob lives in models.yaml with an ONNX_* env override,
+Guards the v1.23 `onnx:` block + shared session factory, plus the Phase 2/3
+centralized knobs (retrieval budgets, adaptive Top-K, query cache, upsert
+batch, reranker seq-len):
+- every ORT/infra knob lives in models.yaml with an env override,
 - the factory caps threads for less RAM and enables full graph fusion,
 - reranker batch precedence is explicit > env > yaml > 16,
 - production API-key fields still default to empty (env-only, never hardcoded).
@@ -26,6 +28,13 @@ def _clean_onnx_env(monkeypatch):
         "ONNX_MEM_PATTERN",
         "ONNX_EMBED_MICRO_BATCH",
         "RERANKER_BATCH_SIZE",
+        "RERANKER_MAX_SEQ_LENGTH",
+        "ADAPTIVE_TOP_K_THRESHOLD",
+        "ADAPTIVE_TOP_K_CAP",
+        "RETRIEVAL_BRANCH_TIMEOUT_SECONDS",
+        "RETRIEVAL_HYBRID_TIMEOUT_SECONDS",
+        "RETRIEVAL_QUERY_CACHE_CAPACITY",
+        "QDRANT_UPSERT_BATCH",
         "OMP_NUM_THREADS",
     ):
         monkeypatch.delenv(var, raising=False)
@@ -104,12 +113,59 @@ def test_reranker_batch_precedence(_clean_onnx_env, monkeypatch):
     assert get_model_config().reranker_batch_size_effective == 8
 
 
-def test_production_keys_default_empty_env_only(_clean_onnx_env):
-    """No hardcoded secrets: key *field defaults* are empty — only env fills them.
+def test_retrieval_infra_yaml_defaults(_clean_onnx_env):
+    """Phase 3 knobs: budgets unset (module fallback), adaptive + cache set."""
+    from app.core.config import get_model_config
 
-    Asserts on the model definition (not runtime values, which legitimately
-    pick up this machine's real `.env`), proving no real key lives in code.
-    """
+    cfg = get_model_config()
+    assert cfg.branch_timeout_seconds == 0.0
+    assert cfg.hybrid_timeout_seconds == 0.0
+    assert cfg.adaptive_top_k_threshold == 0.02
+    assert cfg.adaptive_top_k_cap == 4
+    assert cfg.query_cache_capacity == 1024
+    assert cfg.qdrant_upsert_batch == 100
+    assert cfg.reranker_max_seq_length == 512
+
+
+def test_retrieval_infra_env_overrides_win(_clean_onnx_env, monkeypatch):
+    monkeypatch.setenv("ADAPTIVE_TOP_K_THRESHOLD", "0.025")
+    monkeypatch.setenv("ADAPTIVE_TOP_K_CAP", "6")
+    monkeypatch.setenv("RETRIEVAL_QUERY_CACHE_CAPACITY", "256")
+    monkeypatch.setenv("QDRANT_UPSERT_BATCH", "50")
+    monkeypatch.setenv("RERANKER_MAX_SEQ_LENGTH", "256")
+    # NOTE: branch/hybrid_timeout_seconds properties intentionally ignore env —
+    # env is resolved in retriever._retrieval_timeouts() so the module globals
+    # stay monkeypatch-able (see next test). Properties return yaml (0 = unset).
+    from app.core.config import get_model_config
+
+    get_model_config.cache_clear()
+    cfg = get_model_config()
+    assert cfg.adaptive_top_k_threshold == 0.025
+    assert cfg.adaptive_top_k_cap == 6
+    assert cfg.query_cache_capacity == 256
+    assert cfg.qdrant_upsert_batch == 50
+    assert cfg.reranker_max_seq_length == 256
+    assert cfg.branch_timeout_seconds == 0.0
+    assert cfg.hybrid_timeout_seconds == 0.0
+
+
+def test_retrieval_timeout_resolution_prefers_env_over_yaml(_clean_onnx_env, monkeypatch):
+    """Module globals stay the monkeypatch-able fallback (tests rely on it)."""
+    import app.retrieval.retriever as retriever_mod
+    from app.core.config import get_model_config
+
+    get_model_config.cache_clear()
+    branch, hybrid = retriever_mod._retrieval_timeouts()
+    assert (branch, hybrid) == (45.0, 60.0)
+    monkeypatch.setenv("RETRIEVAL_BRANCH_TIMEOUT_SECONDS", "20")
+    monkeypatch.setenv("RETRIEVAL_HYBRID_TIMEOUT_SECONDS", "50")
+    get_model_config.cache_clear()
+    branch, hybrid = retriever_mod._retrieval_timeouts()
+    assert (branch, hybrid) == (20.0, 50.0)
+
+
+def test_production_keys_default_empty_env_only(_clean_onnx_env):
+    """Key field defaults are empty; only env fills them (no real key in code)."""
     from app.core.config import Settings
 
     for field in ("gemini_api_key", "nvidia_api_key", "tavily_api_key", "hf_token"):

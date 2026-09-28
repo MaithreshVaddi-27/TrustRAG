@@ -9,12 +9,16 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from datetime import UTC, datetime
 from typing import Any, TypedDict
 
 from bson import ObjectId
 from langgraph.graph import END, StateGraph
+from qdrant_client.http import models as qdrant_models
 
+from app.agent.router import fanout_retrieve, route_query
+from app.core import memory, model_registry, semantic_cache
 from app.core.config import get_model_config
 from app.core.exceptions import RetrievalOutageError
 from app.core.llm_ledger import (
@@ -26,13 +30,20 @@ from app.core.llm_ledger import (
 )
 from app.core.llm_outage import classify_llm_exception
 from app.core.llm_utils import normalize_llm_content
+from app.core.local_llm import verification_cap_kwargs
 from app.core.logging import get_logger
+from app.core.metrics import record_recovery_attempt, record_verification_claims
 from app.core.model_registry import get_verification_model
+from app.db import qdrant as qdrant_db
 from app.db.mongodb import Collections, get_collection
 from app.generation.generator import generate_grounded_answer
+from app.ingestion import pipeline as pipeline_mod
+from app.ingestion.sparse_vector import generate_sparse_vector
+from app.mcp.client import execute_mcp_tool
 from app.retrieval.reranker import rerank_candidate_chunks
 from app.retrieval.retriever import _query_cache, retrieve_hybrid_chunks
 from app.services.analysis_service import add_trace_event
+from app.services.search_service import sanitize_url
 from app.verification.integrity import audit_evidence_integrity
 from app.verification.verdict import Thresholds, compute_verdict
 from app.verification.verifier import execute_claim_verification, is_refusal_answer
@@ -329,8 +340,6 @@ async def retrieval_node(state: AgentState) -> AgentState:
         # verbatim; TEMPORAL adds an explicit reference_time; COMPARISON and
         # COMPLEX fan out to bounded parallel retrievals merged by RRF score.
         # Everything downstream (rerank → integrity → persist) is untouched.
-        from app.agent.router import fanout_retrieve, route_query
-
         routed = (
             route_query(state["current_query"], max_sub_queries=cfg.max_fanout_sub_queries)
             if cfg.router_enabled
@@ -383,11 +392,9 @@ async def retrieval_node(state: AgentState) -> AgentState:
             return state
 
         if not candidates and state.get("attempts", 0) == 0:
-            from app.db.qdrant import get_collection_name, get_qdrant_client, init_kb_collection
-
             try:
-                q_client = await get_qdrant_client()
-                col_name = get_collection_name(state["kb_id"])
+                q_client = await qdrant_db.get_qdrant_client()
+                col_name = qdrant_db.get_collection_name(state["kb_id"])
                 col_exists = await q_client.collection_exists(col_name)
                 col_info = await q_client.get_collection(col_name) if col_exists else None
                 points_count = col_info.points_count if col_info else 0
@@ -404,13 +411,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                         kb_id=state["kb_id"],
                         chunks_count=mongo_chunks_count,
                     )
-                    from qdrant_client.http import models
-
-                    from app.core.model_registry import get_embedding_model
-                    from app.ingestion.pipeline import hashlib_qdrant_id
-                    from app.ingestion.sparse_vector import generate_sparse_vector
-
-                    await init_kb_collection(state["kb_id"])
+                    await qdrant_db.init_kb_collection(state["kb_id"])
                     chunks = (
                         await chunks_coll.find({"knowledge_base_id": ObjectId(state["kb_id"])})
                         .sort("chunk_index", 1)
@@ -428,7 +429,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                         ):
                             doc_map[str(d_obj["_id"])] = d_obj.get("filename", "document")
 
-                    embed_model = get_embedding_model()
+                    embed_model = model_registry.get_embedding_model()
                     # H-BE-5: embed + upsert in bounded batches so a 10 k-chunk
                     # self-heal never holds all vectors/points in RAM at once.
                     # Progress events keep the trace UI honest on long heals
@@ -449,7 +450,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                             doc_id_str = str(c["document_id"])
                             chunk_zone = c.get("zone", "body")
                             sparse_vec = generate_sparse_vector(batch_texts[i], zone=chunk_zone)
-                            point_id = hashlib_qdrant_id(doc_id_str, c["chunk_index"])
+                            point_id = pipeline_mod.hashlib_qdrant_id(doc_id_str, c["chunk_index"])
                             payload = {
                                 "document_id": doc_id_str,
                                 "knowledge_base_id": state["kb_id"],
@@ -467,11 +468,11 @@ async def retrieval_node(state: AgentState) -> AgentState:
                                 "is_snapshot": bool(c.get("is_snapshot", False)),
                             }
                             sync_points.append(
-                                models.PointStruct(
+                                qdrant_models.PointStruct(
                                     id=point_id,
                                     vector={
                                         "": batch_vectors[i],
-                                        "sparse-text": models.SparseVector(
+                                        "sparse-text": qdrant_models.SparseVector(
                                             indices=sparse_vec["indices"],
                                             values=sparse_vec["values"],
                                         ),
@@ -556,8 +557,6 @@ async def retrieval_node(state: AgentState) -> AgentState:
                 {"message": f"Executing live web search grounding via MCP ({search_prov.upper()})"},
             )
             try:
-                from app.mcp.client import execute_mcp_tool
-
                 tool_name = (
                     "tavily_search"
                     if search_prov == "tavily"
@@ -572,8 +571,6 @@ async def retrieval_node(state: AgentState) -> AgentState:
                 web_items = await execute_mcp_tool(tool_name, tool_args)
                 if web_items and isinstance(web_items, list):
                     logger.info("Web search MCP returned results", count=len(web_items))
-                    from app.services.search_service import sanitize_url
-
                     for w_idx, w in enumerate(web_items):
                         w_title = str(w.get("title") or "Web Source").strip()[:150]
                         w_url = sanitize_url(w.get("url"))
@@ -997,8 +994,6 @@ async def verification_node(state: AgentState) -> AgentState:
 
     # Phase 10: verification outcome counters (never break verification path)
     try:
-        from app.core.metrics import record_verification_claims
-
         record_verification_claims(supported, contradicted, neutral)
     except Exception:
         logger.debug("Failed to record verification claims metrics")
@@ -1152,8 +1147,6 @@ async def recovery_node(state: AgentState) -> AgentState:
         )
 
         # Track start time for latency budget
-        import time
-
         start_time = time.monotonic()
 
         try:
@@ -1192,8 +1185,6 @@ async def recovery_node(state: AgentState) -> AgentState:
 
         # Phase 10: recovery strategy counter (never break recovery path)
         try:
-            from app.core.metrics import record_recovery_attempt
-
             record_recovery_attempt(strategy)
         except Exception:  # noqa: S110
             pass
@@ -1290,8 +1281,6 @@ Never reply empty: if unsure, return the original query with spelling corrected.
 </ORIGINAL_QUERY>
 """
     try:
-        from app.core.local_llm import verification_cap_kwargs
-
         model = get_verification_model(
             provider=state.get("llm_provider"), model=state.get("llm_model")
         )
@@ -1491,13 +1480,10 @@ async def execute_agentic_rag_flow(
     q_vec: list[float] | None = None
     if not web_search_enabled:
         try:
-            from app.core.model_registry import get_embedding_model
-            from app.core.semantic_cache import check_semantic_cache
-
             cache_key = f"onnx:{query}"
             q_vec = _query_cache.get(cache_key)
             if q_vec is None:
-                emb_model = get_embedding_model()
+                emb_model = model_registry.get_embedding_model()
                 try:
                     q_vec = await emb_model.aembed_query(query)
                 except Exception:
@@ -1505,7 +1491,7 @@ async def execute_agentic_rag_flow(
                     q_vec = await asyncio.to_thread(emb_model.embed_query, query)
                 _query_cache.set(cache_key, q_vec)
 
-            cached_resp = check_semantic_cache(
+            cached_resp = semantic_cache.check_semantic_cache(
                 query,
                 kb_id_str,
                 q_vec,
@@ -1546,9 +1532,7 @@ async def execute_agentic_rag_flow(
             and not web_search_enabled
         ):
             try:
-                from app.core.semantic_cache import store_semantic_cache
-
-                store_semantic_cache(
+                semantic_cache.store_semantic_cache(
                     query=query,
                     kb_id=kb_id_str,
                     query_vector=q_vec,
@@ -1574,6 +1558,4 @@ async def execute_agentic_rag_flow(
                 by_model=ledger.by_model,
             )
         end_analysis(ledger_token)
-        from app.core.memory import trim_memory
-
-        await asyncio.to_thread(trim_memory)
+        await asyncio.to_thread(memory.trim_memory)

@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
+from app.core import memory as memory_mod
 from app.core.config import get_model_config, get_ports, get_settings
 from app.core.hardware import get_cached_hardware_profile
 from app.core.local_llm import (
@@ -172,13 +173,9 @@ async def trim_memory_endpoint(
     """
     Manually invoke garbage collection and glibc malloc_trim to free resident memory.
     """
-    import asyncio
-
-    from app.core.memory import get_memory_usage_mb, trim_memory
-
-    before_mb = get_memory_usage_mb()
-    await asyncio.to_thread(trim_memory)
-    after_mb = get_memory_usage_mb()
+    before_mb = memory_mod.get_memory_usage_mb()
+    await asyncio.to_thread(memory_mod.trim_memory)
+    after_mb = memory_mod.get_memory_usage_mb()
     return {
         "status": "ok",
         "before_mb": before_mb,

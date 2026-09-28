@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { ClaimInspector } from '@/components/workbench/ClaimInspector'
 import { claimService } from '@/services/api'
-import { Brain, Loader2, Search } from 'lucide-react'
+import { Brain, Search } from 'lucide-react'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 export default function ClaimsPage() {
   const [search, setSearch] = useState('')
@@ -101,8 +102,8 @@ export default function ClaimsPage() {
 
         {/* Content */}
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center p-16 space-y-3">
-            <Loader2 size={24} className="animate-spin text-primary-400" />
+          <div className="flex flex-col items-center justify-center p-16 space-y-4">
+            <ThinkingOrbs size="md" />
             <span className="text-sm text-slate-400">Loading verified claim records...</span>
           </div>
         ) : error ? (

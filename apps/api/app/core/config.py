@@ -799,6 +799,45 @@ class ModelConfig:
         return int(self._get("retrieval", "fusion_top_k"))
 
     @property
+    def branch_timeout_seconds(self) -> float:
+        """Per-branch retrieval budget; 0 = unset (module fallback 45s)."""
+        value = self._get("retrieval", "branch_timeout_seconds", required=False)
+        return float(value) if value is not None else 0.0
+
+    @property
+    def hybrid_timeout_seconds(self) -> float:
+        """Hybrid retrieval budget; 0 = unset (module fallback 60s)."""
+        value = self._get("retrieval", "hybrid_timeout_seconds", required=False)
+        return float(value) if value is not None else 0.0
+
+    @property
+    def adaptive_top_k_threshold(self) -> float:
+        """RRF confidence threshold for adaptive cap (models.yaml, RRF units)."""
+        value = self._get("retrieval", "adaptive_top_k_threshold", required=False)
+        env_val = _blank_as_none("ADAPTIVE_TOP_K_THRESHOLD")
+        if env_val is not None:
+            return float(env_val)
+        return float(value) if value is not None else 0.02
+
+    @property
+    def adaptive_top_k_cap(self) -> int:
+        """Fused-candidate cap on high-confidence queries (models.yaml)."""
+        value = self._get("retrieval", "adaptive_top_k_cap", required=False)
+        env_val = _blank_as_none("ADAPTIVE_TOP_K_CAP")
+        if env_val is not None:
+            return int(env_val)
+        return int(value) if value is not None else 4
+
+    @property
+    def query_cache_capacity(self) -> int:
+        """Query-vector LRU capacity (models.yaml; env wins)."""
+        value = self._get("retrieval", "query_cache_capacity", required=False)
+        env_val = _blank_as_none("RETRIEVAL_QUERY_CACHE_CAPACITY")
+        if env_val is not None:
+            return int(env_val)
+        return int(value) if value is not None else 1024
+
+    @property
     def sparse_k1(self) -> float:
         return float(self._get("retrieval", "sparse_k1", required=False) or 1.2)
 
@@ -839,6 +878,15 @@ class ModelConfig:
     @property
     def max_file_size_mb(self) -> int:
         return int(self._get("ingestion", "max_file_size_mb"))
+
+    @property
+    def qdrant_upsert_batch(self) -> int:
+        """Points per Qdrant upsert call (models.yaml ingestion.qdrant_upsert_batch)."""
+        value = self._get("ingestion", "qdrant_upsert_batch", required=False)
+        env_val = _blank_as_none("QDRANT_UPSERT_BATCH")
+        if env_val is not None:
+            return int(env_val)
+        return int(value) if value is not None else 100
 
     @property
     def chunking_strategy(self) -> str:

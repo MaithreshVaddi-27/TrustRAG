@@ -12,6 +12,10 @@ import os
 from typing import Any
 
 import numpy as np
+import onnxruntime as ort
+
+from app.core.config import get_model_config, get_settings
+from app.core.onnx_runtime import build_session_options
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +45,7 @@ class ONNXCrossEncoder:
         # Explicit args still win (tests, exports); otherwise config propagates.
         if tokenizer_name is None or max_seq_length is None:
             try:
-                from app.core.config import get_model_config as _get_cfg
-
-                _cfg = _get_cfg()
+                _cfg = get_model_config()
                 if tokenizer_name is None:
                     tokenizer_name = _cfg.reranker_model
                 if max_seq_length is None:
@@ -63,26 +65,14 @@ class ONNXCrossEncoder:
 
     def _initialize(self) -> None:
         """Initialize ONNX session and tokenizer."""
-        try:
-            import onnxruntime as ort
-        except ImportError as err:
-            raise RuntimeError(
-                "onnxruntime is required for ONNXCrossEncoder. "
-                "Install with: pip install onnxruntime"
-            ) from err
-
         # Shared session factory (central `onnx:` config in models.yaml —
         # capped at 4 threads so the reranker never oversubscribes against
         # embeddings + llama-server + uvicorn workers). Same effective
         # defaults as the previous inline block.
-        from app.core.onnx_runtime import build_session_options
-
         sess_options = build_session_options()
 
         # Providers from central config (default CPU-only for flat RAM).
         try:
-            from app.core.config import get_model_config
-
             providers = get_model_config().onnx_providers
         except Exception:
             providers = ["CPUExecutionProvider"]
@@ -97,8 +87,8 @@ class ONNXCrossEncoder:
         # Load tokenizer — prefer local cache when offline (HF_HUB_OFFLINE=1
         # set in app/main.py); otherwise allow download on first cold start.
         # Revision pinned for supply-chain security (Bandit B615).
-        from app.core.config import get_settings
-
+        # NOTE: AutoTokenizer stays a lazy import — tests patch
+        # transformers.AutoTokenizer.from_pretrained at its source.
         try:
             from transformers import AutoTokenizer
 
@@ -138,9 +128,7 @@ class ONNXCrossEncoder:
         # Lean tier (≤8 GB) is capped to 8 to bound peak RSS.
         _cfg_batch = 16
         try:
-            from app.core.config import get_model_config as _get_cfg2
-
-            _cfg_batch = int(_get_cfg2().reranker_batch_size_effective or 16)
+            _cfg_batch = int(get_model_config().reranker_batch_size_effective or 16)
         except Exception as exc:
             logger.debug("Reranker batch fell back to 16", error=str(exc))
         try:
@@ -238,8 +226,6 @@ def export_crossencoder_to_onnx(
     inner.to("cpu")
 
     # Get tokenizer for dummy input (revision pinned for supply-chain security, Bandit B615)
-    from app.core.config import get_settings
-
     settings = get_settings()
     tokenizer = AutoTokenizer.from_pretrained(
         tokenizer_name, use_fast=True, revision=settings.hf_tokenizer_revision

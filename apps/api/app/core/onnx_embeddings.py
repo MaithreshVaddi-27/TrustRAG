@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
+from collections import OrderedDict
 from typing import Any
 
 import numpy as np
@@ -24,7 +26,17 @@ except ImportError:
 
 from langchain_core.embeddings import Embeddings
 
-from app.core.config import get_settings
+from app.core.config import get_model_config, get_settings
+from app.core.disk_cache import (
+    EMBEDDING_MODE_DOCUMENT,
+    EMBEDDING_MODE_QUERY,
+    get_cached_embedding,
+    get_cached_embeddings_batch,
+    set_cached_embedding,
+    set_cached_embeddings_batch,
+)
+from app.core.hardware import get_ingest_embed_batch_size
+from app.core.onnx_runtime import build_session_options, resolve_intra_op_threads
 
 logger = structlog.get_logger(__name__)
 
@@ -41,8 +53,6 @@ def _onnx_intra_op_threads() -> int:
     config): ``min(4, OMP_NUM_THREADS or cpu_count)``. Prefer
     ``app.core.onnx_runtime.resolve_intra_op_threads`` in new code.
     """
-    from app.core.onnx_runtime import resolve_intra_op_threads
-
     return resolve_intra_op_threads(0)
 
 
@@ -57,8 +67,6 @@ def _resolve_embedding_defaults(
     model, seq = tokenizer_name, max_seq_length
     if model is None or seq is None:
         try:
-            from app.core.config import get_model_config
-
             cfg = get_model_config()
             if model is None:
                 model = cfg.embedding_model
@@ -132,9 +140,6 @@ class ONNXBGEEmbeddings(Embeddings):
         # sequential mode for speed). Explicit `providers`/`sess_options`
         # args win (tests, one-off tools); otherwise yaml (+ ONNX_* env).
         if providers is None or sess_options is None:
-            from app.core.config import get_model_config
-            from app.core.onnx_runtime import build_session_options
-
             _cfg = get_model_config()
             if providers is None:
                 providers = _cfg.onnx_providers
@@ -142,8 +147,6 @@ class ONNXBGEEmbeddings(Embeddings):
                 sess_options = build_session_options()
         if micro_batch_size is None:
             try:
-                from app.core.config import get_model_config
-
                 micro_batch_size = get_model_config().onnx_embed_micro_batch
             except Exception:
                 micro_batch_size = 0
@@ -203,22 +206,18 @@ class ONNXBGEEmbeddings(Embeddings):
                 for t in texts
             ]
 
-        import numpy as _np
-
+        out: list[np.ndarray] = []
         override = int(getattr(self, "embed_micro_batch_override", 0) or 0)
         if override > 0:
             step = max(8, override)
         else:
             try:
-                from app.core.hardware import get_ingest_embed_batch_size
-
                 step = max(8, int(get_ingest_embed_batch_size()))
             except Exception:
                 step = int(os.getenv("EMBEDDING_BATCH_SIZE", "32") or 32)
         # Queries are short: cap padding length to avoid wasted compute.
         encode_max = min(self.max_seq_length, 128) if is_query else self.max_seq_length
 
-        out: list[np.ndarray] = []
         for start in range(0, len(texts), step):
             sub = texts[start : start + step]
             # Tokenize
@@ -239,9 +238,9 @@ class ONNXBGEEmbeddings(Embeddings):
             embeddings = ort_outputs[0]  # Already L2 normalized by the model
             out.append(embeddings)
         return (
-            _np.concatenate(out, axis=0)
+            np.concatenate(out, axis=0)
             if out
-            else _np.zeros((0, self.embedding_dim), dtype=_np.float32)
+            else np.zeros((0, self.embedding_dim), dtype=np.float32)
         )
 
     def embed_query(self, text: str) -> list[float]:
@@ -258,14 +257,10 @@ class ONNXBGEEmbeddings(Embeddings):
 
     async def aembed_query(self, text: str) -> list[float]:
         """Async embed query (runs in thread pool)."""
-        import asyncio
-
         return await asyncio.to_thread(self.embed_query, text)
 
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
         """Async embed documents (runs in thread pool)."""
-        import asyncio
-
         return await asyncio.to_thread(self.embed_documents, texts)
 
 
@@ -284,16 +279,11 @@ class ONNXBGEEmbeddingsWrapper:
         model_name: str | None = None,
     ) -> None:
         self._base = onnx_embeddings
-        import threading
-        from collections import OrderedDict
-
         self._cache: OrderedDict[str, list[float]] = OrderedDict()
         self._mem_lock = threading.RLock()
         self._max_size = max_cache_size
         if model_name is None:
             try:
-                from app.core.config import get_model_config
-
                 model_name = f"onnx::{get_model_config().embedding_model}"
             except Exception:
                 model_name = "onnx::bge-small-en-v1.5"
@@ -325,12 +315,6 @@ class ONNXBGEEmbeddingsWrapper:
                 self._cache.popitem(last=False)
 
     def embed_query(self, text: str) -> list[float]:
-        from app.core.disk_cache import (
-            EMBEDDING_MODE_QUERY,
-            get_cached_embedding,
-            set_cached_embedding,
-        )
-
         key = self._mem_key(text, EMBEDDING_MODE_QUERY)
         cached = self._lookup_mem(key)
         if cached is not None:
@@ -347,12 +331,6 @@ class ONNXBGEEmbeddingsWrapper:
         return vec
 
     async def aembed_query(self, text: str) -> list[float]:
-        from app.core.disk_cache import (
-            EMBEDDING_MODE_QUERY,
-            get_cached_embedding,
-            set_cached_embedding,
-        )
-
         key = self._mem_key(text, EMBEDDING_MODE_QUERY)
         cached = self._lookup_mem(key)
         if cached is not None:
@@ -375,12 +353,6 @@ class ONNXBGEEmbeddingsWrapper:
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-
-        from app.core.disk_cache import (
-            EMBEDDING_MODE_DOCUMENT,
-            get_cached_embeddings_batch,
-            set_cached_embeddings_batch,
-        )
 
         cached_map, missing_indices = get_cached_embeddings_batch(
             texts, self._model_name, EMBEDDING_MODE_DOCUMENT
@@ -406,12 +378,6 @@ class ONNXBGEEmbeddingsWrapper:
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-
-        from app.core.disk_cache import (
-            EMBEDDING_MODE_DOCUMENT,
-            get_cached_embeddings_batch,
-            set_cached_embeddings_batch,
-        )
 
         cached_map, missing_indices = await asyncio.to_thread(
             get_cached_embeddings_batch, texts, self._model_name, EMBEDDING_MODE_DOCUMENT

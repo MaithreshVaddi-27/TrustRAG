@@ -20,9 +20,12 @@ from fastapi.responses import PlainTextResponse
 from app.api.deps import get_current_user
 from app.core.config import get_model_config, get_settings
 from app.core.hardware import get_cached_hardware_profile
+from app.core.memory import get_memory_usage_mb
+from app.core.metrics import render_prometheus
 from app.core.model_registry import registry_status
 from app.db.mongodb import health_check as mongo_health_check
 from app.db.qdrant import health_check as qdrant_health_check
+from app.verification.verifier import get_nli_metrics
 
 router = APIRouter(tags=["health"])
 
@@ -35,8 +38,6 @@ router = APIRouter(tags=["health"])
 )
 async def prometheus_metrics() -> PlainTextResponse:
     """Phase 10: dependency-free Prometheus exposition (public, counters only — no secrets)."""
-    from app.core.metrics import render_prometheus
-
     return PlainTextResponse(render_prometheus(), media_type="text/plain; version=0.0.4")
 
 
@@ -87,11 +88,6 @@ async def health_detailed(current_user=Depends(get_current_user)) -> dict:
 
     cfg = get_model_config()
     settings = get_settings()
-
-    # Imported lazily: verifier pulls the LLM/model stack, which the public
-    # health path must never pay for.
-    from app.core.memory import get_memory_usage_mb
-    from app.verification.verifier import get_nli_metrics
 
     return {
         "status": overall_status,

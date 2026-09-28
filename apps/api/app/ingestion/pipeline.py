@@ -8,7 +8,9 @@ and updates document ingestion status in MongoDB.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import threading
+import uuid
 import weakref
 from datetime import UTC, datetime
 from typing import Any
@@ -17,11 +19,14 @@ from bson import ObjectId
 from qdrant_client.http import models
 
 from app.core.config import get_model_config
+from app.core.hardware import get_ingest_embed_batch_size
 from app.core.logging import get_logger
+from app.core.memory import trim_memory
 from app.core.model_registry import get_embedding_model
 from app.db.mongodb import Collections, get_collection
 from app.db.qdrant import get_collection_name, get_qdrant_client, init_kb_collection
 from app.ingestion.chunking_strategies import ChunkingStrategy
+from app.ingestion.page_images import save_page_image
 from app.ingestion.sparse_vector import generate_sparse_vector
 
 logger = get_logger(__name__)
@@ -64,7 +69,7 @@ async def _index_parsed_chunks(
       1. Fetch document record, update status to 'processing'
       2. Ensure Qdrant collection 'kb_{kb_id}' exists
       3. For each chunk:
-          - Generate dense embedding (sentence-transformers/all-MiniLM-L6-v2)
+          - Generate dense embedding (single ONNX BGE engine, models.yaml)
           - Generate sparse keyword weights
           - Construct Qdrant point
       4. Upsert points into Qdrant
@@ -104,8 +109,6 @@ async def _index_parsed_chunks(
         # one render). Fail-open: disk trouble must never fail ingestion.
         page_image_refs: dict[Any, str | None] = {}
         if get_model_config().ocr_store_page_images:
-            from app.ingestion.page_images import save_page_image
-
             for c in chunks:
                 pg = c.get("page")
                 png = c.get("page_image_png")
@@ -158,8 +161,6 @@ async def _index_parsed_chunks(
         # Store chunks in MongoDB for future integrity audits
         # Dedup on retry/re-ingest: Qdrant upsert is idempotent (deterministic
         # point IDs) but Mongo insert_many is not — clear this doc's chunks first.
-        import hashlib
-
         chunks_coll = get_collection(Collections.DOCUMENT_CHUNKS)
         await chunks_coll.delete_many({"document_id": doc_id})
         mongo_chunks = []
@@ -200,36 +201,14 @@ async def _index_parsed_chunks(
 
         # Use async batch embedding (aembed_documents) for 2.87x speedup
         # The CachedEmbeddingsWrapper handles disk cache lookup and batching internally
-        from app.core.hardware import get_ingest_embed_batch_size
-
         embed_batch_size = get_ingest_embed_batch_size()
+        # Single ONNX-local engine: failures are deterministic (bad input or
+        # missing weights), never rate limits — no 429 backoff. Fail fast so
+        # a broken batch surfaces immediately instead of sleeping for minutes.
         dense_vectors = []
         for offset in range(0, len(contextual_texts), embed_batch_size):
             batch_slice = contextual_texts[offset : offset + embed_batch_size]
-            batch_vecs: list[list[float]] | None = None
-            last_batch_err: Exception | None = None
-            for attempt in range(5):
-                try:
-                    batch_vecs = await embed_model.aembed_documents(batch_slice)
-                    break
-                except Exception as batch_err:
-                    last_batch_err = batch_err
-                    err_msg = str(batch_err)
-                    if ("429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg) and attempt < 4:
-                        wait_seconds = 32 if attempt >= 1 else 15
-                        logger.warning(
-                            "Embedding rate limit reached, waiting for quota reset",
-                            attempt=attempt + 1,
-                            wait_seconds=wait_seconds,
-                        )
-                        await asyncio.sleep(wait_seconds)
-                    else:
-                        raise batch_err
-            if batch_vecs is None:
-                # All retries exhausted on rate limits — fail loudly instead of
-                # falling through with a short vector list (which would cause
-                # a misleading IndexError below).
-                raise last_batch_err or RuntimeError("Embedding batch failed without error")
+            batch_vecs = await embed_model.aembed_documents(batch_slice)
             dense_vectors.extend(batch_vecs)
 
         qdrant_client = await get_qdrant_client()
@@ -280,10 +259,10 @@ async def _index_parsed_chunks(
         # Incremental indexing: upsert only new/updated points
         # The deterministic point IDs based on (doc_id, chunk_index) ensure
         # existing chunks are updated in place rather than duplicated.
-        # Batch upsert to prevent network timeouts
-        batch_size = 100
-        for offset in range(0, len(points), batch_size):
-            batch = points[offset : offset + batch_size]
+        # Batch upsert to prevent network timeouts (size from models.yaml).
+        upsert_batch = get_model_config().qdrant_upsert_batch
+        for offset in range(0, len(points), upsert_batch):
+            batch = points[offset : offset + upsert_batch]
             await qdrant_client.upsert(collection_name=collection_name, points=batch)
 
         logger.info("Incremental indexing completed", doc_id=doc_id_str, chunks=len(points))
@@ -323,8 +302,6 @@ async def _index_parsed_chunks(
             },
         )
     finally:
-        from app.core.memory import trim_memory
-
         await asyncio.to_thread(trim_memory)
 
 
@@ -366,9 +343,6 @@ async def index_parsed_chunks(
 
 def hashlib_qdrant_id(doc_id_str: str, chunk_index: int) -> str:
     """Generate a consistent UUID string for Qdrant from doc_id and chunk_index."""
-    import hashlib
-    import uuid
-
     unique_str = f"{doc_id_str}_{chunk_index}"
     hash_bytes = hashlib.sha256(unique_str.encode("utf-8")).digest()[:16]
     return str(uuid.UUID(bytes=hash_bytes))

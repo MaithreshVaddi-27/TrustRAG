@@ -1,10 +1,11 @@
 import {
-  Database, Loader2, Zap, Globe, Sparkles, Cpu,
+  Database, Zap, Globe, Sparkles, Cpu,
   RotateCcw, AlertTriangle, CornerDownLeft, Layers, ServerOff
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
 import { shortModelId } from '@/lib/modelLabels'
 import { SPRING_SNAPPY } from '@/lib/motionConfig'
+import { ThinkingOrbs } from './ThinkingOrbs'
 
 const SAMPLE_PRESETS = [
   { text: "Explain the key concepts in this document", icon: "📖" },
@@ -527,7 +528,7 @@ export function QueryPanel({
           >
             {loading ? (
               <>
-                <Loader2 size={14} className="animate-spin text-cyan-300" />
+                <ThinkingOrbs size="sm" />
                 <span>Executing Pipeline ({elapsedSec}s)…</span>
               </>
             ) : (

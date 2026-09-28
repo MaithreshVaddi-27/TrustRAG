@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { experimentService } from '@/services/api'
 import { FlaskConical, Plus, Loader2, X, Play } from 'lucide-react'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 const EXPERIMENT_CONFIGS = [
@@ -98,8 +99,9 @@ export default function ExperimentsPage() {
             </span>
           </div>
           {isLoading ? (
-            <div className="flex items-center justify-center p-12">
-              <Loader2 className="animate-spin text-primary-400" size={24} />
+            <div className="flex flex-col items-center justify-center p-12 space-y-4">
+              <ThinkingOrbs size="md" />
+              <span className="text-xs text-slate-500 font-mono">Loading recorded runs...</span>
             </div>
           ) : chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>

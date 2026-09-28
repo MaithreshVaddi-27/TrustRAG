@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.logging import get_logger
+from app.ingestion.preprocessor import detect_chunk_zone, normalize_text
 
 logger = get_logger(__name__)
 
@@ -46,8 +47,6 @@ def chunk_text(
             chunk_overlap=chunk_overlap,
         )
         step = max(1, chunk_size)
-
-    from app.ingestion.preprocessor import detect_chunk_zone, normalize_text
 
     for page_obj in pages:
         page_num = page_obj["page"]

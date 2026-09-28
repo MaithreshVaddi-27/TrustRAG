@@ -171,12 +171,47 @@ cd apps/api && .venv/bin/python -m pytest -v -x -q   # full suite (mocked, no li
 ### Secrets re-verification (this sweep)
 - `rg` for `sk-`/`AIza`/quoted `api_key=` across `app/`, `tests/`, `web/src`, `scripts/`: only redaction regexes (`logging.py`), `settings.*` reads, and sentinel fixtures (`test-*`, `dummy-key`, `StrongPass123!`) — **no production keys hardcoded, tests included**. `.env.example` secrets are empty placeholders; `docker-compose.yml` carries only non-sensitive hostnames.
 
-## 9. Commit & push policy (per owner)
+## 9. Phase-by-phase production pass, part 2 (2026-09-28 — this session)
+
+Phases completed in RAG order (preprocessing → retrieval → augmentation → generation → overall), then backend → security → DevOps. Rule applied throughout: **top-level imports everywhere**, except names tests patch at their source module (called via module attribute: `mod.name`) and heavy/optional deps (torch, transformers tokenizer, rapidocr, pyclamd, tavily/ddgs fallback, onnx export path) — each intentional lazy site either kept or documented inline.
+
+### PHASE 1 — Frontend loaders (libraries.dev family)
+- New `web/src/styles/loaders.css` (orbs, skeleton shimmer, `stream-beam`, reduced-motion/transparency guards), `ThinkingOrbs.jsx` (`role=status`, sm/md/lg), `Skeleton.jsx`/`SkeletonRows`.
+- `Loader2` page/panel waits → orbs: `App.jsx` route fallback, HUD `StageCard`, `QueryPanel` submit (+elapsed), Conflicts/Claims/Evidence/KB/Experiments/Trace(skeleton rows); `ResultsPanel` stream card rides `border-beam stream-beam`. Button micro-spinners kept (correct pattern).
+- Verified manually per page (no test-script reliance): eslint 0 warnings, `vite build` ok, vitest 33 passed.
+
+### PHASE 2 — Preprocessing
+- `pipeline.py`/`chunker.py`: imports hoisted; stale `all-MiniLM-L6-v2` docstring → ONNX BGE; dead 429/`RESOURCE_EXHAUSTED` backoff removed (local-only engine; was unreachable + slept minutes); `qdrant_upsert_batch` → `models.yaml` + `QDRANT_UPSERT_BATCH`.
+
+### PHASE 3 — Retrieval
+- Timeouts → `retrieval.branch_timeout_seconds`/`hybrid_timeout_seconds` (0 = module-global fallback, still monkeypatch-able); adaptive threshold/cap → yaml + `ADAPTIVE_*` env; query LRU → `retrieval.query_cache_capacity` + `RETRIEVAL_QUERY_CACHE_CAPACITY`; removed inner `math`/`bson`/duplicate `RetrievalOutageError` imports.
+
+### PHASE 4 — Augmentation + generation
+- Hoisted imports in `verifier.py`/`graph.py`/`generator.py` (−57 lines); patch-compat via `config_mod`, `retriever_mod`, `integrity_mod`, `memory`/`model_registry`/`semantic_cache`/`qdrant_db`/`pipeline_mod` module refs.
+- Caught by tests during the pass: `test_create_analysis` 503 — top-bound probe bypassed the source-level mock; module-attr calls restore it. Same fix applied to `get_llm` (`mcp/server`), `retrieve_hybrid_chunks`, `audit_evidence_integrity`.
+
+### PHASE 5 — Backend hardening
+- Routes/services hoisted (`knowledge_bases`, `documents`, `health`, `models`, `internal`, `analysis_service`, `kb_service`, `mcp/server`, `chunking_strategies`, `parser`, `onnx_*`); dual patch-levels documented inline in `kb_service` snapshot path (deliberately NOT hoisted).
+
+### PHASE 6 — Security
+- Scan clean: no hardcoded keys in `app/`, `tests/`, `web/src`, `scripts/`; `.env` + `.model_cache/` gitignored. Hardened 3 `detail=str(exc)` bson-echo sites (`deps.py`, `documents.py` ×2) to static `"malformed id"`.
+
+### PHASE 7 — DevOps/docs
+- `apply_ports.py --check` exit 0. README v1.21 → v1.23 + new-knob rows/env table; `.env.example` documents all new vars (`RETRIEVAL_*`, `ADAPTIVE_*`, `QDRANT_UPSERT_BATCH`, `RERANKER_MAX_SEQ_LENGTH`).
+
+### Test scripts updated after fixes
+- `tests/test_onnx_runtime_config.py`: 6 → 9 tests (retrieval infra defaults/overrides, timeout resolution incl. monkeypatch fallback).
+
+### Verification (this session, working tree)
+- Backend: `ruff check` + `ruff format --check` clean (134 files); `pytest`: **674 passed**.
+- Frontend: `eslint` 0 warnings; vitest 33 passed; `vite build` ok.
+
+## 10. Commit & push policy (per owner)
 
 - Commits are **local only** — owner pushes after final review. No `git push`, no PR creation in this pass.
 - Model weights (`apps/api/.model_cache/`) and `.env` are never committed (gitignored, verified).
 
-## 10. Follow-ups (ordered backlog, not started)
+## 11. Follow-ups (ordered backlog, not started)
 
 1.redis` (per-client caps are process-local).
 2. Add k6 budget assertion for p95 analysis latency after ONNX tuning lands.

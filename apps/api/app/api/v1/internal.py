@@ -12,13 +12,15 @@ from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, field_validator
 
 from app.api.deps import require_service_permission
+from app.core.model_registry import registry_status
 from app.core.rate_limiter import limiter
 from app.core.security import create_service_token
 from app.services.kb_service import add_document
+from app.services.search_service import validate_ingestion_url
 
 # Cost-DoS backstop for service-to-service routes (generous: functionality is
 # already gated by service-token permissions, this only bounds LLM fan-out).
@@ -120,20 +122,14 @@ async def internal_ingest_document(
     # M-2 tenant binding: if token is bound to a specific KB or user, enforce it
     bound_kb = current_service.get("bound_kb_id")
     if bound_kb and str(bound_kb) != str(kb_id):
-        from fastapi import HTTPException
-        from fastapi import status as _status
-
         raise HTTPException(
-            status_code=_status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="Service token not authorized for this knowledge base",
         )
     bound_user = current_service.get("bound_user_id")
     if bound_user and str(bound_user) != str(document_data.user_id):
-        from fastapi import HTTPException
-        from fastapi import status as _status2
-
         raise HTTPException(
-            status_code=_status2.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="Service token not authorized for this user",
         )
 
@@ -173,17 +169,12 @@ async def internal_ingest_url(
     Requires ingest:write permission. Same SSRF validation as the public
     from-url endpoint (allowlist + DNS pinning + per-hop checks).
     """
-    from fastapi import HTTPException
-    from fastapi import status as _status
-
-    from app.services.search_service import validate_ingestion_url
-
     service_name = current_service.get("sub")
 
     is_valid, error = validate_ingestion_url(url_data.url, None)
     if not is_valid:
         raise HTTPException(
-            status_code=_status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"URL validation failed: {error}",
         )
 
@@ -297,8 +288,6 @@ async def internal_status(
 
     Requires admin:status:read permission.
     """
-    from app.core.model_registry import registry_status
-
     return {
         "service": "trustrag-api",
         "status": "operational",

@@ -21,11 +21,21 @@ from app.api.v1.schemas.analysis import (
     ReliabilitySummary,
     TraceEventResponse,
 )
+from app.core import local_llm as local_llm_mod
+from app.core import memory as memory_mod
 from app.core.concurrency import get_global_semaphore
 from app.core.config import get_model_config, get_settings, normalize_provider
 from app.core.exceptions import AuthorizationError, InputValidationError, NotFoundError
 from app.core.logging import get_logger
+from app.core.metrics import (
+    estimate_tokens,
+    record_analysis_completed,
+    record_analysis_created,
+    record_budget_rejection,
+    record_tokens_estimated,
+)
 from app.db.mongodb import Collections, get_collection
+from app.generation.generator import strip_citation_markers
 from app.services.kb_service import get_kb
 from app.verification.verdict import (
     ReliabilityStatus,
@@ -233,13 +243,6 @@ async def create_analysis(
     # Phase 10: pre-request token budget enforcement (zero LLM calls).
     # Estimate query cost up front; reject absurd inputs with 422 instead of
     # burning embedding/retrieval/generation on a request that cannot fit.
-    from app.core.metrics import (
-        estimate_tokens,
-        record_analysis_created,
-        record_budget_rejection,
-        record_tokens_estimated,
-    )
-
     query_text = schema.query.strip()
     query_tokens = estimate_tokens(query_text)
     record_tokens_estimated(query_tokens)
@@ -276,8 +279,6 @@ async def create_analysis(
     # before the pipeline abstains or fails. Raises LLMUnavailableError → 503
     # with the exact start command so the UI can alert instead of hanging.
     if effective_llm_provider in ("ollama", "llama_cpp", "llamacpp", "mlx"):
-        from app.core.local_llm import probe_local_llm_server
-
         settings = get_settings()
         if effective_llm_provider == "ollama":
             llm_base_url = settings.ollama_base_url
@@ -288,15 +289,13 @@ async def create_analysis(
         else:
             llm_base_url = settings.llamacpp_base_url
             probe_provider = "llama_cpp"
-        await probe_local_llm_server(probe_provider, llm_base_url)
+        await local_llm_mod.probe_local_llm_server(probe_provider, llm_base_url)
     # CLOUD PREFLIGHT: a stalled cloud model (observed: NVIDIA endpoints
     # returning zero bytes indefinitely while auth/metadata stay healthy)
     # otherwise burns the full per-call timeout on every sequential pipeline
     # call. One tiny completion up front fails fast → 503 with retry guidance.
     elif effective_llm_provider in ("nvidia", "nim", "gemini", "google_genai"):
-        from app.core.local_llm import probe_cloud_llm
-
-        await probe_cloud_llm(effective_llm_provider, effective_llm_model)
+        await local_llm_mod.probe_cloud_llm(effective_llm_provider, effective_llm_model)
     analysis_doc = {
         "user_id": ObjectId(user_id_str),
         "knowledge_base_id": ObjectId(schema.knowledge_base_id),
@@ -620,9 +619,7 @@ async def run_analysis_pipeline(
                 {"message": outage_failures[0]},
             )
             try:
-                from app.core.metrics import record_analysis_completed as _rec_completed
-
-                _rec_completed("failed")
+                record_analysis_completed("failed")
             except Exception:  # noqa: S110
                 pass
             return
@@ -675,9 +672,7 @@ async def run_analysis_pipeline(
                 {"message": "Agent reasoning resulted in abstention"},
             )
             try:
-                from app.core.metrics import record_analysis_completed as _rec_abstained
-
-                _rec_abstained("abstained")
+                record_analysis_completed("abstained")
             except Exception:  # noqa: S110
                 pass
         else:
@@ -719,8 +714,6 @@ async def run_analysis_pipeline(
             # `answer_cited` keeps the marker-bearing form for the audit dossier
             # and the baseline-eval provenance check, which must still be able
             # to see which segments the model actually cited.
-            from app.generation.generator import strip_citation_markers
-
             answer_cited = stored_answer
             stored_answer = strip_citation_markers(stored_answer)
             # Update database first, then publish trace event with answer
@@ -753,9 +746,7 @@ async def run_analysis_pipeline(
                 },
             )
             try:
-                from app.core.metrics import record_analysis_completed as _rec_done
-
-                _rec_done(stored_status)
+                record_analysis_completed(stored_status)
             except Exception:  # noqa: S110
                 pass
 
@@ -803,18 +794,12 @@ async def run_analysis_pipeline(
             },
         )
         try:
-            from app.core.metrics import record_analysis_completed as _rec_failed
-
-            _rec_failed("failed")
+            record_analysis_completed("failed")
         except Exception:  # noqa: S110
             pass
     finally:
         try:
-            import asyncio
-
-            from app.core.memory import trim_memory
-
-            await asyncio.to_thread(trim_memory)
+            await asyncio.to_thread(memory_mod.trim_memory)
         except Exception as trim_exc:
             logger.debug("Post-analysis memory compaction skipped", error=str(trim_exc))
 

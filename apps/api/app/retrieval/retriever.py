@@ -6,11 +6,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import math
+import os
 import threading
 from collections import OrderedDict
 from datetime import UTC, datetime
 from typing import Any
 
+from bson import ObjectId
+from bson.errors import InvalidId
 from qdrant_client.http import models
 
 from app.core.config import get_model_config
@@ -23,10 +27,52 @@ from app.ingestion.sparse_vector import generate_sparse_vector
 
 logger = get_logger(__name__)
 
-# Per-branch retrieval timeout (s): one hung branch (dense embeddings or sparse
-# search) degrades to the other branch's results instead of eating the whole
-# 60 s hybrid budget. Both branches timing out is a hard outage.
+# Retrieval time budgets. Module constants stay the monkeypatch-able fallback
+# (tests set RETRIEVAL_BRANCH_TIMEOUT directly); ops tune via models.yaml
+# `retrieval.branch_timeout_seconds` / `hybrid_timeout_seconds` (0 = unset →
+# fall back here) or RETRIEVAL_BRANCH_TIMEOUT_SECONDS /
+# RETRIEVAL_HYBRID_TIMEOUT_SECONDS env vars. One hung branch degrades to the
+# other branch's results; both timing out is a hard outage.
 RETRIEVAL_BRANCH_TIMEOUT = 45.0
+HYBRID_TIMEOUT = 60.0
+
+# Query-vector LRU capacity fallback (models.yaml retrieval.query_cache_capacity).
+_QUERY_CACHE_CAPACITY_FALLBACK = 1024
+
+
+def _query_cache_capacity() -> int:
+    """Query-vector LRU capacity: env > yaml > fallback (import-safe)."""
+    env_val = os.environ.get("RETRIEVAL_QUERY_CACHE_CAPACITY", "").strip()
+    if env_val:
+        try:
+            return max(64, int(env_val))
+        except ValueError:
+            pass
+    try:
+        return max(64, int(get_model_config().query_cache_capacity))
+    except Exception:
+        return _QUERY_CACHE_CAPACITY_FALLBACK
+
+
+def _retrieval_timeouts() -> tuple[float, float]:
+    """(branch_timeout, hybrid_timeout): yaml/env override or module fallback.
+
+    Module globals are read at call time so tests can still monkeypatch
+    RETRIEVAL_BRANCH_TIMEOUT; a positive yaml/env value wins over both.
+    """
+    cfg = get_model_config()
+    # Precedence: env > yaml (>0) > module global (monkeypatch-able in tests).
+    branch = os.environ.get("RETRIEVAL_BRANCH_TIMEOUT_SECONDS") or cfg.branch_timeout_seconds
+    hybrid = os.environ.get("RETRIEVAL_HYBRID_TIMEOUT_SECONDS") or cfg.hybrid_timeout_seconds
+    try:
+        branch_f = float(branch) if branch else float(RETRIEVAL_BRANCH_TIMEOUT)
+    except (TypeError, ValueError):
+        branch_f = float(RETRIEVAL_BRANCH_TIMEOUT)
+    try:
+        hybrid_f = float(hybrid) if hybrid else float(HYBRID_TIMEOUT)
+    except (TypeError, ValueError):
+        hybrid_f = float(HYBRID_TIMEOUT)
+    return branch_f, hybrid_f
 
 
 # NOTE (Phase 6): the AmbiguityDetector post-retrieval entropy heuristic lived
@@ -64,7 +110,7 @@ class QueryEmbeddingLRUCache:
             self._cache.clear()
 
 
-_query_cache = QueryEmbeddingLRUCache(capacity=1024)
+_query_cache = QueryEmbeddingLRUCache(capacity=_query_cache_capacity())
 _collection_dimension_cache: OrderedDict[str, int] = OrderedDict()
 _collection_dimension_lock = threading.Lock()
 
@@ -169,8 +215,6 @@ async def dense_search(
                 query_vector = query_vector[:target_dim]
                 # Re-normalize truncated vector to unit length
                 # for accurate cosine similarity
-                import math
-
                 norm = math.sqrt(sum(x * x for x in query_vector))
                 if norm > 0:
                     query_vector = [x / norm for x in query_vector]
@@ -349,9 +393,6 @@ async def apply_temporal_filtering(
         return results
 
     # Fetch document metadata records from MongoDB (batched)
-    from bson import ObjectId
-    from bson.errors import InvalidId
-
     doc_coll = get_collection(Collections.DOCUMENTS)
 
     doc_objs = []
@@ -439,17 +480,21 @@ async def retrieve_hybrid_chunks(
 
     # Run dense + sparse searches concurrently with a hard budget so a
     # hung embedding/Qdrant call cannot pin a worker (OPT: local-LLM load).
-    # Each branch ALSO has its own 45 s cap: without it, one hung branch eats
-    # the whole 60 s budget and discards the healthy branch's results. A lone
+    # Budgets come from retrieval.branch_timeout_seconds /
+    # hybrid_timeout_seconds (env wins, module globals are the fallback).
+    # Each branch ALSO has its own cap: without it, one hung branch eats
+    # the whole budget and discards the healthy branch's results. A lone
     # timed-out branch degrades to the other branch's results; both timing
     # out is still a hard outage (never silently "no evidence").
+    branch_timeout, hybrid_timeout = _retrieval_timeouts()
+
     async def _branch(coro, name: str) -> tuple[list[dict[str, Any]], bool]:
         try:
-            return await asyncio.wait_for(coro, timeout=RETRIEVAL_BRANCH_TIMEOUT), False
+            return await asyncio.wait_for(coro, timeout=branch_timeout), False
         except TimeoutError:
             logger.warning(
                 f"{name} retrieval branch timed out; degrading to other branch",
-                timeout_s=RETRIEVAL_BRANCH_TIMEOUT,
+                timeout_s=branch_timeout,
             )
             return [], True
 
@@ -466,20 +511,16 @@ async def retrieve_hybrid_chunks(
                 ),
                 _branch(sparse_search(query, kb_id, top_k=sparse_top), "sparse"),
             ),
-            timeout=60.0,
+            timeout=hybrid_timeout,
         )
     except TimeoutError as exc:
-        from app.core.exceptions import RetrievalOutageError
-
         raise RetrievalOutageError(
-            "Hybrid retrieval timed out (dense+sparse budget 60s)", detail=str(exc)
+            f"Hybrid retrieval timed out (dense+sparse budget {hybrid_timeout:g}s)",
+            detail=str(exc),
         ) from exc
     if dense_timed_out and sparse_timed_out:
-        from app.core.exceptions import RetrievalOutageError
-
         raise RetrievalOutageError(
-            "Hybrid retrieval timed out (both dense+sparse branches, "
-            f"{RETRIEVAL_BRANCH_TIMEOUT:g}s each)"
+            f"Hybrid retrieval timed out (both dense+sparse branches, {branch_timeout:g}s each)"
         )
 
     # Fuse ranks
@@ -492,15 +533,18 @@ async def retrieve_hybrid_chunks(
     # This reduces context sent to LLM, saving tokens and latency.
     # NOTE: RRF scores live on a tiny scale (with rrf_k=60 the max for a
     # result ranked #1 in both legs is 2/61 ≈ 0.033), so the threshold must
-    # sit in RRF units — 0.82 here would be dead code.
+    # sit in RRF units — 0.82 here would be dead code. Both the threshold
+    # and the cap live in models.yaml (retrieval.adaptive_top_k_threshold /
+    # adaptive_top_k_cap) so accuracy tuning never needs a code change.
     fusion_top_k = cfg.fusion_top_k
     if adaptive_enabled and filtered:
         # Check if top result has high confidence (dense_score + sparse_score / RRF)
         top_rrf = filtered[0].get("rrf_score", 0.0)
         # High RRF ≈ top result ranked near #1 in both dense and sparse legs.
-        if top_rrf >= 0.02:
-            # High confidence: cap at 4 instead of full fusion_top_k
-            adaptive_k = min(4, fusion_top_k)
+        adaptive_threshold = cfg.adaptive_top_k_threshold
+        if top_rrf >= adaptive_threshold:
+            # High confidence: cap instead of full fusion_top_k
+            adaptive_k = min(cfg.adaptive_top_k_cap, fusion_top_k)
             logger.debug(
                 "Adaptive Top-K: high confidence, reducing fusion_top_k",
                 top_rrf=top_rrf,

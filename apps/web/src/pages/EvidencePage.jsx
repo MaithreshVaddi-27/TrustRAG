@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { EvidenceViewer } from '@/components/workbench/EvidenceViewer'
 import { evidenceService } from '@/services/api'
-import { FileSearch, Loader2, Search, Filter } from 'lucide-react'
+import { FileSearch, Search, Filter } from 'lucide-react'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 export default function EvidencePage() {
   const [search, setSearch] = useState('')
@@ -72,8 +73,8 @@ export default function EvidencePage() {
 
         {/* Body */}
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center p-16 space-y-3">
-            <Loader2 size={24} className="animate-spin text-primary-400" />
+          <div className="flex flex-col items-center justify-center p-16 space-y-4">
+            <ThinkingOrbs size="md" />
             <span className="text-sm text-slate-400">Loading retrieved evidence records...</span>
           </div>
         ) : error ? (

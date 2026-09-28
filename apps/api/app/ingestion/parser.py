@@ -20,8 +20,10 @@ import chardet
 import defusedxml.ElementTree as ET  # noqa: N817
 import pymupdf as fitz  # PyMuPDF
 
+from app.core.config import get_model_config
 from app.core.exceptions import IngestionError, UnsupportedFormatError
 from app.core.logging import get_logger
+from app.ingestion import ocr as ocr_module
 
 logger = get_logger(__name__)
 
@@ -178,12 +180,9 @@ def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
     native-text density threshold fall back to RapidOCR-ONNX (ingestion.ocr.*)
     when enabled. OCR failures fail open to whatever native text exists.
     OCR pages keep the exact rendered pixels (page_image_png) so the
-    Answer → chunk → page → image provenance chain can be served later;
+    Answer → chunk → page → image provenance     chain can be served later;
     native pages carry None (no render exists, no disk cost).
     """
-    from app.core.config import get_model_config
-    from app.ingestion import ocr as ocr_module
-
     cfg = get_model_config()
     try:
         raw = stream.read()

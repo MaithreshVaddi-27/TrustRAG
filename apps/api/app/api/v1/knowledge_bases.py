@@ -8,7 +8,9 @@ import asyncio
 import hashlib
 import io
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import (
     APIRouter,
@@ -208,8 +210,6 @@ async def upload_document_endpoint(
     allowed_extensions = {
         ext if ext.startswith(".") else f".{ext}" for ext in cfg.supported_formats
     }
-    from pathlib import Path
-
     raw_filename = file.filename or "document.txt"
     filename = Path(raw_filename[:255]).name.replace("\x00", "").strip() or "document.txt"
     filename = filename[:255]
@@ -329,8 +329,6 @@ async def ingest_document_from_url_endpoint(
         filename = url_request.filename
     else:
         # Extract filename from URL path
-        from urllib.parse import urlparse
-
         parsed = urlparse(url_str)
         filename = parsed.path.split("/")[-1] or "document"
         # Ensure it has an extension
@@ -339,8 +337,6 @@ async def ingest_document_from_url_endpoint(
             filename += ".txt"
 
     # Clean filename (255-char cap: filesystem + Mongo index guard)
-    from pathlib import Path
-
     filename = Path(filename[:255]).name.replace("\x00", "").strip() or "document.txt"
     filename = filename[:255]
     ext = "." + filename.split(".")[-1].lower() if "." in filename else ""

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.config import get_model_config
 from app.core.logging import get_logger
 from app.ingestion.chunker import chunk_text
 from app.ingestion.preprocessor import detect_chunk_zone, normalize_text
@@ -394,8 +395,6 @@ def get_chunking_strategy() -> ChunkingStrategy:
 
 def _get_strategy_from_config() -> str:
     """Retrieve the chunking strategy name from models.yaml config."""
-    from app.core.config import get_model_config
-
     return get_model_config().chunking_strategy
 
 
