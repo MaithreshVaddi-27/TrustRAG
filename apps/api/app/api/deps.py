@@ -22,6 +22,18 @@ oauth2_scheme = OAuth2PasswordBearer(
 )
 
 
+async def _raise_if_token_revoked(payload: dict, *, detail: str) -> None:
+    """SEC-H1: reject a decoded token that is on the revocation denylist.
+
+    Shared by the user-token and service-token paths. They were previously
+    separate inlined copies of this lookup; they still are separate callers
+    only because their failure messages differ.
+    """
+    revoked = await get_collection(Collections.REVOKED_TOKENS).find_one({"_id": jti_key(payload)})
+    if revoked:
+        raise AuthenticationError("Token has been revoked", detail=detail)
+
+
 async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> Mapping[str, Any]:
     """
     Validate incoming JWT token and return the current user's document.
@@ -33,10 +45,7 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> Mappin
 
     payload = decode_access_token(token)
 
-    # SEC-H1: reject tokens that have been revoked (logout / denylist).
-    revoked = await get_collection(Collections.REVOKED_TOKENS).find_one({"_id": jti_key(payload)})
-    if revoked:
-        raise AuthenticationError("Token has been revoked", detail="Please sign in again")
+    await _raise_if_token_revoked(payload, detail="Please sign in again")
 
     user_id_str = payload.get("sub")
     if not user_id_str:
@@ -90,11 +99,7 @@ async def get_current_service(
         payload = decode_service_token(token)
         # SEC: service tokens are denylist-checked like user tokens (24h TTL
         # would otherwise be the compromise window).
-        revoked = await get_collection(Collections.REVOKED_TOKENS).find_one(
-            {"_id": jti_key(payload)}
-        )
-        if revoked:
-            raise AuthenticationError("Token has been revoked", detail="Service token revoked")
+        await _raise_if_token_revoked(payload, detail="Service token revoked")
         permissions = payload.get("permissions", [])
         if not isinstance(permissions, list) or not all(isinstance(p, str) for p in permissions):
             raise AuthenticationError(

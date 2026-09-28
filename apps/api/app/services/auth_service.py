@@ -181,12 +181,3 @@ async def revoke_token(token: str) -> None:
     except DuplicateKeyError:
         # Already revoked; nothing more to do.
         pass
-
-
-async def is_token_revoked(token: str) -> bool:
-    """Return True if the token is present in the revocation denylist."""
-    payload = decode_access_token(token)
-    key = jti_key(payload)
-    revoked_coll = get_collection(Collections.REVOKED_TOKENS)
-    doc = await revoked_coll.find_one({"_id": key})
-    return doc is not None

@@ -242,8 +242,6 @@ QUERY_NOISE_STOPWORDS: set[str] = {
     "briefly",
 }
 
-STOPWORDS = CORE_STOPWORDS  # Default backward-compatible reference
-
 
 def get_stopwords(include_query_noise: bool = False) -> set[str]:
     """Return stopword set, optionally including conversational query noise."""

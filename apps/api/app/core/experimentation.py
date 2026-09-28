@@ -1,19 +1,20 @@
 """
-TRUSTRAG — A/B Testing & Feature Flag Framework.
+TRUSTRAG — Feature flag storage and lookup.
 
-Provides:
-- Feature flag management with targeting rules
-- A/B experiment assignment with consistent hashing
-- Metrics collection for experiment evaluation
-- Integration with analysis pipeline for agent configuration variants
+Backs `GET /api/v1/experimentation/flags`. Flags live in the `feature_flags`
+collection and are cached in memory after the first successful load.
+
+An earlier version of this module also carried an A/B experiment framework
+(ExperimentManager, MetricsCollector, run_with_experiment_tracking, ~340
+lines). None of it was ever reachable: the only importer of this module wanted
+get_feature_flag_manager. It was removed. Note that its create_experiment wrote
+A/B documents into Collections.EXPERIMENTS — the same collection the live
+evaluation-experiment service uses for a different schema — so reviving that
+code as-is would have corrupted real data.
 """
 
 from __future__ import annotations
 
-import hashlib
-import time
-from collections import defaultdict
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -48,7 +49,14 @@ class FeatureFlagManager:
         self._initialized = False
 
     async def initialize(self) -> None:
-        """Load feature flags from database."""
+        """Load feature flags from database.
+
+        On failure this leaves ``_initialized`` False so a later call retries.
+        An earlier version set it to True inside the except branch to avoid
+        re-querying Mongo on every request, but a single transient error then
+        silenced feature flags for the life of the process — the endpoint
+        returned ``{}`` until restart, with only a warning to explain it.
+        """
         if self._initialized:
             return
 
@@ -69,9 +77,10 @@ class FeatureFlagManager:
 
             self._initialized = True
             logger.info("Feature flags loaded", count=len(self._flags))
-        except Exception as exc:
-            logger.warning("Failed to load feature flags", error=str(exc))
-            self._initialized = True  # Don't retry on every call
+        except Exception:
+            # Left retryable on purpose. Logging at error with a traceback
+            # because an empty flag set silently changes runtime behaviour.
+            logger.exception("Failed to load feature flags; will retry on next call")
 
     async def set_flag(self, flag: FeatureFlag) -> None:
         """Create or update a feature flag."""
@@ -120,335 +129,3 @@ def get_feature_flag_manager() -> FeatureFlagManager:
     if _feature_flag_manager is None:
         _feature_flag_manager = FeatureFlagManager()
     return _feature_flag_manager
-
-
-# ─── A/B Experiments ─────────────────────────────────────────────────────────
-
-
-@dataclass
-class ExperimentVariant:
-    """A variant in an A/B experiment."""
-
-    name: str
-    config: dict[str, Any]
-    weight: float = 1.0  # Relative weight for assignment
-
-
-@dataclass
-class Experiment:
-    """A/B experiment definition."""
-
-    key: str
-    name: str
-    description: str
-    variants: list[ExperimentVariant]
-    status: str = "draft"  # draft, running, paused, completed
-    start_time: datetime | None = None
-    end_time: datetime | None = None
-    targeting_rules: list[dict[str, Any]] = field(default_factory=list)
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-
-
-class ExperimentManager:
-    """Manages A/B experiments with consistent assignment."""
-
-    def __init__(self):
-        self._experiments: dict[str, Experiment] = {}
-        self._initialized = False
-
-    async def initialize(self) -> None:
-        """Load experiments from database."""
-        if self._initialized:
-            return
-
-        try:
-            exp_coll = get_collection(Collections.EXPERIMENTS)
-            cursor = exp_coll.find({})
-            async for doc in cursor:
-                variants = [
-                    ExperimentVariant(
-                        name=v["name"],
-                        config=v["config"],
-                        weight=v.get("weight", 1.0),
-                    )
-                    for v in doc.get("variants", [])
-                ]
-                experiment = Experiment(
-                    key=doc["key"],
-                    name=doc["name"],
-                    description=doc.get("description", ""),
-                    variants=variants,
-                    status=doc.get("status", "draft"),
-                    start_time=doc.get("start_time"),
-                    end_time=doc.get("end_time"),
-                    targeting_rules=doc.get("targeting_rules", []),
-                    created_at=doc.get("created_at", datetime.now(UTC)),
-                    updated_at=doc.get("updated_at", datetime.now(UTC)),
-                )
-                self._experiments[experiment.key] = experiment
-
-            self._initialized = True
-            logger.info("Experiments loaded", count=len(self._experiments))
-        except Exception as exc:
-            logger.warning("Failed to load experiments", error=str(exc))
-            self._initialized = True
-
-    def get_variant(
-        self,
-        experiment_key: str,
-        user_id: str,
-        context: dict[str, Any] | None = None,
-    ) -> ExperimentVariant | None:
-        """
-        Get the assigned variant for a user in an experiment.
-
-        Uses consistent hashing for deterministic assignment.
-        """
-        experiment = self._experiments.get(experiment_key)
-        if not experiment:
-            return None
-
-        if experiment.status != "running":
-            return None
-
-        # Check time bounds
-        now = datetime.now(UTC)
-        if experiment.start_time and now < experiment.start_time:
-            return None
-        if experiment.end_time and now > experiment.end_time:
-            return None
-
-        # Check targeting rules
-        if experiment.targeting_rules and context:
-            matches = False
-            for rule in experiment.targeting_rules:
-                if self._matches_rule(rule, context):
-                    matches = True
-                    break
-            if not matches:
-                return None
-
-        # Consistent variant assignment
-        return self._assign_variant(user_id, experiment)
-
-    def _assign_variant(self, user_id: str, experiment: Experiment) -> ExperimentVariant | None:
-        """Assign user to variant using consistent hashing."""
-        if not experiment.variants:
-            return None
-
-        # Create hash from user_id + experiment_key for deterministic assignment
-        hash_input = f"{user_id}:{experiment.key}".encode()
-        # Non-security use (bucketing only) — not for auth or integrity.
-        hash_value = int(hashlib.md5(hash_input, usedforsecurity=False).hexdigest(), 16)
-
-        # Calculate cumulative weights
-        total_weight = sum(v.weight for v in experiment.variants)
-        normalized_hash = (hash_value % 10000) / 10000.0
-
-        cumulative = 0.0
-        for variant in experiment.variants:
-            cumulative += variant.weight / total_weight
-            if normalized_hash < cumulative:
-                return variant
-
-        # Fallback to last variant
-        return experiment.variants[-1]
-
-    def _matches_rule(self, rule: dict[str, Any], context: dict[str, Any]) -> bool:
-        """Check if context matches a targeting rule."""
-        attribute = rule.get("attribute")
-        operator = rule.get("operator", "equals")
-        values = rule.get("values", [])
-
-        context_value = context.get(attribute)
-        if context_value is None:
-            return False
-
-        if operator == "equals":
-            return context_value in values
-        elif operator == "in":
-            return context_value in values
-        elif operator == "contains":
-            return any(v in str(context_value) for v in values)
-        elif operator == "starts_with":
-            return any(str(context_value).startswith(v) for v in values)
-        elif operator == "gt":
-            return float(context_value) > float(values[0]) if values else False
-        elif operator == "lt":
-            return float(context_value) < float(values[0]) if values else False
-
-        return False
-
-    async def create_experiment(self, experiment: Experiment) -> None:
-        """Create a new experiment."""
-        experiment.updated_at = datetime.now(UTC)
-        self._experiments[experiment.key] = experiment
-
-        exp_coll = get_collection(Collections.EXPERIMENTS)
-        await exp_coll.update_one(
-            {"key": experiment.key},
-            {
-                "$set": {
-                    "key": experiment.key,
-                    "name": experiment.name,
-                    "description": experiment.description,
-                    "variants": [
-                        {"name": v.name, "config": v.config, "weight": v.weight}
-                        for v in experiment.variants
-                    ],
-                    "status": experiment.status,
-                    "start_time": experiment.start_time,
-                    "end_time": experiment.end_time,
-                    "targeting_rules": experiment.targeting_rules,
-                    "updated_at": experiment.updated_at,
-                },
-                "$setOnInsert": {"created_at": experiment.created_at},
-            },
-            upsert=True,
-        )
-
-    async def update_experiment_status(self, key: str, status: str) -> bool:
-        """Update experiment status (running, paused, completed)."""
-        if key not in self._experiments:
-            return False
-
-        self._experiments[key].status = status
-        self._experiments[key].updated_at = datetime.now(UTC)
-
-        exp_coll = get_collection(Collections.EXPERIMENTS)
-        result = await exp_coll.update_one(
-            {"key": key},
-            {"$set": {"status": status, "updated_at": datetime.now(UTC)}},
-        )
-        return result.modified_count > 0
-
-
-_experiment_manager: ExperimentManager | None = None
-
-
-def get_experiment_manager() -> ExperimentManager:
-    """Get the global experiment manager."""
-    global _experiment_manager
-    if _experiment_manager is None:
-        _experiment_manager = ExperimentManager()
-    return _experiment_manager
-
-
-# ─── Metrics Collection ─────────────────────────────────────────────────────
-
-
-@dataclass
-class ExperimentMetrics:
-    """Metrics for an experiment variant."""
-
-    experiment_key: str
-    variant_name: str
-    assignments: int = 0
-    conversions: int = 0
-    total_latency_ms: float = 0.0
-    error_count: int = 0
-    custom_metrics: dict[str, float] = field(default_factory=lambda: defaultdict(float))
-
-
-class MetricsCollector:
-    """Collects and aggregates experiment metrics."""
-
-    def __init__(self):
-        self._metrics: dict[str, dict[str, ExperimentMetrics]] = defaultdict(dict)
-        self._buffer: list[dict[str, Any]] = []
-        self._flush_interval = 60  # seconds
-        self._last_flush = time.time()
-
-    def record_assignment(self, experiment_key: str, variant_name: str, user_id: str) -> None:
-        """Record a user assignment to an experiment variant."""
-        if variant_name not in self._metrics[experiment_key]:
-            self._metrics[experiment_key][variant_name] = ExperimentMetrics(
-                experiment_key=experiment_key,
-                variant_name=variant_name,
-            )
-        self._metrics[experiment_key][variant_name].assignments += 1
-
-        # Buffer for persistence
-        self._buffer.append(
-            {
-                "type": "assignment",
-                "experiment_key": experiment_key,
-                "variant_name": variant_name,
-                "user_id": user_id,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-        )
-        self._maybe_flush()
-
-    def record_latency(self, experiment_key: str, variant_name: str, latency_ms: float) -> None:
-        """Record latency for an experiment variant."""
-        if experiment_key in self._metrics and variant_name in self._metrics[experiment_key]:
-            self._metrics[experiment_key][variant_name].total_latency_ms += latency_ms
-
-    def record_error(self, experiment_key: str, variant_name: str) -> None:
-        """Record an error for an experiment variant."""
-        if experiment_key in self._metrics and variant_name in self._metrics[experiment_key]:
-            self._metrics[experiment_key][variant_name].error_count += 1
-
-    def _maybe_flush(self) -> None:
-        """Flush buffer to database periodically."""
-        if time.time() - self._last_flush >= self._flush_interval and self._buffer:
-            # In production, this would write to a time-series DB or analytics store
-            self._buffer.clear()
-            self._last_flush = time.time()
-
-    async def flush(self) -> None:
-        """Force flush buffer to database."""
-        if self._buffer:
-            # Persist to MongoDB
-            try:
-                metrics_coll = get_collection(Collections.EXPERIMENT_METRICS)
-                if self._buffer:
-                    await metrics_coll.insert_many(self._buffer)
-                self._buffer.clear()
-                self._last_flush = time.time()
-            except Exception as exc:
-                logger.error("Failed to flush metrics", error=str(exc))
-
-
-_metrics_collector: MetricsCollector | None = None
-
-
-def get_metrics_collector() -> MetricsCollector:
-    """Get the global metrics collector."""
-    global _metrics_collector
-    if _metrics_collector is None:
-        _metrics_collector = MetricsCollector()
-    return _metrics_collector
-
-
-# ─── Integration Helpers ────────────────────────────────────────────────────
-
-
-async def run_with_experiment_tracking(
-    experiment_key: str,
-    variant_name: str,
-    user_id: str,
-    operation: Callable,
-    *args,
-    **kwargs,
-) -> Any:
-    """
-    Run an operation with experiment tracking.
-
-    Records latency, errors, and allows custom metrics.
-    """
-    start_time = time.perf_counter()
-    metrics = get_metrics_collector()
-
-    try:
-        result = await operation(*args, **kwargs)
-        latency_ms = (time.perf_counter() - start_time) * 1000
-        metrics.record_latency(experiment_key, variant_name, latency_ms)
-        return result
-    except Exception:
-        latency_ms = (time.perf_counter() - start_time) * 1000
-        metrics.record_latency(experiment_key, variant_name, latency_ms)
-        metrics.record_error(experiment_key, variant_name)
-        raise

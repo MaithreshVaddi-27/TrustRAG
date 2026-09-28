@@ -444,9 +444,9 @@ def create_app() -> FastAPI:
     settings = get_settings()
 
     app = FastAPI(
-        title="TRUSTRAG API",
+        title=f"{settings.app_name} API",
         description="AI Reliability Workbench — Retrieval, Verification, Diagnosis, Recovery",
-        version="0.1.0",
+        version=settings.app_version,
         lifespan=lifespan,
         # NOTE: no custom default_response_class — FastAPI ≥0.115 serializes
         # typed endpoints directly to JSON bytes via Pydantic (faster than a

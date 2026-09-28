@@ -86,6 +86,7 @@ class Collections:
     RECOVERY_RUNS = "recovery_runs"
     TRACE_EVENTS = "trace_events"
     EXPERIMENTS = "experiments"
+    FEATURE_FLAGS = "feature_flags"
     FEEDBACK = "feedback"
     REVOKED_TOKENS = "revoked_tokens"
     STREAM_TICKETS = "stream_tickets"

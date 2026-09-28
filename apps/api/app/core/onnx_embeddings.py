@@ -24,28 +24,25 @@ except ImportError:
 
 from langchain_core.embeddings import Embeddings
 
+from app.core.config import get_settings
+
 logger = structlog.get_logger(__name__)
 
 # Pinned tokenizer revision (commit SHA of BAAI/bge-small-en-v1.5 on the Hub).
 # Bandit B615 requires revision pinning to block supply-chain substitution of
 # tokenizer files; override via HF_TOKENIZER_REVISION only to move forward
 # deliberately (e.g. after re-exporting the ONNX model against the new vocab).
-_HF_TOKENIZER_REVISION = os.environ.get(
-    "HF_TOKENIZER_REVISION", "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
-)
+# An earlier revision of this file kept the same env read and the same default
+# SHA in a module-level constant as well. Only this function is ever called.
+_DEFAULT_TOKENIZER_REVISION = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
 
 
 def _get_tokenizer_revision() -> str:
     """Get tokenizer revision from settings with fallback to environment variable."""
-    try:
-        from app.core.config import get_settings
-
-        settings = get_settings()
-        if settings.hf_tokenizer_revision:
-            return settings.hf_tokenizer_revision
-    except Exception:
-        logger.debug("Failed to get tokenizer revision from settings, using env/default")
-    return os.environ.get("HF_TOKENIZER_REVISION", "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a")
+    settings = get_settings()
+    if settings.hf_tokenizer_revision:
+        return settings.hf_tokenizer_revision
+    return os.environ.get("HF_TOKENIZER_REVISION", _DEFAULT_TOKENIZER_REVISION)
 
 
 class ONNXBGEEmbeddings(Embeddings):

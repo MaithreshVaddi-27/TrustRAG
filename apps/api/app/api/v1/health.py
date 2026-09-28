@@ -50,6 +50,7 @@ async def health() -> dict:
     """
     mongo_ok = await mongo_health_check()
     qdrant_ok = await qdrant_health_check()
+    settings = get_settings()
 
     services = {
         "mongodb": "ok" if mongo_ok else "degraded",
@@ -61,8 +62,8 @@ async def health() -> dict:
     return {
         "status": overall_status,
         "timestamp": datetime.now(UTC).isoformat(),
-        "app": "TRUSTRAG",
-        "version": "0.1.0",
+        "app": settings.app_name,
+        "version": settings.app_version,
     }
 
 
@@ -95,8 +96,8 @@ async def health_detailed(current_user=Depends(get_current_user)) -> dict:
     return {
         "status": overall_status,
         "timestamp": datetime.now(UTC).isoformat(),
-        "app": "TRUSTRAG",
-        "version": "0.1.0",
+        "app": settings.app_name,
+        "version": settings.app_version,
         "environment": settings.app_env,
         "services": services,
         "models": registry_status(),

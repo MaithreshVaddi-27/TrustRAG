@@ -168,19 +168,3 @@ def classify_llm_exception(exc: BaseException, *, context: str = "") -> LLMUnava
         )
 
     return None
-
-
-def raise_if_llm_outage(exc: BaseException, *, context: str = "") -> None:
-    """Re-raise `exc` as LLMUnavailableError if it is a provider outage.
-
-    No-op for unclassified exceptions, so it is safe to call from a bare
-    `except Exception` block without changing existing control flow.
-    """
-    mapped = classify_llm_exception(exc, context=context)
-    if mapped is not None:
-        logger.warning(
-            "LLM provider outage classified",
-            context=context,
-            original_type=type(exc).__name__,
-        )
-        raise mapped from exc

@@ -95,18 +95,12 @@ def calls_remaining() -> int | None:
     return max(0, cap - ledger.calls)
 
 
-def is_exhausted() -> bool:
-    """True when the active analysis has used its whole call budget."""
-    remaining = calls_remaining()
-    return remaining is not None and remaining <= 0
-
-
 def llm_budget_exhausted() -> bool:
     """True only when a ledger is active AND its cap has been spent.
 
-    Distinct from `is_exhausted()`, which also reports True when a ledger
-    exists with an uncapped (local) tier. Call sites use this one: outside an
-    analysis, and on local tiers, the guard must never fire.
+    Both conditions matter: outside an analysis there is no ledger, and a local
+    tier has an uncapped budget. The guard must never fire in either case, or a
+    free local model would report itself as spent.
     """
     ledger = _LEDGER.get()
     if ledger is None:
