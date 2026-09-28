@@ -367,3 +367,39 @@ def test_metrics_endpoint_is_live_even_though_hidden_from_schema(openapi):
         "normally and this test should be removed"
     )
     assert TestClient(app).get("/api/v1/metrics").status_code == 200
+
+
+def test_analysis_status_vocabulary_matches_what_is_actually_written():
+    """The `status` comment on AnalysisResponse is rendered in /docs, so it is
+    part of the published contract — but it advertised "running", a value the
+    service never writes (it uses "processing"). A consumer polling for "running"
+    would treat an in-flight analysis as finished and read empty results.
+
+    The allowed values are pinned here rather than documented, so a new status
+    has to be added deliberately.
+    """
+    import pathlib
+    import re
+
+    from app.api.v1.schemas.analysis import AnalysisResponse
+
+    service_src = pathlib.Path("app/services/analysis_service.py").read_text()
+    written = set(re.findall(r'"status":\s*"([a-z_]+)"', service_src))
+    written |= set(re.findall(r'stored_status = "([a-z_]+)"', service_src))
+    assert written, "could not find any status values written by the service"
+
+    # Pending/processing are non-terminal; the rest end the run.
+    expected = {"pending", "processing", "completed", "failed", "abstained"}
+    assert written <= expected, (
+        f"analysis_service writes statuses outside the known vocabulary: "
+        f"{sorted(written - expected)}"
+    )
+    assert {"pending", "processing"} <= written
+    assert {"completed", "failed", "abstained"} & written
+
+    # The docstring the frontend and any API consumer reads must not advertise a
+    # status the service never emits.
+    field_doc = AnalysisResponse.model_fields["status"].description or ""
+    assert "running" not in field_doc, (
+        "the status docstring advertises 'running', which is never written"
+    )

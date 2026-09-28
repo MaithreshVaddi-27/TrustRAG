@@ -167,7 +167,11 @@ class AnalysisResponse(BaseModel):
     user_id: str
     knowledge_base_id: str
     query: str
-    status: str  # pending, running, completed, failed, abstained
+    # Actual values written by analysis_service: pending, processing, completed,
+    # failed, abstained. There is no "running" — poll until the status leaves
+    # pending/processing. (This comment is rendered in /docs, so it is part of the
+    # published contract.)
+    status: str
     answer: str | None = None
     reliability: ReliabilitySummary
     diagnosis: DiagnosisSummary

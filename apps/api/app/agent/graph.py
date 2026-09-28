@@ -515,7 +515,28 @@ async def retrieval_node(state: AgentState) -> AgentState:
                     state["diagnosis_failures"] = ["Knowledge base contains 0 indexed chunks"]
                     return state
             except Exception as exc:
+                # Self-heal is best-effort bookkeeping, so a failure here must not
+                # abort the analysis — we fall through and answer from whatever
+                # was already retrieved. But it used to be invisible: the only
+                # trace was a server log line, so a half-reindexed collection and
+                # a skipped empty-KB guard looked identical to a healthy run in
+                # the UI. Emit a trace event so the degradation is attributable.
                 logger.warning("Error during collection point verification/sync", error=str(exc))
+                try:
+                    await add_trace_event(
+                        state["analysis_id"],
+                        "retrieval.self_heal_failed",
+                        {
+                            "message": (
+                                "Collection-point self-heal did not complete; continuing "
+                                "with the previously retrieved results. Evidence may be "
+                                "stale until the next run."
+                            ),
+                            "error": str(exc)[:200],
+                        },
+                    )
+                except Exception:  # pragma: no cover - trace must not mask the cause
+                    logger.debug("Could not record self-heal failure trace event")
 
         # 2. Rerank
         top_chunks = await rerank_candidate_chunks(
