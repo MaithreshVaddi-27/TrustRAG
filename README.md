@@ -34,6 +34,7 @@ TrustRAG adds a verification layer between your LLM and your data: answers are s
 - [Supported LLM Providers](#supported-llm-providers)
 - [API Reference](#api-reference)
 - [Testing](#testing)
+- [Audit Tracker](#audit-tracker)
 - [Deployment](#deployment)
 - [Optimization](#optimization)
 - [Security](#security)
@@ -495,6 +496,14 @@ k6 run load-test/smoke.js
 ```
 
 Lint: `cd apps/api && ruff check app/ tests/ && ruff format --check app/ tests/` · `cd apps/web && npm run lint`.
+
+> **Toolchain notes:** backend Python 3.11–3.12 with `uv` (`uv sync`), frontend Node 22+ (`engines`-pinned — Vitest breaks on Node 20). CI runs Ubuntu jobs plus a Windows + macOS smoke matrix (`cross-platform`), all gated in `ci-gate`.
+
+---
+
+## Audit Tracker
+
+All bug/error/issue/dead-code findings live in [`docs/audit-2026-09-28-ui-redesign-full.md`](docs/audit-2026-09-28-ui-redesign-full.md) — severity, fix, and verification evidence per item, including the ingestion audit (H1–H2/M1–M5/L1–L2), ONNX-only enforcement, test hermeticity, and the CI triage (CI-1–CI-3). It supersedes the removed point-in-time reports (history preserved in git).
 
 ---
 

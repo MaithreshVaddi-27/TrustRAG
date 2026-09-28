@@ -2,7 +2,7 @@
 
 - **Branch:** `ui-redesign` ONLY (no work on main/production-deploy)
 - **Commit:** `0367a6d` (after `git pull --ff-only`, stash conflict resolved by keeping upstream)
-- **Prior audits reviewed:** `docs/backend-audit-2026-09-27.md`, `docs/backend-audit-2026-09-28-ingestion.md`, `docs/STATUS-2026-09-27-embedding-cleanup.md`, `docs/ROADMAP.md`, `docs/architecture/decision-log.md`
+- **Prior audits reviewed and SUPERSEDED (files removed 2026-09-28; history in git):** `docs/backend-audit-2026-09-27.md` (Waves 1–2 + post-audit sweep, all fixed), `docs/backend-audit-2026-09-28-ingestion.md` (H1–H2/M1–M5/L1–L2, all fixed here), `docs/STATUS-2026-09-27-embedding-cleanup.md` (dead-code sweep + embedding lock, complete). This file is the single live tracker.
 - **Method / skills used:** `systematic-debugging` (reproduce-first), `verification-before-completion`, `requesting-code-review` checklist, `gstack-qa` / `gstack-review` gates, `design-taste-frontend` + `high-end-visual-design` for premium bar
 - **Scope:** entire `apps/api` + `apps/web`, ONNX-only model enforcement, Mac/Linux/Windows parity, dead-code/unused-code sweep
 
