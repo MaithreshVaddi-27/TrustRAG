@@ -179,6 +179,57 @@ jobs:
           path: apps/web/dist/
           retention-days: 7
 
+  # ── Cross-Platform Smoke (Windows + macOS) ─────────────────────────────────
+  # Ubuntu is covered by the jobs above. This job proves the torch-free runtime
+  # installs and boots on Windows and macOS: backend imports + config validation
+  # (catches POSIX-only paths, missing wheels) and frontend lint/test/build
+  # (catches case-sensitivity and Node-version drift — engines requires >= 22).
+  cross-platform:
+    name: Cross-Platform Smoke (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install backend (main deps only)
+        run: pip install -e .
+        working-directory: apps/api
+
+      - name: Backend import + config smoke
+        run: |
+          python -c "import app.ingestion.parser, app.ingestion.chunker, app.ingestion.chunking_strategies, app.ingestion.pipeline, app.core.config, app.core.model_registry, app.core.hardware, app.core.memory; print('imports OK')"
+          python scripts/apply_ports.py --check
+        env:
+          JWT_SECRET: test-secret-minimum-32-chars-long-padding
+          GEMINI_API_KEY: test-key
+          MONGODB_URI: mongodb://localhost:27017
+          QDRANT_URL: http://localhost:6333
+
+      - name: Install frontend
+        run: npm ci
+        working-directory: apps/web
+
+      - name: Frontend lint + tests + build
+        run: |
+          npm run lint
+          npm test
+          npm run build
+        working-directory: apps/web
+
   # ── E2E + Load (Playwright + k6) ───────────────────────────────────────────
   e2e:
     name: E2E + Load — Playwright & k6
@@ -335,6 +386,7 @@ jobs:
       - backend-config-validate
       - frontend-lint
       - frontend-build
+      - cross-platform
       - e2e
       - docker-build
     runs-on: ubuntu-latest

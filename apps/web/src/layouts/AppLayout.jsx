@@ -150,7 +150,7 @@ export default function AppLayout({ children }) {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-surface-950 text-slate-100 overflow-hidden select-none">
+    <div className="flex flex-col h-screen supports-[height:100dvh]:h-dvh bg-surface-950 text-slate-100 overflow-hidden select-none">
       {/* ── CURSOR GLOW ──────────────────────────────────────────────────── */}
       {!reducedMotion && (
         <motion.div

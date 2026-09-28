@@ -313,18 +313,21 @@ def detect_hardware_profile() -> dict[str, Any]:
         # On Apple Silicon, unified memory is shared between CPU and GPU
         vram_gb = mem["total_gb"]
 
-    # Classify memory tier
-    # 8GB Unified or low available memory requires lean quantized models
+    # Classify memory tier (L-1: each tier gets weights that fit it — a 64GB
+    # host must not be told to run the same model as an 8GB host). All IDs
+    # come from the configured local lists in config/models.yaml.
     total_ram = mem["total_gb"]
     if total_ram <= 8.5:
         tier = "lean_accelerated" if device in ("mps", "cuda") else "lean_cpu"
-        recommended_llm = "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
-        recommended_llm_alt = "granite4.2:3b-q4_K_M"
+        # 1B class (~1GB resident): the only safe weights for 8GB hosts.
+        recommended_llm = "ibm-granite/granite-4.0-h-1b-GGUF:Q4_K_M"
+        recommended_llm_alt = "gemma3:1b"  # ollama 1B fallback
         recommended_embedding = "BAAI/bge-small-en-v1.5"
         max_batch_size = 16
         max_concurrency = 2
     elif total_ram <= 16.5:
         tier = "standard_accelerated" if device in ("mps", "cuda") else "standard_cpu"
+        # 3B class (~2.2GB resident): best quality that fits 16GB hosts.
         recommended_llm = "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
         recommended_llm_alt = "granite4.2:3b-q4_K_M"
         recommended_embedding = "BAAI/bge-small-en-v1.5"
@@ -332,8 +335,10 @@ def detect_hardware_profile() -> dict[str, Any]:
         max_concurrency = 4
     else:
         tier = "high_performance"
+        # 3B class stays the local default (largest configured local weights);
+        # heavy work should route to cloud (nvidia 70B) — see model_nvidia.
         recommended_llm = "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
-        recommended_llm_alt = "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
+        recommended_llm_alt = "ggml-org/SmolLM3-3B-GGUF:Q4_K_M"
         recommended_embedding = "BAAI/bge-small-en-v1.5"
         max_batch_size = 64
         max_concurrency = 8

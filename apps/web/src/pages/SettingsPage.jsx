@@ -565,6 +565,7 @@ export default function SettingsPage() {
                   onClick={copyUserId}
                   className="p-1 text-slate-400 hover:text-slate-200 rounded hover:bg-surface-700 transition-colors"
                   title="Copy Tenant ID"
+                  aria-label="Copy tenant ID"
                 >
                   {copied ? (
                     <Check size={14} className="text-emerald-400" />

@@ -90,6 +90,7 @@ export function QueryPanel({
           onClick={handleReset}
           disabled={loading}
           title="Reset query and results (Clear)"
+          aria-label="Reset query and results"
           className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-surface-800 rounded-lg border border-slate-800 transition-colors"
         >
           <RotateCcw size={13} />
@@ -352,7 +353,7 @@ export function QueryPanel({
                   <p className="text-[11px] text-slate-400">
                     {enableWebSearch 
                       ? 'Active: Live internet grounding will be queried via MCP.'
-                      : 'Unchecked: 100% Private Local RAG — searches only your Knowledge Base.'}
+                      : 'Unchecked: 100% private local RAG limited to your knowledge base.'}
                   </p>
                 </label>
               </div>
@@ -456,7 +457,7 @@ export function QueryPanel({
               </div>
               {selectedKb && (
                 <div className="text-[10px] font-mono text-slate-500">
-                  KB index: {selectedKb.embedding_model || 'legacy (unknown) — re-ingest recommended'}
+                  KB index: {selectedKb.embedding_model || 'legacy (unknown): re-ingest recommended'}
                   {selectedKb.embedding_dim ? ` · ${selectedKb.embedding_dim}d` : ''}
                 </div>
               )}

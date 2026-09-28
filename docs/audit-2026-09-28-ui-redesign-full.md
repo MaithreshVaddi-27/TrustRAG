@@ -22,7 +22,13 @@
 | ONNX-1 | HIGH | Reranker still has torch `CrossEncoder` fallback path — embeddings are ONNX-only, reranker is not fully | ✅ DECIDED + ENFORCED — `use_onnx=true` (default) now fails closed to RRF order with actionable message, never silent torch weights; explicit `use_onnx=false` keeps PyTorch opt-in; `models.yaml` comment updated |
 | DOC-1 | LOW | Stale `EMBEDDING_PROVIDER=onnx\|huggingface` refs (cleanup follow-up still present) | ✅ FIXED — `TRUSTRAG_specs.md` now `framework: onnxruntime / provider: onnx`; `ROADMAP.md` #16 annotated (sole engine since 2026-09-27); `decision-log.md` left as dated historical record |
 | FE-1 | LOW | `console.error/warn` in 5 frontend files — verified as intentional error logging (PlaygroundPage, SettingsPage, main.jsx, ErrorBoundary, ResultsPanel, AppLayout), no debug leftovers | ✅ VERIFIED OK |
-| XP-1 | MEDIUM | Cross-platform: no `rg`, hardcoded `/tmp`, backslash, or `C:\` paths found; `pathlib`/`os.path` usage needs full Windows CI run to confirm | ⬜ NEEDS CI VERIFY |
+| XP-1 | MEDIUM | Cross-platform: no hardcoded POSIX paths; `.gitattributes` LF normalization; `memory.py`/`hardware.py` carry darwin/linux/Windows branches | ✅ CI WIRED — new `cross-platform` job (windows-latest + macos-latest): backend import/config smoke + frontend lint/test/build, gated in `ci-gate` |
+| T-ISO | HIGH | `test_create_analysis` failed on any machine with `AI_PROVIDER` in local `.env` (config `load_dotenv` at import beats test defaults) — suite not hermetic | ✅ FIXED — conftest strips provider/model override vars at import AND per-test before cache clear; full suite 664 passed (was 663+1) |
+| VITEST-ENV | MEDIUM | Frontend `vitest` unusable on Node 20 (`webidl.util.markAsUncloneable`, undici@8/jsdom@30 need Node ≥ 22) | ✅ CONFIRMED ENV-ONLY — `engines: >=22` already pinned, CI uses Node 22; verified 33/33 green on local Node 22.23.3 |
+| UI-A11Y | MEDIUM | 6 icon-only buttons exposed `title` only (unreliable AT announcement); `h-screen` breaks on mobile browser chrome | ✅ FIXED — `aria-label` mirrors added; `h/min-h-screen` → `dvh` with `supports-` fallback on 5 layout roots |
+| UI-COPY | LOW | 2 em-dash prose tells in Playground copy | ✅ FIXED — rewritten without em-dashes (placeholder `—` for empty data kept: standard typography, not a tell) |
+| L-1 | HIGH | Same 3B model recommended for every RAM tier (only remaining user-visible defect in prior audit) | ✅ FIXED — lean ≤8.5GB → 1B class (`granite-4.0-h-1b` / `gemma3:1b` alt); standard → 3B granite; high → 3B granite + SmolLM3-3B alt; regression test `test_tiers_recommend_different_llm_weights` pins it |
+| B-18 | MEDIUM | `ChatNVIDIA` has no langchain-level `max_retries` | ✅ DECIDED: NO RETRY — adding it without capping Gemini raises spend on the pricier provider; transient 5xx already classified by `probe_cloud_llm` + short-circuited via `LLMUnavailableError` (B-5/B-6). No code change. |
 
 ## ONNX-only enforcement (user requirement: "only ONNX to run models")
 
@@ -71,5 +77,13 @@
 - `uv.lock` churn from local uv version reverted (twice) — not part of this fix
 - Cross-platform: `.gitattributes` LF normalization present; `memory.py`/`hardware.py` carry darwin/linux/Windows branches; ONNX + RapidOCR wheels exist for all three OSes; full per-OS CI still required
 
+## Second pass (2026-09-28, same branch)
+
+- Test hermeticity fix → full backend **664 passed** (zero failures)
+- Frontend on Node 22.23.3: lint clean, **33/33 vitest green**, build green
+- UI premium pass (Redesign-Preserve, trust-first dials 4/3/5): motion story already complete (MotionConfig + per-file reduced-motion gates verified); added aria-labels, dvh viewport stability, copy touch-ups
+- L-1 tiered recommendations + regression test (18/18 hardware tests green)
+- B-18 resolved as no-change (cost); cross-platform CI job added + YAML validated + `ci-gate` wired
+
 ---
-*All tracked findings are fixed. Remaining: CI confirmation of the 2 pre-existing env failures + per-OS runs.*
+*All tracked findings are fixed and verified locally (macOS). Remaining: CI run on push (Ubuntu + Windows + macOS matrix) as final proof.*

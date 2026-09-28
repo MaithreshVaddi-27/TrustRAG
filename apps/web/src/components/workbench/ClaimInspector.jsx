@@ -178,6 +178,7 @@ function ClaimRow({ claim, index, isForceExpanded, onCopy, isCopied }) {
             onClick={onCopy}
             className="text-slate-500 hover:text-slate-300 p-1 rounded hover:bg-surface-800 transition-colors"
             title="Copy claim assertion"
+            aria-label="Copy claim assertion"
           >
             {isCopied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
           </button>

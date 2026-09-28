@@ -274,6 +274,7 @@ export default function DashboardPage() {
               disabled={isFetchingAnalyses}
               className="px-2.5 py-1.5 rounded-xl bg-surface-800 hover:bg-surface-700 text-slate-200 border border-slate-700 flex items-center gap-1.5 transition-all disabled:opacity-50 shadow-sm"
               title="Force sync live state"
+              aria-label="Force sync live state"
             >
               <RefreshCw size={12} className={isFetchingAnalyses ? 'animate-spin text-cyan-400' : 'text-slate-400'} />
               <span>Sync Now</span>

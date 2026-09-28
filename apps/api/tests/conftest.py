@@ -8,6 +8,23 @@ from __future__ import annotations
 
 import os
 
+# Hermetic provider config: a developer's local .env (e.g. AI_PROVIDER=ollama)
+# must not leak into the suite — tests assert models.yaml defaults
+# (test_create_analysis expects llama_cpp). Pop, don't default: an ambient
+# value would otherwise win over setdefault and make results machine-dependent.
+for _leaky_var in (
+    "AI_PROVIDER",
+    "LLM_PROVIDER",
+    "OLLAMA_MODEL",
+    "LLAMACPP_MODEL",
+    # Removed envs (single ONNX engine since 2026-09-27) kept out defensively.
+    "EMBEDDING_PROVIDER",
+    "EMBEDDING_BACKEND",
+    "EMBEDDING_MODEL",
+):
+    os.environ.pop(_leaky_var, None)
+del _leaky_var
+
 # Set dummy test environment variables before any app modules are imported
 os.environ.setdefault(
     "JWT_SECRET",
@@ -26,6 +43,22 @@ import pytest
 
 def _clear_all_caches() -> None:
     """Reset every process-global cache that can leak state between tests."""
+    # Provider hermeticity: app/core/config.py runs load_dotenv() at import,
+    # so a developer's local .env (e.g. AI_PROVIDER=ollama) lands in
+    # os.environ AFTER this module's top-level pop. Strip file-loaded values
+    # here too, before the config caches below are cleared and re-read.
+    for _leaky_var in (
+        "AI_PROVIDER",
+        "LLM_PROVIDER",
+        "OLLAMA_MODEL",
+        "LLAMACPP_MODEL",
+        "LLAMA_CPP_MODEL",
+        "MLX_MODEL",
+        "EMBEDDING_PROVIDER",
+        "EMBEDDING_BACKEND",
+        "EMBEDDING_MODEL",
+    ):
+        os.environ.pop(_leaky_var, None)
     # Reranker result cache
     from app.retrieval import reranker as reranker_module
 

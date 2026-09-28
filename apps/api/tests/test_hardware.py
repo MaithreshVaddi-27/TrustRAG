@@ -273,3 +273,28 @@ def test_ingest_embed_batch_size_follows_tier():
         side_effect=RuntimeError("probe failed"),
     ):
         assert get_ingest_embed_batch_size() == 64
+
+
+def test_tiers_recommend_different_llm_weights(monkeypatch):
+    """L-1: an 8GB host must not be told to run the same weights as a 64GB host.
+
+    Has teeth: reverting hardware.py to one model for all tiers fails this.
+    All IDs must exist in the configured local lists in config/models.yaml.
+    """
+    import app.core.hardware as hardware
+
+    def profile_for(total_gb):
+        monkeypatch.setattr(
+            hardware,
+            "get_system_memory_info",
+            lambda: {"total_gb": total_gb, "used_gb": total_gb / 2, "usage_pct": 50.0},
+        )
+        monkeypatch.setattr(hardware, "detect_accelerator", lambda: "cpu")
+        return hardware.detect_hardware_profile()
+
+    lean = profile_for(8.0)["recommendations"]["primary_llm"]
+    standard = profile_for(16.0)["recommendations"]["primary_llm"]
+    high = profile_for(64.0)["recommendations"]["primary_llm"]
+    assert lean != standard, f"8GB tier recommends same weights as 16GB: {lean}"
+    assert "1b" in lean.lower(), f"8GB tier should recommend 1B-class weights, got: {lean}"
+    assert standard == high == "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
