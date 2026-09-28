@@ -217,8 +217,13 @@ class ChatOllamaClient(BaseChatModel):
     Calls POST {base_url}/api/chat via httpx.
     """
 
+    # NOTE: Field defaults below mirror models.yaml (llm.model_ollama,
+    # llm.temperature, llm.top_p) for standalone construction in tests.
+    # Production code must pass base_url/model explicitly from
+    # get_model_config().llm_model_for("ollama") / settings.ollama_base_url —
+    # update models.yaml to change the fleet default.
     base_url: str = Field(default="http://localhost:11434")
-    model: str = Field(default="granite4.2:3b-q4_K_M")
+    model: str = Field(default="gemma3:1b")
     temperature: float = Field(default=0.2)
     top_p: float = Field(default=0.9)
     timeout: float = Field(default=120.0)
@@ -390,8 +395,11 @@ class ChatLlamaCppClient(BaseChatModel):
     `mlx` provider with the MLX base URL and model id.
     """
 
+    # NOTE: Field defaults mirror models.yaml (llm.model_llamacpp,
+    # llm.temperature, llm.top_p, llm.max_output_tokens). Production code must
+    # pass model explicitly from get_model_config().llm_model_for("llama_cpp").
     base_url: str = Field(default="http://127.0.0.1:8080/v1")
-    model: str = Field(default="occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M")
+    model: str = Field(default="LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M")
     temperature: float = Field(default=0.2)
     top_p: float = Field(default=0.9)
     max_tokens: int = Field(default=1024)  # PERF 2026-09-06: lean cap (was 2048)
@@ -1018,8 +1026,17 @@ async def check_ollama_status(base_url: str = "http://localhost:11434") -> dict[
     if cli_llms:
         connected = True
 
-    # Default to gemma3:1b if discovered, else first discovered
-    default_model = "gemma3:1b" if "gemma3:1b" in all_llms else (all_llms[0] if all_llms else "")
+    # Default: models.yaml llm.model_ollama when discovered, else first discovered.
+    # Keeps a yaml edit (e.g. gemma3:1b → qwen3:1.7b) propagating to the UI.
+    try:
+        from app.core.config import get_model_config as _get_cfg
+
+        _preferred_ollama = _get_cfg().llm_model_for("ollama")
+    except Exception:
+        _preferred_ollama = "gemma3:1b"
+    default_model = (
+        _preferred_ollama if _preferred_ollama in all_llms else (all_llms[0] if all_llms else "")
+    )
     merge_discovered_llms("ollama", all_llms, replace=True)
 
     return {
@@ -1074,10 +1091,16 @@ async def check_llamacpp_status(base_url: str = "http://127.0.0.1:8080/v1") -> d
         ]
         combined = list(dict.fromkeys(api_llms + cache_models + hf_llms))
 
-    # Default to LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M if discovered, else first discovered
+    # Default: models.yaml llm.model_llamacpp when discovered, else first.
+    try:
+        from app.core.config import get_model_config as _get_cfg2
+
+        _preferred_llamacpp = _get_cfg2().llm_model_for("llama_cpp")
+    except Exception:
+        _preferred_llamacpp = "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
     default_model = (
-        "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
-        if "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M" in combined
+        _preferred_llamacpp
+        if _preferred_llamacpp in combined
         else (combined[0] if combined else "")
     )
 
@@ -1138,10 +1161,15 @@ async def check_mlx_status(
         # Combine API-discovered + cached (deduplicated) when server is not connected
         combined = list(dict.fromkeys(api_llms + cache_models))
 
+    # Default: models.yaml llm.model_mlx when discovered, else first.
+    try:
+        from app.core.config import get_model_config as _get_cfg3
+
+        _preferred_mlx = _get_cfg3().llm_model_for("mlx")
+    except Exception:
+        _preferred_mlx = "mlx-community/Llama-3.2-1B-Instruct-4bit"
     default_model = (
-        "mlx-community/Llama-3.2-1B-Instruct-4bit"
-        if "mlx-community/Llama-3.2-1B-Instruct-4bit" in combined
-        else (combined[0] if combined else "")
+        _preferred_mlx if _preferred_mlx in combined else (combined[0] if combined else "")
     )
 
     merge_discovered_llms("mlx", combined, replace=True)

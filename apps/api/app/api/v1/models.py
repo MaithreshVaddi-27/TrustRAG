@@ -130,31 +130,24 @@ async def get_providers_endpoint(
                 "name": "Google Gemini (Cloud)",
                 "type": "cloud",
                 "connected": bool(settings.gemini_api_key),
+                # Single source of truth: models.yaml llm.supported_models_gemini
+                # + llm.model_gemini. A yaml edit propagates here with no code change.
                 "default_model": cfg.llm_model
                 if cfg.llm_provider == "gemini"
-                else "gemini-3.5-flash-lite",
-                "models": [
-                    "gemini-3.8-flash",
-                    "gemini-3.7-flash",
-                    "gemini-3.6-flash",
-                    "gemini-3.5-flash",
-                    "gemini-3.5-flash-lite",
-                ],
+                else cfg.llm_model_for("gemini"),
+                "models": cfg.supported_gemini_models,
             },
             "nvidia": {
                 "name": "NVIDIA NIM (Cloud)",
                 "type": "cloud",
                 "connected": bool(settings.nvidia_api_key),
-                # Verified live 2026-09-21: only these three answer on this
+                # Verified live 2026-09-21: only these answer on this
                 # account (lightning stalls, nano-omni 503s, rest 404).
                 # Reasoning models (gpt-oss, muse-glimmer) need headroom:
                 # reasoning shares the max_tokens budget with the answer.
-                "default_model": "openai/gpt-oss-20b",
-                "models": [
-                    "openai/gpt-oss-20b",
-                    "google/gemma-4-31b-it",
-                    "meta/muse-glimmer-30b",
-                ],
+                # Single source of truth: models.yaml llm.supported_models_nvidia.
+                "default_model": cfg.llm_model_for("nvidia"),
+                "models": cfg.supported_nvidia_models,
             },
         },
         "embedding": embedding_info,

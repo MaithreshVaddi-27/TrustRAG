@@ -28,6 +28,47 @@ from app.core.config import get_settings
 
 logger = structlog.get_logger(__name__)
 
+# Low-RAM / speed defaults: tokenizer threads must not fork-bloat next to
+# asyncio.to_thread. Set at import so every process (api, workers, tests)
+# inherits it without shell exports.
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+
+def _onnx_intra_op_threads() -> int:
+    """Capped ONNX thread pool — delegates to the shared session factory.
+
+    Kept as a thin alias (was inline here before the central `onnx:`
+    config): ``min(4, OMP_NUM_THREADS or cpu_count)``. Prefer
+    ``app.core.onnx_runtime.resolve_intra_op_threads`` in new code.
+    """
+    from app.core.onnx_runtime import resolve_intra_op_threads
+
+    return resolve_intra_op_threads(0)
+
+
+def _resolve_embedding_defaults(
+    tokenizer_name: str | None, max_seq_length: int | None
+) -> tuple[str, int]:
+    """Single source of truth: models.yaml embedding.model / max_seq_length.
+
+    Explicit constructor args still win (tests, one-off exports); otherwise
+    every stage follows `embedding.model` so a yaml edit propagates everywhere.
+    """
+    model, seq = tokenizer_name, max_seq_length
+    if model is None or seq is None:
+        try:
+            from app.core.config import get_model_config
+
+            cfg = get_model_config()
+            if model is None:
+                model = cfg.embedding_model
+            if seq is None:
+                seq = cfg.embedding_max_seq_length
+        except Exception as exc:
+            logger.debug("Embedding defaults fell back to built-ins", error=str(exc))
+    return model or "BAAI/bge-small-en-v1.5", int(seq or 512)
+
+
 # Pinned tokenizer revision (commit SHA of BAAI/bge-small-en-v1.5 on the Hub).
 # Bandit B615 requires revision pinning to block supply-chain substitution of
 # tokenizer files; override via HF_TOKENIZER_REVISION only to move forward
@@ -61,6 +102,8 @@ class ONNXBGEEmbeddings(Embeddings):
         tokenizer_name: str = "BAAI/bge-small-en-v1.5",
         max_seq_length: int = 512,
         providers: list[str] | None = None,
+        sess_options: Any = None,
+        micro_batch_size: int | None = None,
     ) -> None:
         if not _ORT_AVAILABLE:
             raise ImportError(
@@ -72,18 +115,44 @@ class ONNXBGEEmbeddings(Embeddings):
         self.max_seq_length = max_seq_length
 
         # Load tokenizer (lightweight, no torch) at the pinned revision.
+        # use_fast=True (~2-5x tokenize speed) + offline respect, mirroring reranker.
         from transformers import AutoTokenizer
 
+        _offline = os.getenv("HF_HUB_OFFLINE", "").strip() == "1"
         self.tokenizer = AutoTokenizer.from_pretrained(
             tokenizer_name,
             revision=_get_tokenizer_revision(),
             trust_remote_code=False,
+            use_fast=True,
+            local_files_only=_offline,
         )
 
-        # Load ONNX model
-        if providers is None:
-            providers = ["CPUExecutionProvider"]
-        self.session = ort.InferenceSession(model_path, providers=providers)
+        # Load ONNX model via the shared session factory (central `onnx:`
+        # config in models.yaml: thread caps for less RAM, ORT_ENABLE_ALL +
+        # sequential mode for speed). Explicit `providers`/`sess_options`
+        # args win (tests, one-off tools); otherwise yaml (+ ONNX_* env).
+        if providers is None or sess_options is None:
+            from app.core.config import get_model_config
+            from app.core.onnx_runtime import build_session_options
+
+            _cfg = get_model_config()
+            if providers is None:
+                providers = _cfg.onnx_providers
+            if sess_options is None:
+                sess_options = build_session_options()
+        if micro_batch_size is None:
+            try:
+                from app.core.config import get_model_config
+
+                micro_batch_size = get_model_config().onnx_embed_micro_batch
+            except Exception:
+                micro_batch_size = 0
+        self.session = ort.InferenceSession(
+            model_path, sess_options=sess_options, providers=providers
+        )
+        # Explicit override (constructor arg or ONNX_EMBED_MICRO_BATCH / yaml):
+        # >0 wins over tier-aware sizing; 0 = auto (hardware tier).
+        self.embed_micro_batch_override = max(0, int(micro_batch_size or 0))
 
         # Verify input/output names
         self.input_names = [i.name for i in self.session.get_inputs()]
@@ -121,7 +190,13 @@ class ONNXBGEEmbeddings(Embeddings):
         return default
 
     def _encode_batch(self, texts: list[str], is_query: bool = False) -> np.ndarray:
-        """Encode a batch of texts to embeddings (internally chunked ≤32 to bound RAM)."""
+        """Encode a batch of texts to embeddings (tier-aware micro-batches).
+
+        Ingest step follows hardware tiers (32/64/128) via
+        get_ingest_embed_batch_size(); queries are short (≤128 tokens vs the
+        512-char chunk default) so they use a shorter max_length to avoid ~4x
+        wasted matmuls on padding.
+        """
         if is_query and self._is_bge:
             texts = [
                 self._query_instruction + t if not t.startswith(self._query_instruction) else t
@@ -130,15 +205,28 @@ class ONNXBGEEmbeddings(Embeddings):
 
         import numpy as _np
 
+        override = int(getattr(self, "embed_micro_batch_override", 0) or 0)
+        if override > 0:
+            step = max(8, override)
+        else:
+            try:
+                from app.core.hardware import get_ingest_embed_batch_size
+
+                step = max(8, int(get_ingest_embed_batch_size()))
+            except Exception:
+                step = int(os.getenv("EMBEDDING_BATCH_SIZE", "32") or 32)
+        # Queries are short: cap padding length to avoid wasted compute.
+        encode_max = min(self.max_seq_length, 128) if is_query else self.max_seq_length
+
         out: list[np.ndarray] = []
-        for start in range(0, len(texts), 32):
-            sub = texts[start : start + 32]
+        for start in range(0, len(texts), step):
+            sub = texts[start : start + step]
             # Tokenize
             encoded = self.tokenizer(
                 sub,
                 padding=True,
                 truncation=True,
-                max_length=self.max_seq_length,
+                max_length=encode_max,
                 return_tensors="np",
             )
 
@@ -193,7 +281,7 @@ class ONNXBGEEmbeddingsWrapper:
         self,
         onnx_embeddings: ONNXBGEEmbeddings,
         max_cache_size: int = 512,
-        model_name: str = "onnx::bge-small-en-v1.5",
+        model_name: str | None = None,
     ) -> None:
         self._base = onnx_embeddings
         import threading
@@ -202,6 +290,13 @@ class ONNXBGEEmbeddingsWrapper:
         self._cache: OrderedDict[str, list[float]] = OrderedDict()
         self._mem_lock = threading.RLock()
         self._max_size = max_cache_size
+        if model_name is None:
+            try:
+                from app.core.config import get_model_config
+
+                model_name = f"onnx::{get_model_config().embedding_model}"
+            except Exception:
+                model_name = "onnx::bge-small-en-v1.5"
         self._model_name = model_name
 
     @staticmethod

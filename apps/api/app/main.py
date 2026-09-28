@@ -95,6 +95,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     import os
 
     os.environ["LANGCHAIN_TRACING_V2"] = "false"
+    # Low-RAM / inference-speed guards (production default, all platforms):
+    # - TOKENIZERS_PARALLELISM=false prevents Rust tokenizer thread-pool
+    #   fork-bloat next to asyncio.to_thread + torch (saves ~100-300 MB RSS).
+    # - OMP_NUM_THREADS caps ONNX intra-op pools (embeddings + reranker each
+    #   cap at 4 internally; this bounds any other native lib sharing the pool).
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    try:
+        _cpu = os.cpu_count() or 4
+        os.environ.setdefault("OMP_NUM_THREADS", str(max(1, min(4, _cpu))))
+    except Exception:
+        os.environ.setdefault("OMP_NUM_THREADS", "4")
     _model_cached = False
     try:
         cfg_probe = get_model_config()

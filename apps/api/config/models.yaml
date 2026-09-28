@@ -16,7 +16,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 runtime:
-  config_version: "1.22"
+  config_version: "1.23"
 
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
@@ -131,6 +131,8 @@ reranker:
   top_k: 20
   # Batch size for CrossEncoder inference (CPU: 16, GPU: 64)
   batch_size: 16
+  # Max sequence length for reranker tokenization (pairs truncate longest_first)
+  max_seq_length: 512
   # Early termination confidence threshold
   early_termination_confidence: 0.85
   # Early termination score gap threshold
@@ -140,6 +142,37 @@ reranker:
   onnx_model_path: ""  # Auto-generated if empty
   # Result cache size for reranker (Phase 3.2) - avoids re-scoring same query-doc pairs
   cache_size: 500
+
+# ─── ONNX Runtime (shared embedding + reranker engine) ──────────────────────
+# Single source of truth for every ORT session in the backend. Both
+# app/core/onnx_embeddings.py and app/core/onnx_reranker.py build their
+# sessions from here via app/core/onnx_runtime.py — update here and it
+# updates everywhere. Env vars (ONNX_*) win over these defaults.
+onnx:
+  # Execution providers in priority order. CPU-only keeps RAM flat;
+  # add CUDAExecutionProvider first on GPU hosts if onnxruntime-gpu is installed.
+  providers:
+    - CPUExecutionProvider
+  # Intra-op thread pool. 0 = auto → min(cpu_count, 4): enough parallelism
+  # for GEMM without oversubscribing next to uvicorn workers. Lower (1-2)
+  # for less RAM on ≤8GB hosts; raise on 32GB+ hosts.
+  intra_op_threads: 0
+  # Inter-op thread pool. 1 = lowest RAM (no parallel branches); raise only
+  # for multi-graph parallel workloads.
+  inter_op_threads: 1
+  # Graph optimization: none | basic | extended | all. `all` fuses ops for
+  # faster warm inference at a slightly larger load-time memory spike.
+  graph_optimization: "all"
+  # CPU memory arena: true = faster warm inference (reuses blocks);
+  # false = lower peak RAM on tiny containers (≤2GB).
+  cpu_mem_arena: true
+  # Memory pattern optimization (pairs with the arena; disable with it).
+  mem_pattern: true
+  # Internal micro-batch bound for embedding _encode_batch (tokenize+infer
+  # chunking). 0 = auto (hardware-tier sizing: lean 32 / standard 64 /
+  # high 128 — see hardware.get_ingest_embed_batch_size). Set >0 to force
+  # one size everywhere from this file (env ONNX_EMBED_MICRO_BATCH wins).
+  embed_micro_batch: 0
 
 # ─── Retrieval ────────────────────────────────────────────────────────────────
 retrieval:

@@ -392,14 +392,14 @@ class ModelConfig:
             return (
                 env_model
                 or str(self._get("llm", "model_ollama", required=False) or "")
-                or str(self._get("llm", "model") or "granite4.2:3b-q4_K_M")
+                or str(self._get("llm", "model") or "gemma3:1b")
             )
         if p in ("llama_cpp", "llamacpp"):
             env_model = os.environ.get("LLAMACPP_MODEL") or os.environ.get("LLAMA_CPP_MODEL")
             return (
                 env_model
                 or str(self._get("llm", "model_llamacpp", required=False) or "")
-                or str(self._get("llm", "model") or "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M")
+                or str(self._get("llm", "model") or "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M")
             )
         if p == "mlx":
             env_model = os.environ.get("MLX_MODEL")
@@ -549,7 +549,7 @@ class ModelConfig:
             return (
                 env_model
                 or str(self._get("verification", "model_ollama", required=False) or "")
-                or str(self._get("verification", "model") or "granite4.2:3b-q4_K_M")
+                or str(self._get("verification", "model") or "gemma3:1b")
             )
         if p in ("llama_cpp", "llamacpp"):
             env_model = os.environ.get("LLAMACPP_MODEL") or os.environ.get("LLAMA_CPP_MODEL")
@@ -557,7 +557,8 @@ class ModelConfig:
                 env_model
                 or str(self._get("verification", "model_llamacpp", required=False) or "")
                 or str(
-                    self._get("verification", "model") or "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
+                    self._get("verification", "model")
+                    or "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
                 )
             )
         if p == "mlx":
@@ -689,6 +690,92 @@ class ModelConfig:
         value = self._get("reranker", "cache_size", required=False)
         env_val = _blank_as_none("RERANKER_CACHE_SIZE")
         return int(env_val) if env_val is not None else int(value or 500)
+
+    @property
+    def reranker_max_seq_length(self) -> int:
+        """Max sequence length for the reranker tokenizer (models.yaml).
+
+        Previously hardcoded to 512 at every construction site; centralizing
+        here lets a yaml edit propagate to all ONNX reranker instances.
+        """
+        value = self._get("reranker", "max_seq_length", required=False)
+        env_val = _blank_as_none("RERANKER_MAX_SEQ_LENGTH")
+        if env_val is not None:
+            return int(env_val)
+        return int(value or 512)
+
+    @property
+    def reranker_batch_size_effective(self) -> int:
+        """Batch size for reranker inference: explicit env wins, then yaml.
+
+        `onnx_reranker.predict()` consults this single property so
+        RERANKER_BATCH_SIZE and models.yaml stay consistent.
+        """
+        env_val = _blank_as_none("RERANKER_BATCH_SIZE")
+        if env_val is not None:
+            return int(env_val)
+        return int(self.reranker_batch_size)
+
+    # ── ONNX Runtime (shared embedding + reranker engine) ──────────────
+    # Central knobs for every ORT session (see `onnx:` in models.yaml).
+    # Env vars (ONNX_*) win over yaml so a deploy can tune without editing
+    # config. 0 intra-op threads = auto → min(cpu_count, 4) at session build.
+    @property
+    def onnx_providers(self) -> list[str]:
+        env_val = _blank_as_none("ONNX_PROVIDERS")
+        if env_val is not None:
+            return [p.strip() for p in env_val.split(",") if p.strip()]
+        val = self._get("onnx", "providers", required=False)
+        if isinstance(val, list) and val:
+            return [str(p) for p in val]
+        return ["CPUExecutionProvider"]
+
+    @property
+    def onnx_intra_op_threads(self) -> int:
+        env_val = _blank_as_none("ONNX_INTRA_OP_THREADS")
+        if env_val is not None:
+            return int(env_val)
+        val = self._get("onnx", "intra_op_threads", required=False)
+        return int(val) if val is not None else 0
+
+    @property
+    def onnx_inter_op_threads(self) -> int:
+        env_val = _blank_as_none("ONNX_INTER_OP_THREADS")
+        if env_val is not None:
+            return int(env_val)
+        val = self._get("onnx", "inter_op_threads", required=False)
+        return int(val) if val is not None else 1
+
+    @property
+    def onnx_graph_optimization(self) -> str:
+        env_val = _blank_as_none("ONNX_GRAPH_OPTIMIZATION")
+        if env_val is not None:
+            return env_val.strip().lower()
+        return str(self._get("onnx", "graph_optimization", required=False) or "all").lower()
+
+    @property
+    def onnx_cpu_mem_arena(self) -> bool:
+        env_val = _blank_as_none("ONNX_CPU_MEM_ARENA")
+        if env_val is not None:
+            return _parse_bool(env_val)
+        return _parse_bool(self._get("onnx", "cpu_mem_arena", required=False), True)
+
+    @property
+    def onnx_mem_pattern(self) -> bool:
+        env_val = _blank_as_none("ONNX_MEM_PATTERN")
+        if env_val is not None:
+            return _parse_bool(env_val)
+        return _parse_bool(self._get("onnx", "mem_pattern", required=False), True)
+
+    @property
+    def onnx_embed_micro_batch(self) -> int:
+        env_val = _blank_as_none("ONNX_EMBED_MICRO_BATCH")
+        if env_val is not None:
+            return int(env_val)
+        val = self._get("onnx", "embed_micro_batch", required=False)
+        # NOTE: 0 is a meaningful value (auto → tier-aware), so test
+        # `is None` explicitly — `or 32` would swallow the 0 default.
+        return int(val) if val is not None else 32
 
     # ── Retrieval ─────────────────────────────────────────────────────────
     @property

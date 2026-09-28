@@ -26,8 +26,8 @@ class ONNXCrossEncoder:
     def __init__(
         self,
         model_path: str,
-        tokenizer_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
-        max_seq_length: int = 512,
+        tokenizer_name: str | None = None,
+        max_seq_length: int | None = None,
     ):
         """
         Initialize ONNX CrossEncoder.
@@ -37,9 +37,26 @@ class ONNXCrossEncoder:
             tokenizer_name: HuggingFace tokenizer name (for tokenization)
             max_seq_length: Maximum sequence length for tokenization
         """
+        # Single source of truth: models.yaml reranker.model / max_seq_length.
+        # Explicit args still win (tests, exports); otherwise config propagates.
+        if tokenizer_name is None or max_seq_length is None:
+            try:
+                from app.core.config import get_model_config as _get_cfg
+
+                _cfg = _get_cfg()
+                if tokenizer_name is None:
+                    tokenizer_name = _cfg.reranker_model
+                if max_seq_length is None:
+                    try:
+                        max_seq_length = _cfg.reranker_max_seq_length
+                    except Exception as exc:
+                        logger.debug("Reranker seq-len fell back to 512", error=str(exc))
+                        max_seq_length = 512
+            except Exception as exc:
+                logger.debug("Reranker defaults fell back to built-ins", error=str(exc))
         self.model_path = model_path
-        self.tokenizer_name = tokenizer_name
-        self.max_seq_length = max_seq_length
+        self.tokenizer_name = tokenizer_name or "cross-encoder/ms-marco-MiniLM-L-6-v2"
+        self.max_seq_length = int(max_seq_length or 512)
         self._session = None
         self._tokenizer = None
         self._initialize()
@@ -54,17 +71,21 @@ class ONNXCrossEncoder:
                 "Install with: pip install onnxruntime"
             ) from err
 
-        # Configure ONNX Runtime for CPU inference
-        sess_options = ort.SessionOptions()
-        sess_options.intra_op_num_threads = int(
-            os.environ.get("OMP_NUM_THREADS", str(os.cpu_count() or 4))
-        )
-        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        sess_options.enable_cpu_mem_arena = True
-        sess_options.enable_mem_pattern = True
+        # Shared session factory (central `onnx:` config in models.yaml —
+        # capped at 4 threads so the reranker never oversubscribes against
+        # embeddings + llama-server + uvicorn workers). Same effective
+        # defaults as the previous inline block.
+        from app.core.onnx_runtime import build_session_options
 
-        # CPU execution provider
-        providers = ["CPUExecutionProvider"]
+        sess_options = build_session_options()
+
+        # Providers from central config (default CPU-only for flat RAM).
+        try:
+            from app.core.config import get_model_config
+
+            providers = get_model_config().onnx_providers
+        except Exception:
+            providers = ["CPUExecutionProvider"]
 
         logger.info("Loading ONNX reranker model", path=self.model_path, providers=providers)
         self._session = ort.InferenceSession(
@@ -111,8 +132,27 @@ class ONNXCrossEncoder:
             return np.array([], dtype=np.float32)
 
         # Batch loop: tokenizing + inferring all pairs at once spikes RAM and
-        # latency (20 candidates x fan-out 3). Respect batch_size (default 16).
-        effective_batch = int(batch_size or int(os.environ.get("RERANKER_BATCH_SIZE", "16")) or 16)
+        # latency (20 candidates x fan-out 3). Resolution: explicit arg >
+        # RERANKER_BATCH_SIZE env > models.yaml reranker.batch_size > 16
+        # (single property: cfg.reranker_batch_size_effective).
+        # Lean tier (≤8 GB) is capped to 8 to bound peak RSS.
+        _cfg_batch = 16
+        try:
+            from app.core.config import get_model_config as _get_cfg2
+
+            _cfg_batch = int(_get_cfg2().reranker_batch_size_effective or 16)
+        except Exception as exc:
+            logger.debug("Reranker batch fell back to 16", error=str(exc))
+        try:
+            _lean = (os.getenv("TRUSTRAG_TIER", "").strip().lower() == "lean") or int(
+                os.getenv("OMP_NUM_THREADS", "4")
+            ) <= 2
+        except ValueError:
+            _lean = False
+        if _lean:
+            _cfg_batch = min(_cfg_batch, 8)
+        _env_batch = os.environ.get("RERANKER_BATCH_SIZE", str(_cfg_batch)) or _cfg_batch
+        effective_batch = int(batch_size or int(_env_batch or 16) or 16)
         session_inputs = {i.name for i in self._session.get_inputs()}
         all_scores: list[np.ndarray] = []
         for start in range(0, len(pairs), effective_batch):

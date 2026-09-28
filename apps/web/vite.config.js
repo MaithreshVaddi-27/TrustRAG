@@ -27,7 +27,9 @@ export default defineConfig({
 
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // Hidden sourcemaps: stack traces stay debuggable via uploaded maps,
+    // but dist/ no longer ships source content to every visitor.
+    sourcemap: 'hidden',
     rollupOptions: {
       output: {
         // Split vendor chunks for better caching
