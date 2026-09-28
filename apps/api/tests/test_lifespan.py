@@ -57,6 +57,22 @@ def _isolate_env(monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _no_global_logging_reconfiguration(monkeypatch):
+    """The real lifespan calls configure_logging(), which reconfigures structlog
+    AND the stdlib root logger process-wide. Letting that happen leaks state
+    into every later test: ProcessorFormatter is only installed on handlers
+    created after the call, so records emitted through loggers bound during the
+    reconfigured window fail with
+    "Logger._log() got an unexpected keyword argument 'path'".
+
+    Logging configuration is not what these tests verify, so it is stubbed.
+    Tests that DO care about logging call configure_logging themselves and
+    must restore it — see the note in test_error_handlers.py.
+    """
+    monkeypatch.setattr("app.main.configure_logging", lambda: None)
+
+
 def _patches(*, settings=None, cfg=None, onnx=None):
     status = onnx or {
         "embedding_onnx_present": True,
@@ -93,6 +109,7 @@ async def test_lifespan_starts_and_shuts_down_cleanly():
     close_instances = AsyncMock(side_effect=lambda **_k: calls.append("close_instances"))
 
     with (
+        patch("app.main.configure_logging", MagicMock()),
         patch("app.main.get_settings", return_value=_settings()),
         patch("app.main.get_model_config", return_value=_cfg()),
         patch(
@@ -127,6 +144,7 @@ async def test_lifespan_starts_and_shuts_down_cleanly():
 async def test_missing_onnx_embedding_weights_logs_error(caplog):
     """Without embedding weights every query 500s. Startup must say so loudly."""
     with (
+        patch("app.main.configure_logging", MagicMock()),
         patch("app.main.get_settings", return_value=_settings()),
         patch("app.main.get_model_config", return_value=_cfg()),
         patch(
@@ -191,6 +209,7 @@ async def test_hf_token_is_exported_to_the_environment():
 async def test_langchain_tracing_is_forced_off():
     """Strict offline operation: outbound tracing must never be enabled."""
     with (
+        patch("app.main.configure_logging", MagicMock()),
         patch("app.main.get_settings", return_value=_settings()),
         patch("app.main.get_model_config", return_value=_cfg()),
         patch(

@@ -96,6 +96,33 @@ class ONNXBGEEmbeddings(Embeddings):
         self._is_bge = "bge" in tokenizer_name.lower()
         self._query_instruction = "Represent this sentence for searching relevant passages: "
 
+        # Output width, read from the graph's declared output shape. Derived rather
+        # than hardcoded so a non-384 model (or a re-export with a different head)
+        # still returns correctly-shaped rows — including on the empty path.
+        # Falls back to 384 only if the session does not declare its shape.
+        self.embedding_dim = self._detect_embedding_dim()
+
+    def _detect_embedding_dim(self) -> int:
+        """Infer the embedding width from the ONNX graph's output declaration."""
+        default = 384
+        try:
+            outputs = self.session.get_outputs()
+            if not outputs:
+                return default
+            shape = getattr(outputs[0], "shape", None)
+            if not shape:
+                return default
+            # Shapes may carry symbolic dims (str) or None for dynamic axes; only
+            # a concrete trailing integer is trustworthy.
+            tail = shape[-1]
+            if isinstance(tail, int) and tail > 0:
+                return tail
+        except Exception as exc:
+            # A session that will not describe its output shape is unusual but not
+            # fatal; fall back to the BGE-small default rather than refusing to load.
+            logger.debug("Could not detect ONNX output dim, defaulting to 384", exc_info=exc)
+        return default
+
     def _encode_batch(self, texts: list[str], is_query: bool = False) -> np.ndarray:
         """Encode a batch of texts to embeddings (internally chunked ≤32 to bound RAM)."""
         if is_query and self._is_bge:
@@ -126,7 +153,11 @@ class ONNXBGEEmbeddings(Embeddings):
             ort_outputs = self.session.run(self.output_names, ort_inputs)
             embeddings = ort_outputs[0]  # Already L2 normalized by the model
             out.append(embeddings)
-        return _np.concatenate(out, axis=0) if out else _np.zeros((0, 384), dtype=_np.float32)
+        return (
+            _np.concatenate(out, axis=0)
+            if out
+            else _np.zeros((0, self.embedding_dim), dtype=_np.float32)
+        )
 
     def embed_query(self, text: str) -> list[float]:
         """Embed a single query text."""
