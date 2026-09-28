@@ -268,8 +268,20 @@ Two user-visible complaints, two independent root causes. Neither was a model-qu
 
 **Not yet done:** the per-call breakdown (which of the ~9 sequential LLM calls dominates) is not instrumented, so the exact split between generation and NLI latency is still unmeasured. A trace-level timer per node is the follow-up.
 
+### G-3 — Prompt hardening: XML fences, token compaction, echo/fence-breakout bugs (fixed)
+
+`GROUNDING_SYSTEM_PROMPT` restructured into XML sections (`<role>`, `<rules>`, `<scope>`, `<security>`, `<output>`) and compacted **3,602 chars / 781 tokens → 1,916 chars / 435 tokens (−46%)**. The prompt is a constant prefix on every generation call, so this is ~346 fewer tokens of KV cache per call on a 1.2B model with a 4,096-token window — a latency win, not just cleanliness. The Context/Query payload is now XML-fenced in the user message, giving the model an explicit instruction/data boundary.
+
+Three real bugs found and fixed while doing it:
+
+- **Leading echo survived whole (pre-existing).** `extract_final_answer` cut text *before* the first scaffold marker, so a marker at index 0 made the cut a no-op. A model that echoed the prompt first kept the entire echo — including copied untrusted document text — in the stored answer. That is the prompt-injection symptom. Added `_strip_leading_fenced_echo`.
+- **Fence breakout from untrusted documents (new).** A document containing a literal `</context>` closed the block early, letting the rest of the document read as instructions. Added `neutralize_prompt_fences`, applied on the generation path **and to all three NLI prompt templates** — the verifier is the trust-critical path, where a document containing `[CLAIM]` could inject a fake claim.
+- **False-positive truncation (caught by self-review).** Marker matching was substring-based, so a legitimate answer *about* the tags ("the template wraps payload in `<context>` and `<query>` tags") was truncated. Markers now only count at the start of a line. This matters specifically because the system answers from code bases, where questions about the prompt machinery are normal traffic.
+
+Tests: `tests/test_prompt_echo_stripping.py` (16 cases: leading/trailing echo, prose mentions preserved, byte-identical passthrough, fence neutralization).
+
 ### Verification
-- Backend `pytest`: **689 passed** (was 677) · `ruff check` + `ruff format --check` clean.
+- Backend `pytest`: **705 passed** · `ruff check` + `ruff format --check` clean · ports check green.
 - Frontend: eslint 0 warnings, 33 vitest passed (unchanged — no UI contract changed; `abstained` status and the reliability badge already render correctly).
 - The new config test caught a real defect during development: `max_analysis_seconds` was written under `recovery:` in yaml while read from `cost_controls`, so the default silently resolved to 0 (disabled). Fixed by relocating the key.
 

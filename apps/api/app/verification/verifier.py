@@ -30,6 +30,7 @@ from app.generation.generator import (
     extract_citations,
     format_context,
     format_context_with_chunk_indices,
+    neutralize_prompt_fences,
 )
 from app.retrieval import retriever as retriever_mod
 from app.verification import integrity as integrity_mod
@@ -760,7 +761,9 @@ async def verify_claim_nli(
         )
         structured_nli = _structured_verifier(model_obj, provider, NLIVerdict, cap)
 
-        prompt_str = NLI_PROMPT_TEMPLATE.format(context_str=context_str, claim=claim)
+        prompt_str = NLI_PROMPT_TEMPLATE.format(
+            context_str=neutralize_prompt_fences(context_str), claim=claim
+        )
 
         logger.debug("Running NLI verification for claim", claim_len=len(claim))
 
@@ -810,7 +813,7 @@ async def batch_verify_claims_nli(
     claims_list_str = "\n".join(f"{i}. {text}" for i, text in enumerate(claims, start=1))
 
     prompt_str = BATCH_NLI_PROMPT_TEMPLATE.format(
-        context_str=context_str, claims_list_str=claims_list_str
+        context_str=neutralize_prompt_fences(context_str), claims_list_str=claims_list_str
     )
 
     model_obj = get_verification_model(provider=provider, model=model)
@@ -870,7 +873,7 @@ async def fused_decompose_verify(
         context_str = format_context(chunks)
 
     prompt_str = FUSED_DECOMPOSE_VERIFY_PROMPT_TEMPLATE.format(
-        context_str=context_str, answer=answer
+        context_str=neutralize_prompt_fences(context_str), answer=answer
     )
 
     model_obj = get_verification_model(provider=provider, model=model)

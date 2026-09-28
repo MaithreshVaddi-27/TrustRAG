@@ -431,6 +431,17 @@ An earlier revision of this prompt was locked to one subject (comparing "archite
 
 The project supports local providers (Ollama, llama.cpp, MLX) and configured cloud providers (Gemini, NVIDIA NIM). The selected provider/model is passed through the analysis state. Provider-specific invocation parameters avoid sending local server options to cloud endpoints.
 
+### 10.2.1 Prompt structure and token cost
+
+The system prompt is XML-delimited into `<role>`, `<rules>`, `<scope>`, `<security>`, and `<output>`. Two reasons:
+
+- **Instruction/data separation.** The Context is untrusted document text and is fenced as `<context>…</context>` in the user message, with the query as `<query>…</query>`. Explicit open/close tags give the model a structural boundary that a bare bracket delimiter does not.
+- **Token cost is latency.** The prompt is a constant prefix on every generation call, so it occupies KV cache on every request. Compacting it from 3,602 chars / 781 tokens to 1,916 chars / 435 tokens saves ~346 tokens of KV per call — on a 1.2B model with a 4,096-token `num_ctx` that is a meaningful slice of the window, and it is also a *stable* prefix, which is what allows Ollama prompt caching to hit.
+
+Fencing is not sufficient on its own: a document containing a literal `</context>` would close the block early and let the remainder read as instructions. `neutralize_prompt_fences` strips the four fence tokens from untrusted text before wrapping (case-insensitively, leaving ordinary angle brackets and code intact). It is applied on the generation path and to all three NLI prompt templates, since the verifier is the trust-critical path and a document containing `[CLAIM]` could otherwise inject a fake claim. Fencing is the outermost of three layers; NLI verification and the service-layer grounding gate sit behind it.
+
+Echo cleanup was also fixed: `extract_final_answer` previously cut text *before* the first scaffold marker, so a marker at index 0 made the cut a no-op and a **leading** echo survived whole — including copied document text, which is exactly the prompt-injection symptom. `_strip_leading_fenced_echo` now removes leading fenced/bracket blocks. Markers only count at the start of a line, so a legitimate answer that *mentions* the tags (a real query against this very code base) is not truncated.
+
 The default configuration uses llama.cpp with `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M` for answer generation and verification. Environment overrides may change the effective runtime, so the effective model startup log and analysis record are more authoritative than the YAML default alone.
 
 ### 10.3 Output cleanup and citations
