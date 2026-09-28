@@ -501,6 +501,11 @@ async def sse_event_generator(
             "analysis.completed",
             "analysis.abstained",
             "analysis.failed",
+            # The pipeline has already exited when it emits an outage, so nothing
+            # further will ever be published. Without this the generator spins on
+            # heartbeats until no_event_ticks hits 360 (~6 minutes), holding the
+            # subscriber queue for an analysis that is definitively over.
+            "analysis.outage",
         }
         # Local 3B pipelines can run 3-5 min with recovery; keep the stream
         # open past the worst case (frontend also runs fallback polling).

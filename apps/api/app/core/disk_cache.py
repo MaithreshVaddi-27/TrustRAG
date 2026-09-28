@@ -76,16 +76,32 @@ def _cleanup_expired_entries() -> int:
             conn.close()
 
 
-def _make_key(text: str, model: str) -> str:
+# Cache-key namespaces. Query and document embeddings for the same string are
+# DIFFERENT vectors: the BGE query instruction is prepended only on the query
+# path. Keying both on bare (model, text) meant whichever ran first won, and
+# the other silently received the wrong vector — corrupting retrieval with no
+# error anywhere. Bumping the namespace also invalidates every pre-existing
+# row, which is required: those rows have no recorded mode, so we cannot know
+# which kind they hold.
+_EMBEDDING_CACHE_VERSION = "v2"
+EMBEDDING_MODE_QUERY = "query"
+EMBEDDING_MODE_DOCUMENT = "document"
+
+
+def _make_key(text: str, model: str, mode: str = EMBEDDING_MODE_DOCUMENT) -> str:
     # Normalized key avoids repeat embeddings for case/whitespace variants
-    # (OPT: local-LLM/embedding load).
-    h = hashlib.sha256(f"{model.strip().lower()}:{text.strip().lower()}".encode()).hexdigest()
+    # (OPT: local-LLM/embedding load). The version+mode prefix keeps query and
+    # document vectors in separate namespaces; see EMBEDDING_CACHE_VERSION.
+    payload = f"{_EMBEDDING_CACHE_VERSION}:{mode}:{model.strip().lower()}:{text.strip().lower()}"
+    h = hashlib.sha256(payload.encode()).hexdigest()
     return h
 
 
-def get_cached_embedding(text: str, model: str) -> list[float] | None:
+def get_cached_embedding(
+    text: str, model: str, mode: str = EMBEDDING_MODE_DOCUMENT
+) -> list[float] | None:
     """Retrieve embedding vector from SQLite cache if present."""
-    key = _make_key(text, model)
+    key = _make_key(text, model, mode)
     conn = None
     try:
         conn = _get_connection()
@@ -104,11 +120,13 @@ def get_cached_embedding(text: str, model: str) -> list[float] | None:
             conn.close()
 
 
-def set_cached_embedding(text: str, model: str, vector: Sequence[float]) -> None:
+def set_cached_embedding(
+    text: str, model: str, vector: Sequence[float], mode: str = EMBEDDING_MODE_DOCUMENT
+) -> None:
     """Store embedding vector as packed float32 in SQLite cache."""
     if not vector:
         return
-    key = _make_key(text, model)
+    key = _make_key(text, model, mode)
     dim = len(vector)
     blob = struct.pack(f"{dim}f", *vector)
     conn = None
@@ -128,7 +146,7 @@ def set_cached_embedding(text: str, model: str, vector: Sequence[float]) -> None
 
 
 def get_cached_embeddings_batch(
-    texts: Sequence[str], model: str
+    texts: Sequence[str], model: str, mode: str = EMBEDDING_MODE_DOCUMENT
 ) -> tuple[dict[int, list[float]], list[int]]:
     """
     Check cache for a batch of texts.
@@ -145,7 +163,7 @@ def get_cached_embeddings_batch(
     conn = None
     try:
         conn = _get_connection()
-        keys = [_make_key(text, model) for text in texts]
+        keys = [_make_key(text, model, mode) for text in texts]
         indices_by_key: dict[str, list[int]] = {}
         for idx, key in enumerate(keys):
             indices_by_key.setdefault(key, []).append(idx)
@@ -172,7 +190,10 @@ def get_cached_embeddings_batch(
 
 
 def set_cached_embeddings_batch(
-    texts: Sequence[str], model: str, vectors: Sequence[Sequence[float]]
+    texts: Sequence[str],
+    model: str,
+    vectors: Sequence[Sequence[float]],
+    mode: str = EMBEDDING_MODE_DOCUMENT,
 ) -> None:
     """
     Batch store embedding vectors in a single transaction.
@@ -191,7 +212,7 @@ def set_cached_embeddings_batch(
         for text, vector in zip(texts, vectors, strict=True):
             if not vector:
                 continue
-            key = _make_key(text, model)
+            key = _make_key(text, model, mode)
             dim = len(vector)
             blob = struct.pack(f"{dim}f", *vector)
             batch_data.append((key, model, blob, dim, time.time()))

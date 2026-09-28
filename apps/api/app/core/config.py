@@ -265,6 +265,12 @@ class Settings(BaseSettings):
     rate_limit_auth_per_minute: int = 20
     rate_limit_upload_per_minute: int = 10
     rate_limit_url_ingest_per_minute: int = 10
+    # Shared limiter state store. Empty -> in-process memory, which is per worker
+    # and therefore wrong behind multiple uvicorn/gunicorn workers (each enforces
+    # its own bucket, multiplying the effective limit). Set a Redis URI in prod.
+    # Previously read via getattr(..., "", ...), so the field did not exist and
+    # the setting was silently ignored.
+    rate_limit_storage_uri: str = ""
 
     # ── Model Configuration Overrides (env takes precedence over models.yaml) ──
     gemini_model: str = Field(

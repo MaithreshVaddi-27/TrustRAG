@@ -41,6 +41,36 @@ _CONNECT_MAX_ATTEMPTS = 12
 _CONNECT_INITIAL_BACKOFF_SECONDS = 3.0
 _CONNECT_MAX_BACKOFF_SECONDS = 20.0
 
+
+def _validate_mongodb_uri(uri: str) -> None:
+    """Reject a permanently unusable MONGODB_URI before entering the retry loop.
+
+    Two distinct failures live here, and neither is worth retrying:
+
+    * `pymongo` raises ``InvalidURI`` (a PyMongoError) straight from the client
+      constructor for a syntactically broken address.
+    * An out-of-range port raises a plain ``ValueError`` — notably NOT a
+      PyMongoError, so without this check it escapes the retry handler entirely
+      and bypasses the DatabaseError translation.
+
+    Both surface as a config typo, so the error says so and names the variable.
+    """
+    from pymongo.uri_parser import parse_uri
+
+    try:
+        parse_uri(uri)
+    except ValueError as exc:
+        raise DatabaseError(
+            f"MONGODB_URI is not a valid MongoDB connection string: {exc}",
+            detail="Fix the MONGODB_URI value in .env (for example mongodb://localhost:27017).",
+        ) from exc
+    except Exception as exc:  # InvalidURI and friends
+        raise DatabaseError(
+            f"MONGODB_URI is not a valid MongoDB connection string: {exc}",
+            detail="Fix the MONGODB_URI value in .env (for example mongodb://localhost:27017).",
+        ) from exc
+
+
 # ─── Collection name constants ────────────────────────────────────────────────
 # These names must never be scattered as string literals through the codebase.
 
@@ -89,7 +119,18 @@ async def connect_db() -> None:
     backoff = _CONNECT_INITIAL_BACKOFF_SECONDS
     last_exc: Exception | None = None
 
+    # Fail fast on a permanently invalid URI. A malformed address is not a
+    # transient outage: retrying it 12 times with exponential backoff just delays
+    # the same fatal error by minutes and buries it under retry warnings. Doing
+    # this before the loop also means the actionable message below names the
+    # actual problem (a typo in MONGODB_URI) rather than "check your config".
+    _validate_mongodb_uri(settings.mongodb_uri)
+
     for attempt in range(1, _CONNECT_MAX_ATTEMPTS + 1):
+        # Bound before the try: AsyncIOMotorClient itself can raise (a malformed
+        # but syntactically parseable URI raises InvalidURI from the constructor),
+        # in which case the except handler must not reference an unbound name.
+        candidate_client: AsyncIOMotorClient | None = None
         try:
             uri_lower = settings.mongodb_uri.lower()
             is_local = (
@@ -112,7 +153,7 @@ async def connect_db() -> None:
             if "mongodb+srv" in uri_lower or "tls=true" in uri_lower or "ssl=true" in uri_lower:
                 client_kwargs["tlsCAFile"] = certifi.where()
 
-            candidate_client: AsyncIOMotorClient = AsyncIOMotorClient(
+            candidate_client = AsyncIOMotorClient(
                 settings.mongodb_uri,
                 **client_kwargs,
             )
@@ -128,9 +169,18 @@ async def connect_db() -> None:
                 attempt=attempt,
             )
             return
-        except PyMongoError as exc:
+        except (PyMongoError, ValueError) as exc:
+            # ValueError is included deliberately: pymongo raises it for an
+            # out-of-range port ("Port must be an integer between 0 and 65535")
+            # and that is NOT a PyMongoError, so without it a typo'd URI escapes
+            # this handler entirely — skipping the retry/backoff policy and the
+            # DatabaseError translation below.
             last_exc = exc
-            candidate_client.close()
+            if candidate_client is not None:
+                try:
+                    candidate_client.close()
+                except Exception as close_exc:  # pragma: no cover - best effort
+                    logger.debug("MongoDB client close failed", error=str(close_exc))
             if attempt == _CONNECT_MAX_ATTEMPTS:
                 break
             logger.warning(

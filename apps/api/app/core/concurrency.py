@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import os
 import threading
+import weakref
 
 from app.core.hardware import get_system_memory_info
 from app.core.logging import get_logger
@@ -25,7 +26,13 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 # Module-level semaphore and initialization lock
-_global_semaphore: asyncio.Semaphore | None = None
+# Keyed by the loop *object* in a WeakKeyDictionary, not by id(loop): CPython
+# reuses ids once an object is collected, so an id-keyed map can hand a semaphore
+# bound to a dead loop to a brand-new one that lands on the same address. Weak
+# keys also drop the entry when the loop closes.
+_global_semaphores: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+    weakref.WeakKeyDictionary()
+)
 _semaphore_lock = threading.Lock()
 
 
@@ -62,24 +69,31 @@ def get_global_semaphore() -> asyncio.Semaphore:
     Thread-safe initialization using a lock. The semaphore is bound to the
     current event loop at first access (asyncio.Semaphore is loop-local).
     """
-    global _global_semaphore
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop (sync setup code). Return a detached semaphore; it
+        # binds lazily on first contention, inside whichever loop awaits it.
+        semaphore = asyncio.Semaphore(_compute_concurrency())
+        logger.info("Initialized detached concurrency semaphore", concurrency=semaphore._value)
+        return semaphore
 
-    # Fast path: already initialized
-    if _global_semaphore is not None:
-        return _global_semaphore
+    existing = _global_semaphores.get(loop)
+    if existing is not None:
+        return existing
 
-    # Slow path: initialize under lock
     with _semaphore_lock:
-        if _global_semaphore is None:
+        existing = _global_semaphores.get(loop)
+        if existing is None:
             concurrency = _compute_concurrency()
-            _global_semaphore = asyncio.Semaphore(concurrency)
-            logger.info("Initialized global concurrency semaphore", concurrency=concurrency)
+            existing = asyncio.Semaphore(concurrency)
+            _global_semaphores[loop] = existing
+            logger.info("Initialized concurrency semaphore", concurrency=concurrency)
 
-    return _global_semaphore
+    return existing
 
 
 async def reset_global_semaphore() -> None:
     """Reset the global semaphore (primarily for testing)."""
-    global _global_semaphore
     with _semaphore_lock:
-        _global_semaphore = None
+        _global_semaphores.clear()
