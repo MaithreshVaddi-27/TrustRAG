@@ -311,7 +311,11 @@ Full sweep: the product answers from any knowledge base, so a single subject bak
 
 ## 11. Follow-ups (ordered backlog, not started)
 
-1.redis` (per-client caps are process-local).
+1. Set `SLOWAPI_STORAGE_URI` to Redis for production. The shared SlowAPI limiter in
+   `app/core/rate_limiter.py` defaults to in-memory storage, so with more than one
+   uvicorn worker the per-client caps are process-local and a client gets N× the
+   intended limit by spreading requests across workers. `.env.example` documents
+   the variable but leaves it commented out, so the unsafe default ships.
 2. Add k6 budget assertion for p95 analysis latency after ONNX tuning lands.
 3. Evaluate `onnxruntime` arena-off profile on 512 MB containers; record in PERFORMANCE-GUIDE.
 4. Rotate `JWT_SECRET` per environment; document rotation runbook.
