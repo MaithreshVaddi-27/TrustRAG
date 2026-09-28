@@ -117,7 +117,7 @@ export default function ComparisonMatrix() {
             </div>
 
             <div className="mt-8 pt-4 border-t border-slate-900 text-center text-xs font-mono text-red-400/80">
-              High legal, financial, and clinical liability risk
+              High-stakes domains where a wrong answer has real consequences
             </div>
           </div>
 

@@ -133,8 +133,8 @@ def _analysis_doc(owner: str) -> dict:
     return {
         "_id": ObjectId(ANALYSIS_ID),
         "user_id": ObjectId(owner),
-        "query": "What is the refund window?",
-        "answer": "Refunds within 30 days.",
+        "query": "What is the token lifetime?",
+        "answer": "Records retained for 30 days.",
         "knowledge_base_id": "64ee39d09c6292376e191982",
         "status": "completed",
         "verdict_status": "PASS",
@@ -204,7 +204,7 @@ def test_real_service_returns_the_owners_own_analysis(user_id):
     assert r.status_code == 200, r.text[:300]
     body = r.json()
     assert body["id"] == ANALYSIS_ID
-    assert body["answer"] == "Refunds within 30 days."
+    assert body["answer"] == "Records retained for 30 days."
     assert body["status"] == "completed"
     assert body["reliability"]["score"] == 0.91
     assert body["knowledge_base_id"] == "64ee39d09c6292376e191982"

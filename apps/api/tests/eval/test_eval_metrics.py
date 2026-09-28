@@ -44,7 +44,7 @@ def test_ndcg_at_k_hand_computed():
 
 
 def test_resolve_snippets_case_insensitive():
-    texts = ["FULL REFUND within 30 days of delivery", "Shipping is free"]
+    texts = ["Bearer tokens are valid for 30 days", "Request rate limit is 100 per second"]
     resolved = metrics.resolve_snippets(texts, ["30 Days", "missing phrase"])
     assert resolved[0] == {"snippet": "30 Days", "found": True, "first_rank": 0}
     assert resolved[1] == {"snippet": "missing phrase", "found": False, "first_rank": None}
@@ -115,7 +115,7 @@ def test_score_query_keys_and_values():
         query_class="factual",
         retrieved_ids=["e1", "e2"],
         gold_ids={"e1", "e9"},
-        evidence_texts=["full refund within 30 days"],
+        evidence_texts=["bearer tokens are valid for 30 days"],
         gold_snippets=["30 days"],
         claim_states=["SUPPORTED", "NEUTRAL"],
         citation_supporting=[True],
@@ -136,7 +136,7 @@ def test_score_query_keys_and_values():
             query_class="factual",
             retrieved_ids=["e1", "e2"],
             gold_ids={"e1", "e9"},
-            evidence_texts=["full refund within 30 days"],
+            evidence_texts=["bearer tokens are valid for 30 days"],
             gold_snippets=["30 days"],
             claim_states=["SUPPORTED", "NEUTRAL"],
             citation_supporting=[True],

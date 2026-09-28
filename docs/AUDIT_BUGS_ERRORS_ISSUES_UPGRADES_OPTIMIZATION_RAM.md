@@ -280,8 +280,32 @@ Three real bugs found and fixed while doing it:
 
 Tests: `tests/test_prompt_echo_stripping.py` (16 cases: leading/trailing echo, prose mentions preserved, byte-identical passthrough, fence neutralization).
 
+### G-4 — Domain lock removed from production logic, tests, corpus, and docs (fixed)
+
+Full sweep: the product answers from any knowledge base, so a single subject baked into production code silently degraded everything else.
+
+**Production defects (highest severity — these shipped):**
+
+| Site | Defect | Fix |
+|------|--------|-----|
+| `ingestion/preprocessor.py` | `detect_chunk_zone` matched literal keywords (`UNIT-`, `CHAPTER`, `SYLLABUS`, `ISBN:`, `DOI:`, `effective from`). A code, contract, paper or prose corpus matched **nothing** — every chunk became `BODY` and the BM25 zone weights (1.5/1.3/0.8) never applied. | Detection is now **structural**: page-1 title-line shape (short, Title Case or ALL CAPS, no terminal period, not `label: value`), and `label: value` front-matter whose value is a date/version/hash/number. Two constraints prevent false positives — outline markers require a section NUMBER and must lead the line, and a heading never ends in a period (so "Section 12 of the agreement applies." stays `BODY`). |
+| `verification/verifier.py` | Predicate list was commerce/ops-only (`refunds`, `stores`, `deletes`). **And the loop was wrong:** predicates in the outer loop, so a low-priority verb late in a sentence beat a high-priority one early — `"The rate is 5% and it allows refunds."` produced the nonsensical subject `"The rate is 5% and it"`. | Now a cross-domain verb set scanned **left to right**, splitting at the first relational verb. That sentence yields the correct `("The rate", "is", …)`. |
+| `services/search_service.py` | The URL-ingestion allowlist was a fixed reference list, so a KB seeded from its own sources was impossible without a code change. | Added `URL_INGEST_ALLOWLIST_EXTRA`. This is an **SSRF ceiling** (`_effective_allowlist` intersects, so a request can only narrow), so the default was NOT widened — operators extend it explicitly. Narrow host matching, the IP blocklist, DNS checks, and size limits are unchanged; the error message now reports the real effective list. |
+| `verification/verifier.py` | Fused decompose+verify few-shot example was a refund claim, biasing a domain-agnostic verifier toward commerce. | Example is now a shape placeholder plus an explicit "never copy its subject matter". |
+| `agent/graph.py` | Query-rewrite prompt exemplified `API → Application Programming Interface`, biasing acronym expansion toward software. | Stated as a subject-neutral rule instead. |
+| `generation/generator.py` | The `<scope>` block enumerated source-code + textbook structure while naming other domains as examples — asymmetric. | Delegates terminology, structure, and detail level to the Context. |
+
+**Test suite:** ~180 commerce-domain fixtures across 23 files rewritten to generic/technical vocabulary. Two failures were introduced by the sweep itself and fixed: `lexical_analyze("record\nwindow")` and the BM25 TF test both depended on the *stems* of the old words, so the replacement text was corrected rather than the assertion weakened.
+
+**Eval corpus rebuilt across four domains** — `service-api.md` (code/API), `retention-policy.md` + `leave-policy.md` (policy/HR), `thermal-runoff-study.txt` (science), `limits-2025.txt` (stale) + `limits-2026.txt` (current), `scratch-notes.txt` (injection). Dataset grew to **27 queries** (14 factual / 3 temporal / 3 conflicting / 2 missing-evidence / 5 adversarial), preserving every capability class while spanning four unrelated subjects — so a passing run is now *evidence* of agnosticism rather than a single-subject result presented as general. `test_baseline_dataset.py` no longer hardcodes a query count or the id `q024`; the no-coverage rule is expressed by `expected_outcome`, and a new test pins corpus breadth.
+
+**Docs/UI:** running worked-example re-based from refunds onto an API reference; project guide now states the pipeline is domain-agnostic; KB/experiment placeholders and two landing-page lines span several domains.
+
+**Not changed, flagged for the owner:** `apps/web/src/components/landing/landingData.js` advertises hardcoded benchmark figures (99.4% "SOTA S-Tier", 81.2%, 68.7%, 24.1%) and cites "HaluEval, RAGTruth, and proprietary enterprise finance/biomedical datasets". Those are factual marketing claims, not domain lock — rewriting or removing them without evidence would be fabrication, so they were left untouched and need an owner decision.
+
 ### Verification
-- Backend `pytest`: **705 passed** · `ruff check` + `ruff format --check` clean · ports check green.
+- Backend `pytest`: **734 passed** · `ruff check` + `ruff format --check` clean · ports check green.
+- Frontend: eslint 0 warnings, 33 vitest passed, `vite build` ok.
 - Frontend: eslint 0 warnings, 33 vitest passed (unchanged — no UI contract changed; `abstained` status and the reliability badge already render correctly).
 - The new config test caught a real defect during development: `max_analysis_seconds` was written under `recovery:` in yaml while read from `cost_controls`, so the default silently resolved to 0 (disabled). Fixed by relocating the key.
 

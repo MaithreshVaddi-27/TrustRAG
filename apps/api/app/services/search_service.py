@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import os
 import re
 import socket
 import ssl
@@ -48,7 +49,18 @@ BLOCKED_HOSTNAMES = {
 # 3. DNS resolution validation to prevent internal IP access
 # 4. Response size limits to prevent resource exhaustion
 
-# Default allowlist for document ingestion URLs - can be configured via env
+# Default allowlist for document ingestion URLs - can be configured via env.
+#
+# This is an SSRF control, not a convenience list: `_effective_allowlist`
+# INTERSECTS a request's allowlist with this set, so it is a hard ceiling. The
+# shipped default is therefore kept narrow and reference-oriented.
+#
+# A knowledge base is not domain-specific, so an operator ingesting a corpus
+# from its own sources (an internal docs host, a vendor site, a standards body)
+# needs to extend the ceiling. Use URL_INGEST_ALLOWLIST_EXTRA to ADD origins
+# explicitly — comma-separated `scheme://host[:port]`. Narrow host matching
+# still applies, and all blocklist/DNS/size checks below are unchanged, so
+# extending it does not weaken the SSRF protections themselves.
 DEFAULT_URL_ALLOWLIST = {
     "https://en.wikipedia.org",
     "https://www.wikipedia.org",
@@ -61,6 +73,25 @@ DEFAULT_URL_ALLOWLIST = {
     "https://tools.ietf.org",
     "https://rfc-editor.org",
 }
+
+# Operator-supplied additions to the ceiling above.
+_URL_ALLOWLIST_EXTRA_ENV = "URL_INGEST_ALLOWLIST_EXTRA"
+
+
+def _default_allowlist() -> set[str]:
+    """DEFAULT_URL_ALLOWLIST plus any operator-configured extra origins."""
+    entries = set(DEFAULT_URL_ALLOWLIST)
+    raw = os.getenv(_URL_ALLOWLIST_EXTRA_ENV, "").strip()
+    if raw:
+        for item in raw.split(","):
+            candidate = item.strip()
+            if not candidate:
+                continue
+            parsed = urlparse(candidate)
+            if parsed.scheme and parsed.hostname:
+                entries.add(f"{parsed.scheme}://{parsed.hostname}")
+    return entries
+
 
 # Maximum document size for URL ingestion (10MB)
 MAX_URL_DOCUMENT_SIZE = 10 * 1024 * 1024
@@ -96,7 +127,7 @@ def _origin_matches(
 
 def _effective_allowlist(allowlist: set[str] | None) -> list[tuple[str, str, int | None]]:
     """Intersect any request allowlist with the server's secure default policy."""
-    default_entries = _parse_allowlist(DEFAULT_URL_ALLOWLIST)
+    default_entries = _parse_allowlist(_default_allowlist())
     if allowlist is None:
         return default_entries
 
@@ -362,7 +393,9 @@ def validate_ingestion_url(url: str, allowlist: set[str] | None = None) -> tuple
     if not any(
         _origin_matches((scheme, hostname, port), allowed) for allowed in effective_allowlist
     ):
-        allowed_display = sorted(DEFAULT_URL_ALLOWLIST)
+        allowed_display = sorted(
+            f"{s}://{h}" + (f":{p}" if p else "") for s, h, p in effective_allowlist
+        )
         return False, f"URL origin not in allowlist. Allowed origins: {allowed_display}"
 
     # Block dangerous hostnames, including trailing-dot localhost variants.

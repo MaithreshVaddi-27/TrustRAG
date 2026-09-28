@@ -38,7 +38,7 @@ RAG improves grounding but does not mathematically guarantee truth. Search can m
 
 ### Document and chunk
 
-A **document** is an uploaded source, such as a policy PDF. A **chunk** is a smaller passage extracted from it. Search works on chunks because a whole 100-page PDF is too large and imprecise to send to a model for every question.
+A **document** is an uploaded source, such as an API reference or a policy PDF. A **chunk** is a smaller passage extracted from it. Search works on chunks because a whole 100-page PDF is too large and imprecise to send to a model for every question.
 
 Chunks keep source metadata: document id, page, chunk index, character offset, detected content zone, effective dates, version, and OCR provenance. This metadata is what later enables an evidence panel to point back to a source.
 
@@ -46,7 +46,7 @@ Chunks keep source metadata: document id, page, chunk index, character offset, d
 
 A **token** is a piece of text used by language models and tokenizers. It may be a whole word, part of a word, punctuation, or a special marker.
 
-An **embedding** is a list of numbers representing text. TRUSTRAG uses BGE-small to turn each passage and question into a 384-number vector. The intent is that semantically related text has vectors pointing in similar directions. For example, “When can I get my money back?” may be close to a passage headed “Refund eligibility” even when the words differ.
+An **embedding** is a list of numbers representing text. TRUSTRAG uses BGE-small to turn each passage and question into a 384-number vector. The intent is that semantically related text has vectors pointing in similar directions. For example, “How long are tokens valid?” may be close to a passage headed “Token lifetime” even when the words differ.
 
 ### Dense search
 
@@ -157,7 +157,7 @@ OCR is not used on every page. Native text extraction is cheaper and preferable 
 
 `preprocessor.py` contains shared text cleanup and token preparation. It handles Unicode and whitespace normalization, de-hyphenation/contraction cases, stopwords, and a Porter stemmer. The lexical-analysis function is used by sparse indexing and query search so both sides apply compatible transformations.
 
-For example, stemming can help align `policies` and `policy`; stopword removal reduces the influence of generic words. Query preprocessing can remove conversational filler that does not help locate passages.
+For example, stemming can help align `limits` and `limit`; stopword removal reduces the influence of generic words. Query preprocessing can remove conversational filler that does not help locate passages.
 
 The preprocessor also detects a zone for each chunk, such as title, header, table, list, body, or footer. Sparse weights can boost title and header words because those often describe what a section is about. Zone detection is heuristic, so it can occasionally classify a passage incorrectly.
 
@@ -278,7 +278,7 @@ The analysis service creates an analysis record and calls the agent workflow wit
 - a comparison such as “A vs B”, split into two retrieval branches; or
 - a multi-question query, split at question marks up to a configured maximum of three.
 
-For example, “Compare the basic and premium refund rules” can run searches for each side concurrently. The results are merged and deduplicated by chunk id, keeping the best RRF score. If one branch fails but another succeeds, the successful branch is used; if every branch fails, the router raises a retrieval outage.
+For example, “Compare the 2025 and 2026 rate limits” can run searches for each side concurrently. The results are merged and deduplicated by chunk id, keeping the best RRF score. If one branch fails but another succeeds, the successful branch is used; if every branch fails, the router raises a retrieval outage.
 
 This routing is a deterministic query-shape heuristic. It is not an LLM agent deciding arbitrary tools or plans.
 
@@ -410,7 +410,7 @@ When evidence is persisted for an analysis, the system carries scores and refere
 `generator.py` sorts candidate evidence deterministically, removes duplicate or near-duplicate passages, and labels each kept passage:
 
 ```text
---- Segment 1 [Source: refund-policy.pdf, Page 4] ---
+--- Segment 1 [Source: service-api.md, Page 1] ---
 <passage text>
 ```
 
@@ -460,7 +460,7 @@ Context compression can summarize a large evidence context before generation. It
 
 An answer can contain several factual statements with different support. For example:
 
-> “The policy gives customers 30 days to return an item, and refunds are processed within 5 business days.”
+> “Tokens are valid for 30 days, and revocation takes effect within 60 seconds.”
 
 The first statement might be supported while the second is contradicted. A single label on the paragraph would hide that distinction. Claim-level verification breaks the answer into atomic assertions and evaluates them individually.
 
@@ -698,11 +698,11 @@ What did the system answer? → Which evidence did it use? → Which statements 
 
 ## 18. End-to-end worked example
 
-Imagine a user uploads a refund policy containing:
+Imagine a user uploads an API reference containing:
 
-> “Items may be returned within 30 calendar days. Refunds are issued to the original payment method.”
+> “Bearer tokens remain valid for 30 days after they are issued. Revocation takes effect within 60 seconds.”
 
-The user asks: “How long do I have to return an item, and where does the refund go?”
+The user asks: “How long are tokens valid, and how quickly does revocation take effect?”
 
 1. **Parse:** PDF page text is extracted; if it is a scan, the page may be OCRed.
 2. **Normalize:** whitespace, punctuation, and lexical forms are standardised.
@@ -712,7 +712,7 @@ The user asks: “How long do I have to return an item, and where does the refun
 6. **Rerank:** the cross-encoder compares the complete question with each candidate passage and reorders them.
 7. **Integrity check:** the candidate text hash is compared with Mongo’s canonical chunk hash.
 8. **Generate:** the LLM receives the numbered source passage and writes an answer, ideally with segment citation.
-9. **Decompose:** the answer becomes claims such as “Returns are allowed within 30 calendar days” and “Refunds go to the original payment method.”
+9. **Decompose:** the answer becomes claims such as “Tokens remain valid for 30 days” and “Revocation takes effect within 60 seconds.”
 10. **NLI:** each claim is judged against the numbered evidence. A matching sentence should be `SUPPORTED`; absent information should be `NEUTRAL`; explicit disagreement should be `CONTRADICTED`.
 11. **Verdict:** claim counts are turned into coverage, contradiction rate, and an engineering reliability score.
 12. **Persist/display:** evidence, claim outcomes, answer, verdict, and trace events are stored and shown in the workbench.

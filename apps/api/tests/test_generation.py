@@ -66,7 +66,7 @@ def test_context_format_returns_original_chunk_indexes_after_sort_and_dedup():
     high = {
         "filename": "doc-high.txt",
         "page": 2,
-        "text": "The approved policy permits refunds within thirty days.",
+        "text": "The approved policy permits records within thirty days.",
         "rrf_score": 0.9,
     }
 
@@ -126,7 +126,7 @@ async def test_generation_successful_call(mock_get_llm):
 
 def test_strip_stray_abstain_matrix():
     """Trailing bare ABSTAIN (small-model habit) is peeled, never content."""
-    good = "Refunds are available for 45 days with processing in a week."
+    good = "Records are available for 45 days with processing in a week."
     assert strip_stray_abstain(f"{good}\nABSTAIN") == good
     assert strip_stray_abstain(f"{good}    ABSTAIN") == good
     assert strip_stray_abstain(f"{good}\nABSTAIN.") == good

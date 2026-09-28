@@ -193,7 +193,7 @@ export default function KnowledgeBasesPage() {
                   required
                   value={newKbName}
                   onChange={(e) => setNewKbName(e.target.value)}
-                  placeholder="e.g. Legal Contracts 2026, Clinical Notes"
+                  placeholder="e.g. Service API v3, Retention Policy 2026, Field Study 2026"
                   className="w-full bg-surface-800/90 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40 transition-colors"
                 />
               </div>

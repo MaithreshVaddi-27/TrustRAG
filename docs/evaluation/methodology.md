@@ -55,9 +55,11 @@
 
 ## Query Dataset
 
-Minimum viable evaluation set (frozen as `baseline_v1`: 12 factual + 3 temporal +
-3 conflicting + 2 missing-evidence + 5 adversarial = 25 queries over the 6-file
-fixture corpus):
+Minimum viable evaluation set (`baseline_v1`: 14 factual + 3 temporal +
+3 conflicting + 2 missing-evidence + 5 adversarial = 27 queries over the 7-file
+fixture corpus). The corpus deliberately spans **four unrelated domains** — source
+code / API docs, internal policy, HR policy, and a scientific paper — so a passing
+run is evidence of domain-agnostic behaviour rather than a single-subject result:
 - Queries spanning: factual, temporal (outdated evidence), conflicting sources, missing evidence
 - At least 5 adversarial: queries designed to trigger failures
 - Fixtures predate the IDF + newline changes: re-index after any chunking/normalization
@@ -78,11 +80,13 @@ Results must include: configuration, query, metrics, timestamps, config_version.
 Do not edit `apps/api/tests/eval/datasets/baseline_v1.jsonl` in place.
 To change the set, add `baseline_v2.jsonl` and keep v1 for comparability.
 
-- Corpus fixtures: `apps/api/tests/eval/fixtures/corpus/*.txt` (6 docs: refund,
-  shipping, pricing-2025 [stale], pricing-2026 [current], support, notice-board
-  with embedded prompt-injection graffiti).
-- 25 queries: 12 factual + 3 temporal + 3 conflicting + 2 missing-evidence
-  (= 20 standard) + 5 adversarial (injection, stale-bait, false-premise,
+- Corpus fixtures: `apps/api/tests/eval/fixtures/corpus/` (7 docs spanning four
+  domains — `service-api.md` (code/API), `retention-policy.md` + `leave-policy.md`
+  (policy/HR), `thermal-runoff-study.txt` (science), `limits-2025.txt` (stale) +
+  `limits-2026.txt` (current), and `scratch-notes.txt` carrying embedded
+  prompt-injection graffiti).
+- 27 queries: 14 factual + 3 temporal + 3 conflicting + 2 missing-evidence
+  (= 22 standard) + 5 adversarial (injection, stale-bait, false-premise,
   garbled, injection-suffix).
 - Gold evidence = verbatim snippets from the fixtures (chunk ids change across
   re-indexes, snippet text is the stable key). `test_baseline_dataset.py` fails
@@ -96,7 +100,7 @@ To change the set, add `baseline_v2.jsonl` and keep v1 for comparability.
 2. Run: `python scripts/run_baseline_eval.py --email ... --password ... \
    --kb-id <KB_ID> --post-experiment`
    (7s gap between queries respects the 10-analyses/min rate limit;
-   ~25 queries take ~5–10 min plus LLM time.)
+   ~27 queries take ~5–10 min plus LLM time.)
 3. Results JSON lands in `docs/evaluation/results/`; aggregate is also POSTed
    to `/api/v1/experiments` with the server `config_version`.
 4. Copy the aggregate row into the snapshot table below. Never hand-edit

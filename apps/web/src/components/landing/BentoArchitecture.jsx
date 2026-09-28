@@ -14,7 +14,7 @@ export default function BentoArchitecture() {
           Six Layers Of Rigorous AI Reliability
         </h2>
         <p className="text-slate-400 text-sm sm:text-base max-w-2xl mx-auto mt-3">
-          Built from first principles for mission-critical enterprise applications where hallucinations have real legal and financial consequences.
+          Built from first principles for applications where a hallucinated answer has real consequences — legal, financial, clinical, or technical.
         </p>
       </div>
 

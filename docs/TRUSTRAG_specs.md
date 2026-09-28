@@ -575,8 +575,8 @@ Analyze:
 Conflict example:
 
 ```text
-Policy v3 → 30 days
-Policy v4 → 45 days
+Spec v3 → 30 days
+Spec v4 → 45 days
 ```
 
 If precedence is established, use the applicable source.
@@ -631,10 +631,10 @@ Example:
 
 ```text
 Answer:
-"Refunds are available for 45 days and processing takes 7 days."
+"Tokens are valid for 45 days and revocation takes 7 seconds."
 
 Claim 1:
-Refunds are available for 45 days.
+Tokens are valid for 45 days.
 
 Claim 2:
 Processing takes 7 days.

@@ -32,24 +32,24 @@ ANALYSIS_ID = "64ee39d09c6292376e191983"
 KB_ID = "64ee39d09c6292376e191982"
 USER_ID = "64ee39d09c6292376e191981"
 
-ANSWER = "Refunds are allowed within 30 days of purchase [Segment 1]."
+ANSWER = "Records are retained for 30 days after closure [Segment 1]."
 CHUNKS = [
     {
         "chunk_id": "c1",
-        "text": "Customers may request a refund within 30 days of purchase.",
+        "text": "Customers may request a record within 30 days of purchase.",
         "document_id": "64ee39d09c6292376e191990",
         "chunk_index": 0,
-        "filename": "policy.pdf",
+        "filename": "service-api.md",
         "method": "hybrid",
         "score": 0.91,
         "integrity_status": "VERIFIED",
     },
     {
         "chunk_id": "c2",
-        "text": "Refunds are issued to the original payment method.",
+        "text": "Records are issued to the original payment method.",
         "document_id": "64ee39d09c6292376e191990",
         "chunk_index": 1,
-        "filename": "policy.pdf",
+        "filename": "service-api.md",
         "method": "hybrid",
         "score": 0.84,
         "integrity_status": "VERIFIED",
@@ -72,10 +72,10 @@ def _fused_response() -> FusedDecomposeVerify:
     return FusedDecomposeVerify(
         items=[
             {
-                "claim": "Refunds are allowed within 30 days of purchase.",
+                "claim": "Records are retained for 30 days after closure.",
                 "verdict": "SUPPORTED",
                 "supporting_segments": [1],
-                "explanation": "Segment 1 states the 30-day refund window.",
+                "explanation": "Segment 1 states the 30-day token lifetime.",
             },
         ]
     )
@@ -157,7 +157,7 @@ async def test_execute_agentic_rag_flow_produces_a_grounded_verdict(analysis_dep
     final = await execute_agentic_rag_flow(
         analysis_id_str=ANALYSIS_ID,
         kb_id_str=KB_ID,
-        query="What is the refund window?",
+        query="What is the token lifetime?",
         user_id_str=USER_ID,
     )
 
@@ -207,7 +207,7 @@ async def test_analysis_persists_evidence_and_returns_a_persistable_record(analy
     final = await execute_agentic_rag_flow(
         analysis_id_str=ANALYSIS_ID,
         kb_id_str=KB_ID,
-        query="What is the refund window?",
+        query="What is the token lifetime?",
         user_id_str=USER_ID,
     )
 
@@ -234,7 +234,7 @@ async def test_contradicted_evidence_yields_fail_not_pass(analysis_deps):
         final = await execute_agentic_rag_flow(
             analysis_id_str=ANALYSIS_ID,
             kb_id_str=KB_ID,
-            query="What is the refund window?",
+            query="What is the token lifetime?",
             user_id_str=USER_ID,
         )
 
@@ -246,7 +246,7 @@ def _verification_model_contradicting() -> MagicMock:
     response = FusedDecomposeVerify(
         items=[
             {
-                "claim": "Refunds are allowed within 30 days of purchase.",
+                "claim": "Records are retained for 30 days after closure.",
                 "verdict": "CONTRADICTED",
                 "supporting_segments": [],
                 "explanation": "Evidence does not support this.",
@@ -273,7 +273,7 @@ async def test_empty_knowledge_base_abstains_without_inventing_evidence(analysis
         final = await execute_agentic_rag_flow(
             analysis_id_str=ANALYSIS_ID,
             kb_id_str=KB_ID,
-            query="What is the refund window?",
+            query="What is the token lifetime?",
             user_id_str=USER_ID,
         )
 

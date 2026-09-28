@@ -1,0 +1,9 @@
+API Limits 2025 (ARCHIVED - superseded)
+
+Effective from: 2025-01-01
+Effective until: 2025-12-31
+
+Maximum payload size: 5 megabytes.
+Default request rate limit: 50 requests per second per tenant.
+Default token lifetime: 14 days.
+This specification is no longer valid after December 31, 2025.

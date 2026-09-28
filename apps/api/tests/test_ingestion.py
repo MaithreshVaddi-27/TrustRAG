@@ -77,18 +77,18 @@ def test_sparse_vectorizer_tokenize():
 
 
 def test_sparse_vectorizer_generation():
-    text = "refund processing refund window"
+    text = "token processing token lifetime"
     sparse_vec = generate_sparse_vector(text)
 
     assert "indices" in sparse_vec
     assert "values" in sparse_vec
     assert len(sparse_vec["indices"]) == len(sparse_vec["values"])
 
-    # BM25-style TF, not linear TF: "refund" appears twice in 4 tokens.
+    # BM25-style TF, not linear TF: "token" appears twice in 4 tokens.
     # sat(2) = 2*2.2/(2+1.2) = 1.375; length norm for 4 tokens against the
     # 128-token reference = 0.25 + 0.75*(4/128). Linear TF would give 0.5.
-    expected_refund = 1.375 / (0.25 + 0.75 * (4 / 128))
-    assert max(sparse_vec["values"]) == pytest.approx(expected_refund)
+    expected_token = 1.375 / (0.25 + 0.75 * (4 / 128))
+    assert max(sparse_vec["values"]) == pytest.approx(expected_token)
     assert 0.5 not in sparse_vec["values"]
 
 

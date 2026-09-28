@@ -190,7 +190,7 @@ def test_embed_query_applies_the_bge_instruction_exactly_once():
     emb = _make_embedder(session, tokenizer_name="BAAI/bge-small-en-v1.5")
     assert emb._is_bge is True
 
-    emb.embed_query("what is the refund window?")
+    emb.embed_query("what is the token lifetime?")
     seen = emb.tokenizer.call_args_list[0].args[0][0]
     assert seen.count(emb._query_instruction) == 1, f"instruction repeated: {seen!r}"
     assert seen.startswith(emb._query_instruction), f"instruction missing: {seen!r}"

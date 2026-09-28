@@ -18,7 +18,7 @@ Large language models are fluent but can state plausible false information. This
 - users often see only the answer, not the reason it should be trusted;
 - if a source changes, cached answers and old vectors can become misleading.
 
-TRUSTRAG addresses these gaps with a pipeline of **ingestion → retrieval → grounded generation → claim verification → reliability decision → traceable UI**. It is designed for internal policies, manuals, reports, compliance material, and other document collections where an answer must be explainable.
+TRUSTRAG addresses these gaps with a pipeline of **ingestion → retrieval → grounded generation → claim verification → reliability decision → traceable UI**. It is domain-agnostic: the same pipeline serves source-code and API documentation, internal policies and manuals, scientific literature, and prose — any document collection where an answer must be explainable and traceable to evidence.
 
 ## 3. Terms to know before explaining the project
 
@@ -457,7 +457,7 @@ The repository also includes `scripts/start_local_llm.sh` for a llama.cpp server
 
 ## 19. What to say in a faculty demo
 
-Use a small set of source documents containing a fact that can be checked, ideally one policy/version that includes an effective date.
+Use a small set of source documents containing a fact that can be checked. Including a superseded version alongside a current one exercises point-in-time filtering.
 
 1. Create a KB and upload the documents. Explain that upload is not just file storage: the system parses pages, optionally OCRs scans, chunks text, creates local ONNX embeddings, and stores vectors in Qdrant plus audit metadata in MongoDB.
 2. Ask a direct question. In the live trace, point out retrieval, reranking, generation, claims, verification, and any recovery event.

@@ -23,7 +23,7 @@ def _fused_chunk(doc_suffix: str, idx: int, text: str) -> dict:
         "document_id": f"64ee39d09c6292376e19198{doc_suffix}",
         "chunk_index": idx,
         "text": text,
-        "filename": "policy.txt",
+        "filename": "service-api.md",
         "page": 1,
         "dense_score": 0.5,
         "rrf_score": 0.02,
@@ -94,8 +94,8 @@ async def test_claim_retrieval_returns_empty_on_outage():
 
 @pytest.mark.asyncio
 async def test_neutral_claim_flips_supported_with_new_evidence_linkage():
-    p1, p2, p3 = _no_fused_two_step(["Refunds are fast."])
-    fresh = _fused_chunk("B", 3, "Refunds are processed within 5 business days.")
+    p1, p2, p3 = _no_fused_two_step(["Revocations are fast."])
+    fresh = _fused_chunk("B", 3, "Deletion is completed within 5 business days.")
     reverify = {
         "verdict": "SUPPORTED",
         "supporting_segments": [1],
@@ -119,8 +119,8 @@ async def test_neutral_claim_flips_supported_with_new_evidence_linkage():
     ):
         claims = await execute_claim_verification(
             analysis_id_str=ANALYSIS_ID,
-            answer="Refunds are fast.",
-            chunks=[_fused_chunk("A", 0, "Unrelated shipping text here.")],
+            answer="Revocations are fast.",
+            chunks=[_fused_chunk("A", 0, "Unrelated background prose here.")],
             evidence_ids=[ObjectId("64ee39d09c6292376e191985")],
             kb_id_str="kb1",
         )
@@ -197,7 +197,7 @@ async def test_contradicted_claims_are_never_re_retrieved():
 
 @pytest.mark.asyncio
 async def test_no_kb_id_skips_claim_retrieval_entirely():
-    p1, p2, p3 = _no_fused_two_step(["Refunds are fast."])
+    p1, p2, p3 = _no_fused_two_step(["Revocations are fast."])
     hybrid_mock = AsyncMock(return_value=[])
     with (
         p1,
@@ -208,8 +208,8 @@ async def test_no_kb_id_skips_claim_retrieval_entirely():
     ):
         claims = await execute_claim_verification(
             analysis_id_str=ANALYSIS_ID,
-            answer="Refunds are fast.",
-            chunks=[_fused_chunk("A", 0, "Unrelated shipping text here.")],
+            answer="Revocations are fast.",
+            chunks=[_fused_chunk("A", 0, "Unrelated background prose here.")],
             evidence_ids=[ObjectId("64ee39d09c6292376e191985")],
         )
     assert claims[0]["state"] == "NEUTRAL"
@@ -222,7 +222,7 @@ async def test_inline_answer_citations_union_into_evidence_ids():
     p1 = patch("app.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
     p2 = patch(
         "app.verification.verifier.decompose_answer_to_claims",
-        new=AsyncMock(return_value=["Refunds are fast [Segment 1]."]),
+        new=AsyncMock(return_value=["Revocations are fast [Segment 1]."]),
     )
     p3 = patch(
         "app.verification.verifier.batch_verify_claims_nli",
@@ -241,8 +241,8 @@ async def test_inline_answer_citations_union_into_evidence_ids():
     ):
         claims = await execute_claim_verification(
             analysis_id_str=ANALYSIS_ID,
-            answer="Refunds are fast [Segment 1].",
-            chunks=[_fused_chunk("A", 0, "Refunds are fast, processed quickly.")],
+            answer="Revocations are fast [Segment 1].",
+            chunks=[_fused_chunk("A", 0, "Revocations are fast, processed quickly.")],
             evidence_ids=evidence_ids,
         )
     assert claims[0]["evidence_ids"] == evidence_ids

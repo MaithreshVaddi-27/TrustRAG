@@ -353,8 +353,13 @@ async def test_rewrite_prompt_uses_neutral_acronym_example(
     sent = mock_llm.ainvoke.await_args.args[0]
     prompt = sent if isinstance(sent, str) else str(sent)
     assert "Internal Revenue Service" not in prompt
-    # Positive assertion: a domain-neutral example is present instead.
-    assert "API" in prompt and "Application Programming Interface" in prompt
+    # Positive assertion: a domain-neutral example is present instead. The
+    # prompt must NOT exemplify any single subject matter, so the example is
+    # stated as a rule ("in whichever subject matter the query is about")
+    # rather than a concrete expansion, which would bias one domain.
+    assert "acronym" in prompt.lower()
+    assert "whichever subject" in prompt.lower()
+    assert "Application Programming Interface" not in prompt
     # The original query still reaches the model.
     assert "IRS" in prompt
 

@@ -238,8 +238,8 @@ such as "Based on the context". Write each sentence once.
 <scope>
 Domain-agnostic. The Context may be source code, policy, market data,
 scientific text, or prose. Never assume a subject matter; let the Context
-decide. If asked about parts, units, chapters, sections, functions, or modules,
-use exactly the labels the Context gives, and invent none.
+decide the terminology, structure, and level of detail. Use exactly the labels,
+identifiers, and headings the Context provides, and invent none.
 </scope>
 
 <security>

@@ -34,8 +34,8 @@ def mock_user_doc():
 def mock_kb_doc():
     return {
         "_id": ObjectId("64ee39d09c6292376e191982"),
-        "name": "Refund Policies",
-        "description": "Standard refund schedules",
+        "name": "API Limits",
+        "description": "API limit schedules",
         "user_id": ObjectId("64ee39d09c6292376e191981"),
         "created_at": "2026-08-27T10:00:00Z",
     }
@@ -543,8 +543,8 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
 # the ungrounded content and then showed it to the user anyway.
 
 _HALLUCINATED_ANSWER = (
-    "### Refund Policy\n"
-    "Refunds are available for 90 days [Segment 1]. "
+    "### Retention Policy\n"
+    "Records are retained for 90 days [Segment 1]. "
     "Enterprise plans include unlimited seats [Segment 2]."
 )
 
@@ -603,7 +603,7 @@ async def test_finalize_withholds_unverified_answer_from_user(
     await svc.run_analysis_pipeline(
         analysis_id_str="507f1f77bcf86cd799439011",
         kb_id_str="507f1f77bcf86cd799439012",
-        query="What is the refund policy?",
+        query="What is the retention policy?",
     )
 
     set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]
@@ -624,7 +624,7 @@ async def test_finalize_keeps_trusted_answer(monkeypatch):
 
     async def _fake_flow(**_kwargs):
         return {
-            "answer": "Refunds are available for 30 days [Segment 1].",
+            "answer": "Records are retained for 30 days [Segment 1].",
             "claims": [{"state": "SUPPORTED"}],
             "diagnosis_type": None,
             "diagnosis_failures": [],
@@ -663,7 +663,7 @@ async def test_finalize_keeps_trusted_answer(monkeypatch):
     await svc.run_analysis_pipeline(
         analysis_id_str="507f1f77bcf86cd799439011",
         kb_id_str="507f1f77bcf86cd799439012",
-        query="What is the refund policy?",
+        query="What is the retention policy?",
     )
 
     set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]

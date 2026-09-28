@@ -51,7 +51,7 @@ def _doc_response() -> DocResponse:
     """A real DocResponse so serialisation is exercised, not mocked."""
     return DocResponse(
         id="64ee39d09c6292376e1919ab",
-        filename="policy.txt",
+        filename="service-api.md",
         file_size=12,
         content_hash="deadbeef",
         knowledge_base_id=KB_ID,
@@ -83,7 +83,9 @@ def _chunker(chunks: list[dict] | None = None) -> MagicMock:
 
 
 def _parse() -> MagicMock:
-    return MagicMock(return_value=([{"text": "Refunds within 30 days.", "page": 1}], None, None))
+    return MagicMock(
+        return_value=([{"text": "Records retained for 30 days.", "page": 1}], None, None)
+    )
 
 
 def _upload_files(filename: str, payload: bytes) -> dict:
@@ -107,12 +109,12 @@ def test_upload_accepts_a_supported_file(auth_user):
     ):
         r = client.post(
             f"/api/v1/knowledge-bases/{KB_ID}/documents",
-            files=_upload_files("policy.txt", b"Refunds rtn."),
+            files=_upload_files("service-api.md", b"Records rtn."),
         )
 
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["filename"] == "policy.txt"
+    assert body["filename"] == "service-api.md"
     assert body["ingestion_status"] == "PENDING"
     assert capture.calls == 1, "document record was never created"
     assert strategy.chunk.called, "chunker was never invoked"
@@ -121,7 +123,7 @@ def test_upload_accepts_a_supported_file(auth_user):
 def test_upload_computes_a_stable_content_hash(auth_user):
     """Content hashing de-duplicates re-uploads; without it the same bytes get
     indexed repeatedly under different ids."""
-    payload = b"Refunds rtn."
+    payload = b"Records rtn."
     capture = _Capture()
 
     with (
@@ -132,7 +134,7 @@ def test_upload_computes_a_stable_content_hash(auth_user):
     ):
         r = client.post(
             f"/api/v1/knowledge-bases/{KB_ID}/documents",
-            files=_upload_files("policy.txt", payload),
+            files=_upload_files("service-api.md", payload),
         )
 
     assert r.status_code == 201, r.text
@@ -214,7 +216,7 @@ def test_upload_to_foreign_kb_is_refused(auth_user):
     with patch("app.services.kb_service.get_kb", _deny):
         r = client.post(
             f"/api/v1/knowledge-bases/{KB_ID}/documents",
-            files=_upload_files("policy.txt", b"data"),
+            files=_upload_files("service-api.md", b"data"),
         )
     assert r.status_code in (403, 404), f"cross-tenant upload not refused: {r.status_code}"
 
@@ -228,7 +230,7 @@ def test_upload_against_missing_kb_is_refused(auth_user):
     with patch("app.services.kb_service.get_kb", _missing):
         r = client.post(
             f"/api/v1/knowledge-bases/{KB_ID}/documents",
-            files=_upload_files("policy.txt", b"data"),
+            files=_upload_files("service-api.md", b"data"),
         )
     assert r.status_code == 404, f"missing KB should be 404, got {r.status_code}"
 
@@ -263,7 +265,7 @@ def test_url_ingest_reports_fetch_failure(auth_user):
     ):
         r = client.post(
             f"/api/v1/knowledge-bases/{KB_ID}/documents/from-url",
-            json={"url": "https://en.wikipedia.org/wiki/Refund_policy"},
+            json={"url": "https://en.wikipedia.org/wiki/Record_policy"},
         )
     assert r.status_code == 400, f"expected 400 on fetch failure, got {r.status_code}"
     assert "connection reset" in r.text.lower()
@@ -274,7 +276,7 @@ def test_url_ingest_happy_path(auth_user):
     with (
         patch(
             "app.api.v1.knowledge_bases.fetch_document_from_url",
-            AsyncMock(return_value=(b"Refunds within 30 days.", None)),
+            AsyncMock(return_value=(b"Records retained for 30 days.", None)),
         ),
         patch("app.api.v1.knowledge_bases.parse_document", _parse()),
         patch("app.api.v1.knowledge_bases.get_chunking_strategy", return_value=_chunker()),
@@ -283,7 +285,7 @@ def test_url_ingest_happy_path(auth_user):
     ):
         r = client.post(
             f"/api/v1/knowledge-bases/{KB_ID}/documents/from-url",
-            json={"url": "https://en.wikipedia.org/wiki/Refund_policy"},
+            json={"url": "https://en.wikipedia.org/wiki/Record_policy"},
         )
 
     assert r.status_code == 201, r.text

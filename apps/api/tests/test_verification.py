@@ -27,8 +27,8 @@ async def test_claim_decomposition(mock_get_model):
     # Mock structured output model response
     mock_response = ClaimDecomposition(
         claims=[
-            "The refund policy allows returns within 30 days.",
-            "Processing refunds takes 5 business days.",
+            "The retention policy allows 30 days.",
+            "Processing records takes 5 business days.",
         ]
     )
     mock_structured_llm = MagicMock()
@@ -39,12 +39,12 @@ async def test_claim_decomposition(mock_get_model):
     mock_get_model.return_value = mock_model
 
     claims = await decompose_answer_to_claims(
-        "The refund policy allows returns within 30 days. Processing refunds takes 5 business days."
+        "The retention policy allows 30 days. Processing takes 5 business days."
     )
 
     assert len(claims) == 2
-    assert claims[0] == "The refund policy allows returns within 30 days."
-    assert claims[1] == "Processing refunds takes 5 business days."
+    assert claims[0] == "The retention policy allows 30 days."
+    assert claims[1] == "Processing records takes 5 business days."
 
 
 @patch("app.verification.verifier.get_verification_model")
@@ -53,7 +53,7 @@ async def test_verify_claim_supported(mock_get_model):
     mock_verdict = NLIVerdict(
         verdict="SUPPORTED",
         supporting_segments=[1],
-        explanation="The context explicitly supports 30 days return.",
+        explanation="The context explicitly supports the 30-day window.",
     )
     mock_structured_nli = MagicMock()
     mock_structured_nli.ainvoke = AsyncMock(return_value=mock_verdict)
@@ -63,13 +63,17 @@ async def test_verify_claim_supported(mock_get_model):
     mock_get_model.return_value = mock_model
 
     chunks = [
-        {"filename": "policy.txt", "page": 1, "text": "Customers can return items within 30 days."}
+        {
+            "filename": "service-api.md",
+            "page": 1,
+            "text": "Records are retained for 30 days.",
+        }
     ]
-    res = await verify_claim_nli("The return window is 30 days.", chunks)
+    res = await verify_claim_nli("The retention window is 30 days.", chunks)
 
     assert res["verdict"] == "SUPPORTED"
     assert res["supporting_segments"] == [1]
-    assert "supports 30 days" in res["explanation"]
+    assert "30-day window" in res["explanation"]
 
 
 @patch("app.verification.verifier.get_verification_model")
@@ -87,8 +91,8 @@ async def test_verify_claim_contradicted(mock_get_model):
     mock_model.with_structured_output = MagicMock(return_value=mock_structured_nli)
     mock_get_model.return_value = mock_model
 
-    chunks = [{"filename": "policy.txt", "page": 1, "text": "All sales are final after 14 days."}]
-    res = await verify_claim_nli("The return window is 30 days.", chunks)
+    chunks = [{"filename": "service-api.md", "page": 1, "text": "Accounts close after 14 days."}]
+    res = await verify_claim_nli("The retention window is 30 days.", chunks)
 
     assert res["verdict"] == "CONTRADICTED"
     assert res["supporting_segments"] == [1]
@@ -138,7 +142,7 @@ async def test_execute_claim_verification_maps_sorted_segments_to_original_evide
     mock_decompose, mock_batch_verify
 ):
     """Segment 1 belongs to the highest-scored context chunk, not chunks[0]."""
-    mock_decompose.return_value = ["The policy permits refunds."]
+    mock_decompose.return_value = ["The policy permits records."]
     mock_batch_verify.return_value = {
         1: {"verdict": "SUPPORTED", "supporting_segments": [1], "explanation": "Supported"}
     }
@@ -156,8 +160,8 @@ async def test_execute_claim_verification_maps_sorted_segments_to_original_evide
     }
     duplicate_low_rrf = dict(low_rrf)
     high_rrf = {
-        "text": "The approved policy permits refunds within thirty days.",
-        "filename": "policy.txt",
+        "text": "The approved policy permits records within thirty days.",
+        "filename": "service-api.md",
         "page": 2,
         "rrf_score": 0.9,
     }
@@ -170,7 +174,7 @@ async def test_execute_claim_verification_maps_sorted_segments_to_original_evide
     with patch("app.verification.verifier.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
-            answer="The policy permits refunds.",
+            answer="The policy permits records.",
             chunks=[low_rrf, duplicate_low_rrf, high_rrf],
             evidence_ids=evidence_ids,
         )
@@ -188,7 +192,7 @@ async def test_batch_verification_retried_once_before_individual_fallback(
     """A transient batch failure costs 1 retry call, not N individual calls."""
     from bson import ObjectId
 
-    mock_decompose.return_value = ["The policy permits refunds within thirty days."]
+    mock_decompose.return_value = ["The policy permits records within thirty days."]
     mock_batch_verify.side_effect = [
         Exception("truncated JSON"),
         {1: {"verdict": "SUPPORTED", "supporting_segments": [1], "explanation": "Ok"}},
@@ -201,8 +205,8 @@ async def test_batch_verification_retried_once_before_individual_fallback(
     with patch("app.verification.verifier.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
-            answer="The policy permits refunds within thirty days.",
-            chunks=[{"text": "Refunds are permitted within thirty days."}],
+            answer="The policy permits records within thirty days.",
+            chunks=[{"text": "Records are permitted within thirty days."}],
             evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
         )
 
@@ -232,7 +236,7 @@ async def test_individual_nli_fallback_is_capped(
     max_claims = int(get_model_config().max_verification_claims)
     assert cap >= max_claims, "fallback budget must cover every verifiable claim"
     sentences = [
-        f"The policy term number {i} permits refunds within thirty days." for i in range(8)
+        f"The policy term number {i} permits records within thirty days." for i in range(8)
     ]
     mock_decompose.return_value = sentences
     mock_batch_verify.side_effect = Exception("structured output unsupported")
@@ -250,7 +254,7 @@ async def test_individual_nli_fallback_is_capped(
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer=" ".join(sentences),
-            chunks=[{"text": "Refunds are permitted within thirty days."}],
+            chunks=[{"text": "Records are permitted within thirty days."}],
             evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
             provider="gemini",  # cloud tier → caps = 8
         )
@@ -263,12 +267,10 @@ async def test_individual_nli_fallback_is_capped(
 
 def test_extract_claim_triple_heuristics():
     # Standard predicate match
-    subj, pred, obj = extract_claim_triple_heuristic(
-        "The refund policy allows returns within 30 days."
-    )
-    assert subj == "The refund policy"
+    subj, pred, obj = extract_claim_triple_heuristic("The retention policy allows 30 days.")
+    assert subj == "The retention policy"
     assert pred == "allows"
-    assert obj == "returns within 30 days"
+    assert obj == "30 days"
 
     # Positional 4-word split
     s2, p2, o2 = extract_claim_triple_heuristic("Antigravity engine emits photon")
@@ -377,7 +379,7 @@ def test_is_refusal_answer_matrix():
     assert is_refusal_answer("No verifiable claims in the answer.") is True
     assert is_refusal_answer("This cannot be verified from the sources.") is True
     # Grounded answers — including ones that QUOTE the word in passing — pass.
-    assert is_refusal_answer("Refunds are available for 45 days.") is False
+    assert is_refusal_answer("Records are available for 45 days.") is False
     assert is_refusal_answer("The policy lists three steps.") is False
     assert is_refusal_answer("ABSTAIN is not in the text.") is False
 
@@ -413,7 +415,7 @@ async def test_total_batch_failure_recovers_via_individual_calls(
     """The pasted-answer bug: batch dies → budgeted individuals still verify."""
     from bson import ObjectId
 
-    mock_decompose.return_value = ["Refunds take 45 days.", "Ranking uses models."]
+    mock_decompose.return_value = ["Records take 45 days.", "Ranking uses models."]
     mock_batch_verify.side_effect = Exception("batch JSON unparseable")
     mock_individual.return_value = {
         "verdict": "SUPPORTED",
@@ -428,8 +430,8 @@ async def test_total_batch_failure_recovers_via_individual_calls(
     with patch("app.verification.verifier.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
-            answer="Refunds take 45 days. Ranking uses models.",
-            chunks=[{"text": "Refunds take 45 days. Ranking uses models."}],
+            answer="Records take 45 days. Ranking uses models.",
+            chunks=[{"text": "Records take 45 days. Ranking uses models."}],
             evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
         )
 
@@ -536,7 +538,7 @@ def test_nli_verdict_text_segments_coerced_or_dropped():
     # "Segment 2 states…" recovers index 2; pure prose yields [] but keeps verdict.
     v = NLIVerdict(
         verdict="SUPPORTED",
-        supporting_segments=["Segment 2 states the refund window"],
+        supporting_segments=["Segment 2 states the token lifetime"],
         explanation="Ok",
     )
     assert v.verdict == "SUPPORTED"
@@ -546,7 +548,7 @@ def test_nli_verdict_text_segments_coerced_or_dropped():
         verdict="SUPPORTED",
         supporting_segments=[
             "effective from: 2026-01-01 effective until: 2026-12-31",
-            "refund policy annual contract customers can get a full refund within 30 days",
+            "retention policy records are kept for 30 days after closure",
         ],
         explanation="Ok",
     )
@@ -620,7 +622,7 @@ def _fused_items():
 
     return [
         FusedClaimVerdict(
-            claim="Refunds are available within 30 days.",
+            claim="Records are available within 30 days.",
             verdict="SUPPORTED",
             supporting_segments=[1],
             explanation="States the 30-day window.",
@@ -661,8 +663,8 @@ async def test_fused_path_skips_two_step_calls(mock_get_model):
     ):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
-            answer="Refunds are available within 30 days. Backups are kept for 90 days.",
-            chunks=[{"text": "Refunds within 30 days. Backups kept 90 days."}],
+            answer="Records are available within 30 days. Backups are kept for 90 days.",
+            chunks=[{"text": "Records retained for 30 days. Backups kept 90 days."}],
             evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
         )
 
@@ -693,7 +695,7 @@ async def test_fused_failure_falls_back_to_two_step(mock_get_model):
         elif schema.__name__ == "ClaimDecomposition":
             calls["decompose"] += 1
             inner.ainvoke = AsyncMock(
-                return_value=ClaimDecomposition(claims=["Refunds within 30 days."])
+                return_value=ClaimDecomposition(claims=["Records retained for 30 days."])
             )
         elif schema.__name__ == "BatchNLIVerdict":
             calls["batch"] += 1
@@ -728,8 +730,8 @@ async def test_fused_failure_falls_back_to_two_step(mock_get_model):
     with patch("app.verification.verifier.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
-            answer="Refunds are available within 30 days.",
-            chunks=[{"text": "Refunds within 30 days."}],
+            answer="Records are available within 30 days.",
+            chunks=[{"text": "Records retained for 30 days."}],
             evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
         )
 
@@ -759,7 +761,7 @@ async def test_fused_kill_switch_restores_two_step(mock_get_model, monkeypatch):
             )
         elif schema.__name__ == "ClaimDecomposition":
             inner.ainvoke = AsyncMock(
-                return_value=ClaimDecomposition(claims=["Refunds within 30 days."])
+                return_value=ClaimDecomposition(claims=["Records retained for 30 days."])
             )
         elif schema.__name__ == "BatchNLIVerdict":
             inner.ainvoke = AsyncMock(
@@ -793,8 +795,8 @@ async def test_fused_kill_switch_restores_two_step(mock_get_model, monkeypatch):
     with patch("app.verification.verifier.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
-            answer="Refunds are available within 30 days.",
-            chunks=[{"text": "Refunds within 30 days."}],
+            answer="Records are available within 30 days.",
+            chunks=[{"text": "Records retained for 30 days."}],
             evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
         )
 
@@ -828,8 +830,8 @@ async def test_fused_meta_claims_filtered(mock_get_model):
     with patch("app.verification.verifier.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
-            answer="Refunds are available within 30 days. Backups are kept for 90 days.",
-            chunks=[{"text": "Refunds within 30 days. Backups kept 90 days."}],
+            answer="Records are available within 30 days. Backups are kept for 90 days.",
+            chunks=[{"text": "Records retained for 30 days. Backups kept 90 days."}],
             evidence_ids=[ObjectId("64ee39d09c6292376e191987")],
         )
 

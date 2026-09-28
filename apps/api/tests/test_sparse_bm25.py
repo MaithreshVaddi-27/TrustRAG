@@ -42,24 +42,24 @@ def test_tf_saturation_unit_values():
 
 def test_repeated_terms_grow_sublinearly_end_to_end():
     # Same document length (10 tokens) isolates saturation from length norm.
-    few = generate_sparse_vector(f"refund refund {FILLER_8}")
-    many = generate_sparse_vector("refund " * 10)
-    ratio = _value_for(many, "refund") / _value_for(few, "refund")
+    few = generate_sparse_vector(f"record record {FILLER_8}")
+    many = generate_sparse_vector("record " * 10)
+    ratio = _value_for(many, "record") / _value_for(few, "record")
     assert ratio == pytest.approx(1.4285714)  # sat(10)/sat(2); linear TF gives 5.0
 
 
 def test_longer_chunk_scores_same_term_lower():
-    short = generate_sparse_vector("refund alpha")
-    long = generate_sparse_vector(f"refund {LONG_FILLER}")
-    assert _value_for(short, "refund") > _value_for(long, "refund")
+    short = generate_sparse_vector("record alpha")
+    long = generate_sparse_vector(f"record {LONG_FILLER}")
+    assert _value_for(short, "record") > _value_for(long, "record")
 
 
 def test_query_side_has_no_length_norm_and_filters_noise():
     # "please explain" are query-noise stopwords; single surviving freq-1 term → 1.0
-    vec = generate_sparse_vector("please explain refund", is_query=True)
+    vec = generate_sparse_vector("please explain record", is_query=True)
     assert vec["values"] == pytest.approx([1.0])
     # Repeated query term saturates but is not length-normalized
-    vec2 = generate_sparse_vector("refund refund", is_query=True)
+    vec2 = generate_sparse_vector("record record", is_query=True)
     assert vec2["values"] == pytest.approx([1.375])
 
 

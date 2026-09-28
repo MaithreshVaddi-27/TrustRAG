@@ -277,11 +277,18 @@ ZONE_WEIGHT_BOOSTS: dict[str, float] = {
 def detect_chunk_zone(text: str, page: int = 1) -> str:
     """
     Detect the functional zone of a text chunk:
-      - title: Page 1 document title or unit/chapter outline block
+      - title: Page 1 document title or structural outline block
       - header: Section headers, topic titles, markdown headings
-      - metadata: Administrative dates, ISBN, author information
+      - metadata: Leading key/value front-matter (dates, versions, ids, authors)
       - summary: Abstract, summary, overview sections
       - body: Standard paragraph and explanatory content
+
+    Detection is STRUCTURAL, never subject-specific. An earlier revision
+    matched literal keywords ("UNIT-", "CHAPTER", "COURSE", "SYLLABUS",
+    "ISBN:", "DOI:", "effective from"), which silently classified every
+    non-textbook, non-policy corpus as BODY — the zone weights below then
+    never applied. Code, contracts, papers and prose all use the same shapes:
+    a short first-page title line, and a leading `label: value` field.
     """
     text_stripped = text.strip()
     if not text_stripped:
@@ -290,26 +297,124 @@ def detect_chunk_zone(text: str, page: int = 1) -> str:
     first_lines = text_stripped.split("\n")[:3]
     first_text = " ".join(first_lines).strip()
     first_upper = first_text.upper()
+    first_line = first_lines[0].strip()
 
-    # 1. Title Zone: Page 1 with course, unit, or syllabus markers
-    if page == 1 and any(k in first_upper for k in ("UNIT-", "CHAPTER", "COURSE", "SYLLABUS")):
-        return ZoneType.TITLE.value
-
-    # 2. Metadata Zone: Effective dates, citations, policy headers
-    meta_prefixes = ("effective from", "effective until", "author:", "isbn:", "doi:")
-    if any(first_text.lower().startswith(p) for p in meta_prefixes):
+    # 1. Metadata Zone: a leading `label: value` front-matter field. Checked
+    #    BEFORE the title test — a `label: value` line is front-matter by
+    #    construction and is never a document title, whereas a short
+    #    capitalized line like "Effective: 2026-01-01" would otherwise look
+    #    exactly like a one-word Title Case title. Tested on the FIRST LINE
+    #    only: a field is a single line, and joining following lines into the
+    #    value would defeat the value-shape checks below.
+    if _looks_like_metadata_field(first_line):
         return ZoneType.METADATA.value
 
+    # 2. Title Zone: a structural outline marker, or a page-1 title line.
+    #    Outline markers require a section NUMBER and must lead the line, and a
+    #    heading does not end in a period — which is what separates
+    #    "CHAPTER 3 Methods" from "Section 12 of the agreement applies."
+    if page == 1 and (
+        (not first_line.endswith(".") and _OUTLINE_MARKER_RE.match(first_upper))
+        or _looks_like_title_line(first_line)
+    ):
+        return ZoneType.TITLE.value
+
     # 3. Summary Zone
-    summary_prefixes = ("summary:", "abstract:", "overview:", "executive summary:")
-    if any(first_text.lower().startswith(p) for p in summary_prefixes):
+    if any(first_text.lower().startswith(p) for p in _SUMMARY_PREFIXES):
         return ZoneType.SUMMARY.value
 
-    # 4. Header Zone: Markdown # headers or all-caps topic lines (e.g. DATA STRUCTURES)
+    # 4. Header Zone: Markdown # headers or short all-caps topic lines
     if re.match(r"^(?:#+\s+|[A-Z0-9\s:\--]{4,50}\n)", text_stripped):
         return ZoneType.HEADER.value
 
     return ZoneType.BODY.value
+
+
+# Structural outline markers. These are section-numbering conventions shared by
+# textbooks, specifications, contracts and manuals — kept because they are
+# structural, not because any one subject is assumed. Two constraints keep
+# them from firing on ordinary prose: a NUMBER is required (a bare substring
+# test for "SECTION" would fire on the English word "section"), and the marker
+# must LEAD the line (an outline marker introduces a document's structure, so
+# "Section 12 of the agreement applies." is a sentence, not an outline).
+_OUTLINE_MARKER_RE = re.compile(
+    r"^(?:#{1,6}\s*)?"
+    r"(?:UNIT|CHAPTER|SECTION|PART|APPENDIX|ARTICLE|CLAUSE|EXHIBIT)"
+    r"[\s\-#]*(?:[0-9]+|[IVXLC]+)\b"
+    r"|^\s*SYLLABUS\b"
+)
+
+# Leading `label: value` field. Label is 2-28 word-ish chars; value must look
+# structured (date / version / hash / id / number), which keeps ordinary prose
+# that happens to contain a colon out of the metadata zone.
+_METADATA_FIELD_RE = re.compile(r"^[A-Za-z][A-Za-z ._/&-]{1,27}:\s*(\S.*)$")
+_METADATA_VALUE_RE = re.compile(
+    r"^(?:"
+    r"\d{4}-\d{2}-\d{2}"  # ISO date
+    r"|\d{1,2}[/.]\d{1,2}[/.]\d{2,4}"  # other date shapes
+    r"|v?\d+(?:\.\d+)+"  # semantic version
+    r"|[0-9a-f]{7,40}"  # short hash / hex id
+    r"|\d[\w.:/-]*"  # bare identifier or number
+    r")\s*$",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_metadata_field(line: str) -> bool:
+    """True when a leading line is front-matter (`label: value`), not prose.
+
+    Two independent signals, either sufficient:
+      1. the value itself is structured (date / version / hash / number); or
+      2. the line is a short, single-clause field — a brief capitalized label
+         followed by a brief value.
+    A long sentence beginning "Note:" fails both and stays BODY.
+    """
+    match = _METADATA_FIELD_RE.match(line.strip())
+    if not match:
+        return False
+    label = line.split(":", 1)[0].strip()
+    value = match.group(1).strip()
+    if not value or len(value) > 80:
+        return False
+    if _METADATA_VALUE_RE.match(value):
+        return True
+    # Short field line: at most 3 words on each side of the colon.
+    if len(label.split()) <= 3 and len(value.split()) <= 6 and not value.endswith("."):
+        return True
+    return False
+
+
+# Section labels that introduce prose, not a metadata field.
+_SUMMARY_PREFIXES = ("summary:", "abstract:", "overview:", "executive summary:")
+
+
+def _looks_like_title_line(line: str) -> bool:
+    """True when a first-page line reads as a document title rather than prose.
+
+    Shape-based: short, no terminal sentence punctuation, not a `label: value`
+    field, and either ALL CAPS or Title Case. Works for "Acme Corp Refund
+    Policy", "Getting Started", "ORDER OF SERVICE", and "System Design
+    Document" alike.
+    """
+    if not line or len(line) > 120:
+        return False
+    if ":" in line:
+        return False  # front-matter field or prose with a clause, never a title
+    if line.endswith("."):
+        return False
+    words = line.split()
+    if len(words) > 14:
+        return False
+    if not any(c.isalpha() for c in line):
+        return False
+    if line.upper() == line and len(line) > 3:
+        return True
+    # Title Case: most words start uppercase (ignoring small connective words).
+    minor = {"a", "an", "and", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to"}
+    significant = [w for w in words if w.lower().strip(".,:;") not in minor]
+    if not significant:
+        return False
+    return sum(1 for w in significant if w[:1].isupper()) >= max(1, len(significant) - 1)
 
 
 # ─── Text Normalization ───────────────────────────────────────────────────────

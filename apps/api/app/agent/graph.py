@@ -1288,8 +1288,8 @@ async def _execute_query_rewrite(
         rewrite_prompt = f"""You are a query expansion assistant for an IR system.
 The original query may contain acronyms or ambiguous terms.
 Your task: rewrite the query to search for the missing factual details below.
-- Expand acronyms/abbreviations to full forms
-  (e.g., API → Application Programming Interface)
+- Expand acronyms/abbreviations to full forms, in whichever subject matter the
+  query is about (technical, legal, scientific, or plain-language terms)
 - Add synonyms or related terms that would help retrieval
 - Keep the query focused and concise (5 to 12 words)
 
@@ -1308,8 +1308,8 @@ Never reply empty: if unsure, return the original query with spelling corrected.
         rewrite_prompt = f"""You are a search query expansion assistant for an IR system.
 The original query did not return sufficient information to answer the question.
 Your task: expand the query by resolving ambiguous acronyms and terms.
-- Expand any acronyms/abbreviations to their full forms
-  (e.g., API → Application Programming Interface)
+- Expand any acronyms/abbreviations to their full forms, in whichever subject
+  matter the query is about
 - Add synonyms or related terms that would help retrieval
 - Keep the query focused and concise (5 to 12 words)
 

@@ -276,8 +276,8 @@ async def test_sparse_search_top_k_zero_disables_leg_without_qdrant():
             side_effect=AssertionError("must not vectorize when leg disabled"),
         ),
     ):
-        assert await sparse_search("refund policy", "kb_x", top_k=0) == []
-        assert await sparse_search("refund policy", "kb_x", top_k=-3) == []
+        assert await sparse_search("retention policy", "kb_x", top_k=0) == []
+        assert await sparse_search("retention policy", "kb_x", top_k=-3) == []
 
 
 @pytest.mark.asyncio
@@ -293,8 +293,8 @@ async def test_dense_search_top_k_zero_disables_leg_without_embedding():
             side_effect=AssertionError("must not embed when leg disabled"),
         ),
     ):
-        assert await dense_search("refund policy", "kb_x", top_k=0) == []
-        assert await dense_search("refund policy", "kb_x", top_k=-1) == []
+        assert await dense_search("retention policy", "kb_x", top_k=0) == []
+        assert await dense_search("retention policy", "kb_x", top_k=-1) == []
 
 
 @pytest.mark.asyncio

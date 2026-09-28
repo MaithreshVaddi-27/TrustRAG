@@ -181,7 +181,7 @@ export default function ExperimentsPage() {
                     rows={3}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="e.g., Evaluating RAG accuracy on quarterly policy updates"
+                    placeholder="e.g., Grounding accuracy across code, policy, and scientific corpora"
                     className="w-full bg-surface-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
                   />
                 </div>

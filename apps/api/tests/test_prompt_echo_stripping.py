@@ -22,7 +22,7 @@ import pytest
 
 from app.generation.generator import extract_final_answer
 
-_ANSWER = "Refunds are available for 30 days [Segment 2]."
+_ANSWER = "Records are retained for 30 days [Segment 2]."
 
 
 @pytest.mark.parametrize(

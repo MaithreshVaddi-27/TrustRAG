@@ -123,7 +123,7 @@ async def test_initial_state_is_complete_and_carries_request_args():
         await execute_agentic_rag_flow(
             analysis_id_str=ANALYSIS_ID,
             kb_id_str=KB_ID,
-            query="What is the refund window?",
+            query="What is the token lifetime?",
             user_id_str=USER_ID,
             llm_provider="ollama",
             llm_model="granite4.2:3b-q4_K_M",
@@ -132,9 +132,9 @@ async def test_initial_state_is_complete_and_carries_request_args():
     assert captured["analysis_id"] == ANALYSIS_ID
     assert captured["kb_id"] == KB_ID
     assert captured["user_id"] == USER_ID
-    assert captured["query"] == "What is the refund window?"
+    assert captured["query"] == "What is the token lifetime?"
     # current_query must be seeded or the retrieval node starts on None.
-    assert captured["current_query"] == "What is the refund window?"
+    assert captured["current_query"] == "What is the token lifetime?"
     assert captured["chunks"] == []
     assert captured["evidence_ids"] == []
     assert captured["claims"] == []
@@ -154,7 +154,7 @@ async def test_initial_state_is_complete_and_carries_request_args():
 async def test_semantic_cache_hit_seeds_answer_and_marks_cache_hit():
     """On a cache hit generation must be skipped but retrieval/NLI still rerun,
     so the returned state carries a prior answer *and* cache_hit=True."""
-    cached = {"answer": "Refunds are available within 30 days."}
+    cached = {"answer": "Records are available within 30 days."}
     seen: dict = {}
 
     async def _fake_ainvoke(state):
@@ -176,7 +176,7 @@ async def test_semantic_cache_hit_seeds_answer_and_marks_cache_hit():
         patch.object(graph_mod, "add_trace_event", AsyncMock()) as trace,
     ):
         await execute_agentic_rag_flow(
-            analysis_id_str=ANALYSIS_ID, kb_id_str=KB_ID, query="refund window?"
+            analysis_id_str=ANALYSIS_ID, kb_id_str=KB_ID, query="token lifetime?"
         )
 
     assert seen["answer"] == cached["answer"]
@@ -226,7 +226,7 @@ async def test_semantic_cache_stores_only_passed_non_abstain_answers():
     fake_graph.ainvoke = AsyncMock(side_effect=lambda s: s)
 
     for verdict, answer, expect_store in (
-        ("PASS", "Refunds within 30 days.", True),
+        ("PASS", "Records retained for 30 days.", True),
         ("PASS", "ABSTAIN", False),
         ("FAIL", "Some answer", False),
     ):
