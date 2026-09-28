@@ -12,7 +12,8 @@ Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench
 docs/
 ├── README.md                        # Master index (this file)
 ├── TRUSTRAG_specs.md                # Full product specification (source of truth)
-├── audit-2026-09-28-ui-redesign-full.md  # LIVE audit tracker (all findings fixed; supersedes removed point-in-time reports)
+├── AUDIT.md                         # Production-pass audit tracker (findings, fixes, verification, risks)
+├── ANALYSIS_SERVICE_TEST_GAPS.md    # Uncovered regions of analysis_service.py + prioritized test plan
 ├── ONBOARDING-TROUBLESHOOTING.md    # Per-OS setup guide + failure table + live verification backlog
 ├── ROADMAP.md                       # Product vision, milestones, phase tracking
 ├── PERFORMANCE-GUIDE.md             # Free speed/RAM tuning + MLX on Mac
@@ -41,7 +42,8 @@ docs/
 - [**Roadmap (`ROADMAP.md`)**](ROADMAP.md): completed phases, pre-deployment checklist, and prioritized upcoming work.
 - [**Performance Guide (`PERFORMANCE-GUIDE.md`)**](PERFORMANCE-GUIDE.md): free efficiency changes (config-only speed/RAM wins) plus MLX local inference on Apple Silicon.
 - [**Onboarding & Troubleshooting (`ONBOARDING-TROUBLESHOOTING.md`)**](ONBOARDING-TROUBLESHOOTING.md): per-OS setup guide, failure table, live verification backlog.
-- [**Live Audit Tracker (`audit-2026-09-28-ui-redesign-full.md`)**](audit-2026-09-28-ui-redesign-full.md): every bug/error/issue/dead-code finding with severity, fix, and verification evidence. Supersedes the removed point-in-time reports (history in git).
+- [**Production-Pass Audit (`AUDIT.md`)**](AUDIT.md): latest full-pass findings with severity, fix, and verification evidence; verified-solid areas (security, RAG, inference, DevOps); live E2E results; remaining risks; and the analysis-service test-gap map ([`ANALYSIS_SERVICE_TEST_GAPS.md`](ANALYSIS_SERVICE_TEST_GAPS.md)). Earlier point-in-time audit reports were consolidated here (history in git).
+- [**Analysis Service Test Gaps (`ANALYSIS_SERVICE_TEST_GAPS.md`)**](ANALYSIS_SERVICE_TEST_GAPS.md): line-level map of uncovered regions in `app/services/analysis_service.py` (54% → target 80%+), with concrete test-case recipes.
 
 ### 2. Architecture & Design
 

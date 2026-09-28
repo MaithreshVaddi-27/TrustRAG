@@ -76,10 +76,10 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 | **Reliability** | LangGraph self-heal loop with token/latency budgets; safe abstention; conflict detection |
 | **Auth & security** | JWT (HS256, `iss`/`aud`), bcrypt, JTI revocation, login lockout, rate limits, SSRF guards |
 | **Integrations** | MCP server (JSON-RPC 2.0) for Claude Desktop / Cursor / Windsurf; SSE live-progress streaming |
-| **Workbench UI** | Dashboard, Playground, knowledge bases, evidence, claims, conflicts, experiments, trace viewer |
+| **Workbench UI** | Dashboard, Playground, knowledge bases, evidence, claims, conflicts, trace viewer |
 | **Efficiency** | ONNX embedding runtime (torch-free, ~500–1000 MB RAM saved); Metal/CUDA auto-detection |
 | **Inference Acceleration** | KV cache quantization (q8_0 default), flash attention, prompt caching, context compression |
-| **Ops** | KB snapshots + rollback; Prometheus `/metrics`; A/B experiments with feature flags |
+| **Ops** | KB snapshots + rollback; Prometheus `/metrics`; experimentation feature flags via API |
 
 ---
 
@@ -427,7 +427,7 @@ On Windows PowerShell, use `Invoke-RestMethod` / `Invoke-WebRequest` against the
 
 ### Via the Playground UI
 
-Open <http://localhost:5173/playground> → pick a knowledge base → ask a question → inspect the answer side-by-side with per-claim verdicts, evidence cards, reliability badges, conflict flags, and the full LangGraph trace. Other pages: `/dashboard`, `/knowledge-bases`, `/evidence`, `/claims`, `/conflicts`, `/experiments`, `/traces/:id`, `/settings`.
+Open <http://localhost:5173/playground> → pick a knowledge base → ask a question → inspect the answer side-by-side with per-claim verdicts, evidence cards, reliability badges, conflict flags, and the full LangGraph trace. Other pages: `/dashboard`, `/knowledge-bases`, `/evidence`, `/claims`, `/conflicts`, `/traces/:id`, `/settings`.
 
 ---
 
@@ -467,7 +467,7 @@ Interactive docs: <http://localhost:8000/docs> (Swagger) · `/redoc`. Base URL `
 | **Knowledge bases** | `POST/GET /api/v1/knowledge-bases` · `GET/DELETE /api/v1/knowledge-bases/{id}` · `POST …/{id}/documents` · `POST …/{id}/documents/from-url` · `POST …/{id}/snapshots` · `POST …/{id}/rollback/{snapshot_id}` |
 | **Analyses** | `POST/GET /api/v1/analyses` · `GET /api/v1/analyses/{id}` · `…/{id}/claims` · `…/{id}/evidence` · `…/{id}/trace` · `…/{id}/detail` · `…/{id}/export` · `POST …/{id}/stream-ticket` · `GET …/{id}/stream` (SSE) |
 | **Evidence & claims** | `GET /api/v1/evidence` · `GET /api/v1/claims` · `GET /api/v1/conflicts` |
-| **Experiments** | `POST/GET /api/v1/experiments` · `GET /api/v1/experiments/{exp_id}` |
+| **Experiments (API)** | `POST/GET /api/v1/experiments` · `GET /api/v1/experiments/{exp_id}` (API-only; no dedicated UI page) |
 | **Documents** | `GET/DELETE /api/v1/documents/{id}` |
 | **Ops** | `GET /api/v1/health` · `GET /api/v1/health/detailed` · `GET /api/v1/metrics` · `GET /api/v1/models/providers` · `GET /api/v1/models/hardware` · `POST /api/v1/internal/ingest/document` · `POST /api/v1/internal/ingest/url` · `POST /api/v1/internal/search` · `POST /api/v1/internal/verify/claims` (service-token auth) |
 
@@ -503,7 +503,9 @@ Lint: `cd apps/api && ruff check app/ tests/ && ruff format --check app/ tests/`
 
 ## Audit Tracker
 
-All bug/error/issue/dead-code findings live in [`docs/audit-2026-09-28-ui-redesign-full.md`](docs/audit-2026-09-28-ui-redesign-full.md) — severity, fix, and verification evidence per item, including the ingestion audit (H1–H2/M1–M5/L1–L2), ONNX-only enforcement, test hermeticity, and the CI triage (CI-1–CI-3). It supersedes the removed point-in-time reports (history preserved in git).
+All bug/error/issue/dead-code findings from the latest production pass live in [`docs/AUDIT.md`](docs/AUDIT.md) — findings with severity, fix, and verification evidence; the verified-solid areas (security, RAG pipeline, inference, DevOps); manual/live E2E verification results; remaining risks; and the re-audit checklist. Earlier point-in-time audit reports were consolidated into it (history preserved in git).
+
+Test-coverage gaps for the analysis service (the lowest-covered core module) are mapped in [`docs/ANALYSIS_SERVICE_TEST_GAPS.md`](docs/ANALYSIS_SERVICE_TEST_GAPS.md) — uncovered regions with risk, and a prioritized 17-test plan to lift it from 54% to ~85%.
 
 ---
 

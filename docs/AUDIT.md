@@ -3,7 +3,7 @@
 - **Branch:** `ui-redesign` (local only, never pushed)
 - **Scope:** full-repo audit — architecture/code quality, security, backend/API, RAG pipeline, AI/ML inference, DevOps, frontend UX, QA
 - **Method:** inspect → audit → fix → verify (unit + live E2E) → regression-check → document → commit, phase by phase
-- **Supersedes:** extends `docs/audit-2026-09-28-ui-redesign-full.md` (its findings remain fixed; this file covers the 2026-09-28 production pass on top)
+- **Consolidates:** this is now the single live audit tracker. Earlier point-in-time reports (`docs/audit-2026-09-28-ui-redesign-full.md` — ingestion H1–H2/M1–M5/L1–L2, ONNX-only enforcement, test hermeticity, CI-1–CI-3; and the RAM/optimization pass) were removed; their findings remain fixed and their history is preserved in git.
 
 ---
 
@@ -70,7 +70,7 @@ Plus white-box regression after every change: backend 734 passed (79% cov), fron
 
 ## Remaining risks & recommended upgrades (not blocking)
 
-1. **Coverage gaps**: `analysis_service.py` at 54% — the create/finalize branches deserve integration-level tests beyond `test_analysis_pipeline_integration.py`.
+1. **Coverage gaps**: `analysis_service.py` at 54% — the create/finalize branches deserve integration-level tests beyond `test_analysis_pipeline_integration.py`. Fully mapped with a prioritized 17-test remediation plan in [`ANALYSIS_SERVICE_TEST_GAPS.md`](ANALYSIS_SERVICE_TEST_GAPS.md).
 2. **Rate limiter multi-worker**: in-memory limiter means N workers multiply the ceiling; production already documents `SLOWAPI_STORAGE_URI` — wire Redis in the deploy template.
 3. **E2E in CI**: the new `scripts/e2e_manual_verify.sh` could run as a nightly CI job with MongoDB service container; today it is local-only.
 4. **Pydantic-model reuse**: `AnalysisResponse` serialization is hand-rolled in `serialize_*` helpers; `model_validate` from ORM docs would shrink ~80 lines (left as-is to avoid behavior risk late in the pass).
