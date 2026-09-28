@@ -388,11 +388,27 @@ def _register_exception_handlers(app: FastAPI) -> None:
             method=request.method,
             exc_info=True,
         )
-        return _error_response(
+        response = _error_response(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "INTERNAL_ERROR",
             "An unexpected error occurred.",
         )
+        # FastAPI wires this handler to ServerErrorMiddleware, the OUTERMOST
+        # layer, so an unhandled error never re-enters request_id_middleware and
+        # the response would otherwise carry no X-Request-ID. The id is still
+        # recoverable here: request_id_middleware bound it into structlog
+        # contextvars before dispatch. Echoing it keeps 500s correlatable from
+        # the client side, which is the whole point of the header.
+        try:
+            from structlog.contextvars import get_contextvars
+
+            request_id = get_contextvars().get("request_id")
+            if request_id:
+                response.headers["X-Request-ID"] = str(request_id)
+        except Exception:  # pragma: no cover - never let telemetry break a 500
+            # Header is best-effort: the 500 itself must still be delivered.
+            logger.debug("Could not attach X-Request-ID to error response", exc_info=True)
+        return response
 
 
 # ─── Request ID middleware ─────────────────────────────────────────────────────
