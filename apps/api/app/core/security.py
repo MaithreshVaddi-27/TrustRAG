@@ -108,14 +108,16 @@ def jti_key(payload: dict[str, Any]) -> str:
     return f"{payload.get('sub')}:{payload.get('iat')}"
 
 
-def decode_access_token(token: str) -> dict[str, Any]:
-    """
-    Decode and validate a JWT access token.
-    Raises AuthenticationError if invalid or expired.
+def _decode_jwt(token: str) -> dict[str, Any]:
+    """Verify signature, issuer and audience, and normalise PyJWT errors.
+
+    Both token kinds are signed with the same secret and algorithm, so the
+    decode call is identical. Callers differ only in which ``type`` claim they
+    require and the message they raise.
     """
     settings = get_settings()
     try:
-        payload = jwt.decode(
+        return jwt.decode(
             token,
             settings.jwt_secret,
             algorithms=[ALGORITHM],
@@ -123,18 +125,26 @@ def decode_access_token(token: str) -> dict[str, Any]:
             audience=settings.jwt_audience,
             options={"verify_aud": True, "verify_iss": True},
         )
-        # User and service tokens share the secret/algorithm — never accept a
-        # service token where a user token is required (and vice versa is
-        # already enforced in decode_service_token).
-        if payload.get("type") == SERVICE_TOKEN_TYPE:
-            raise AuthenticationError(
-                "Invalid authentication token", detail="Service token used as user token"
-            )
-        return payload
     except ExpiredSignatureError as exc:
         raise AuthenticationError("Token signature has expired", detail=str(exc)) from exc
     except JWTError as exc:
         raise AuthenticationError("Invalid authentication token", detail=str(exc)) from exc
+
+
+def decode_access_token(token: str) -> dict[str, Any]:
+    """
+    Decode and validate a JWT access token.
+    Raises AuthenticationError if invalid or expired.
+    """
+    payload = _decode_jwt(token)
+    # User and service tokens share the secret/algorithm — never accept a
+    # service token where a user token is required (and vice versa is
+    # already enforced in decode_service_token).
+    if payload.get("type") == SERVICE_TOKEN_TYPE:
+        raise AuthenticationError(
+            "Invalid authentication token", detail="Service token used as user token"
+        )
+    return payload
 
 
 # ─── Service-to-Service Authentication ────────────────────────────────────────
@@ -191,23 +201,12 @@ def decode_service_token(token: str) -> dict[str, Any]:
     Decode and validate a service-to-service JWT token.
     Raises AuthenticationError if invalid, expired, or not a service token.
     """
-    settings = get_settings()
     try:
-        payload = jwt.decode(
-            token,
-            settings.jwt_secret,
-            algorithms=[ALGORITHM],
-            issuer=settings.jwt_issuer,
-            audience=settings.jwt_audience,
-            options={"verify_aud": True, "verify_iss": True},
-        )
-
-        # Verify this is a service token
-        if payload.get("type") != SERVICE_TOKEN_TYPE:
-            raise AuthenticationError("Token is not a service token")
-
-        return payload
-    except ExpiredSignatureError as exc:
-        raise AuthenticationError("Service token signature has expired", detail=str(exc)) from exc
-    except JWTError as exc:
+        payload = _decode_jwt(token)
+    except AuthenticationError as exc:
         raise AuthenticationError("Invalid service token", detail=str(exc)) from exc
+
+    # Verify this is a service token
+    if payload.get("type") != SERVICE_TOKEN_TYPE:
+        raise AuthenticationError("Token is not a service token")
+    return payload

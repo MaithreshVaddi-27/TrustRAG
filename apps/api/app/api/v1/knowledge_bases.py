@@ -132,6 +132,56 @@ async def list_documents_endpoint(
     return await kb_service.list_kb_documents(kb_id, str(current_user["_id"]))
 
 
+async def _ingest_content(
+    *,
+    content: bytes,
+    filename: str,
+    file_size: int,
+    content_hash: str,
+    kb_id: str,
+    current_user: Mapping[str, Any],
+    cfg: Any,
+    background_tasks: BackgroundTasks,
+) -> DocResponse:
+    """Parse, chunk, register and schedule indexing for one document's bytes.
+
+    Shared by the upload and URL-ingest routes, which used to carry separate
+    copies of this pipeline. Only the leading filename/extension validation
+    differs between them, and each route still owns that. Parsing and chunking
+    run in a worker thread so neither route blocks the event loop on CPU-heavy
+    work.
+    """
+    stream = io.BytesIO(content)
+    pages, eff_from, eff_until = await asyncio.to_thread(parse_document, filename, stream)
+
+    chunks = await asyncio.to_thread(
+        get_chunking_strategy().chunk,
+        pages,
+        chunk_size=cfg.chunk_size,
+        chunk_overlap=cfg.chunk_overlap,
+    )
+
+    doc = await kb_service.add_document(
+        kb_id_str=kb_id,
+        filename=filename,
+        file_size=file_size,
+        content_hash=content_hash,
+        user_id_str=str(current_user["_id"]),
+        effective_from=eff_from,
+        effective_until=eff_until,
+    )
+
+    # Indexing runs in the background: the client gets a document record back
+    # immediately and the knowledge base becomes searchable shortly after.
+    background_tasks.add_task(
+        index_parsed_chunks,
+        doc_id_str=doc.id,
+        kb_id_str=kb_id,
+        chunks=chunks,
+    )
+    return doc
+
+
 @router.post(
     "/{kb_id}/documents",
     response_model=DocResponse,
@@ -194,38 +244,16 @@ async def upload_document_endpoint(
     # Compute content hash
     content_hash = hashlib.sha256(content).hexdigest()
 
-    # Parse document immediately to extract pages and dates without blocking
-    # the event loop on CPU-heavy PDF/DOCX work.
-    stream = io.BytesIO(content)
-    pages, eff_from, eff_until = await asyncio.to_thread(parse_document, filename, stream)
-
-    chunks = await asyncio.to_thread(
-        get_chunking_strategy().chunk,
-        pages,
-        chunk_size=cfg.chunk_size,
-        chunk_overlap=cfg.chunk_overlap,
-    )
-
-    # Save metadata record in MongoDB
-    doc = await kb_service.add_document(
-        kb_id_str=kb_id,
+    return await _ingest_content(
+        content=content,
         filename=filename,
         file_size=file_size,
         content_hash=content_hash,
-        user_id_str=str(current_user["_id"]),
-        effective_from=eff_from,
-        effective_until=eff_until,
+        kb_id=kb_id,
+        current_user=current_user,
+        cfg=cfg,
+        background_tasks=background_tasks,
     )
-
-    # Trigger background indexing (single models.yaml embedding model)
-    background_tasks.add_task(
-        index_parsed_chunks,
-        doc_id_str=doc.id,
-        kb_id_str=kb_id,
-        chunks=chunks,
-    )
-
-    return doc
 
 
 @router.post(
@@ -328,32 +356,13 @@ async def ingest_document_from_url_endpoint(
     # Compute content hash
     content_hash = hashlib.sha256(content).hexdigest()
 
-    # Parse document immediately to extract pages and dates without blocking
-    # the event loop on CPU-heavy remote-file parsing.
-    stream = io.BytesIO(content)
-    pages, eff_from, eff_until = await asyncio.to_thread(parse_document, filename, stream)
-
-    chunks = await asyncio.to_thread(
-        get_chunking_strategy().chunk,
-        pages,
-        chunk_size=cfg.chunk_size,
-        chunk_overlap=cfg.chunk_overlap,
-    )
-
-    # Save metadata record in MongoDB
-    doc = await kb_service.add_document(
-        kb_id_str=kb_id,
+    return await _ingest_content(
+        content=content,
         filename=filename,
         file_size=file_size,
         content_hash=content_hash,
-        user_id_str=str(current_user["_id"]),
-        effective_from=eff_from,
-        effective_until=eff_until,
+        kb_id=kb_id,
+        current_user=current_user,
+        cfg=cfg,
+        background_tasks=background_tasks,
     )
-
-    # Trigger background indexing
-    background_tasks.add_task(
-        index_parsed_chunks, doc_id_str=doc.id, kb_id_str=kb_id, chunks=chunks
-    )
-
-    return doc

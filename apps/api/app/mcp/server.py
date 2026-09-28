@@ -27,6 +27,21 @@ from app.verification.verifier import batch_verify_claims_nli
 
 logger = get_logger(__name__)
 
+# The three search tools take the same two arguments. Declared once and copied
+# per tool so a change to the query contract cannot land in only some of them.
+_SEARCH_INPUT_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "query": {"type": "string", "description": "Search query"},
+        "max_results": {
+            "type": "integer",
+            "description": "Maximum results to return (default: 5)",
+        },
+    },
+    "required": ["query"],
+}
+
+
 # Standard MCP Tool Definitions
 MCP_TOOLS: list[dict[str, Any]] = [
     {
@@ -82,50 +97,25 @@ MCP_TOOLS: list[dict[str, Any]] = [
     {
         "name": "tavily_search",
         "description": "AI-native web search using Tavily for clean snippets and source URLs.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query"},
-                "max_results": {
-                    "type": "integer",
-                    "description": "Maximum results to return (default: 5)",
-                },
-            },
-            "required": ["query"],
-        },
+        "inputSchema": dict(_SEARCH_INPUT_SCHEMA),
     },
     {
         "name": "duckduckgo_search",
         "description": "100% free web search using DuckDuckGo (zero API key needed).",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query"},
-                "max_results": {
-                    "type": "integer",
-                    "description": "Maximum results to return (default: 5)",
-                },
-            },
-            "required": ["query"],
-        },
+        "inputSchema": dict(_SEARCH_INPUT_SCHEMA),
     },
     {
         "name": "hybrid_web_search",
         "description": "Concurrent search across Tavily and DuckDuckGo with deduplication.",
         "inputSchema": {
-            "type": "object",
+            **_SEARCH_INPUT_SCHEMA,
             "properties": {
-                "query": {"type": "string", "description": "Search query"},
-                "max_results": {
-                    "type": "integer",
-                    "description": "Maximum results to return (default: 5)",
-                },
+                **_SEARCH_INPUT_SCHEMA["properties"],
                 "provider": {
                     "type": "string",
                     "description": "Search provider: 'tavily', 'duckduckgo', or 'both'",
                 },
             },
-            "required": ["query"],
         },
     },
     {
