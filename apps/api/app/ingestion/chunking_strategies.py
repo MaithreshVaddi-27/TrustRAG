@@ -166,21 +166,39 @@ class ProgressiveChunkingStrategy(ChunkingStrategy):
             length = len(text)
             start = 0
 
+            # Degenerate-config check, warned ONCE per page (M3): the smallest
+            # progressive window is 0.5 * chunk_size, so an overlap at/above
+            # that collapses the step toward 1 char (507x chunk blowup).
+            # Startup validation (_validate_chunk_windows) rejects overlap >=
+            # chunk_size; this covers direct calls with in-between values.
+            min_window = int(chunk_size * 0.5)
+            if chunk_overlap >= min_window:
+                logger.warning(
+                    "chunk_overlap >= progressive min-window, using full-window steps",
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                    min_window=min_window,
+                )
+
             while start < length:
                 # Use progressively larger chunks near the beginning
                 progress = start / max(length, 1)
                 effective_chunk_size = int(chunk_size * (0.5 + 0.5 * progress))
                 end = min(start + effective_chunk_size, length)
-                chunk_content = text[start:end].strip()
+                raw_slice = text[start:end]
+                chunk_content = raw_slice.strip()
 
                 if chunk_content:
+                    # Same M4 rule as chunker.py: offset indexes the first
+                    # real character, not stripped whitespace.
+                    leading_ws = len(raw_slice) - len(raw_slice.lstrip())
                     zone = detect_chunk_zone(chunk_content, page=page_num)
                     all_chunks.append(
                         {
                             "text": chunk_content,
                             "page": page_num,
                             "chunk_index": chunk_index,
-                            "character_offset": start,
+                            "character_offset": start + leading_ws,
                             "zone": zone,
                             "ocr_used": ocr_used,
                             "ocr_confidence": ocr_confidence,
@@ -193,7 +211,12 @@ class ProgressiveChunkingStrategy(ChunkingStrategy):
                     break
                 # Step scales with the effective window: a fixed full-size step
                 # would skip text while windows are still small (silent gaps).
-                start += max(1, effective_chunk_size - chunk_overlap)
+                # Guarded like chunker.py: fall back to a full-window step
+                # instead of degrading toward 1 char.
+                step = effective_chunk_size - chunk_overlap
+                if step <= 0:
+                    step = max(1, effective_chunk_size)
+                start += step
 
         return all_chunks
 
@@ -243,20 +266,41 @@ class LayoutAwareChunkingStrategy(ChunkingStrategy):
             # Group consecutive lines into table vs prose blocks, preserving
             # page order. Tables are chunked as whole blocks (never split
             # row-by-row); prose blocks go through the standard chunker.
-            blocks: list[tuple[str, list[str]]] = []
-            for line in lines_of(text):
+            # Blocks are recorded as raw-line spans so the exact page
+            # substring (including blank lines) is chunked and every
+            # character_offset rebases to true page coordinates (M2) — the
+            # old code chunked a re-joined sub-string and never rebased, so
+            # every layout chunk after the first pointed at the wrong span
+            # (and chunks from different blocks collided on offset 0).
+            raw_lines = lines_of(text)
+            line_starts: list[int] = []
+            pos = 0
+            for ln in raw_lines:
+                line_starts.append(pos)
+                pos += len(ln) + 1  # +1 for the "\n" that split() removed
+            blocks: list[tuple[str, int, int]] = []  # (kind, start_idx, end_excl)
+            for idx, line in enumerate(raw_lines):
                 if not line.strip():
+                    if blocks:
+                        kind, s, _ = blocks[-1]
+                        blocks[-1] = (kind, s, idx + 1)
                     continue
                 kind = "table" if is_table_line(line) else "text"
                 if blocks and blocks[-1][0] == kind:
-                    blocks[-1][1].append(line)
+                    k, s, _ = blocks[-1]
+                    blocks[-1] = (k, s, idx + 1)
                 else:
-                    blocks.append((kind, [line]))
+                    blocks.append((kind, idx, idx + 1))
 
-            for kind, block_lines in blocks:
+            for kind, start_idx, end_idx in blocks:
+                block_text = "\n".join(raw_lines[start_idx:end_idx])
+                if not block_text.strip():
+                    continue
+                block_base = line_starts[start_idx]
                 if kind == "table":
                     table_chunks = self._chunk_table_content(
-                        block_lines,
+                        block_text,
+                        block_base,
                         page_num,
                         chunk_index,
                         chunk_size,
@@ -272,7 +316,7 @@ class LayoutAwareChunkingStrategy(ChunkingStrategy):
                         [
                             {
                                 "page": page_num,
-                                "text": "\n".join(block_lines),
+                                "text": block_text,
                                 "ocr_used": ocr_used,
                                 "ocr_confidence": ocr_confidence,
                                 "page_image_png": page_image_png,
@@ -285,13 +329,15 @@ class LayoutAwareChunkingStrategy(ChunkingStrategy):
                         c["chunk_index"] = chunk_index
                         chunk_index += 1
                         c["page"] = page_num
+                        c["character_offset"] = block_base + c["character_offset"]
                     chunks.extend(section_result)
 
         return chunks
 
     def _chunk_table_content(
         self,
-        table_rows: list[str],
+        combined: str,
+        block_base: int,
         page_num: int,
         chunk_index: int,
         chunk_size: int,
@@ -300,11 +346,16 @@ class LayoutAwareChunkingStrategy(ChunkingStrategy):
         ocr_confidence: float | None = None,
         page_image_png: bytes | None = None,
     ) -> list[dict[str, Any]]:
-        """Chunk table-related content while preserving row structure."""
-        if not table_rows:
+        """Chunk table-related content while preserving row structure.
+
+        `combined` is the block's exact page substring (rows joined with
+        "\\n", never " ": space-joining glued markdown rows together into
+        fabricated rows like `| val 3 | | val 4 |`). Offsets rebase to page
+        coordinates via `block_base` (M2).
+        """
+        if not combined.strip():
             return []
 
-        combined = " ".join(table_rows)
         result = chunk_text(
             [
                 {
@@ -323,6 +374,7 @@ class LayoutAwareChunkingStrategy(ChunkingStrategy):
             c["chunk_index"] = chunk_index + i
             c["page"] = page_num
             c["zone"] = "table"
+            c["character_offset"] = block_base + c["character_offset"]
 
         return result
 

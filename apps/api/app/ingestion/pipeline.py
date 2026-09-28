@@ -8,6 +8,8 @@ and updates document ingestion status in MongoDB.
 from __future__ import annotations
 
 import asyncio
+import threading
+import weakref
 from datetime import UTC, datetime
 from typing import Any
 
@@ -26,15 +28,26 @@ logger = get_logger(__name__)
 
 # Ingestion can run several CPU/embedding-heavy background jobs at once. Keep
 # it serialized per event loop so uploads cannot starve the local model or API.
-_INGESTION_SEMAPHORES: dict[int, asyncio.Semaphore] = {}
+# Keyed by the loop *object* in a WeakKeyDictionary, not by id(loop): CPython
+# reuses ids of collected objects, so an id-keyed map can hand a semaphore
+# bound to a dead loop to a brand-new loop (M5: documents wedged in
+# "processing" forever). Weak keys also drop the entry when the loop closes.
+# Same pattern as app/core/concurrency.py.
+_INGESTION_SEMAPHORES: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+    weakref.WeakKeyDictionary()
+)
+_INGESTION_SEMAPHORE_LOCK = threading.Lock()
 
 
 def _get_ingestion_semaphore() -> asyncio.Semaphore:
-    loop_id = id(asyncio.get_running_loop())
-    semaphore = _INGESTION_SEMAPHORES.get(loop_id)
+    loop = asyncio.get_running_loop()
+    semaphore = _INGESTION_SEMAPHORES.get(loop)
     if semaphore is None:
-        semaphore = asyncio.Semaphore(1)
-        _INGESTION_SEMAPHORES[loop_id] = semaphore
+        with _INGESTION_SEMAPHORE_LOCK:
+            semaphore = _INGESTION_SEMAPHORES.get(loop)
+            if semaphore is None:
+                semaphore = asyncio.Semaphore(1)
+                _INGESTION_SEMAPHORES[loop] = semaphore
     return semaphore
 
 
@@ -322,13 +335,33 @@ async def index_parsed_chunks(
     strategy: ChunkingStrategy | None = None,
 ) -> None:
     """Run one ingestion job at a time per API process."""
-    async with _get_ingestion_semaphore():
-        await _index_parsed_chunks(
-            doc_id_str=doc_id_str,
-            kb_id_str=kb_id_str,
-            chunks=chunks,
-            strategy=strategy,
-        )
+    try:
+        async with _get_ingestion_semaphore():
+            await _index_parsed_chunks(
+                doc_id_str=doc_id_str,
+                kb_id_str=kb_id_str,
+                chunks=chunks,
+                strategy=strategy,
+            )
+    except Exception as exc:
+        # The semaphore acquire sits outside the inner handler's try/except,
+        # so an acquire failure used to strand the document in "processing"
+        # forever (M5). Mark it failed here instead — same envelope as inside.
+        logger.error("Ingestion semaphore acquire failed", doc_id=doc_id_str, error=str(exc))
+        try:
+            doc_coll = get_collection(Collections.DOCUMENTS)
+            err_type = type(exc).__name__
+            await doc_coll.update_one(
+                {"_id": ObjectId(doc_id_str)},
+                {
+                    "$set": {
+                        "ingestion_status": "failed",
+                        "error_message": f"Ingestion error ({err_type}). See server logs.",
+                    }
+                },
+            )
+        except Exception:
+            logger.error("Failed to mark document failed after semaphore error", doc_id=doc_id_str)
 
 
 def hashlib_qdrant_id(doc_id_str: str, chunk_index: int) -> str:

@@ -331,8 +331,8 @@ llm:
   max_retries: 2
 
 embedding:
-  framework: langchain
-  provider: huggingface            # local-only; cloud embeddings removed (D-19)
+  framework: onnxruntime           # ONNX-only since 2026-09-27; torch/HF branch removed
+  provider: onnx                   # local-only; cloud embeddings removed (D-19)
   model: BAAI/bge-small-en-v1.5
   output_dimensionality: 384      # versioned per KB; mismatches fail closed
   version: "1"

@@ -1071,7 +1071,33 @@ def get_settings() -> Settings:
 def get_model_config() -> ModelConfig:
     """Return the cached ModelConfig singleton loaded from models.yaml."""
     raw = _load_models_yaml()
-    return ModelConfig(raw)
+    cfg = ModelConfig(raw)
+    _validate_chunk_windows(cfg)
+    return cfg
+
+
+def _validate_chunk_windows(cfg: ModelConfig) -> None:
+    """Fail fast on chunk settings that would silently degrade chunking (M3).
+
+    `chunk_overlap >= chunk_size` used to collapse the progressive step to 1
+    character (507x chunk blowup → 99k embedding calls). The strategies now
+    guard at chunk time; this rejects the misconfiguration at startup so it
+    is fixed instead of merely survived.
+    """
+    try:
+        size = int(cfg.chunk_size)
+        overlap = int(cfg.chunk_overlap)
+    except (KeyError, TypeError, ValueError):
+        return  # Missing keys are reported by the properties themselves.
+    if size <= 0:
+        raise ValueError(f"Invalid ingestion.chunk_size={size}: must be positive")
+    if overlap < 0:
+        raise ValueError(f"Invalid ingestion.chunk_overlap={overlap}: must be non-negative")
+    if overlap >= size:
+        raise ValueError(
+            f"Invalid ingestion chunk windows: chunk_overlap ({overlap}) >= "
+            f"chunk_size ({size}). Overlap must be smaller than the window."
+        )
 
 
 @lru_cache(maxsize=1)

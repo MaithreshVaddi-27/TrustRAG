@@ -124,9 +124,10 @@ reranker:
   model: cross-encoder/ms-marco-MiniLM-L-6-v2
   # Max candidates scored per query (cost bound). MUST stay >= fusion_top_k:
   # capping below the fused width discards candidates before scoring.
-  # NOTE: sentence-transformers ships in the `local-models` extra, NOT the
-  # torch-free Docker runtime — enabling in Docker is a silent no-op
-  # (get_reranker returns None → RRF order) until the image carries torch.
+  # NOTE: the runtime is ONNX-only by design. When use_onnx=true (default)
+  # and the ONNX artifact is missing, get_reranker fails closed to RRF order
+  # (never silent torch weights). sentence-transformers ships in the
+  # `local-models` extra for explicit use_onnx=false opt-in + one-time export.
   top_k: 20
   # Batch size for CrossEncoder inference (CPU: 16, GPU: 64)
   batch_size: 16

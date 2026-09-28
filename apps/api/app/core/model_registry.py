@@ -700,7 +700,21 @@ def get_reranker():  # type: ignore[return]
                 "ONNX reranker initialization failed, falling back to PyTorch", error=str(exc)
             )
 
-    # Fallback to PyTorch CrossEncoder
+    # ONNX-only enforcement (ONNX-1): when use_onnx is true (the default),
+    # a failed ONNX init must NOT silently load torch weights at runtime —
+    # that would violate the torch-free runtime contract the Docker image
+    # relies on. Fail closed to RRF order (same as the torch-free image)
+    # with an actionable message. Explicit `use_onnx: false` still opts in
+    # to the PyTorch path below.
+    if cfg.reranker_use_onnx:
+        logger.warning(
+            "ONNX reranker unavailable and use_onnx=true: reranker disabled, using Hybrid RRF. "
+            "Run 'python scripts/ensure_onnx_models.py' to export it, or set "
+            "reranker.use_onnx=false to explicitly opt into the PyTorch CrossEncoder."
+        )
+        return None
+
+    # Fallback to PyTorch CrossEncoder (explicit opt-in via use_onnx=false only)
     try:
         from sentence_transformers import CrossEncoder
     except ImportError:

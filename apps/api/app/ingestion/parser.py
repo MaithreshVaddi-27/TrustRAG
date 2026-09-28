@@ -59,6 +59,12 @@ MAX_DECOMPRESSION_RATIO = {
 
 DEFAULT_MAX_RATIO = 100
 
+# Absolute ceiling on total uncompressed bytes for ZIP-based formats (M1).
+# Ratio-only guards miss mildly-repetitive prose (~43x, far under the 100x
+# cap) that still expands a 2MB upload into ~90MB XML / ~280MB RSS.
+# 256MB keeps every legitimate document working while bounding RSS.
+MAX_DECOMPRESSED_BYTES = 256 * 1024 * 1024
+
 
 def validate_magic_bytes(filename: str, stream: BinaryIO) -> None:
     """
@@ -92,7 +98,19 @@ def validate_magic_bytes(filename: str, stream: BinaryIO) -> None:
 def check_decompression_bomb(filename: str, compressed_size: int, decompressed_size: int) -> None:
     """
     Check if decompression ratio exceeds safe threshold (zip bomb protection).
+
+    Enforces BOTH a per-format ratio cap and an absolute byte ceiling (M1):
+    ratio-only checks miss mildly-repetitive prose that compresses ~43x yet
+    expands into hundreds of MB of live XML.
     """
+    if decompressed_size > MAX_DECOMPRESSED_BYTES:
+        raise IngestionError(
+            "Decompression bomb detected",
+            detail=(
+                f"File '{filename}' uncompressed size {decompressed_size / (1024 * 1024):.1f}MB "
+                f"exceeds absolute maximum {MAX_DECOMPRESSED_BYTES / (1024 * 1024):.0f}MB"
+            ),
+        )
     if compressed_size <= 0:
         return
     ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
@@ -234,6 +252,10 @@ def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
                     }
                 )
             return pages
+    except IngestionError:
+        # Size/page-limit guards raise IngestionError with operator-facing
+        # messages — re-wrapping them would destroy the diagnosis (L2).
+        raise
     except Exception as exc:
         raise IngestionError("Failed to parse PDF document", detail=str(exc)) from exc
 
@@ -253,6 +275,22 @@ def parse_docx(stream: BinaryIO) -> list[dict[str, Any]]:
             total_uncompressed = sum(info.file_size for info in docx_zip.infolist())
             check_decompression_bomb("document.docx", compressed_size, total_uncompressed)
 
+            # Bound the single member read too (M1): the total can pass while
+            # one member still materialises hundreds of MB of live XML.
+            try:
+                member_size = docx_zip.getinfo("word/document.xml").file_size
+            except KeyError:
+                member_size = 0
+            if member_size > MAX_DECOMPRESSED_BYTES:
+                raise IngestionError(
+                    "Decompression bomb detected",
+                    detail=(
+                        f"File 'document.docx' member word/document.xml is "
+                        f"{member_size / (1024 * 1024):.1f}MB, exceeds absolute maximum "
+                        f"{MAX_DECOMPRESSED_BYTES / (1024 * 1024):.0f}MB"
+                    ),
+                )
+
             xml_content = docx_zip.read("word/document.xml")
             tree = ET.fromstring(xml_content)
             namespaces = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
@@ -263,6 +301,11 @@ def parse_docx(stream: BinaryIO) -> list[dict[str, Any]]:
                     paragraphs.append("".join(texts))
             full_text = "\n\n".join(paragraphs)
             return [{"page": 1, "text": full_text.strip()}]
+    except IngestionError:
+        # Decompression-bomb guards raise IngestionError with operator-facing
+        # messages — re-wrapping them would destroy the diagnosis (L2, same
+        # shape as parse_pdf).
+        raise
     except Exception as exc:
         raise IngestionError("Failed to parse DOCX document", detail=str(exc)) from exc
 

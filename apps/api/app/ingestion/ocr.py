@@ -105,7 +105,15 @@ def ocr_image_bytes(image_png: bytes, min_confidence: float = 0.5) -> OCRPageRes
 
     confidence = sum(scores) / len(scores) if scores else None
     text = "\n".join(lines)
-    if confidence is not None and confidence < min_confidence:
+    # No per-line score → no confidence signal. "Garbage must never become
+    # evidence": unscored text is dropped, not returned as full evidence (L1).
+    if confidence is None:
+        logger.warning(
+            "Dropping unscored OCR page text (no confidence signal)",
+            threshold=min_confidence,
+        )
+        return OCRPageResult(text="", confidence=None, used=True)
+    if confidence < min_confidence:
         logger.warning(
             "Dropping low-confidence OCR page text",
             confidence=round(confidence, 3),
