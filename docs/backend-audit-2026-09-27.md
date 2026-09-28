@@ -22,7 +22,7 @@ Findings marked **VERIFIED** were checked against the exact line numbers quoted.
 
 Remediation tracker. **Waves 1 and 2 are complete, plus the five Wave 4/5 items in `1bc7b00` and a further round covering B-8 (upload/URL-ingest), B-11 (lifespan), B-15 (effective-model allowlist + canonical provider), and B-18 (`top_p` / `max_completion_tokens`).** Wave 3 and the residual items below are not started. All work is on `ui-redesign`; `1bc7b00` is committed, the second round is **uncommitted**.
 
-Test suite: **431 → 542 backend passed (+111)**, **25 → 33 frontend passed (+8)**, backend coverage **70% → 74%** (8521 statements, 2204 missed). `ruff check` / `ruff format` clean, `scripts/apply_ports.py --check` clean. `app/main.py` 50% → **78%**; the two heaviest untested write handlers now have 15 route tests.
+Test suite: **431 → 619 backend passed (+188)**, **25 → 33 frontend passed (+8)**, backend coverage **70% → 75%** (8543 statements, 2135 missed). `ruff check` / `ruff format` clean, `scripts/apply_ports.py --check` clean. `app/main.py` 50% → **78%**; `onnx_embeddings.py` 48% → near-complete; `onnx_reranker.py` 29% → near-complete.
 
 ## Wave 1 — complete
 
@@ -81,13 +81,14 @@ Three guards are **meta-tests** that keep the other guards from going vacuous �
 | Wave | IDs | Theme |
 |---|---|---|
 | **3** | L-1 … L-12 | Local-model portability: per-tier model recommendations, per-model context window, llama.cpp flags, adaptive timeouts, local provider tests. **Needs hardware validation.** |
-| **4 (rest)** | B-12, T-2, T-4, T-5, T-8, ~28 shape-only tests | Remaining structural gaps: `execute_agentic_rag_flow` entrypoint (100% untested), ONNX fake fixture, the five `/analyses/{{id}}` read endpoints, the `main.py` exception handlers |
 | **5 (rest)** | B-18 (`ChatNVIDIA` has no `max_retries`) | NVIDIA lacks a langchain-level retry; adding it without capping Gemini would increase spend, so this needs a cost decision |
+| **2** | T-2 | ~28 shape-only tests. The ones that could let a real regression through are fixed (hardware profile coherence, tier→batch-size mapping, auth status codes); the rest are low-leverage `assert x is not None` cleanups. |
+| **3** | L-1 … L-12 | Local-model portability. **Blocked on a product decision** (which models to recommend per RAM tier) and on hardware validation. |
 
 ### Known follow-ups
 
-- **B-12** is now the largest single coverage hole: `execute_agentic_rag_flow` and `build_agent_graph` are 100% untested.
-- `app/services/analysis_service.py` sits at **40%** coverage — the service that owns B-15's fix is the least-tested file in the API.
+- **L-1 is the only remaining user-visible defect** (the same 3B model recommended for every RAM tier). It needs a product decision, not a code change.
+- **B-12, B-8, B-11, T-8 are resolved.** `app/services/analysis_service.py` remains the least-covered service, but its authorization path is now pinned by tests that fail if the ownership check is removed.
 - **L-1** (the same 3B model recommended for every RAM tier) is user-visible and still open; it needs a product decision on which models to recommend.
 - Adding a generic `openai_compatible` provider would need a new `langchain-openai` dependency — deliberately not added without agreement.
 
@@ -685,7 +686,11 @@ See **B-9**. Proof that it passes while generation is broken: the suite touches 
 
 B-7 (compression default), B-8/B-14/B-15 (allowlist + context windows), B-13 (`nvidia_base_url` + generic OpenAI-compatible provider), B-12 provider asymmetries (`top_p`, `max_completion_tokens`, alias normalization, adaptive timeouts), plus the ~28 shape-only tests.
 
-**Second round (uncommitted).** B-8 upload + URL-ingest (15 tests), B-11 lifespan (5 tests), B-15 effective-model allowlist + canonical provider persistence, B-18 `top_p` + `max_completion_tokens` + **provider-aware NLI timeout** (local 90s guard vs. billed cloud at the configured 180s), and B-15's verification-model allowlist. Three stale `tests/test_local_llm.py` assertions that encoded the pre-B-18 NVIDIA `max_tokens` name were updated to match the intentional change.
+**Rounds 2-5.** B-8 upload + URL-ingest (15 tests), B-11 lifespan (5 tests), B-15 effective-model allowlist + canonical provider persistence, B-18 `top_p` + `max_completion_tokens` + **provider-aware NLI timeout** (local 90s guard vs. billed cloud at the configured 180s), and B-15's verification-model allowlist. Three stale `tests/test_local_llm.py` assertions that encoded the pre-B-18 NVIDIA `max_tokens` name were updated to match the intentional change.
+
+**Rounds 3-5.** B-12 (10 tests: graph topology, compiled singleton, initial state, semantic-cache gates, async-embed fallback, ledger teardown). B-11 remainder (24 tests: all 15 exception handlers + request-ID middleware) plus a fix so unhandled 500s echo `X-Request-ID`. B-8 remainder (21 tests: the five `/analyses/{{id}}` read routes and their authorization). T-8 (16 tests: fake-ONNX-session coverage of both engines) plus a fix for the hardcoded 384 empty-batch width. T-2 (strengthened hardware-profile and auth-status assertions).
+
+Every new test was mutation-checked: broken edge map, fail-open verdict default, over-broad cache store, removed ownership check, removed ONNX chunking, ignored reranker `batch_size`, uniform tier batch sizes, decoupled `usage_pct`, zeroed RSS — each was confirmed to fail the intended test.
 
 ---
 
@@ -693,7 +698,7 @@ B-7 (compression default), B-8/B-14/B-15 (allowlist + context windows), B-13 (`n
 
 **Verified by the author (source + installed package + measurement):** B-1 (incl. 176.9 MB measurement), B-2, B-3 (mechanism + latency classification), B-4 (pre-request half), B-8 (46 v1 routes counted directly, 22 untested), B-9, B-10, B-11, B-12, B-19, the **431 passed / 70% / 8185 stmts / 2464 missed** baseline (re-run, 33.46s), the absence of skips, `langchain-google-genai` 4.4.0 `ValueError` on unexpected kwargs, `ChatNVIDIA` lacking both `max_retries` and `max_completion_tokens`, and the reasoning-keyword cross-check for all 7 Gemini + 3 NVIDIA ids.
 
-**Verified by execution (fix + regression test, all passing):** B-1 through B-11, B-13, B-14, B-16, B-17, B-19, the **542 passed / 74% / 8521 stmts / 2204 missed** result (re-run, 33.19s), and the frontend **33 passed** in 8 files. The B-8 route tests exercise the real SSRF validator and the real `kb_service` ownership check rather than mocking them; the B-11 tests drive the real `lifespan` context manager.
+**Verified by execution (fix + regression test, all passing):** B-1 through B-11, B-13, B-14, B-16, B-17, B-19, the **619 passed / 75% / 8543 stmts / 2135 missed** result (re-run, 38.67s), and the frontend **33 passed** in 8 files. The B-8 route tests exercise the real SSRF validator and the real `kb_service` ownership check rather than mocking them; the B-11 tests drive the real `lifespan` context manager.
 
 **Code-evidence only (not re-run):** B-4 recovery half, B-12 (`execute_agentic_rag_flow` — still 100% untested, so its *absence* of a defect is not established), B-18's residual `ChatNVIDIA` `max_retries` gap, C-7 through C-13, and all of Part 3. These follow directly from the cited lines but were not independently reproduced.
 

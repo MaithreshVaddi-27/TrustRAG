@@ -52,9 +52,13 @@ def test_health_detailed_requires_auth():
         patch("app.api.v1.health.mongo_health_check", AsyncMock(return_value=True)),
         patch("app.api.v1.health.qdrant_health_check", return_value=True),
     ):
-        # No auth header → 401/403
+        # No auth header. Pinned to the exact code rather than `in (401, 403)`:
+        # a loose tuple cannot distinguish "correctly unauthenticated" from
+        # "rejected for the wrong reason", so an auth regression that returned
+        # 403 FORBIDDEN (or a 500) would still have passed.
         response = client.get("/api/v1/health/detailed")
-        assert response.status_code in (401, 403)
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "UNAUTHORIZED"
 
 
 def test_health_detailed_reports_rss_and_metrics():
