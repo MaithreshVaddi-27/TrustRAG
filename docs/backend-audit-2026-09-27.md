@@ -720,6 +720,88 @@ Two of these checks failed the first time and were corrected rather than accepte
   test spent the full retry budget. That is the severity of the original bug
   demonstrated rather than a passing check.
 
+## Dead code and duplication sweep
+
+A reference-counting sweep over every module (AST-based, alias-aware, then
+hand-verified with grep) found no unused files: all 76 backend modules and all
+50 frontend sources are reachable, and all 12 routers are registered. What it did
+find was **one live defect and ~690 lines of unreachable code**.
+
+### The live defect: feature flags were always empty
+
+`FeatureFlagManager.initialize()` referenced `Collections.FEATURE_FLAGS`, which
+was never defined. The resulting `AttributeError` was swallowed by a bare
+`except Exception` that still set `_initialized = True` ("don't retry on every
+call"), so `GET /api/v1/experimentation/flags` returned `{}` for the life of the
+process and never recovered — with a single WARNING line as the only evidence.
+Fixed by defining the constant and by leaving the manager retryable on failure,
+logging with a traceback at error level. Seven tests added; both halves of the
+fix are mutation-checked.
+
+### What was removed
+
+| Location | Lines | Why it was dead |
+|---|---|---|
+| `core/experimentation.py` | ~340 | The entire A/B framework. The only importer wanted `get_feature_flag_manager`. Its `create_experiment` wrote A/B documents into `Collections.EXPERIMENTS` — the same collection the live evaluation service uses for an incompatible schema — so reviving it as written would corrupt real data. Noted in the module docstring. |
+| `core/local_llm.py` | ~200 | The model-offloading chain. Its comment said "call from a background task"; no such task exists. Unloading mitigates RAM pressure, and OOM under contention is far more visible than stale resident models, so this was never load-bearing. |
+| `services/analysis_service.py` | 121 | `get_analytics_dashboard` — no route, no caller, no test. |
+| four dead functions | 25 | `raise_if_llm_outage`, `is_exhausted` (its own docstring said it was superseded), `is_token_revoked`, the `STOPWORDS` alias, a dead tokenizer-revision constant. |
+
+### What was de-duplicated
+
+- The revocation denylist check existed three times. The two live copies in
+  `deps.py` differed only in the error message; they now share one helper. The
+  third was dead and is gone. Revocation is still enforced on both paths.
+- The version string was hardcoded three times while `Settings.app_version` was
+  read by nobody, so `APP_VERSION` in `.env` did nothing. `main.py` and both
+  health endpoints now read from Settings.
+- The upload and URL-ingest routes each carried their own copy of the
+  parse/chunk/register/schedule pipeline. One `_ingest_content` now serves both.
+- `decode_access_token` and `decode_service_token` each inlined the same
+  `jwt.decode` call and error handlers. One `_decode_jwt` now serves both; the
+  callers keep their own required `type` claim and messages.
+- The three MCP search tools repeated a byte-identical `inputSchema`.
+  `hybrid_web_search` extends the shared constant rather than restating it.
+
+### Two things that look like duplication but must not be collapsed
+
+1. **The three verdict models in `verification/verifier.py`.** Each redeclares
+   the same fields and the same two validators. This was tried as a shared base
+   class and **silently broke coercion**: pydantic v2 applies a base class's
+   `field_validator` only to fields declared in that base, and the base declared
+   none, so `"supported"` and `"0,2"` stopped being accepted. The per-model
+   `Field(description=...)` text is also sent to the LLM as part of the
+   structured-output schema, so unifying it would change model behaviour. The
+   duplication is forced by pydantic semantics and prompt-facing text.
+
+2. **Most function-local imports.** See below.
+
+### Function-local imports: what could and could not be hoisted
+
+Roughly 130 function-local imports exist. Moving them is **not** a mechanical
+change, and about half must stay where they are:
+
+- **Heavy or optional dependencies, lazy on purpose.** `torch` in
+  `core/hardware.py` carries a docstring saying it must not be hoisted: it costs
+  ~177 MB RSS, and the embedding stack is deliberately ONNX-based. Same for
+  `transformers`, `rapidocr_onnxruntime`, `pyclamd` and the `onnxruntime`
+  quantization path. Verified after the change: importing the app loads none of
+  them.
+- **Late-binding test seams.** Several modules import a helper *inside* the
+  function precisely so that `monkeypatch`/`patch` on the source module is
+  visible at call time. `llm_ledger.max_calls_per_analysis` is the clearest
+  example: it imports `get_model_config` locally, and hoisting it broke the
+  budget-guard tests, which patch `app.core.config`. Hoisting these requires
+  rewriting the tests to patch where the symbol is *used*
+  (`app.agent.graph.X`, not `app.db.qdrant.X`).
+- **Guarded imports inside `try:`** are fallbacks or optional-dependency seams,
+  not lazy imports, and were left alone.
+
+Twenty files were hoisted where the import was genuinely redundant and unguarded;
+the rest were left in place. Coverage and behaviour are unchanged by the
+remaining ones, so the correct amount of this refactor is bounded by the
+test-seam design, not by effort.
+
 ## Wave 5 — cleanup
 
 B-7 (compression default), B-8/B-14/B-15 (allowlist + context windows), B-13 (`nvidia_base_url` + generic OpenAI-compatible provider), B-12 provider asymmetries (`top_p`, `max_completion_tokens`, alias normalization, adaptive timeouts), plus the ~28 shape-only tests.
