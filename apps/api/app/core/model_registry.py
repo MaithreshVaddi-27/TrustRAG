@@ -229,16 +229,35 @@ def _create_llm(
         if not settings.nvidia_api_key:
             raise ConfigurationError("NVIDIA_API_KEY must be set when AI_PROVIDER is 'nvidia'")
 
-        with _suppress_nvidia_unknown_type_warning(model):
-            llm = ChatNVIDIA(
-                model=model,
-                api_key=settings.nvidia_api_key,
-                temperature=temperature,
-                max_completion_tokens=(
-                    max_completion_tokens or max_tokens or cfg.llm_max_output_tokens
-                ),
-                timeout=timeout,
-            )
+        # Guard the constructor: pydantic validation failures embed the
+        # offending value in `input_value=`, so an unguarded str(exc) would
+        # carry the API key into graph.py's logger.error(exc_info=True)
+        # (audit B-17). Never surface the raw SDK message for a cloud client.
+        try:
+            with _suppress_nvidia_unknown_type_warning(model):
+                llm = ChatNVIDIA(
+                    model=model,
+                    api_key=settings.nvidia_api_key,
+                    # Honor the configured endpoint (audit B-13). This was dead
+                    # config: NVIDIA_BASE_URL only took effect when load_dotenv
+                    # happened to export it into the process environment, so a
+                    # Kubernetes secret mounted as a file, a programmatic
+                    # override, or a self-hosted / OpenAI-compatible NIM gateway
+                    # was silently ignored.
+                    base_url=cfg.nvidia_base_url or settings.nvidia_base_url,
+                    temperature=temperature,
+                    max_completion_tokens=(
+                        max_completion_tokens or max_tokens or cfg.llm_max_output_tokens
+                    ),
+                    timeout=timeout,
+                )
+        except ConfigurationError:
+            raise
+        except Exception as exc:
+            raise ConfigurationError(
+                f"Failed to initialize NVIDIA cloud client for model '{model}'. "
+                "The API key may be invalid, revoked, or not permitted for this model."
+            ) from exc
         return llm
 
     from langchain_google_genai import ChatGoogleGenerativeAI
@@ -249,15 +268,24 @@ def _create_llm(
             "Switch to 'ollama' or 'llama_cpp' to run completely locally without an API key."
         )
 
-    llm = ChatGoogleGenerativeAI(
-        model=model,
-        google_api_key=settings.gemini_api_key,
-        temperature=temperature,
-        top_p=top_p if top_p is not None else cfg.llm_top_p,
-        max_output_tokens=max_tokens if max_tokens is not None else cfg.llm_max_output_tokens,
-        timeout=timeout,
-        max_retries=max_retries if max_retries is not None else cfg.llm_max_retries,
-    )
+    try:
+        llm = ChatGoogleGenerativeAI(
+            model=model,
+            google_api_key=settings.gemini_api_key,
+            temperature=temperature,
+            top_p=top_p if top_p is not None else cfg.llm_top_p,
+            max_output_tokens=max_tokens if max_tokens is not None else cfg.llm_max_output_tokens,
+            timeout=timeout,
+            max_retries=max_retries if max_retries is not None else cfg.llm_max_retries,
+        )
+    except Exception as exc:
+        # Same rationale as the NVIDIA branch above: the raw pydantic message
+        # can contain the key. The chained `from exc` keeps the traceback for
+        # local debugging while the user-facing message stays key-free.
+        raise ConfigurationError(
+            f"Failed to initialize Google Gemini client for model '{model}'. "
+            "The API key may be invalid, revoked, or not permitted for this model."
+        ) from exc
     return llm
 
 
@@ -302,12 +330,26 @@ def _schedule_close(llm: BaseChatModel) -> None:
             _PENDING_CLOSE.append(llm)
 
 
+# Cloud providers hold a network connection, not a model in RAM. The
+# RAM-derived cap is meaningless for them, and evicting one can aclose() a
+# client that has an in-flight — and billed — request in progress (audit B-16).
+# Cloud clients are therefore never evicted and never closed on the LRU path.
+CLOUD_LLM_PROVIDERS = frozenset({"gemini", "google_genai", "nvidia", "nim"})
+
+
+def _is_cloud_provider(provider: str | None) -> bool:
+    return (provider or "").strip().lower() in CLOUD_LLM_PROVIDERS
+
+
 def put_llm_instance(provider: str, model: str | None, llm: BaseChatModel) -> None:
     """Put LLM instance into bounded registry with LRU eviction (sync).
 
     Sync by design: get_llm/get_verification_model are sync factories called
     from both async and sync code. Evicted instances close via the running
     loop when there is one, otherwise wait in _PENDING_CLOSE for shutdown.
+
+    Cloud providers bypass the bound entirely: the connection is cheap, the RAM
+    cap is meaningless, and closing a client mid-request wastes a paid call.
     """
     global _LLM_REGISTRY_CLOSED
     if _LLM_REGISTRY_CLOSED:
@@ -316,12 +358,23 @@ def put_llm_instance(provider: str, model: str | None, llm: BaseChatModel) -> No
         return
 
     key = _llm_registry_key(provider, model)
+    if _is_cloud_provider(provider):
+        with _LLM_REGISTRY_LOCK:
+            _LLM_REGISTRY[key] = llm
+            _LLM_REGISTRY.move_to_end(key)
+        return
+
     max_instances = get_max_llm_instances()
     evicted: tuple[str, BaseChatModel] | None = None
     with _LLM_REGISTRY_LOCK:
-        # Evict LRU if at capacity
+        # Evict LRU if at capacity. Never evict a cloud client: popping one
+        # here would aclose() it while a request may be in flight.
         if len(_LLM_REGISTRY) >= max_instances and key not in _LLM_REGISTRY:
-            evicted = _LLM_REGISTRY.popitem(last=False)
+            for candidate_key in list(_LLM_REGISTRY.keys()):
+                if not _is_cloud_provider(candidate_key.split(":", 1)[0]):
+                    evicted_llm = _LLM_REGISTRY.pop(candidate_key)
+                    evicted = (candidate_key, evicted_llm)
+                    break
 
         _LLM_REGISTRY[key] = llm
         _LLM_REGISTRY.move_to_end(key)

@@ -123,13 +123,73 @@ async def test_mcp_tool_execution():
         assert "content" in res
         assert "MCP DDG" in res["content"][0]["text"]
 
+
+# ─── Audit B-19: execute_mcp_tool had only a tautological test ─────────────────
+# The previous test patched `app.mcp.client.handle_tool_call` — the single callee
+# of the function under test — then asserted a hardcoded JSON string parsed. It
+# would have passed against a broken internal-auth path, a missing `content`
+# key, or a body of `return json.loads(handle_tool_call(...))` regardless of
+# arguments. These assert the real contract instead.
+
+
+@pytest.mark.asyncio
+async def test_execute_mcp_tool_uses_internal_auth_path():
+    """The in-process caller must be authenticated by construction: the real
+    call passes `_internal=True`. The old test never checked this."""
+    with patch(
+        "app.mcp.client.handle_tool_call",
+        AsyncMock(return_value={"content": [{"type": "text", "text": "[]"}]}),
+    ) as mock_handle:
+        await execute_mcp_tool("duckduckgo_search", {"query": "q"})
+    mock_handle.assert_awaited_once_with("duckduckgo_search", {"query": "q"}, _internal=True)
+
+
+@pytest.mark.asyncio
+async def test_execute_mcp_tool_returns_none_on_empty_content():
+    """A response with no content items must yield None, not raise or return {}."""
+    with patch(
+        "app.mcp.client.handle_tool_call",
+        AsyncMock(return_value={"content": []}),
+    ):
+        assert await execute_mcp_tool("t", {}) is None
+    with patch(
+        "app.mcp.client.handle_tool_call",
+        AsyncMock(return_value={}),
+    ):
+        assert await execute_mcp_tool("t", {}) is None
+
+
+@pytest.mark.asyncio
+async def test_execute_mcp_tool_parses_json_content():
     with patch(
         "app.mcp.client.handle_tool_call",
         AsyncMock(return_value={"content": [{"type": "text", "text": '[{"title": "Client Ok"}]'}]}),
     ):
         parsed = await execute_mcp_tool("duckduckgo_search", {"query": "client query"})
-        assert len(parsed) == 1
-        assert parsed[0]["title"] == "Client Ok"
+    assert len(parsed) == 1
+    assert parsed[0]["title"] == "Client Ok"
+
+
+@pytest.mark.asyncio
+async def test_execute_mcp_tool_falls_back_to_raw_text_on_bad_json():
+    """Non-JSON text is returned verbatim rather than raising (client.py:41-43)."""
+    with patch(
+        "app.mcp.client.handle_tool_call",
+        AsyncMock(return_value={"content": [{"type": "text", "text": "not json at all"}]}),
+    ):
+        assert await execute_mcp_tool("t", {}) == "not json at all"
+
+
+@pytest.mark.asyncio
+async def test_execute_mcp_tool_propagates_dispatcher_errors():
+    """Dispatcher failures must propagate so the graph can fail the analysis;
+    they must not be silently swallowed into a None result."""
+    with patch(
+        "app.mcp.client.handle_tool_call",
+        AsyncMock(side_effect=ValueError("Unknown MCP tool")),
+    ):
+        with pytest.raises(ValueError, match="Unknown MCP tool"):
+            await execute_mcp_tool("nope", {})
 
 
 def test_ingestion_url_allowlist_uses_exact_origins():

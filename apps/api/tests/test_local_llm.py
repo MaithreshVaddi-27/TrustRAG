@@ -147,7 +147,6 @@ def test_embedding_model_is_single_onnx_engine():
     # serves the models.yaml default or fails loudly with the bootstrap fix.
     import inspect
 
-
     assert "model" not in inspect.signature(get_embedding_model).parameters
     # Missing ONNX weights fail loudly with the bootstrap fix (not silent).
     get_embedding_model.cache_clear()
@@ -262,18 +261,37 @@ def test_local_cap_kwargs_only_for_local_providers():
 
 
 def test_verification_cap_kwargs_reasoning_headroom():
-    """Verification caps: local stays lean, reasoning models get headroom
-    (2x with a 1024 floor — live probes show ~475 reasoning tokens on
-    trivia and a starved 256-token rewrite returning empty). Provider-
-    correct param names throughout (thinking traces share the completion
-    budget — without this, verdict JSON truncates)."""
+    """Verification caps: every provider is capped per call, with the
+    provider-correct parameter name; reasoning models get extra headroom
+    (2x with a 1024 floor — live probes show ~475 reasoning tokens on trivia
+    and a starved 256-token rewrite returning empty).
+
+    Regression (audit B-2): cloud used to return {} here and fall back to the
+    512-token instance default. The fused decompose+verify call asks for 1024
+    tokens to serialise verdicts for up to 8 claims, so it truncated mid-JSON,
+    returned None, and silently fell back to the two-step path — 3 billed
+    calls instead of 1 on the common cloud path. Unknown providers still get
+    {} rather than a foreign kwarg."""
     # Local direct-answer: identical to local_cap_kwargs (KV-saving, unchanged).
     assert _llm_mod.verification_cap_kwargs("ollama", "gemma3:1b", 384) == {"max_tokens": 384}
     assert _llm_mod.verification_cap_kwargs("llama_cpp", "any-model", 768) == {"max_tokens": 768}
-    # Non-reasoning cloud: instance defaults ({}).
-    assert _llm_mod.verification_cap_kwargs("nvidia", "google/gemma-4-31b-it", 384) == {}
-    assert _llm_mod.verification_cap_kwargs("gemini", "gemini-3.5-flash-lite", 384) == {}
-    assert _llm_mod.verification_cap_kwargs("nvidia", None, 384) == {}
+    # Cloud direct-answer: capped per call, provider-correct name.
+    assert _llm_mod.verification_cap_kwargs("nvidia", "google/gemma-4-31b-it", 384) == {
+        "max_tokens": 384
+    }
+    assert _llm_mod.verification_cap_kwargs("gemini", "gemini-3.5-flash-lite", 384) == {
+        "max_output_tokens": 384
+    }
+    assert _llm_mod.verification_cap_kwargs("google_genai", "gemini-3.5-flash-lite", 384) == {
+        "max_output_tokens": 384
+    }
+    assert _llm_mod.verification_cap_kwargs("nim", "meta/llama-3.3-70b-instruct", 768) == {
+        "max_tokens": 768
+    }
+    # A model id is optional; the provider alone still yields a correct cap.
+    assert _llm_mod.verification_cap_kwargs("nvidia", None, 384) == {"max_tokens": 384}
+    # Unknown provider: inject nothing rather than risk a foreign kwarg.
+    assert _llm_mod.verification_cap_kwargs("some-future-cloud", "m", 384) == {}
     # Reasoning: 2x with 1024 floor, provider-correct names.
     assert _llm_mod.verification_cap_kwargs("nvidia", "meta/muse-glimmer-30b", 384) == {
         "max_tokens": 1024
@@ -287,6 +305,22 @@ def test_verification_cap_kwargs_reasoning_headroom():
     assert _llm_mod.verification_cap_kwargs("gemini", "some-reasoning-model", 384) == {
         "max_output_tokens": 1024
     }
+
+
+def test_verification_cap_covers_fused_call_budget():
+    """The fused decompose+verify path asks for 1024 tokens. Every cloud
+    provider must actually receive that, or the verdict JSON truncates and the
+    caller silently drops to the 3-call two-step path (audit B-2)."""
+    for provider, key in (
+        ("gemini", "max_output_tokens"),
+        ("google_genai", "max_output_tokens"),
+        ("nvidia", "max_tokens"),
+        ("nim", "max_tokens"),
+    ):
+        cap = _llm_mod.verification_cap_kwargs(provider, "gemini-3.8-flash", 1024)
+        assert cap.get(key) == 1024, f"{provider} fused cap wrong: {cap}"
+        # And the parameter must be one the client actually accepts.
+        assert len(cap) == 1, f"{provider} sent unexpected extra kwargs: {cap}"
 
 
 def test_is_reasoning_model_detection():

@@ -25,6 +25,9 @@ llm:
   ollama_base_url: "http://localhost:11434"
   llamacpp_base_url: "http://127.0.0.1:8080/v1"
   mlx_base_url: "http://127.0.0.1:8090/v1"
+  # NVIDIA NIM endpoint. Point this at a self-hosted or OpenAI-compatible
+  # NIM gateway to leave the public integrate.api.nvidia.com (audit B-13).
+  nvidia_base_url: ""
   # Supported local models (exactly what is installed):
   #   ollama (`ollama list`):
   #     - Impulse2000/smollm3:3b-q4_K_M
@@ -215,7 +218,19 @@ observability:
 
 # ─── Context & Cost Controls ──────────────────────────────────────────────────
 cost_controls:
-  max_input_tokens: 100000          # Hard limit per LLM call AND pre-request query budget
+  max_input_tokens: 100000          # Per-analysis INPUT token ceiling across all LLM calls
+  # Query-scoped pre-request bound. The old check compared the query against
+  # max_input_tokens (100000) and could never fire — pydantic already caps the
+  # query at 2000 chars (~500 tokens), so it was dead code (audit B-4).
+  # Must stay strictly below the 500 tokens the 2000-char schema cap allows,
+  # or the `>` comparison becomes unreachable again. Guarded by
+  # test_pre_request_query_budget_is_not_vacuous.
+  max_query_tokens: 400
+  # Per-analysis LLM CALL ceiling for cloud tiers. This is the real spend guard
+  # (audit B-4): probe(1) + compression(1) + generation(1) + verification(1-9)
+  # per round x up to 3 rounds lands near 24-36 calls, so 24 stops a runaway
+  # recovery loop before it bills without bound. Local tiers are never capped.
+  max_llm_calls_per_analysis: 24
   max_verification_claims: 8        # Small models choke on 20; 8 keeps NLI focused
   max_individual_nli_fallback: 8    # Must cover max_verification_claims (8): when
                                     # batch NLI fails, every claim is still attempted
@@ -248,8 +263,14 @@ optimization:
   prompt_caching: true                          # Reuses KV cache for static system prompt prefixes
   adaptive_top_k: true                          # Caps fused candidates at 4 on high RRF confidence (>= 0.02)
   # Context Compression (Phase 2.4) — hierarchical summarization before LLM call
-  context_compression_enabled: true             # Enable/disable context compression globally
-  context_compression_provider: "cloud"         # "cloud" | "local" | "off" — compression only for cloud providers (gemini, nvidia)
+  # Compression issues a SECOND full LLM call on the same model, so it is a net
+  # cost on any tier whose window comfortably fits the context. Cloud tiers have
+  # 128K-1M windows, and the formatted context is capped at ~3000 chars, so
+  # firing by default doubled cloud generation cost for a narrow band where it
+  # helped least (audit B-7). Off by default; opt in per deployment.
+  context_compression_enabled: false            # Enable/disable context compression globally
+  context_compression_provider: "off"           # "cloud" | "local" | "off"
+  context_compression_min_tokens: 6000          # Skip compression below this context size
   context_compression_target_reduction: 0.5     # Target: 50% of original size (40-60% range)
 
 # ─── Local LLM Inference Parameters ────────────────────────────────────────────

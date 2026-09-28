@@ -6,7 +6,10 @@ import platform
 import shutil
 import sys
 
+import pytest
+
 from app.core.hardware import (
+    detect_accelerator,
     detect_hardware_profile,
     get_llamacpp_launch_args,
     get_optimal_torch_device,
@@ -22,6 +25,75 @@ from app.core.memory import (
 def test_get_optimal_torch_device():
     dev = get_optimal_torch_device()
     assert dev in ("cuda", "mps", "cpu")
+
+
+def test_detect_accelerator_is_torch_free():
+    """detect_accelerator() must answer the device question without importing
+    torch. The embedding stack is ONNX-based, so torch has no business being
+    resident on that path (see test_detect_hardware_profile_does_not_import_torch)."""
+    dev = detect_accelerator()
+    assert dev in ("cuda", "mps", "cpu")
+
+
+class _TorchImportTrap(BaseException):
+    """Derives from BaseException on purpose.
+
+    get_optimal_torch_device() wraps `import torch` in `except Exception`, so a
+    trap raising AssertionError would be swallowed and the call would silently
+    fall back to "cpu" — making the test pass against the very regression it
+    guards. BaseException escapes that handler.
+    """
+
+
+def _install_torch_trap(monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _trapped(name, *args, **kwargs):
+        if name == "torch" or name.startswith("torch."):
+            raise _TorchImportTrap(
+                "torch was imported on the ONNX hardware-detection path "
+                "(~177 MB RSS regression, audit B-1)"
+            )
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _trapped)
+    # Drop any cached profile so detection actually re-runs under the trap.
+    monkeypatch.setattr("app.core.hardware._hardware_profile_cache", None, raising=False)
+
+
+def test_detect_hardware_profile_does_not_import_torch(monkeypatch):
+    """Regression (audit B-1): the ingest path reached `import torch` via
+    get_ingest_embed_batch_size -> get_cached_hardware_profile ->
+    detect_hardware_profile -> get_optimal_torch_device, costing ~177 MB RSS on
+    an ONNX-only host."""
+    _install_torch_trap(monkeypatch)
+    profile = detect_hardware_profile()
+    assert profile["accelerator"] in ("cuda", "mps", "cpu")
+    assert profile["tier"]
+    assert profile["recommendations"]["primary_embedding"]
+
+
+def test_ingest_batch_size_path_is_torch_free(monkeypatch):
+    """The consumer that actually dragged torch in must stay clean too."""
+    from app.core.hardware import get_ingest_embed_batch_size
+
+    _install_torch_trap(monkeypatch)
+    assert get_ingest_embed_batch_size() > 0
+
+
+def test_torch_trap_actually_has_teeth(monkeypatch):
+    """Meta-test: the guard above must FAIL if the torch path is reintroduced.
+
+    Without this, a broad `except Exception` anywhere on the path would silently
+    neutralise the trap and the two tests above would pass vacuously.
+    """
+    from app.core import hardware
+
+    _install_torch_trap(monkeypatch)
+    with pytest.raises(_TorchImportTrap):
+        hardware.get_optimal_torch_device()
 
 
 def test_get_system_memory_info():

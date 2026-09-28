@@ -19,6 +19,7 @@ import sys
 from typing import Any
 
 from app.core.exceptions import RetrievalOutageError
+from app.core.llm_ledger import invoke_counted
 from app.core.logging import get_logger
 from app.db.mongodb import Collections, connect_db, get_collection
 from app.retrieval.retriever import retrieve_hybrid_chunks
@@ -346,7 +347,7 @@ async def handle_tool_call(
         model = arguments.get("model")
         prompt = str(arguments["prompt"])[:8000]
         llm = get_llm(provider=provider, model=model)
-        res = await llm.ainvoke(prompt)
+        res = await invoke_counted(llm, prompt)
         text = res.content if hasattr(res, "content") else str(res)
         return {"content": [{"type": "text", "text": text}]}
 

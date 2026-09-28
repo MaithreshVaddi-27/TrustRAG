@@ -243,13 +243,19 @@ async def create_analysis(
     query_text = schema.query.strip()
     query_tokens = estimate_tokens(query_text)
     record_tokens_estimated(query_tokens)
-    if cfg.pre_request_budget_enforcement and query_tokens > cfg.max_input_tokens:
-        record_budget_rejection("max_input_tokens")
+    # Pre-request query guard. NOTE (audit B-4): this used to compare the query
+    # against `cost_controls.max_input_tokens` (100000), which can never be
+    # exceeded because pydantic already caps the query at 2000 characters
+    # (~500 tokens) — dead code whose comment claimed to be a per-call limit.
+    # The per-analysis spend ceiling is now `max_llm_calls_per_analysis`,
+    # enforced by the LLM ledger; this check is a separate, query-scoped bound.
+    if cfg.pre_request_budget_enforcement and query_tokens > cfg.max_query_tokens:
+        record_budget_rejection("max_query_tokens")
         raise InputValidationError(
             f"Query too large: estimated {query_tokens} tokens exceeds the "
-            f"per-request budget of {cfg.max_input_tokens} tokens. "
+            f"per-request query budget of {cfg.max_query_tokens} tokens. "
             "Shorten the query and try again.",
-            detail=f"estimated_tokens={query_tokens} budget={cfg.max_input_tokens}",
+            detail=f"estimated_tokens={query_tokens} budget={cfg.max_query_tokens}",
         )
 
     # Resolve EFFECTIVE engine now: the persisted doc (and every downstream

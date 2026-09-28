@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 from app.core.concurrency import get_global_semaphore
 from app.core.config import get_model_config
 from app.core.exceptions import ConfigurationError, LLMUnavailableError
+from app.core.llm_ledger import invoke_counted
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -339,25 +340,31 @@ def verification_cap_kwargs(
 ) -> dict[str, int]:
     """Task-sized output caps for verification calls on any provider.
 
-    Direct-answer local models keep the lean KV-saving caps. Thinking
-    models (local or cloud) get headroom with a 1024-token floor: live
-    probes show muse-glimmer-30b spending ~475 tokens reasoning about
-    trivia and starving a 256-token rewrite to empty, while 512+ succeeds
-    — a starved call costs a full retry spiral, dwarfing the extra tokens.
-    Non-reasoning cloud models keep instance defaults ({} — the registry
-    already sets tight max_output_tokens). Reasoning cloud models get the
-    headroom with the provider-correct param name.
+    Direct-answer models keep the lean caps. Thinking models (local or cloud)
+    get headroom with a 1024-token floor: live probes show muse-glimmer-30b
+    spending ~475 tokens reasoning about trivia and starving a 256-token
+    rewrite to empty, while 512+ succeeds — a starved call costs a full retry
+    spiral, dwarfing the extra tokens.
+
+    Cloud providers are capped per call too, using each client's own parameter
+    name. Falling back to the instance default here is NOT safe: the fused
+    decompose+verify call asks for 1024 tokens to serialise verdicts for up to
+    `cost_controls.cloud_tier.max_verification_claims` claims, but the instance
+    default is 512 (`verification.max_output_tokens`). The result is mid-JSON
+    truncation, the fused call returning None, and a silent fallback to the
+    two-step path — 3 billed calls instead of 1 on the common path.
     """
     norm = (provider or "").strip().lower()
-    if is_reasoning_model(model):
-        roomy = max(int(max_tokens) * 2, 1024)
-        if norm in LOCAL_LLM_PROVIDERS:
-            return {"max_tokens": roomy}
-        if norm in ("gemini", "google_genai"):
-            return {"max_output_tokens": roomy}
-        return {"max_tokens": roomy}
+    roomy = max(int(max_tokens) * 2, 1024)
+    cap = roomy if is_reasoning_model(model) else int(max_tokens)
+
     if norm in LOCAL_LLM_PROVIDERS:
-        return {"max_tokens": int(max_tokens)}
+        return {"max_tokens": cap}
+    if norm in ("gemini", "google_genai"):
+        return {"max_output_tokens": cap}
+    if norm in ("nvidia", "nim"):
+        return {"max_tokens": cap}
+    # Unknown provider: inject nothing rather than risk a foreign kwarg.
     return {}
 
 
@@ -841,6 +848,68 @@ async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 
 # completion up front converts that into a fast 503 with an actionable
 # message. Gemini answers the same probe in seconds.
 CLOUD_PROBE_TIMEOUT_SECONDS = 60.0
+# A successful probe is reused for this long. Without it every analysis pays a
+# billed round-trip just to re-confirm a provider that was demonstrably alive
+# seconds ago — real spend on top of the 4-6 pipeline calls.
+CLOUD_PROBE_SUCCESS_TTL_SECONDS = 60.0
+_CLOUD_PROBE_OK: dict[tuple[str, str], float] = {}
+_CLOUD_PROBE_OK_LOCK = threading.Lock()
+
+
+def _probe_succeeded_recently(provider: str, model: str | None) -> bool:
+    key = (provider.strip().lower(), (model or "").strip())
+    now = time.monotonic()
+    with _CLOUD_PROBE_OK_LOCK:
+        stamp = _CLOUD_PROBE_OK.get(key)
+        if stamp is not None and now - stamp < CLOUD_PROBE_SUCCESS_TTL_SECONDS:
+            return True
+        if stamp is not None:
+            _CLOUD_PROBE_OK.pop(key, None)
+    return False
+
+
+def _record_probe_success(provider: str, model: str | None) -> None:
+    key = (provider.strip().lower(), (model or "").strip())
+    with _CLOUD_PROBE_OK_LOCK:
+        _CLOUD_PROBE_OK[key] = time.monotonic()
+
+
+def _status_code_of(exc: BaseException) -> int | None:
+    """Best-effort HTTP status from a vendor SDK / transport exception."""
+    for attr in ("status_code", "code", "status"):
+        value = getattr(exc, attr, None)
+        if isinstance(value, int):
+            return value
+    response = getattr(exc, "response", None)
+    if response is not None:
+        value = getattr(response, "status_code", None)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def _classify_cloud_probe_error(exc: BaseException, norm: str, model: str | None, hint: str) -> str:
+    """Map a probe failure onto an actionable, correctly-typed error.
+
+    The previous behaviour collapsed 401 (bad key), 403 (forbidden) and 429
+    (quota exhausted) into "is not reachable", which sent operators hunting a
+    networking problem that did not exist.
+    """
+    status = _status_code_of(exc)
+    if status in (401, 403):
+        return (
+            f"Cloud LLM '{norm}' rejected the request (HTTP {status}) for model "
+            f"'{model}'. The API key is missing, invalid, revoked, or not "
+            f"permitted for this model. Check the provider's API key and its "
+            f"model allowlist."
+        )
+    if status == 429:
+        return (
+            f"Cloud LLM '{norm}' model '{model}' is rate-limited or out of quota (HTTP 429). {hint}"
+        )
+    if status is not None and 500 <= status < 600:
+        return f"Cloud LLM '{norm}' model '{model}' returned a server error (HTTP {status}). {hint}"
+    return f"Cloud LLM '{norm}' model '{model}' is not reachable. {hint}"
 
 
 async def probe_cloud_llm(
@@ -848,9 +917,11 @@ async def probe_cloud_llm(
 ) -> None:
     """Fail fast when a cloud chat model (nvidia, gemini) is not responding.
 
-    Sends a minimal 8-token completion bounded by ``timeout``. Raises
-    LLMUnavailableError (→ 503) on stall/unreachable; lets ConfigurationError
-    (missing API key) propagate unchanged — it already names the fix.
+    Sends a minimal 8-token completion bounded by ``timeout``, and reuses a
+    recent success for ``CLOUD_PROBE_SUCCESS_TTL_SECONDS`` so a burst of
+    analyses does not pay one billed call each. Raises LLMUnavailableError
+    (→ 503) on stall/unreachable/quota; lets ConfigurationError (missing API
+    key) propagate unchanged — it already names the fix.
 
     Args:
         provider: 'nvidia'/'nim' or 'gemini'/'google_genai'.
@@ -865,12 +936,17 @@ async def probe_cloud_llm(
         "The model endpoint may be capacity-limited — retry in a few minutes, "
         "or switch provider (gemini, ollama, llama_cpp)."
     )
+    if _probe_succeeded_recently(norm, model):
+        logger.debug("Cloud LLM probe: recent success reused", provider=norm, model=model)
+        return
     try:
         llm = get_llm(provider=norm, model=model)
     except ConfigurationError:
         raise
     except Exception as exc:
-        logger.warning("Cloud LLM probe: model init failed", provider=norm, model=model)
+        logger.warning(
+            "Cloud LLM probe: model init failed", provider=norm, model=model, exc_info=exc
+        )
         raise LLMUnavailableError(
             f"Cloud LLM '{norm}' model '{model}' could not be initialized. {hint}"
         ) from exc
@@ -878,22 +954,38 @@ async def probe_cloud_llm(
     # Provider-correct output cap (mirrors generator._invoke_kwargs_for_provider).
     cap = {"max_output_tokens": 8} if norm in ("gemini", "google_genai") else {"max_tokens": 8}
     try:
-        await asyncio.wait_for(llm.ainvoke("Reply with the word OK.", **cap), timeout=timeout)
+        await asyncio.wait_for(
+            invoke_counted(llm, "Reply with the word OK.", **cap), timeout=timeout
+        )
     except TimeoutError as exc:  # asyncio.wait_for raises builtin TimeoutError (3.11+)
-        logger.warning("Cloud LLM probe timed out", provider=norm, model=model, timeout=timeout)
+        logger.warning(
+            "Cloud LLM probe timed out",
+            provider=norm,
+            model=model,
+            timeout=timeout,
+            exc_info=exc,
+        )
         raise LLMUnavailableError(
             f"Cloud LLM '{norm}' model '{model}' is not responding "
             f"(no output after {timeout:g}s). {hint}"
         ) from exc
-    except LLMUnavailableError:
-        raise
-    except ConfigurationError:
+    except (LLMUnavailableError, ConfigurationError):
         raise
     except Exception as exc:
-        logger.warning("Cloud LLM probe failed", provider=norm, model=model)
-        raise LLMUnavailableError(
-            f"Cloud LLM '{norm}' model '{model}' is not reachable. {hint}"
-        ) from exc
+        # Log the real cause: the previous line dropped `exc` entirely, so a
+        # 401 and a 500 produced byte-identical, equally useless log records.
+        status = _status_code_of(exc)
+        logger.warning(
+            "Cloud LLM probe failed",
+            provider=norm,
+            model=model,
+            status_code=status,
+            error_type=type(exc).__name__,
+            error=str(exc),
+            exc_info=exc,
+        )
+        raise LLMUnavailableError(_classify_cloud_probe_error(exc, norm, model, hint)) from exc
+    _record_probe_success(norm, model)
 
 
 def get_discovered_llms(provider: str) -> frozenset[str]:

@@ -428,6 +428,20 @@ class ModelConfig:
         return str(self._get("llm", "mlx_base_url", required=False) or _DEFAULT_MLX_BASE_URL)
 
     @property
+    def nvidia_base_url(self) -> str:
+        """NVIDIA NIM endpoint. Overridable to target a self-hosted or
+        OpenAI-compatible NIM gateway (audit B-13).
+
+        Previously this only reached the client when `load_dotenv` happened to
+        export NVIDIA_BASE_URL into the process environment, so any other
+        configuration source was silently ignored.
+        """
+        env_url = os.environ.get("NVIDIA_BASE_URL") or os.environ.get("NIM_BASE_URL")
+        if env_url:
+            return env_url
+        return str(self._get("llm", "nvidia_base_url", required=False) or "")
+
+    @property
     def llm_temperature(self) -> float:
         """Default temperature for generation."""
         return float(self._get("llm", "temperature"))
@@ -786,6 +800,27 @@ class ModelConfig:
         return int(self._get("cost_controls", "max_input_tokens"))
 
     @property
+    def max_query_tokens(self) -> int:
+        """Query-scoped pre-request bound (audit B-4).
+
+        The pre-request check used to compare the query against
+        `max_input_tokens` (100000), which pydantic's 2000-char query cap made
+        unreachable — so `pre_request_budget_enforcement` never fired. This is
+        the separate, meaningful query budget.
+        """
+        return int(self._get("cost_controls", "max_query_tokens"))
+
+    @property
+    def max_llm_calls_per_analysis(self) -> int:
+        """Per-analysis LLM call ceiling for cloud tiers (audit B-4).
+
+        The real spend guard. `max_input_tokens` is an input-token ceiling; this
+        bounds the number of billable round-trips, which is what actually costs
+        money when a recovery loop multiplies calls.
+        """
+        return int(self._get("cost_controls", "max_llm_calls_per_analysis"))
+
+    @property
     def max_verification_claims(self) -> int:
         return int(self._get("cost_controls", "max_verification_claims"))
 
@@ -920,7 +955,23 @@ class ModelConfig:
         'local' (ollama, llama_cpp, mlx), or 'off' (disabled)."""
         value = self._get("optimization", "context_compression_provider", required=False)
         env_val = os.environ.get("CONTEXT_COMPRESSION_PROVIDER")
-        return (env_val or value or "cloud").lower()
+        return (env_val or value or "off").lower()
+
+    @property
+    def context_compression_min_tokens(self) -> int:
+        """Skip compression when the context is smaller than this (audit B-7).
+
+        Compression costs a second full LLM call against the same model. For
+        cloud tiers with 128K-1M windows that is almost never worth it at
+        realistic context sizes, so the threshold is explicit and configurable
+        instead of firing in a narrow band where it costs the most and helps
+        least. 0 disables the check.
+        """
+        value = self._get("optimization", "context_compression_min_tokens", required=False)
+        env_val = _blank_as_none("CONTEXT_COMPRESSION_MIN_TOKENS")
+        if env_val is not None:
+            return int(env_val)
+        return int(value or 0)
 
     def tier_caps(self, provider: str | None = None) -> dict[str, int]:
         """Return cost-control caps for the current provider tier.

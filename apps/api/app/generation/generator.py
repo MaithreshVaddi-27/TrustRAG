@@ -16,6 +16,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.core.config import get_model_config
 from app.core.exceptions import ConfigurationError, LLMUnavailableError
+from app.core.llm_ledger import invoke_counted
 from app.core.llm_utils import normalize_llm_content
 from app.core.local_llm import LOCAL_LLM_PROVIDERS, local_cap_kwargs
 from app.core.logging import get_logger
@@ -140,18 +141,36 @@ def calculate_dynamic_num_ctx(
     if provider is None:
         provider = cfg.llm_provider
 
-    max_ctx = provider_limits.get(provider.lower(), cfg.local_llm_num_ctx)
+    # Normalize aliases before lookup. 'google_genai' and 'nim' are accepted
+    # provider spellings (schemas/analysis.py) but were missing from the table
+    # above, so they fell through to the 4096 local default and emitted a bogus
+    # "evidence will be truncated" warning for a 1M-token model (audit B-14).
+    norm = (provider or "").strip().lower()
+    norm = {"google_genai": "gemini", "nim": "nvidia", "llamacpp": "llama_cpp"}.get(norm, norm)
+    max_ctx = provider_limits.get(norm, cfg.local_llm_num_ctx)
 
     # Clamp to provider max, but ensure minimum for basic functionality.
     # Loud when the request overflows: clamping silently truncates evidence.
     optimal_ctx = min(max(required_ctx, 1024), max_ctx)
     if required_ctx > max_ctx:
-        logger.warning(
-            "Context overflows provider window; evidence will be truncated",
-            required_ctx=required_ctx,
-            provider_max=max_ctx,
-            provider=provider,
-        )
+        if norm in LOCAL_LLM_PROVIDERS:
+            # Only local servers are bounded by num_ctx, so only they can
+            # actually truncate. num_ctx is never sent to cloud clients (see
+            # _invoke_kwargs_for_provider), so for cloud the number is advisory
+            # and warning about truncation would be false and alarming.
+            logger.warning(
+                "Context overflows provider window; evidence will be truncated",
+                required_ctx=required_ctx,
+                provider_max=max_ctx,
+                provider=provider,
+            )
+        else:
+            logger.info(
+                "Context is large for this provider; the provider enforces its own window",
+                required_ctx=required_ctx,
+                provider_max=max_ctx,
+                provider=provider,
+            )
 
     logger.debug(
         "Dynamic num_ctx calculated",
@@ -230,6 +249,17 @@ CONTEXT_COMPRESSION_PROMPT = (
 )
 
 
+def _compression_budget(target_tokens: int) -> int:
+    """Output budget for the compression call.
+
+    `target_tokens` is the size of the summary we WANT, not the budget the model
+    needs to finish writing it. Capping the call at exactly the target truncated
+    summaries mid-sentence and silently degraded the result (audit B-7), so
+    allow headroom, with a small floor for very small targets.
+    """
+    return max(int(target_tokens) + 128, int(target_tokens * 1.25), 256)
+
+
 async def compress_context(
     query: str,
     chunks: list[dict[str, Any]],
@@ -286,6 +316,18 @@ async def compress_context(
         logger.debug("Context small, skipping compression", tokens=context_tokens)
         return context_str, chunk_indices
 
+    # Compression is only worth an extra LLM call when the context is large
+    # enough to threaten the model's window. Cloud tiers have 128K-1M windows,
+    # so at a ~3000-char formatted cap this rarely helps and always costs a
+    # second full call on the same expensive model (audit B-7).
+    if cfg.context_compression_min_tokens and context_tokens < cfg.context_compression_min_tokens:
+        logger.debug(
+            "Context below compression threshold",
+            tokens=context_tokens,
+            threshold=cfg.context_compression_min_tokens,
+        )
+        return context_str, chunk_indices
+
     # Build compression prompt
     compression_prompt = CONTEXT_COMPRESSION_PROMPT.format(
         query=query,
@@ -308,12 +350,17 @@ async def compress_context(
             provider=compression_provider,
         )
 
-        response = await llm.ainvoke(
+        response = await invoke_counted(
+            llm,
             messages,
             # Provider-aware caps: local gets max_tokens, Gemini gets
             # max_output_tokens, NVIDIA gets max_tokens. temperature is
             # universal. Never send num_ctx/keep_alive to cloud models.
-            **_invoke_kwargs_for_provider(compression_provider, target_tokens),
+            # Headroom above the target: the target is the desired summary
+            # size, not the budget the model needs to finish writing it. Capping
+            # at exactly `target_tokens` truncated summaries mid-sentence
+            # (audit B-7).
+            **_invoke_kwargs_for_provider(compression_provider, _compression_budget(target_tokens)),
             temperature=0.1,  # Low temperature for faithful compression
         )
 
@@ -728,7 +775,8 @@ async def generate_grounded_answer(
         # plus batch/keep_alive tuning; Gemini gets max_output_tokens and
         # NVIDIA gets max_tokens. Local-only keys must never reach cloud
         # models (Gemini rejects them, NVIDIA forwards them to the API).
-        response = await llm.ainvoke(
+        response = await invoke_counted(
+            llm,
             messages,
             **_invoke_kwargs_for_provider(
                 resolved_provider,

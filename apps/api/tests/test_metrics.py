@@ -99,7 +99,8 @@ async def test_pre_request_budget_rejects_oversized_query():
                 embedding_dimensionality=384,
                 llm_provider="llama_cpp",
                 llm_model="x",
-                max_input_tokens=10,  # tiny budget forces rejection
+                max_input_tokens=10,  # legacy knob, no longer used by this check
+                max_query_tokens=10,  # query-scoped budget forces rejection
                 pre_request_budget_enforcement=True,
                 as_snapshot=lambda: {},
             ),
@@ -117,7 +118,32 @@ async def test_pre_request_budget_rejects_oversized_query():
         with pytest.raises(InputValidationError, match="Query too large"):
             await analysis_service.create_analysis(schema, str(ObjectId()), MagicMock())
     snap = metrics.snapshot()
-    assert snap["budget_rejections"].get("max_input_tokens", 0) >= 1
+    assert snap["budget_rejections"].get("max_query_tokens", 0) >= 1
+
+
+def test_pre_request_query_budget_is_not_vacuous():
+    """Regression (audit B-4): the pre-request guard compared the query against
+    `max_input_tokens` (100000) while pydantic caps the query at 2000 chars
+    (~500 tokens), so it could never fire. Assert the configured query budget
+    is genuinely reachable within the schema's own query limit."""
+    from app.api.v1.schemas.analysis import AnalysisCreate
+    from app.core.config import get_model_config
+    from app.core.metrics import estimate_tokens
+
+    cfg = get_model_config()
+    max_schema_chars = next(
+        m.max_length
+        for m in AnalysisCreate.model_fields["query"].metadata
+        if hasattr(m, "max_length")
+    )
+    # A query at the schema limit must exceed the configured query budget,
+    # otherwise the guard is unreachable dead code again.
+    tokens_at_schema_limit = estimate_tokens("x" * max_schema_chars)
+    assert cfg.max_query_tokens < tokens_at_schema_limit, (
+        f"max_query_tokens={cfg.max_query_tokens} is unreachable given the "
+        f"{max_schema_chars}-char schema cap (~{tokens_at_schema_limit} tokens); "
+        "the pre-request guard would be dead code"
+    )
 
 
 @pytest.mark.asyncio

@@ -61,32 +61,17 @@ def get_llamacpp_launch_args() -> list[str]:
     if is_arm_mac:
         # Metal is native on Apple Silicon — no further probe needed.
         args += ["-ngl", "all", "--flash-attn", "on", *kv_quant_flags]
-    else:
+    elif _nvidia_smi_available():
         # CUDA only when a GPU both exists and responds.
-        smi = shutil.which("nvidia-smi")
-        if smi:
-            try:
-                probe = subprocess.run(  # noqa: S603 — resolved binary path, fixed argv
-                    [smi],
-                    check=False,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=5,
-                )
-                if probe.returncode != 0:
-                    logger.debug("nvidia-smi probe failed; no GPU flags")
-                else:
-                    args += [
-                        "-ngl",
-                        "all",
-                        "--flash-attn",
-                        "on",
-                        *kv_quant_flags,
-                        "--split-mode",
-                        "layer",
-                    ]
-            except Exception as exc:
-                logger.debug("nvidia-smi probe failed; no GPU flags", error=str(exc))
+        args += [
+            "-ngl",
+            "all",
+            "--flash-attn",
+            "on",
+            *kv_quant_flags,
+            "--split-mode",
+            "layer",
+        ]
     # else: CPU-only — no GPU flags.
 
     # Context + concurrency budget by available memory.
@@ -108,11 +93,22 @@ def get_llamacpp_launch_args() -> list[str]:
 
 def get_optimal_torch_device() -> str:
     """
-    Determine the highest-performance acceleration device available for PyTorch/Embeddings.
+    Determine the highest-performance acceleration device available for PyTorch.
+
     Returns:
         'cuda': If an NVIDIA GPU with CUDA is available.
         'mps':  If Apple Silicon Metal Performance Shaders is available.
         'cpu':  Fallback to multi-threaded CPU.
+
+    Torch-only by design. This helper is for the PyTorch code paths that
+    genuinely need a device (currently the `sentence_transformers` CrossEncoder
+    fallback in `model_registry.get_reranker`), and torch is already resident on
+    those paths.
+
+    Do NOT call this from `detect_hardware_profile()` or any other code reached
+    by the ONNX ingest/serving path. Importing torch costs ~177 MB RSS, and the
+    embedding stack is deliberately ONNX-based. Use `detect_accelerator()`
+    there instead — it is torch-free and answers the same question.
     """
     try:
         import torch
@@ -128,6 +124,65 @@ def get_optimal_torch_device() -> str:
     except Exception as exc:
         logger.debug("Torch device detection fallback to cpu", error=str(exc))
 
+    return "cpu"
+
+
+def _nvidia_smi_available() -> bool:
+    """True when an NVIDIA GPU exists and `nvidia-smi` responds. Torch-free."""
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        return False
+    try:
+        probe = subprocess.run(  # noqa: S603 — resolved binary path, fixed argv
+            [smi],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+    except Exception as exc:
+        logger.debug("nvidia-smi probe failed", error=str(exc))
+        return False
+    if probe.returncode != 0:
+        logger.debug("nvidia-smi returned non-zero; treating host as CPU-only")
+        return False
+    return True
+
+
+def _nvidia_vram_gb() -> float | None:
+    """Total GPU memory in GB, read from nvidia-smi. Torch-free."""
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        return None
+    try:
+        out = subprocess.run(  # noqa: S603 — resolved binary path, fixed argv
+            [smi, "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        ).stdout.decode()
+        first = out.strip().splitlines()[0].strip()
+        return round(int(first) / 1024, 2)
+    except Exception as exc:
+        logger.debug("nvidia-smi VRAM query failed", error=str(exc))
+        return None
+
+
+def detect_accelerator() -> str:
+    """
+    Identify the host accelerator WITHOUT importing torch.
+
+    Returns 'cuda' | 'mps' | 'cpu'. This is the probe `detect_hardware_profile()`
+    must use: the embedding path is ONNX-based, and `get_optimal_torch_device()`
+    would pull ~177 MB of PyTorch into a process that has no other use for it.
+    """
+    # Metal is native on Apple Silicon — no probe needed, same reasoning as
+    # get_llamacpp_launch_args().
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        return "mps"
+    if _nvidia_smi_available():
+        return "cuda"
     return "cpu"
 
 
@@ -237,10 +292,13 @@ def detect_hardware_profile() -> dict[str, Any]:
     """
     Introspect full system hardware topology, accelerator capabilities, and memory.
     Generates intelligent model and concurrency recommendations tailored to the host.
+
+    Torch-free by design: the embedding/serving stack is ONNX-based, so this runs
+    on the ingest hot path. See `detect_accelerator()`.
     """
     os_name = platform.system()
     machine = platform.machine()
-    device = get_optimal_torch_device()
+    device = detect_accelerator()
     mem = get_system_memory_info()
 
     # Detailed device identity
@@ -248,15 +306,8 @@ def detect_hardware_profile() -> dict[str, Any]:
     vram_gb: float | None = None
 
     if device == "cuda":
-        try:
-            import torch
-
-            device_label = torch.cuda.get_device_name(0)
-            props = torch.cuda.get_device_properties(0)
-            vram_gb = round(props.total_memory / (1024**3), 2)
-        except Exception:
-            logger.debug("CUDA device query failed, using generic label")
-            device_label = "NVIDIA CUDA GPU"
+        vram_gb = _nvidia_vram_gb()
+        device_label = "NVIDIA CUDA GPU" if vram_gb is None else f"NVIDIA CUDA GPU ({vram_gb} GB)"
     elif device == "mps":
         device_label = "Apple Silicon GPU (Metal Performance Shaders)"
         # On Apple Silicon, unified memory is shared between CPU and GPU

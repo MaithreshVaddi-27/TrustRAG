@@ -18,6 +18,7 @@ from bson import ObjectId
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.config import get_model_config
+from app.core.llm_ledger import invoke_counted, llm_budget_exhausted
 from app.core.local_llm import is_reasoning_model, verification_cap_kwargs
 from app.core.logging import get_logger
 from app.core.model_registry import get_verification_model
@@ -66,6 +67,32 @@ def get_nli_metrics() -> dict[str, int]:
         return {"batch_total_failures": _NLI_BATCH_TOTAL_FAILURES}
 
 
+def _apply_cap_via_model_copy(model_obj: Any, cap: dict[str, Any]) -> Any:
+    """Return a copy of `model_obj` with output-cap fields applied.
+
+    Needed for `ChatGoogleGenerativeAI`, whose `with_structured_output` rejects
+    every unexpected kwarg with `ValueError: Received unsupported arguments
+    {...}` (verified against langchain-google-genai 4.4.0). Since
+    `bind()` returns a RunnableBinding — which has no `with_structured_output` —
+    the only way to carry the cap is to set the generation field on the model
+    itself. `model_copy` is a non-mutating pydantic v2 copy, so the shared
+    registry instance is left untouched.
+    """
+    if not cap:
+        return model_obj
+    fields = getattr(type(model_obj), "model_fields", None)
+    if not fields:
+        return model_obj
+    applicable = {k: v for k, v in cap.items() if k in fields}
+    if not applicable:
+        return model_obj
+    try:
+        return model_obj.model_copy(update=applicable)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("model_copy cap application failed", error=str(exc))
+        return model_obj
+
+
 def _structured_verifier(model_obj: Any, provider: str | None, schema: Any, cap: dict[str, Any]):
     """Structured-output runnable with per-provider transport.
 
@@ -79,6 +106,10 @@ def _structured_verifier(model_obj: Any, provider: str | None, schema: Any, cap:
     """
     norm = (provider or get_model_config().verification_provider or "").strip().lower()
     if norm not in ("nvidia", "nim"):
+        if norm in ("gemini", "google_genai"):
+            # Gemini's with_structured_output raises ValueError on any extra
+            # kwarg, so the cap must ride on the model, not the call.
+            return _apply_cap_via_model_copy(model_obj, cap).with_structured_output(schema)
         return model_obj.with_structured_output(schema, **cap)
 
     from langchain_core.outputs import ChatGeneration, ChatResult
@@ -86,7 +117,7 @@ def _structured_verifier(model_obj: Any, provider: str | None, schema: Any, cap:
     from app.core.llm_utils import build_structured_output_runnable
 
     async def _generate_via_ainvoke(messages: Any, **kwargs: Any) -> ChatResult:
-        ai_message = await model_obj.ainvoke(messages, **kwargs)
+        ai_message = await invoke_counted(model_obj, messages, **kwargs)
         return ChatResult(generations=[ChatGeneration(message=ai_message)])
 
     return build_structured_output_runnable(
@@ -646,8 +677,9 @@ async def decompose_answer_to_claims(
 
         logger.info("Running answer claim decomposition", answer_len=len(answer))
 
-        response = await structured_llm.ainvoke(
-            [("system", DECOMPOSITION_PROMPT), ("human", f"Text to decompose:\n{answer}")]
+        response = await invoke_counted(
+            structured_llm,
+            [("system", DECOMPOSITION_PROMPT), ("human", f"Text to decompose:\n{answer}")],
         )
 
         claims = [c.strip() for c in response.claims if c.strip()]
@@ -700,7 +732,7 @@ async def verify_claim_nli(
 
         logger.debug("Running NLI verification for claim", claim_len=len(claim))
 
-        response = await structured_nli.ainvoke([("human", prompt_str)])
+        response = await invoke_counted(structured_nli, [("human", prompt_str)])
 
         return {
             "verdict": response.verdict,
@@ -762,7 +794,7 @@ async def batch_verify_claims_nli(
 
     try:
         logger.info("Executing batch NLI verification", claim_count=len(claims))
-        response = await structured_batch.ainvoke([("human", prompt_str)])
+        response = await invoke_counted(structured_batch, [("human", prompt_str)])
 
         results: dict[int, dict[str, Any]] = {}
         for item in response.verdicts:
@@ -824,7 +856,7 @@ async def fused_decompose_verify(
 
     try:
         logger.info("Executing fused decompose+verify", answer_len=len(answer))
-        response = await structured_fused.ainvoke([("human", prompt_str)])
+        response = await invoke_counted(structured_fused, [("human", prompt_str)])
         items = [
             {
                 "claim": item.claim.strip(),
@@ -1229,29 +1261,41 @@ async def execute_claim_verification(
         if i in results_map:
             nli_res = results_map[i]
         elif fallback_budget > 0:
-            fallback_budget -= 1
-            # Fallback to individual claim verification (same provider/model —
-            # cfg defaults would silently switch engines mid-analysis otherwise)
-            try:
-                nli_res = await _await_nli_call(
-                    verify_claim_nli(
-                        text,
-                        chunks,
-                        provider=provider,
-                        model=model,
-                        context_str=context_str,
-                    ),
-                    what="verify_claim_nli(fallback)",
+            # Spend guard (audit B-4): this loop is the biggest single
+            # multiplier in the pipeline — up to max_individual_nli_fallback
+            # serial calls per round, times the recovery rounds. Stop rather
+            # than bill past the per-analysis cap; remaining claims stay
+            # NEUTRAL, which is the pre-existing safe default.
+            if llm_budget_exhausted():
+                logger.warning(
+                    "Skipping per-claim NLI fallback: LLM call budget exhausted",
+                    claim_index=i,
                 )
-            except TimeoutError:
-                nli_res = {
-                    "verdict": "NEUTRAL",
-                    "supporting_segments": [],
-                    "explanation": (
-                        "Verification skipped: per-call NLI timeout "
-                        f"({NLI_PER_CALL_TIMEOUT_SECONDS}s)."
-                    ),
-                }
+                fallback_budget = 0
+            else:
+                fallback_budget -= 1
+                # Fallback to individual claim verification (same provider/model —
+                # cfg defaults would silently switch engines mid-analysis otherwise)
+                try:
+                    nli_res = await _await_nli_call(
+                        verify_claim_nli(
+                            text,
+                            chunks,
+                            provider=provider,
+                            model=model,
+                            context_str=context_str,
+                        ),
+                        what="verify_claim_nli(fallback)",
+                    )
+                except TimeoutError:
+                    nli_res = {
+                        "verdict": "NEUTRAL",
+                        "supporting_segments": [],
+                        "explanation": (
+                            "Verification skipped: per-call NLI timeout "
+                            f"({NLI_PER_CALL_TIMEOUT_SECONDS}s)."
+                        ),
+                    }
         else:
             nli_res = {
                 "verdict": "NEUTRAL",

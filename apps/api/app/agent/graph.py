@@ -17,6 +17,14 @@ from langgraph.graph import END, StateGraph
 
 from app.core.config import get_model_config
 from app.core.exceptions import RetrievalOutageError
+from app.core.llm_ledger import (
+    begin_analysis,
+    current_ledger,
+    end_analysis,
+    invoke_counted,
+    llm_budget_exhausted,
+)
+from app.core.llm_outage import classify_llm_exception
 from app.core.llm_utils import normalize_llm_content
 from app.core.logging import get_logger
 from app.core.model_registry import get_verification_model
@@ -103,6 +111,46 @@ async def _execute_with_fallback(
     )
 
     try:
+        # Spend guard (audit B-4): a cloud analysis that has exhausted its
+        # per-analysis LLM call budget must stop, not start another node. The
+        # recovery loop is the multiplier — without this a runaway loop bills
+        # until the provider refuses.
+        if llm_budget_exhausted():
+            ledger = current_ledger()
+            used = ledger.calls if ledger else 0
+            logger.warning(
+                "LLM call budget exhausted before node execution",
+                node=node_name,
+                calls=used,
+            )
+            state["node_errors"] = [
+                *state.get("node_errors", []),
+                {
+                    "node": node_name,
+                    "error_type": "RECOVERY_BUDGET_EXHAUSTED",
+                    "message": (
+                        f"LLM call budget exhausted ({used} calls) before {node_name}; "
+                        "stopping to bound cost."
+                    ),
+                },
+            ]
+            await add_trace_event(
+                state["analysis_id"],
+                f"{node_name}.budget_exhausted",
+                {
+                    "message": "Per-analysis LLM call budget exhausted",
+                    "error_type": "RECOVERY_BUDGET_EXHAUSTED",
+                    "calls": used,
+                },
+            )
+            state["verdict_status"] = "FAIL"
+            state["diagnosis_type"] = "RECOVERY_BUDGET_EXHAUSTED"
+            state["diagnosis_failures"] = [
+                f"Per-analysis LLM call budget exhausted after {used} calls"
+            ]
+            state["attempts"] = get_model_config().max_recovery_attempts
+            return state
+
         if timeout_seconds:
             result = await asyncio.wait_for(operation(), timeout=timeout_seconds)
         else:
@@ -137,6 +185,45 @@ async def _execute_with_fallback(
         return state
 
     except Exception as exc:
+        # Provider outage (bad key, exhausted quota, provider 5xx, unreachable
+        # endpoint) is an infrastructure failure, not a finding about the
+        # evidence. Short-circuit with a terminal LLM_OUTAGE diagnosis so a
+        # dead credential cannot burn three recovery rounds against the live API
+        # and then be reported to the user as "insufficient evidence"
+        # (audit B-5). Mirrors the RETRIEVAL_OUTAGE fast path.
+        outage = classify_llm_exception(exc, context=node_name)
+        if outage is not None:
+            logger.error(
+                f"{node_name} node hit an LLM provider outage",
+                error=str(outage),
+                exc_info=True,
+            )
+            state["node_errors"] = [
+                *state.get("node_errors", []),
+                {
+                    "node": node_name,
+                    "error_type": "LLM_OUTAGE",
+                    "message": str(outage),
+                },
+            ]
+            await add_trace_event(
+                state["analysis_id"],
+                f"{node_name}.outage",
+                {"message": str(outage), "error_type": "LLM_OUTAGE"},
+            )
+            state["answer"] = (
+                f"The language model provider is unavailable, so I could not "
+                f"complete this analysis. This is not a finding of 'insufficient "
+                f"evidence'.\n\nReason: {outage}"
+            )
+            state["verdict_status"] = "FAIL"
+            state["reliability_score"] = 0.0
+            state["diagnosis_type"] = "LLM_OUTAGE"
+            state["diagnosis_failures"] = [str(outage)]
+            # Exhaust the recovery budget so the graph terminates immediately.
+            state["attempts"] = get_model_config().max_recovery_attempts
+            return state
+
         logger.error(f"{node_name} node failed", error=str(exc), exc_info=True)
         error_info = {
             "node": node_name,
@@ -1170,6 +1257,7 @@ Never reply empty: if unsure, return the original query with spelling corrected.
 The original query did not return sufficient information to answer the question.
 Your task: expand the query by resolving ambiguous acronyms and terms.
 - Expand any acronyms/abbreviations to their full forms
+  (e.g., API → Application Programming Interface)
 - Add synonyms or related terms that would help retrieval
 - Keep the query focused and concise (5 to 12 words)
 
@@ -1195,7 +1283,7 @@ Never reply empty: if unsure, return the original query with spelling corrected.
             max_tokens=128,
         )
         invoker = model.bind(**cap) if cap else model
-        response = await invoker.ainvoke(rewrite_prompt)
+        response = await invoke_counted(invoker, rewrite_prompt)
         new_query = normalize_llm_content(response.content)
         new_query = _sanitize_rewritten_query(str(new_query))
 
@@ -1421,6 +1509,10 @@ async def execute_agentic_rag_flow(
             logger.debug("Semantic cache check bypassed", error=str(cache_err))
 
     logger.info("Executing Agentic RAG Flow graph", analysis_id=analysis_id_str)
+    # Open a per-analysis LLM ledger so every provider call made below is
+    # counted and bounded (audit B-4). ContextVar-scoped, so concurrent
+    # analyses do not share a budget.
+    ledger_token = begin_analysis()
     try:
         final_state = await graph.ainvoke(initial_state)
 
@@ -1449,6 +1541,18 @@ async def execute_agentic_rag_flow(
 
         return final_state
     finally:
+        # Close out the per-analysis LLM ledger before releasing memory.
+        ledger = current_ledger()
+        if ledger is not None:
+            logger.info(
+                "LLM usage for analysis",
+                analysis_id=analysis_id_str,
+                calls=ledger.calls,
+                input_tokens=ledger.input_tokens,
+                output_tokens=ledger.output_tokens,
+                by_model=ledger.by_model,
+            )
+        end_analysis(ledger_token)
         from app.core.memory import trim_memory
 
         await asyncio.to_thread(trim_memory)
