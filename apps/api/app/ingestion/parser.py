@@ -324,20 +324,22 @@ class _HTMLTextExtractor(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.pieces: list[str] = []
-        self.ignore = False
+        # Set of currently-open ignored tags. Only script/style latch —
+        # meta/noscript are void/unclosed so they must never set the flag
+        # (H1: a single <meta> used to silence the rest of the document).
+        self._ignored: set[str] = set()
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in ("script", "style", "meta", "noscript"):
-            self.ignore = True
+        if tag in ("script", "style"):
+            self._ignored.add(tag)
         elif tag in ("p", "br", "div", "h1", "h2", "h3", "h4", "li", "tr"):
             self.pieces.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in ("script", "style", "meta", "noscript"):
-            self.ignore = False
+        self._ignored.discard(tag)
 
     def handle_data(self, data: str) -> None:
-        if not self.ignore and data.strip():
+        if not self._ignored and data.strip():
             self.pieces.append(data.strip())
 
     def get_text(self) -> str:
@@ -415,15 +417,19 @@ def scan_for_malware(stream: BinaryIO) -> None:
 
             stream.seek(0)
             # pyclamd expects bytes; use scan_stream if daemon reachable (best-effort)
+            result = None
             try:
                 cd = pyclamd.ClamdNetworkSocket()
                 if cd.ping():
                     stream.seek(0)
                     result = cd.scan_stream(stream.read())
-                    if result:
-                        raise IngestionError("Malware detected by AV engine", detail=str(result))
+                else:
+                    return
             except Exception:
                 logger.debug("ClamAV daemon unavailable, skipping AV scan")
+                return
+            if result:
+                raise IngestionError("Malware detected by AV engine", detail=str(result))
         except ImportError:
             pass
     finally:
