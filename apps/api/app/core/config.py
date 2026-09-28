@@ -957,6 +957,25 @@ class ModelConfig:
     def max_recovery_latency_seconds(self) -> int:
         return int(self._get("recovery", "max_recovery_latency_seconds", required=False) or 180)
 
+    @property
+    def max_analysis_seconds(self) -> int:
+        """Wall-clock ceiling for one whole analysis (audit L-1).
+
+        `max_recovery_latency_seconds` only counts time spent inside the
+        recovery node, so it cannot bound a full multi-round run (retrieval +
+        generation + verification x3). This bounds the entire graph, so the
+        user gets a verified-or-abstained answer inside a predictable window.
+        Set to 0 to disable the bound.
+        """
+        override = os.getenv("MAX_ANALYSIS_SECONDS", "").strip()
+        if override:
+            try:
+                return int(override)
+            except ValueError:
+                pass
+        val = self._get("cost_controls", "max_analysis_seconds", required=False)
+        return int(val or 0)
+
     # ── Observability (Phase 10) ─────────────────────────────────────────
     @property
     def pre_request_budget_enforcement(self) -> bool:

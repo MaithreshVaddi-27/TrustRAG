@@ -83,3 +83,45 @@ async def test_generation_keeps_valid_citations_untouched():
     with patch("app.generation.generator.get_llm", return_value=mock_llm):
         answer = await generate_grounded_answer("Is there matching info?", chunks)
     assert answer == "Refunds are fast [Segment 1]."
+
+
+# ─── Domain-agnostic grounding prompt (audit G-2) ────────────────────────────
+# The product is not domain-specific: it must answer from whatever the
+# code-base/knowledge base happens to contain (source code, policies, market
+# material, or prose). A prompt that names one subject or tells the model when
+# NOT to abstain reintroduces hallucination on every other domain.
+
+
+def test_grounding_prompt_has_no_single_domain_lock():
+    """No hardcoded subject matter may steer the answer shape."""
+    from app.generation.generator import GROUNDING_SYSTEM_PROMPT
+
+    lowered = GROUNDING_SYSTEM_PROMPT.lower()
+    banned = (
+        "contextual intelligence",
+        "most demanded",
+        "industry trends",
+        "enterprise needs",
+        "syllabus",
+        "architectures or frameworks",
+    )
+    for phrase in banned:
+        assert phrase not in lowered, f"domain-locked phrase in prompt: {phrase!r}"
+
+
+def test_grounding_prompt_does_not_discourage_abstention():
+    """The old prompt said "Do NOT output ABSTAIN if the Context contains
+    relevant discussion" — which directly contradicts grounding rule 1 and
+    told the model to answer from weak context."""
+    from app.generation.generator import GROUNDING_SYSTEM_PROMPT
+
+    lowered = GROUNDING_SYSTEM_PROMPT.lower()
+    assert "do not output abstain if the context contains" not in lowered
+    # Abstention must be stated as a positive obligation.
+    assert "abstain" in lowered
+
+
+def test_grounding_prompt_declares_domain_agnostic():
+    from app.generation.generator import GROUNDING_SYSTEM_PROMPT
+
+    assert "domain-agnostic" in GROUNDING_SYSTEM_PROMPT.lower()

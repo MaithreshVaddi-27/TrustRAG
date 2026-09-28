@@ -4,6 +4,7 @@ Unit tests for Analysis runs and execution trace routes.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_user
 from app.main import app
+from app.verification.verdict import DiagnosisType, ReliabilityStatus
 
 client = TestClient(app)
 
@@ -471,10 +473,7 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
     Regression: markers are load-bearing during verification (claim->evidence
     linking) so they are stripped ONLY at finalize, after verification ran.
     """
-    from types import SimpleNamespace
-
     from app.services import analysis_service as svc
-    from app.verification.verdict import DiagnosisType, ReliabilityStatus
 
     raw_answer = (
         "### Contents of the Knowledge Base\n"
@@ -535,3 +534,140 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
     # otherwise citation_correctness silently reports nothing.
     assert "[Segment 2]" in set_arg["answer_cited"]
     assert "[Segment 6]" in set_arg["answer_cited"]
+
+
+# ─── GROUNDING GATE (audit G-1) ───────────────────────────────────────────────
+# The verdict engine decides how much of a generated answer the evidence
+# supports. Before the gate, only ABSTAINED was filtered, so FAILED/UNCERTAIN
+# answers were stored verbatim with status "completed" — the pipeline detected
+# the ungrounded content and then showed it to the user anyway.
+
+_HALLUCINATED_ANSWER = (
+    "### Refund Policy\n"
+    "Refunds are available for 90 days [Segment 1]. "
+    "Enterprise plans include unlimited seats [Segment 2]."
+)
+
+
+@pytest.mark.parametrize(
+    ("reliability_status", "score"),
+    [
+        (ReliabilityStatus.FAILED, 0.20),
+        (ReliabilityStatus.UNCERTAIN, 0.62),
+    ],
+)
+async def test_finalize_withholds_unverified_answer_from_user(
+    monkeypatch, reliability_status, score
+):
+    """FAILED and UNCERTAIN must never surface the model's own prose."""
+    from app.services import analysis_service as svc
+
+    async def _fake_flow(**_kwargs):
+        return {
+            "answer": _HALLUCINATED_ANSWER,
+            "claims": [{"state": "CONTRADICTED"}, {"state": "NEUTRAL"}],
+            "diagnosis_type": "LOW_COVERAGE",
+            "diagnosis_failures": ["Only 1/2 claims supported by evidence"],
+            "reliability_score": score,
+        }
+
+    coll = MagicMock()
+    coll.update_one = AsyncMock()
+
+    class _Sem:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
+
+    async def _get_sem():
+        return _Sem()
+
+    monkeypatch.setattr("app.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
+    monkeypatch.setattr(svc, "_get_concurrency_semaphore", _get_sem, raising=False)
+    monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
+    monkeypatch.setattr(
+        svc,
+        "verdict_from_state",
+        lambda _state, _thresholds: SimpleNamespace(
+            reliability_status=reliability_status,
+            reliability_score=score,
+            diagnosis_type=DiagnosisType.LOW_COVERAGE,
+            diagnosis_failures=["Only 1/2 claims supported by evidence"],
+        ),
+    )
+    monkeypatch.setattr("app.core.metrics.record_analysis_completed", lambda *_a, **_k: None)
+
+    await svc.run_analysis_pipeline(
+        analysis_id_str="507f1f77bcf86cd799439011",
+        kb_id_str="507f1f77bcf86cd799439012",
+        query="What is the refund policy?",
+    )
+
+    set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]
+    # The ungrounded specifics must not be present in any user-visible field.
+    assert "90 days" not in set_arg["answer"]
+    assert "unlimited seats" not in set_arg["answer"]
+    assert set_arg["answer"] == svc._UNVERIFIED_ANSWER
+    # It is an abstention, not a completed synthesis.
+    assert set_arg["status"] == "abstained"
+    # Score and diagnosis survive so the UI can still explain what happened.
+    assert set_arg["reliability"]["status"] == reliability_status.value
+    assert set_arg["reliability"]["score"] == score
+
+
+async def test_finalize_keeps_trusted_answer(monkeypatch):
+    """The gate must not swallow genuinely supported answers."""
+    from app.services import analysis_service as svc
+
+    async def _fake_flow(**_kwargs):
+        return {
+            "answer": "Refunds are available for 30 days [Segment 1].",
+            "claims": [{"state": "SUPPORTED"}],
+            "diagnosis_type": None,
+            "diagnosis_failures": [],
+            "reliability_score": 0.95,
+        }
+
+    coll = MagicMock()
+    coll.update_one = AsyncMock()
+
+    class _Sem:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
+
+    async def _get_sem():
+        return _Sem()
+
+    monkeypatch.setattr("app.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
+    monkeypatch.setattr(svc, "_get_concurrency_semaphore", _get_sem, raising=False)
+    monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
+    monkeypatch.setattr(
+        svc,
+        "verdict_from_state",
+        lambda _state, _thresholds: SimpleNamespace(
+            reliability_status=ReliabilityStatus.TRUSTED,
+            reliability_score=0.95,
+            diagnosis_type=DiagnosisType.NONE,
+            diagnosis_failures=[],
+        ),
+    )
+    monkeypatch.setattr("app.core.metrics.record_analysis_completed", lambda *_a, **_k: None)
+
+    await svc.run_analysis_pipeline(
+        analysis_id_str="507f1f77bcf86cd799439011",
+        kb_id_str="507f1f77bcf86cd799439012",
+        query="What is the refund policy?",
+    )
+
+    set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]
+    assert set_arg["status"] == "completed"
+    assert "30 days" in set_arg["answer"]
+    assert "[Segment" not in set_arg["answer"]
+    assert "[Segment 1]" in set_arg["answer_cited"]

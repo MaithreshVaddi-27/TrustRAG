@@ -14,6 +14,7 @@ fallback, and the per-analysis LLM ledger being closed out.
 
 from __future__ import annotations
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -337,3 +338,69 @@ async def test_ledger_is_closed_even_when_the_graph_raises():
             await execute_agentic_rag_flow(analysis_id_str=ANALYSIS_ID, kb_id_str=KB_ID, query="q")
 
     end.assert_called_once_with("tok")
+
+
+# ─── Analysis-wide latency budget (audit L-1) ────────────────────────────────
+
+
+def test_should_recover_ends_when_analysis_deadline_spent():
+    """A spent wall-clock budget must end the loop, not start another round."""
+    from app.agent.graph import should_recover
+
+    state = {
+        "verdict_status": "FAIL",
+        "attempts": 0,
+        "analysis_deadline_monotonic": time.monotonic() - 1.0,  # already past
+        "diagnosis_type": "LOW_COVERAGE",
+        "diagnosis_failures": [],
+    }
+    assert should_recover(state) == "end"
+    # The run must not be reported as a clean pass just because it stopped.
+    assert state["diagnosis_type"] == "RECOVERY_BUDGET_EXHAUSTED"
+    assert state["diagnosis_failures"]
+
+
+def test_should_recover_continues_while_budget_remains():
+    from app.agent.graph import should_recover
+
+    state = {
+        "verdict_status": "FAIL",
+        "attempts": 0,
+        "analysis_deadline_monotonic": time.monotonic() + 600.0,
+        "diagnosis_type": "LOW_COVERAGE",
+        "diagnosis_failures": [],
+    }
+    assert should_recover(state) == "recover"
+
+
+def test_should_recover_unbounded_when_no_deadline_configured():
+    """max_analysis_seconds: 0 disables the bound entirely."""
+    from app.agent.graph import should_recover
+
+    state = {
+        "verdict_status": "FAIL",
+        "attempts": 0,
+        "analysis_deadline_monotonic": None,
+        "diagnosis_type": "LOW_COVERAGE",
+        "diagnosis_failures": [],
+    }
+    assert should_recover(state) == "recover"
+
+
+def test_analysis_deadline_is_set_from_config():
+    """A positive budget produces a real monotonic deadline."""
+    from app.agent.graph import _analysis_deadline
+
+    cfg = _cfg_stub(max_analysis_seconds=120)
+    deadline = _analysis_deadline(cfg)
+    assert deadline is not None
+    assert deadline > time.monotonic()
+    assert _analysis_deadline(_cfg_stub(max_analysis_seconds=0)) is None
+
+
+def test_analysis_deadline_survives_garbage_config():
+    """A malformed budget disables the bound instead of failing the analysis."""
+    from app.agent.graph import _analysis_deadline
+
+    assert _analysis_deadline(_cfg_stub(max_analysis_seconds="not-a-number")) is None
+    assert _analysis_deadline(_cfg_stub(max_analysis_seconds=None)) is None

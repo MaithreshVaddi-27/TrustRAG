@@ -231,6 +231,7 @@ All live in `apps/api/config/models.yaml` (`retrieval:`, `verification:`, `relia
 | `query_router.enabled` | `true` | keep `true` | The router is regex (zero LLM cost) and *saves* calls on simple queries |
 | `max_sub_queries` | `3` | lower (e.g. 2) | Cheaper fan-out, weaker comparison/complex coverage |
 | `max_recovery_attempts` | `2` | `1` | Bounded worst-case latency; more abstentions on hard queries |
+| `cost_controls.max_analysis_seconds` | `120` | lower (e.g. 60) | Hard wall-clock ceiling for the whole run. Once spent, no new recovery round starts and the run abstains. This is the guard against multi-minute answers — the recovery budgets below only count time *inside* the recovery node, so they cannot bound a 3-round run. `0` disables the bound. |
 | `claim_retrieval` budget | `≤3` | lower | Fewer NEUTRAL→SUPPORTED flips |
 | `chunk_size` / `chunk_overlap` | `512` / `64` | larger chunks, smaller overlap | Fewer vectors to search, coarser evidence spans |
 

@@ -256,6 +256,8 @@ recovery:
   max_recovery_attempts: 2          # Allow up to 2-3 recovery attempts
   max_recovery_tokens: 2000         # Token budget across all recovery rounds
   max_recovery_latency_seconds: 180 # Latency budget across all recovery rounds
+  # NOTE: the recovery budgets above only count work inside the recovery node.
+  # The whole-analysis wall-clock ceiling is cost_controls.max_analysis_seconds.
   # Strategy costs (relative units) — prefer cheaper strategies first
   # Fallback for undiagnosed failures; diagnosed failures map directly to strategy
   strategy_priority:
@@ -282,6 +284,13 @@ cost_controls:
   # per round x up to 3 rounds lands near 24-36 calls, so 24 stops a runaway
   # recovery loop before it bills without bound. Local tiers are never capped.
   max_llm_calls_per_analysis: 24
+  # Analysis-wide wall-clock ceiling (audit L-1). The recovery budgets count
+  # only time spent inside the recovery node, so a 3-round run was effectively
+  # unbounded and produced multi-minute answers. This bounds the whole graph:
+  # once spent, no new round starts and the current verdict stands (the run
+  # abstains rather than guessing). 0 disables the bound. Raise only for slow
+  # hardware or cloud providers with real per-call latency.
+  max_analysis_seconds: 120
   max_verification_claims: 8        # Small models choke on 20; 8 keeps NLI focused
   max_individual_nli_fallback: 8    # Must cover max_verification_claims (8): when
                                     # batch NLI fails, every claim is still attempted

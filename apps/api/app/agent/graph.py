@@ -90,6 +90,46 @@ class AgentState(TypedDict):
     # Recovery budget tracking
     recovery_tokens_used: int
     recovery_latency_ms: int
+    # Wall-clock deadline for the WHOLE analysis (audit L-1), not just the
+    # recovery node. Set once in execute_agentic_rag_flow from
+    # `cost_controls.max_analysis_seconds`; None disables the bound.
+    # recovery_latency_ms only accumulates time spent inside the recovery node,
+    # so on its own it cannot bound a 3-round run.
+    analysis_deadline_monotonic: float | None
+    # Cumulative wall-clock spent in retrieval+generation+verification, so the
+    # trace can report where the time actually went.
+    analysis_elapsed_ms: int
+
+
+# ─── Analysis-wide latency budget (audit L-1) ───────────────────────────────
+
+
+def _remaining_budget_ms(state: AgentState) -> float | None:
+    """Milliseconds left before the analysis deadline, or None if unbounded."""
+    deadline = state.get("analysis_deadline_monotonic")
+    if deadline is None:
+        return None
+    return max(0.0, (deadline - time.monotonic()) * 1000.0)
+
+
+def _deadline_spent(state: AgentState) -> bool:
+    """True when the analysis-wide wall-clock budget is exhausted."""
+    remaining = _remaining_budget_ms(state)
+    return remaining is not None and remaining <= 0.0
+
+
+def _analysis_deadline(cfg) -> float | None:
+    """Absolute monotonic deadline for this run, or None when unbounded.
+
+    Defensive about the config object: a non-numeric or missing budget must
+    disable the bound rather than abort the analysis, because a bad latency
+    setting should never be the reason a user's query returns nothing.
+    """
+    try:
+        budget = int(getattr(cfg, "max_analysis_seconds", 0) or 0)
+    except (TypeError, ValueError):
+        return None
+    return (time.monotonic() + budget) if budget > 0 else None
 
 
 # ─── Standardized Error Handling ─────────────────────────────────────────────
@@ -1385,12 +1425,34 @@ async def _execute_re_retrieve(state: AgentState, prior_answer: str | None, cfg)
 def should_recover(state: AgentState) -> str:
     """Determine if recovery node should execute or terminate the graph run.
 
-    Checks attempt count, PASS verdict, AND budget exhaustion (tokens/latency).
+    Checks attempt count, PASS verdict, analysis-wide latency budget (audit
+    L-1), AND budget exhaustion (tokens/latency).
     """
     cfg = get_model_config()
     max_recovery = cfg.max_recovery_attempts
 
     if state["verdict_status"] == "PASS" or state["attempts"] >= max_recovery:
+        return "end"
+    # Analysis-wide wall-clock budget. A recovery round costs a full
+    # retrieval + generation + verification pass, so starting one after the
+    # deadline is what produces multi-minute answers. End here and let the
+    # already-computed verdict stand.
+    if _deadline_spent(state):
+        remaining_s = (_remaining_budget_ms(state) or 0) / 1000.0
+        logger.info(
+            "Analysis latency budget spent; ending recovery loop",
+            attempts=state.get("attempts", 0),
+            verdict=state.get("verdict_status"),
+            remaining_ms=round(remaining_s, 1),
+        )
+        # Keep the existing verdict, but mark why the run stopped so the
+        # diagnosis is honest about a truncated (not complete) verification.
+        if state.get("verdict_status") != "PASS":
+            state["diagnosis_type"] = "RECOVERY_BUDGET_EXHAUSTED"
+            state["diagnosis_failures"] = [
+                f"Analysis latency budget exhausted after {state.get('attempts', 0)} "
+                f"recovery attempt(s); stopping to respect the time limit"
+            ]
         return "end"
     # Check budget exhaustion (set by recovery_node when budget exceeded)
     if state.get("diagnosis_type") == "RECOVERY_BUDGET_EXHAUSTED":
@@ -1471,6 +1533,10 @@ async def execute_agentic_rag_flow(
         "llm_model": llm_model,
         "cache_hit": False,
         "node_errors": [],
+        "recovery_tokens_used": 0,
+        "recovery_latency_ms": 0,
+        "analysis_elapsed_ms": 0,
+        "analysis_deadline_monotonic": _analysis_deadline(cfg),
     }
 
     # ── Semantic answer reuse (safe mode) ──────────────────────────────────────
@@ -1520,8 +1586,25 @@ async def execute_agentic_rag_flow(
     # counted and bounded (audit B-4). ContextVar-scoped, so concurrent
     # analyses do not share a budget.
     ledger_token = begin_analysis()
+    analysis_started = time.monotonic()
     try:
         final_state = await graph.ainvoke(initial_state)
+
+        # Record real wall-clock so the trace can attribute latency, and warn
+        # when the deadline cut the run short (audit L-1).
+        elapsed_ms = int((time.monotonic() - analysis_started) * 1000)
+        final_state["analysis_elapsed_ms"] = elapsed_ms
+        try:
+            budget = int(getattr(cfg, "max_analysis_seconds", 0) or 0)
+        except (TypeError, ValueError):
+            budget = 0
+        if budget and elapsed_ms > budget * 1000:
+            logger.warning(
+                "Analysis exceeded its latency budget",
+                analysis_id=analysis_id_str,
+                elapsed_ms=elapsed_ms,
+                budget_ms=budget * 1000,
+            )
 
         # Store in semantic cache if verified and valid
         if (

@@ -35,6 +35,7 @@ def _clean_onnx_env(monkeypatch):
         "RETRIEVAL_HYBRID_TIMEOUT_SECONDS",
         "RETRIEVAL_QUERY_CACHE_CAPACITY",
         "QDRANT_UPSERT_BATCH",
+        "MAX_ANALYSIS_SECONDS",
         "OMP_NUM_THREADS",
     ):
         monkeypatch.delenv(var, raising=False)
@@ -170,3 +171,13 @@ def test_production_keys_default_empty_env_only(_clean_onnx_env):
 
     for field in ("gemini_api_key", "nvidia_api_key", "tavily_api_key", "hf_token"):
         assert Settings.model_fields[field].default == "", field
+
+
+def test_analysis_latency_budget_default_and_disable(_clean_onnx_env, monkeypatch):
+    """Audit L-1: whole-analysis wall-clock bound (0 disables)."""
+    from app.core.config import get_model_config
+
+    assert get_model_config().max_analysis_seconds == 120
+    monkeypatch.setenv("MAX_ANALYSIS_SECONDS", "0")
+    get_model_config.cache_clear()
+    assert get_model_config().max_analysis_seconds == 0

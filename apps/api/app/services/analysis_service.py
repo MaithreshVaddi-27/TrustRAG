@@ -40,6 +40,7 @@ from app.services.kb_service import get_kb
 from app.verification.verdict import (
     ReliabilityStatus,
     Thresholds,
+    VerdictResult,
     verdict_from_state,
 )
 
@@ -77,6 +78,41 @@ def _looks_like_scaffold_echo(answer: str | None) -> bool:
         if seen[s] >= 3:
             return True
     return False
+
+
+# Single user-facing refusal used for every non-TRUSTED terminal state, so a
+# user is never shown model prose that verification did not clear.
+_UNVERIFIED_ANSWER = (
+    "I couldn't verify an answer from this knowledge base: the retrieved "
+    "evidence did not support a grounded response, so I am abstaining rather "
+    "than guessing. Try a more specific query or add documents covering this "
+    "topic."
+)
+
+
+def _presentable_answer(
+    answer: str | None,
+    verdict_result: VerdictResult,
+) -> str | None:
+    """Return answer text that is safe to show a user, else None.
+
+    GROUNDING GATE (audit G-1): the verdict engine already decides how much of
+    a generated answer the evidence supports. This function is the single place
+    where that decision is applied to what the user actually reads.
+
+    Previously only ``ABSTAINED`` was filtered, so ``FAILED`` (reliability
+    below ``abstain_below``) and ``UNCERTAIN`` (coverage/contradiction
+    thresholds missed) answers were stored verbatim with status "completed" —
+    the pipeline detected the ungrounded content and then displayed it anyway.
+    That is the "answers that are not from the knowledge base" symptom.
+
+    Only ``TRUSTED`` verdicts may present the model's own text. Everything else
+    is replaced with the abstention message, so the reliability badge can never
+    contradict the prose beside it.
+    """
+    if verdict_result.reliability_status == ReliabilityStatus.TRUSTED:
+        return answer
+    return _UNVERIFIED_ANSWER
 
 
 # ─── In-process SSE Pub/Sub ──────────────────────────────────────────────────
@@ -676,14 +712,44 @@ async def run_analysis_pipeline(
             except Exception:  # noqa: S110
                 pass
         else:
+            # GROUNDING GATE (audit G-1). The verdict engine has already decided
+            # how much of the generated answer the evidence supports; this is
+            # where that decision is applied to what the user actually reads.
+            # Only TRUSTED may present the model's own text. Previously
+            # FAILED/UNCERTAIN answers fell through to `status: "completed"`
+            # with the raw prose, so the pipeline detected ungrounded content
+            # and then displayed it anyway.
+            stored_answer = _presentable_answer(answer, verdict)
+            stored_status = "completed"
+            gated = stored_answer is not answer
+            if gated:
+                logger.warning(
+                    "Unverified answer withheld from user",
+                    analysis_id=analysis_id_str,
+                    reliability=verdict.reliability_status.value,
+                    score=verdict.reliability_score,
+                    diagnosis=verdict.diagnosis_type.value,
+                )
+                await add_trace_event(
+                    analysis_id_str,
+                    "analysis.grounding_gate",
+                    {
+                        "message": (
+                            "Answer was not fully supported by retrieved evidence "
+                            f"({verdict.reliability_status.value}, "
+                            f"score={verdict.reliability_score:.2f}); "
+                            "presenting abstention instead of ungrounded text."
+                        ),
+                        "reliability_status": verdict.reliability_status.value,
+                        "reliability_score": verdict.reliability_score,
+                    },
+                )
             # DEGENERATE-STUB GUARD 2026-09-06: when verification fails with zero
             # claims, the stored "answer" can be a context-overflow stub (e.g. the
             # single word "The"). Presenting that as a synthesis is dishonest —
             # store a clean abstention sentence instead (score/diagnosis kept).
             # Extended: small local models may echo prompt scaffolding or loop a
             # block until max tokens — also never a synthesis, whatever claims say.
-            stored_answer = answer
-            stored_status = "completed"
             scaffold_echo = _looks_like_scaffold_echo(answer)
             if scaffold_echo:
                 logger.warning(
@@ -701,12 +767,10 @@ async def run_analysis_pipeline(
                 and (answer or "").strip() != "ABSTAIN"
                 and len((answer or "").split()) < 5
             ):
-                stored_answer = (
-                    "I couldn't verify an answer from this knowledge base: the "
-                    "retrieved evidence did not support a grounded response, so "
-                    "I am abstaining rather than guessing. Try a more specific "
-                    "query or add documents covering this topic."
-                )
+                stored_answer = _UNVERIFIED_ANSWER
+            if scaffold_echo or gated:
+                # A withheld or degenerate answer is not a completed synthesis.
+                stored_status = "abstained"
             # USER-FACING CLEANUP: verification already consumed the [Segment N]
             # markers (claims carry their own evidence_ids; the Evidence tab is
             # unaffected), so the stored prose drops them — readers see normal

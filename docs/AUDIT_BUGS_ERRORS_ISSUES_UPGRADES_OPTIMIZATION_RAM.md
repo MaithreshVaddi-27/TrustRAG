@@ -233,6 +233,46 @@ Phases completed in RAG order (preprocessing → retrieval → augmentation → 
 
 **Not done / out of scope for this pass:** manual browser review of the new loader animations (built + tested, not clicked through), live k6 budget run, ONNX arena-off profile measurement on 512 MB containers.
 
+## 10c. User-reported bugs: ungrounded answers + >70s latency (2026-09-28)
+
+Two user-visible complaints, two independent root causes. Neither was a model-quality problem.
+
+### G-1 — Answers not from the knowledge base (CRITICAL, fixed)
+
+**Symptom:** the app returned fluent answers containing content that was not in the knowledge base.
+
+**Root cause — the verdict was computed and then ignored.** `analysis_service.run_analysis_pipeline` only special-cased `ReliabilityStatus.ABSTAINED`. `FAILED` (reliability below `abstain_below`) and `UNCERTAIN` (coverage/contradiction thresholds missed) fell into the `else` branch and were stored **verbatim with `status: "completed"`**. The pipeline detected the ungrounded content via NLI and then presented it anyway — with a reliability badge showing it was not trusted.
+
+**Fix:** added `_presentable_answer()` as the single gate where the verdict is applied to user-visible text. Only `TRUSTED` may present model prose; everything else becomes the abstention message, and the stored status becomes `abstained` (score/diagnosis preserved so the UI can still explain). Tests: `test_finalize_withholds_unverified_answer_from_user[FAILED|UNCERTAIN]`, `test_finalize_keeps_trusted_answer`.
+
+### G-2 — Generation prompt locked to one domain (CRITICAL, fixed)
+
+**Symptom (reported):** the product is not domain-specific (not market/policies) — it must answer from the code-base.
+
+**Root cause:** `GROUNDING_SYSTEM_PROMPT` was hardcoded to a single subject, comparing subjects across "architecture, interaction model, **contextual intelligence**, and source verification", ranking "**most demanded**" / "**enterprise needs**" / "**industry trends**", and navigating "**syllabus**" sections. Two of those instructions directly caused hallucination on any other corpus:
+
+- `"Do NOT output ABSTAIN if the Context contains relevant discussion of the topics"` — **contradicts grounding rule 1** and instructs the model to answer from weak context.
+- `"You MUST address EVERY part"` + `"Prioritize items noted as leading, most demanded"` — pressures the model to fill sections from prior knowledge when the context does not cover them.
+
+**Fix:** rewrote the prompt as explicitly domain-agnostic (source code, policies, market material, scientific literature, or prose — the context decides). Grounding is now the highest-priority rule that overrides all others; abstention is a positive obligation where "partial topical overlap is not support"; terminology must come from the context. Citation, injection-defense, and small-model output-discipline rules are preserved verbatim (redteam/citation tests still pass). Regression tests: `test_grounding_prompt_has_no_single_domain_lock`, `test_grounding_prompt_does_not_discourage_abstention`, `test_grounding_prompt_declares_domain_agnostic`.
+
+### L-1 — No bound on total analysis time (fixed)
+
+**Symptom:** >70 s to produce an answer.
+
+**Root cause:** `max_recovery_latency_seconds: 180` only accumulates time spent *inside the recovery node*, so it could not bound a full run. With `max_recovery_attempts: 2` the graph performs up to **3 complete rounds** (retrieval + generation + verification each), and nothing stopped a new round from starting on wall-clock grounds. Round 1 alone can spend minutes on a 1.2B local model.
+
+**Fix:** `cost_controls.max_analysis_seconds` (default 120, `MAX_ANALYSIS_SECONDS`, `0` disables) sets a monotonic deadline in the initial state. `should_recover` ends the loop once spent, marks `RECOVERY_BUDGET_EXHAUSTED` (so a truncated run is never reported as a clean PASS), and the already-computed verdict stands. Actual wall-clock is now recorded in `analysis_elapsed_ms` and over-budget runs are logged, so latency is measurable instead of inferred.
+
+**Quality is not reduced by this:** the deadline removes *redundant retries* after the budget is gone, not verification of the first answer. Combined with G-1, a budget-truncated run now abstains honestly instead of displaying a weakly-supported answer.
+
+**Not yet done:** the per-call breakdown (which of the ~9 sequential LLM calls dominates) is not instrumented, so the exact split between generation and NLI latency is still unmeasured. A trace-level timer per node is the follow-up.
+
+### Verification
+- Backend `pytest`: **689 passed** (was 677) · `ruff check` + `ruff format --check` clean.
+- Frontend: eslint 0 warnings, 33 vitest passed (unchanged — no UI contract changed; `abstained` status and the reliability badge already render correctly).
+- The new config test caught a real defect during development: `max_analysis_seconds` was written under `recovery:` in yaml while read from `cost_controls`, so the default silently resolved to 0 (disabled). Fixed by relocating the key.
+
 ## 11. Follow-ups (ordered backlog, not started)
 
 1.redis` (per-client caps are process-local).
