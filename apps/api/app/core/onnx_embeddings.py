@@ -36,7 +36,7 @@ from app.core.disk_cache import (
     set_cached_embeddings_batch,
 )
 from app.core.hardware import get_ingest_embed_batch_size
-from app.core.onnx_runtime import build_session_options, resolve_intra_op_threads
+from app.core.onnx_runtime import build_session_options
 
 logger = structlog.get_logger(__name__)
 
@@ -44,37 +44,6 @@ logger = structlog.get_logger(__name__)
 # asyncio.to_thread. Set at import so every process (api, workers, tests)
 # inherits it without shell exports.
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-
-
-def _onnx_intra_op_threads() -> int:
-    """Capped ONNX thread pool — delegates to the shared session factory.
-
-    Kept as a thin alias (was inline here before the central `onnx:`
-    config): ``min(4, OMP_NUM_THREADS or cpu_count)``. Prefer
-    ``app.core.onnx_runtime.resolve_intra_op_threads`` in new code.
-    """
-    return resolve_intra_op_threads(0)
-
-
-def _resolve_embedding_defaults(
-    tokenizer_name: str | None, max_seq_length: int | None
-) -> tuple[str, int]:
-    """Single source of truth: models.yaml embedding.model / max_seq_length.
-
-    Explicit constructor args still win (tests, one-off exports); otherwise
-    every stage follows `embedding.model` so a yaml edit propagates everywhere.
-    """
-    model, seq = tokenizer_name, max_seq_length
-    if model is None or seq is None:
-        try:
-            cfg = get_model_config()
-            if model is None:
-                model = cfg.embedding_model
-            if seq is None:
-                seq = cfg.embedding_max_seq_length
-        except Exception as exc:
-            logger.debug("Embedding defaults fell back to built-ins", error=str(exc))
-    return model or "BAAI/bge-small-en-v1.5", int(seq or 512)
 
 
 # Pinned tokenizer revision (commit SHA of BAAI/bge-small-en-v1.5 on the Hub).

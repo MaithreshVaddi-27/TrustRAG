@@ -30,7 +30,7 @@ from app.core.llm_ledger import (
 from app.core.llm_outage import classify_llm_exception
 from app.core.logging import _scrub_sensitive, scrub_secret_values
 
-CONFIG_PATH = "app.core.config.get_model_config"
+CONFIG_PATH = "app.core.llm_ledger.get_model_config"
 
 
 def _cfg(provider: str, cap: int = 4) -> MagicMock:
@@ -576,12 +576,16 @@ def test_effective_cloud_model_is_validated_even_when_request_omits_it():
 
     # 1. Config default outside the allowlist is rejected even with no
     #    llm_model supplied by the caller.
-    with patch("app.core.config.get_model_config", return_value=_CfgStub("gemini-not-allowed")):
+    with patch(
+        "app.api.v1.schemas.analysis.get_model_config", return_value=_CfgStub("gemini-not-allowed")
+    ):
         with pytest.raises(ValidationError, match="not enabled"):
             AnalysisCreate(llm_provider="gemini", **base)
 
     # 2. The same request passes when the resolved default IS allowed.
-    with patch("app.core.config.get_model_config", return_value=_CfgStub("gemini-allowed-only")):
+    with patch(
+        "app.api.v1.schemas.analysis.get_model_config", return_value=_CfgStub("gemini-allowed-only")
+    ):
         with patch("app.core.local_llm.get_discovered_llms", return_value=frozenset()):
             ok = AnalysisCreate(llm_provider="gemini", **base)
     assert ok.llm_model is None  # the caller did not ask for a specific model
@@ -689,7 +693,9 @@ def test_verification_model_allowlist_rejects_unbudgeted_cloud_model(monkeypatch
         def verification_model_for(self, provider: str) -> str:
             return "some-unbudgeted-expensive-model"
 
-    monkeypatch.setattr(cfgmod, "get_model_config", lambda: _CfgStub("gemini-allowed-only"))
+    from app.api.v1.schemas import analysis as analysis_mod
+
+    monkeypatch.setattr(analysis_mod, "get_model_config", lambda: _CfgStub("gemini-allowed-only"))
     monkeypatch.delenv("GEMINI_VERIFICATION_MODEL", raising=False)
     monkeypatch.delenv("VERIFICATION_MODEL", raising=False)
     monkeypatch.delenv("AI_PROVIDER", raising=False)

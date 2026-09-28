@@ -12,6 +12,8 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.outputs import ChatResult
 from langchain_core.runnables import Runnable, RunnableLambda
 
+from app.core.logging import get_logger
+
 T = TypeVar("T")  # bound resolved at runtime by caller's schema
 
 
@@ -141,8 +143,6 @@ def build_structured_output_runnable(
         try:
             return schema.model_validate_json(cleaned_json)
         except Exception as parse_err:
-            from app.core.logging import get_logger
-
             logger = get_logger(__name__)
             logger.warning(
                 "JSON schema validation failed, attempting repair",

@@ -15,7 +15,9 @@ import subprocess
 import sys
 from typing import Any
 
+from app.core.config import get_model_config
 from app.core.logging import get_logger
+from app.core.memory import get_memory_usage_mb
 
 logger = get_logger(__name__)
 
@@ -45,8 +47,6 @@ def get_llamacpp_launch_args() -> list[str]:
     # slowdown. CPU-only path keeps f16 (no FA there). Unknown values fall
     # back to q8_0 (e.g. "fp16" is not a valid llama-server k-quant).
     try:
-        from app.core.config import get_model_config
-
         _kv_quant = str(get_model_config().kv_cache_quantization or "q8_0").strip().lower()
     except Exception:
         _kv_quant = "q8_0"
@@ -344,8 +344,6 @@ def detect_hardware_profile() -> dict[str, Any]:
         max_concurrency = 8
 
     # System Health Evaluation
-    from app.core.memory import get_memory_usage_mb
-
     process_rss_mb = get_memory_usage_mb()
 
     health_status = "optimal"

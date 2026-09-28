@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import AppLayout from '@/layouts/AppLayout'
 import { ReliabilityBadge } from '@/components/workbench/ReliabilityBadge'
+import { SkeletonRows } from '@/components/workbench/Skeleton'
 import { kbService, analysisService, claimService, conflictService } from '@/services/api'
 import { formatDistanceToNow, format } from 'date-fns'
 
@@ -69,6 +70,9 @@ export default function DashboardPage() {
     data: analyses = [],
     refetch: refetchAnalyses,
     isFetching: isFetchingAnalyses,
+    isLoading: isLoadingAnalyses,
+    isError: isErrorAnalyses,
+    error: analysesError,
   } = useQuery({
     queryKey: ['analyses'],
     queryFn: analysisService.list,
@@ -78,6 +82,9 @@ export default function DashboardPage() {
   const {
     data: claims = [],
     refetch: refetchClaims,
+    isLoading: isLoadingClaims,
+    isError: isErrorClaims,
+    error: claimsError,
   } = useQuery({
     queryKey: ['all-claims'],
     queryFn: claimService.list,
@@ -87,6 +94,8 @@ export default function DashboardPage() {
   const {
     data: conflicts = [],
     refetch: refetchConflicts,
+    isError: isErrorConflicts,
+    error: conflictsError,
   } = useQuery({
     queryKey: ['all-conflicts'],
     queryFn: conflictService.list,
@@ -96,11 +105,20 @@ export default function DashboardPage() {
   const {
     data: kbs = [],
     refetch: refetchKbs,
+    isLoading: isLoadingKbs,
+    isError: isErrorKbs,
+    error: kbsError,
   } = useQuery({
     queryKey: ['knowledgeBases'],
     queryFn: kbService.list,
     refetchInterval: autoRefresh ? 5000 : false,
   })
+
+  // First paint: show layout-matching skeletons instead of a false "0" state.
+  const isInitialLoad = isLoadingAnalyses || isLoadingClaims || isLoadingKbs
+  // Surface the first failing feed — silent zeros previously hid outages.
+  const loadError = analysesError || kbsError || claimsError || conflictsError
+  const hasLoadError = isErrorAnalyses || isErrorKbs || isErrorClaims || isErrorConflicts
 
   useEffect(() => {
     setLastSync(new Date())
@@ -292,6 +310,31 @@ export default function DashboardPage() {
             </button>
           </div>
         </div>
+
+        {/* ── LOAD STATE: error banner + first-paint skeletons ──────────── */}
+        {hasLoadError && !isInitialLoad && (
+          <div
+            role="alert"
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-red-800/50 bg-red-950/30"
+          >
+            <div className="flex items-start gap-2.5">
+              <ShieldCheck size={16} className="text-red-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-semibold text-red-300">Some dashboard feeds failed to load</p>
+                <p className="text-[11px] text-red-400/80 mt-0.5">
+                  {loadError?.message || 'An unexpected error occurred. Metrics below may be incomplete.'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleManualSync}
+              className="px-3 py-1.5 rounded-xl bg-red-950/60 hover:bg-red-900/50 border border-red-800/60 text-red-200 text-xs font-semibold transition-all shrink-0"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* ── 4 HERO METRIC CARDS ─────────────────────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -570,7 +613,11 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          {analyses.length === 0 ? (
+          {isInitialLoad ? (
+            <div className="glass-card p-5" aria-busy="true">
+              <SkeletonRows rows={4} className="h-16 rounded-2xl" gap="gap-3" />
+            </div>
+          ) : analyses.length === 0 ? (
             <div className="glass-card p-10 text-center space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-surface-800 border border-slate-700 mx-auto flex items-center justify-center text-slate-500">
                 <Zap size={22} />

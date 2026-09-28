@@ -31,6 +31,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_model_config, get_settings
+from app.core.disk_cache import maybe_cleanup_cache
 from app.core.exceptions import (
     AnalysisNotFoundError,
     AuthenticationError,
@@ -48,9 +49,20 @@ from app.core.exceptions import (
     VectorStoreError,
 )
 from app.core.hardware import get_cached_hardware_profile
+from app.core.local_llm import (
+    close_local_llm_clients,
+    load_discovery_snapshot,
+    seed_local_model_discovery,
+)
 from app.core.logging import configure_logging, get_logger
-from app.core.model_registry import get_embedding_model
+from app.core.memory import get_memory_usage_mb
+from app.core.model_registry import (
+    close_all_llm_instances,
+    get_embedding_model,
+    onnx_model_status,
+)
 from app.core.rate_limiter import limiter
+from app.core.semantic_cache import _cleanup_expired_entries, load_cache
 from app.core.tracing import init_tracing, tracing_middleware
 from app.db.mongodb import connect_db, create_indexes, disconnect_db
 
@@ -162,8 +174,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # query 500s, and without reranker weights reranking silently degrades to
     # RRF order. Both are deploy-time problems (run scripts/bootstrap.py and
     # bake .model_cache into the image) — never per-request surprises.
-    from app.core.model_registry import onnx_model_status
-
     onnx_status = onnx_model_status()
     if not onnx_status["embedding_onnx_present"]:
         logger.error(
@@ -186,16 +196,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await create_indexes()
 
     # Load semantic cache from disk (lazy-loaded at import, now explicit)
-    from app.core.semantic_cache import load_cache
-
     loaded = load_cache()
     logger.info("Semantic cache loaded", entries=loaded)
 
     # Seed the local-model discovery cache from the persisted snapshot so a
     # pre-run `scripts/bootstrap.py` (or any earlier process) is
     # honored before the server answers its first request.
-    from app.core.local_llm import load_discovery_snapshot, seed_local_model_discovery
-
     load_discovery_snapshot()
 
     logger.info("TRUSTRAG API ready")
@@ -220,9 +226,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     async def _cleanup_caches() -> None:
         """Run periodic cache cleanup on startup (embedding + semantic)."""
         try:
-            from app.core.disk_cache import maybe_cleanup_cache
-            from app.core.semantic_cache import _cleanup_expired_entries
-
             maybe_cleanup_cache()
             _cleanup_expired_entries()
             logger.debug("Cache TTL cleanup completed on startup")
@@ -243,8 +246,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # heavy startups contend on first boot; RSS around each step turns the
         # next OOM report into a breakdown instead of a guess. Discovery still
         # re-persists the snapshot so already-running processes stay in sync.
-        from app.core.memory import get_memory_usage_mb
-
         logger.info("Startup warmup: discovery", rss_mb=get_memory_usage_mb())
         await seed_local_model_discovery()
         logger.info("Startup warmup: hardware", rss_mb=get_memory_usage_mb())
@@ -262,9 +263,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not warmup_task.done():
         warmup_task.cancel()
     logger.info("TRUSTRAG API shutting down")
-    from app.core.local_llm import close_local_llm_clients
-    from app.core.model_registry import close_all_llm_instances
-
     await close_local_llm_clients()
     await close_all_llm_instances(seal=True)
     await disconnect_db()

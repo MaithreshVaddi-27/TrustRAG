@@ -10,6 +10,17 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+# Module-level imports (verified cycle-free): the AnalysisCreate validator
+# resolves provider allowlists on every request, so keeping these at the top
+# avoids per-call import lookups.
+from app.core import local_llm as _local_llm_mod
+from app.core.config import (
+    SUPPORTED_LLM_PROVIDERS,
+    get_model_config,
+    get_settings,
+    normalize_provider,
+)
+
 
 class AnalysisCreate(BaseModel):
     knowledge_base_id: str = Field(..., description="Target knowledge base")
@@ -46,14 +57,6 @@ class AnalysisCreate(BaseModel):
         only select models exposed by this deployment. This prevents arbitrary
         Hugging Face downloads and unbudgeted cloud model invocations.
         """
-        from app.core.config import (
-            SUPPORTED_LLM_PROVIDERS,
-            get_model_config,
-            get_settings,
-            normalize_provider,
-        )
-        from app.core.local_llm import get_discovered_llms
-
         cfg = get_model_config()
         settings = get_settings()
 
@@ -67,9 +70,9 @@ class AnalysisCreate(BaseModel):
         # auto-download path — but it does let operators select freshly-installed
         # models that the /models dropdown already lists.
         allowed_llms = {
-            "ollama": set(get_discovered_llms("ollama")),
-            "llama_cpp": set(get_discovered_llms("llama_cpp")),
-            "mlx": set(get_discovered_llms("mlx")),
+            "ollama": set(_local_llm_mod.get_discovered_llms("ollama")),
+            "llama_cpp": set(_local_llm_mod.get_discovered_llms("llama_cpp")),
+            "mlx": set(_local_llm_mod.get_discovered_llms("mlx")),
             # Cloud allowlists live in models.yaml (single source of truth) —
             # never hardcode model IDs here, or the next model release 422s
             # again (cf. gemini-3.8-flash).

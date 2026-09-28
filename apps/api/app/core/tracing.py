@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import Request, Response
 
 from app.core.logging import get_logger
+from app.core.metrics import record_http_request
 
 logger = get_logger(__name__)
 
@@ -53,8 +54,6 @@ async def tracing_middleware(request: Request, call_next: Callable[[Request], An
 
         # Phase 10: record Prometheus-style counters (never break the request path)
         try:
-            from app.core.metrics import record_http_request
-
             record_http_request(method, path, response.status_code, duration_ms)
         except Exception:
             logger.debug("Failed to record HTTP request metric")
@@ -80,8 +79,6 @@ async def tracing_middleware(request: Request, call_next: Callable[[Request], An
             error=str(exc),
         )
         try:
-            from app.core.metrics import record_http_request
-
             record_http_request(method, path, 500, duration_ms)
         except Exception:  # noqa: S110
             pass

@@ -28,6 +28,7 @@ from typing import Any
 import structlog
 import xxhash
 
+from app.core.config import get_model_config
 from app.ingestion.preprocessor import ZONE_WEIGHT_BOOSTS, lexical_analyze
 
 logger = structlog.get_logger(__name__)
@@ -52,8 +53,6 @@ def tokenize(text: str) -> list[str]:
 def _sparse_params() -> tuple[float, float, int]:
     """Read BM25 TF params from config, falling back to standard defaults."""
     try:
-        from app.core.config import get_model_config
-
         cfg = get_model_config()
         return (cfg.sparse_k1, cfg.sparse_b, cfg.sparse_avg_len_tokens)
     except Exception:

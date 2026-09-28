@@ -21,6 +21,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from app.core.config import get_model_config
+
 
 def _graph_optimization_level(name: str) -> Any:
     """Map a config string to ``ort.GraphOptimizationLevel`` (lazy import)."""
@@ -75,8 +77,6 @@ def build_session_options(
         or cpu_mem_arena is None
         or mem_pattern is None
     ):
-        from app.core.config import get_model_config
-
         cfg = get_model_config()
         if intra_op_threads is None:
             intra_op_threads = cfg.onnx_intra_op_threads
@@ -109,8 +109,6 @@ def create_session(model_path: str, providers: list[str] | None = None, **option
     import onnxruntime as ort
 
     if providers is None:
-        from app.core.config import get_model_config
-
         providers = get_model_config().onnx_providers
     sess_options = build_session_options(**options)
     return ort.InferenceSession(model_path, sess_options=sess_options, providers=providers)

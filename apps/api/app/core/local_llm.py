@@ -1029,9 +1029,7 @@ async def check_ollama_status(base_url: str = "http://localhost:11434") -> dict[
     # Default: models.yaml llm.model_ollama when discovered, else first discovered.
     # Keeps a yaml edit (e.g. gemma3:1b → qwen3:1.7b) propagating to the UI.
     try:
-        from app.core.config import get_model_config as _get_cfg
-
-        _preferred_ollama = _get_cfg().llm_model_for("ollama")
+        _preferred_ollama = get_model_config().llm_model_for("ollama")
     except Exception:
         _preferred_ollama = "gemma3:1b"
     default_model = (
@@ -1093,9 +1091,7 @@ async def check_llamacpp_status(base_url: str = "http://127.0.0.1:8080/v1") -> d
 
     # Default: models.yaml llm.model_llamacpp when discovered, else first.
     try:
-        from app.core.config import get_model_config as _get_cfg2
-
-        _preferred_llamacpp = _get_cfg2().llm_model_for("llama_cpp")
+        _preferred_llamacpp = get_model_config().llm_model_for("llama_cpp")
     except Exception:
         _preferred_llamacpp = "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
     default_model = (
@@ -1163,9 +1159,7 @@ async def check_mlx_status(
 
     # Default: models.yaml llm.model_mlx when discovered, else first.
     try:
-        from app.core.config import get_model_config as _get_cfg3
-
-        _preferred_mlx = _get_cfg3().llm_model_for("mlx")
+        _preferred_mlx = get_model_config().llm_model_for("mlx")
     except Exception:
         _preferred_mlx = "mlx-community/Llama-3.2-1B-Instruct-4bit"
     default_model = (

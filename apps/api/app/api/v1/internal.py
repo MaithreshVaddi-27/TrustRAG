@@ -16,11 +16,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, field_validator
 
 from app.api.deps import require_service_permission
+from app.core.exceptions import RetrievalOutageError
 from app.core.model_registry import registry_status
 from app.core.rate_limiter import limiter
 from app.core.security import create_service_token
+from app.retrieval.retriever import retrieve_hybrid_chunks
 from app.services.kb_service import add_document
 from app.services.search_service import validate_ingestion_url
+from app.verification.verifier import batch_verify_claims_nli
 
 # Cost-DoS backstop for service-to-service routes (generous: functionality is
 # already gated by service-token permissions, this only bounds LLM fan-out).
@@ -205,9 +208,6 @@ async def internal_search(
 
     Requires search:read permission.
     """
-    from app.core.exceptions import RetrievalOutageError
-    from app.retrieval.retriever import retrieve_hybrid_chunks
-
     try:
         top_k = max(1, min(int(top_k), 50))
     except (TypeError, ValueError):
@@ -246,8 +246,6 @@ async def internal_verify_claims(
 
     Requires verify:execute permission.
     """
-    from app.verification.verifier import batch_verify_claims_nli
-
     # Cost-DoS guard: unbounded lists fan out to LLM calls.
     claims = claims[:20]
     evidence_texts = [t[:4000] for t in evidence_texts[:20]]

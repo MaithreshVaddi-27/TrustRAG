@@ -25,6 +25,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.config import get_model_config
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -76,8 +77,6 @@ def max_calls_per_analysis() -> int | None:
     Only cloud tiers are capped: a local model costs no money, and an on-prem
     operator with a 70B model should not be throttled by a spend guard.
     """
-    from app.core.config import get_model_config
-
     cfg = get_model_config()
     if (cfg.llm_provider or "").strip().lower() in ("gemini", "google_genai", "nvidia", "nim"):
         return int(cfg.max_llm_calls_per_analysis)

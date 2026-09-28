@@ -7,17 +7,18 @@ for 3-4x speedup over PyTorch on CPU, fully torch-free.
 
 from __future__ import annotations
 
-import logging
 import os
 from typing import Any
 
 import numpy as np
 import onnxruntime as ort
+import structlog
 
 from app.core.config import get_model_config, get_settings
 from app.core.onnx_runtime import build_session_options
 
-logger = logging.getLogger(__name__)
+# structlog for consistency with the rest of app/core (JSON logs in prod).
+logger = structlog.get_logger(__name__)
 
 
 class ONNXCrossEncoder:
