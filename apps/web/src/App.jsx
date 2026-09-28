@@ -18,7 +18,6 @@ const KnowledgeBasesPage = lazy(() => import('@/pages/KnowledgeBasesPage'))
 const EvidencePage       = lazy(() => import('@/pages/EvidencePage'))
 const ClaimsPage         = lazy(() => import('@/pages/ClaimsPage'))
 const ConflictsPage      = lazy(() => import('@/pages/ConflictsPage'))
-const ExperimentsPage    = lazy(() => import('@/pages/ExperimentsPage'))
 const SettingsPage       = lazy(() => import('@/pages/SettingsPage'))
 const TracePage          = lazy(() => import('@/pages/TracePage'))
 const NotFoundPage       = lazy(() => import('@/pages/NotFoundPage'))
@@ -75,7 +74,6 @@ const PATH_TITLES = {
   '/evidence': 'Evidence Vault — TRUSTRAG',
   '/claims': 'Claim Inspector — TRUSTRAG',
   '/conflicts': 'Source & Claim Conflicts — TRUSTRAG',
-  '/experiments': 'Experiments — TRUSTRAG',
   '/settings': 'Settings — TRUSTRAG',
 }
 
@@ -106,7 +104,6 @@ export default function App() {
         <Route path="/evidence"        element={guarded(<RequireAuth><EvidencePage /></RequireAuth>)} />
         <Route path="/claims"          element={guarded(<RequireAuth><ClaimsPage /></RequireAuth>)} />
         <Route path="/conflicts"       element={guarded(<RequireAuth><ConflictsPage /></RequireAuth>)} />
-        <Route path="/experiments"     element={guarded(<RequireAuth><ExperimentsPage /></RequireAuth>)} />
         <Route path="/settings"        element={guarded(<RequireAuth><SettingsPage /></RequireAuth>)} />
         <Route path="/traces/:id"      element={guarded(<RequireAuth><TracePage /></RequireAuth>)} />
 

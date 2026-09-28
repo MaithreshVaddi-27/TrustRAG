@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { motion, useReducedMotion, useMotionValue, useSpring, useTransform, AnimatePresence } from 'motion/react'
 import {
   Brain, Database, FileSearch,
-  FlaskConical, GitMerge, LayoutDashboard, LogOut,
+  GitMerge, LayoutDashboard, LogOut,
   Settings, Swords, Zap, Menu, X, ChevronLeft, ChevronRight,
   ShieldCheck, Cpu, Layers, RefreshCw
 } from 'lucide-react'
@@ -33,8 +33,6 @@ const NAV = [
   { label: 'Evidence',        to: '/evidence',        icon: FileSearch,      badge: null },
   { label: 'Claims',          to: '/claims',          icon: Brain,           badge: null },
   { label: 'Conflicts',       to: '/conflicts',       icon: GitMerge,        badge: null },
-  null,
-  { label: 'Experiments',     to: '/experiments',     icon: FlaskConical,    badge: null },
   null,
   { label: 'Settings',        to: '/settings',        icon: Settings,        badge: null },
 ]
