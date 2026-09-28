@@ -377,34 +377,50 @@ Default ports: API `8000` · Vite `5173` · llama-server `8080` · **MLX server 
 ### End-to-end via API
 
 ```bash
-# 1. Register (saves the JWT)
-TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/register \
+# 1. Register (returns the user profile — NOT a token)
+curl -s -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"you@example.com","password":"securepassword123","name":"You"}' \
+  -d '{"email":"you@example.com","password":"Str0ng!Passphrase2026","full_name":"You"}'
+
+# 2. Log in to get the JWT (registration does not return one)
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"Str0ng!Passphrase2026"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
-# 2. Create a knowledge base
+# 3. Create a knowledge base
 KB_ID=$(curl -s -X POST http://localhost:8000/api/v1/knowledge-bases \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"name":"My First KB","description":"Test knowledge base"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
-# 3. Upload a document (PDF, DOCX, CSV, JSON, HTML, TXT, MD)
+# 4. Upload a document (PDF, DOCX, CSV, JSON, HTML, TXT, MD — 20 MB max)
 curl -X POST "http://localhost:8000/api/v1/knowledge-bases/$KB_ID/documents" \
   -H "Authorization: Bearer $TOKEN" -F "file=@./my_document.pdf"
 
-# 4. Run a verified analysis
+# 5. Run a verified analysis
 ANALYSIS_ID=$(curl -s -X POST http://localhost:8000/api/v1/analyses \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"What is this document about?\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
-# 5. Inspect verified claims, evidence, and the execution trace
+# 6. Inspect verified claims, evidence, and the execution trace
 curl -s "http://localhost:8000/api/v1/analyses/$ANALYSIS_ID/claims" \
   -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
 curl -s "http://localhost:8000/api/v1/analyses/$ANALYSIS_ID/evidence" \
   -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
 ```
+
+> **Password rules.** Registration enforces complexity: at least 12 characters,
+> with an uppercase letter, a lowercase letter, a digit, and a special
+> character, and at most 72 bytes (the bcrypt limit). A password that fails
+> these is rejected with `422` and a specific message. `Str0ng!Passphrase2026`
+> above satisfies all of them.
+
+> **Status codes.** Analysis runs are asynchronous — `POST /analyses` returns
+> immediately with `status: "pending"`. Poll `GET /analyses/{id}` (or stream
+> `GET /analyses/{id}/stream`) until the status settles, otherwise the claims
+> and evidence endpoints will return nothing useful.
 
 On Windows PowerShell, use `Invoke-RestMethod` / `Invoke-WebRequest` against the same endpoints.
 
@@ -450,7 +466,7 @@ Interactive docs: <http://localhost:8000/docs> (Swagger) · `/redoc`. Base URL `
 | **Knowledge bases** | `POST/GET /api/v1/knowledge-bases` · `GET/DELETE /api/v1/knowledge-bases/{id}` · `POST …/{id}/documents` · `POST …/{id}/documents/from-url` · `POST …/{id}/snapshots` · `POST …/{id}/rollback/{snapshot_id}` |
 | **Analyses** | `POST/GET /api/v1/analyses` · `GET /api/v1/analyses/{id}` · `…/{id}/claims` · `…/{id}/evidence` · `…/{id}/trace` · `…/{id}/detail` · `…/{id}/export` · `POST …/{id}/stream-ticket` · `GET …/{id}/stream` (SSE) |
 | **Evidence & claims** | `GET /api/v1/evidence` · `GET /api/v1/claims` · `GET /api/v1/conflicts` |
-| **Experiments** | `POST/GET /api/v1/experiments` · `GET /api/v1/experiments/{id}` |
+| **Experiments** | `POST/GET /api/v1/experiments` · `GET /api/v1/experiments/{exp_id}` |
 | **Documents** | `GET/DELETE /api/v1/documents/{id}` |
 | **Ops** | `GET /api/v1/health` · `GET /api/v1/health/detailed` · `GET /api/v1/metrics` · `GET /api/v1/models/providers` · `GET /api/v1/models/hardware` · `POST /api/v1/internal/ingest/document` · `POST /api/v1/internal/ingest/url` · `POST /api/v1/internal/search` · `POST /api/v1/internal/verify/claims` (service-token auth) |
 

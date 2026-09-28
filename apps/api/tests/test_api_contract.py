@@ -18,6 +18,7 @@ change is deliberate rather than accidental.
 
 from __future__ import annotations
 
+import pathlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -203,3 +204,166 @@ def test_health_endpoint_shape_is_stable(client):
 async def _empty():
     if False:  # pragma: no cover
         yield None
+
+
+# ─── README quickstart contract ──────────────────────────────────────────────
+# The README's "End-to-end via API" block is the first thing a new user runs.
+# It was wrong in three ways at once and no test caught it, because nothing
+# connected the documented steps to the real schemas: it POSTed to /auth/register
+# and read ['access_token'] (register returns UserResponse — only /auth/login
+# returns a token), sent "name" where the schema requires "full_name", and used
+# a password that fails complexity validation. Every one of those is a 422 or a
+# KeyError on step 1. These tests pin the documented flow to the real contract.
+
+
+def _readme():
+    """Locate README.md from the repo root; skip if packaged without it."""
+    readme = pathlib.Path(__file__).resolve().parents[3] / "README.md"
+    if not readme.exists():
+        pytest.skip("README.md not available")
+    return readme
+
+
+def test_register_returns_a_profile_not_a_token(openapi):
+    """The README must not read access_token from /auth/register — it cannot be
+    there. Only /auth/login returns TokenResponse."""
+    spec = openapi
+    register = spec["paths"]["/api/v1/auth/register"]["post"]
+    ref = register["responses"]["201"]["content"]["application/json"]["schema"]["$ref"]
+    name = ref.rsplit("/", 1)[-1]
+    assert "access_token" not in spec["components"]["schemas"][name]["properties"], (
+        f"/auth/register now returns {name} containing access_token — if that is "
+        "intentional, update the README quickstart"
+    )
+
+
+def test_login_is_the_only_source_of_an_access_token(openapi):
+    login = openapi["paths"]["/api/v1/auth/login"]["post"]
+    ref = login["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+    name = ref.rsplit("/", 1)[-1]
+    assert "access_token" in openapi["components"]["schemas"][name]["properties"]
+
+
+def test_readme_quickstart_reads_the_token_from_login_not_register():
+    """The original quickstart read ['access_token'] out of the /auth/register
+    response. Register returns UserResponse and has no such field, so step 1
+    died with a KeyError before the user ever got a token. Schema-level tests
+    cannot catch a doc that documents the wrong endpoint, so pin the README.
+    """
+    import re
+
+    text = _readme().read_text()
+    # Find whichever endpoint the TOKEN=$( curl ... ) line is pointed at.
+    token_lines = [
+        line for line in text.splitlines() if "access_token" in line and "curl" not in line
+    ]
+    assert token_lines, "could not find the quickstart token-extraction line"
+
+    # Walk back from the extraction line to the nearest endpoint.
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if "access_token" in line and "curl" not in line:
+            window = "\n".join(lines[max(0, i - 6) : i + 1])
+            m = re.findall(r"/api/v1/auth/(\w+)", window)
+            assert m, f"no auth endpoint found near the token extraction: {window[:160]}"
+            assert m[-1] == "login", (
+                f"quickstart reads the token from /auth/register, which returns a "
+                f"profile with no access_token; it must use /auth/login "
+                f"(found: /api/v1/auth/{m[-1]})"
+            )
+
+
+def test_readme_registration_payload_matches_the_schema(openapi):
+    """The README sent {"email","password","name"}; the schema requires
+    full_name. That mismatch is a guaranteed 422 for every new user."""
+    readme = _readme()
+    text = readme.read_text()
+
+    fields = set(openapi["components"]["schemas"]["UserRegister"]["properties"])
+    assert "full_name" in fields, f"schema no longer has full_name: {fields}"
+
+    # Scope to the register call's -d payload only. Other payloads (create-KB)
+    # legitimately use a "name" key, and the API Reference table mentions the
+    # endpoint without a body.
+    import re
+
+    payloads = re.findall(r"auth/register[^\n]*\n(?:[^\n]*\n)*?\s*-d '(\{[^']*\})'", text)
+    assert payloads, "no /auth/register request body found in the README"
+    for body in payloads:
+        assert '"full_name"' in body, (
+            f"README register payload does not send full_name: {body[:140]}"
+        )
+        assert '"name"' not in body, (
+            f"README register payload sends 'name'; schema requires 'full_name': {body[:140]}"
+        )
+
+
+def test_readme_example_password_satisfies_complexity():
+    """The README's example password was rejected by the very validator it
+    documents. A copy-pasted example that 422s is worse than no example."""
+    import re
+
+    from app.api.v1.schemas.auth import _validate_password_complexity
+
+    text = _readme().read_text()
+    passwords = set(re.findall(r'"password"\s*:\s*"([^"]+)"', text))
+    assert passwords, "no example password found in README"
+    for pwd in passwords:
+        try:
+            _validate_password_complexity(pwd)
+        except ValueError as exc:
+            pytest.fail(f"README example password {pwd!r} is rejected: {exc}")
+
+
+def test_readme_documented_endpoints_all_exist(openapi):
+    """Every path named in the README must be a real route, so the docs cannot
+    drift from the app unnoticed. Param names are normalised because they do not
+    change the URL a caller actually types.
+
+    /api/v1/metrics is set include_in_schema=False, so it is absent from the
+    OpenAPI document even though it serves; it is probed live below.
+    """
+    import re
+
+    from fastapi.testclient import TestClient
+
+    text = _readme().read_text()
+    schema_paths = set(openapi["paths"])
+
+    def _normalise(p: str) -> str:
+        return re.sub(r"\{[a-z_]+\}", "{}", p.rstrip("/"))
+
+    schema_norm = {_normalise(p) for p in schema_paths}
+
+    # Only fully-qualified paths from the docs; the table also uses `…/{id}`
+    # shorthand which is covered by the explicit check below.
+    candidates = {
+        c.rstrip("/.")
+        for c in re.findall(r"/api/v1/[A-Za-z0-9/_{}.-]+", text)
+        if c.rstrip("/.") not in ("/api/v1/analyses", "/api/v1/knowledge-bases")
+    }
+
+    client = TestClient(app)
+    missing = []
+    for cand in sorted(candidates):
+        if _normalise(cand) in schema_norm:
+            continue
+        # Not in the schema: confirm it is at least a live route (auth-gated
+        # endpoints answer 401/403, not 404).
+        probe = client.get(cand.replace("{id}", "0").replace("{kb_id}", "0"))
+        if probe.status_code == 404 and "error" in (probe.text or ""):
+            missing.append(cand)
+    assert not missing, f"README documents non-existent endpoints: {missing}"
+
+
+def test_metrics_endpoint_is_live_even_though_hidden_from_schema(openapi):
+    """README lists GET /api/v1/metrics, which is include_in_schema=False and so
+    missing from the OpenAPI document. A schema-only existence check would call
+    the README wrong; the route genuinely serves."""
+    from fastapi.testclient import TestClient
+
+    assert "/api/v1/metrics" not in openapi["paths"], (
+        "/api/v1/metrics is now in the schema; the README's Ops row can cite it "
+        "normally and this test should be removed"
+    )
+    assert TestClient(app).get("/api/v1/metrics").status_code == 200
