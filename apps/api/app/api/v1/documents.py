@@ -58,7 +58,7 @@ async def delete_document_endpoint(
 async def get_document_page_image_endpoint(
     doc_id: str, page: int, current_user: Mapping[str, Any] = Depends(get_current_user)
 ):
-    """Serve the exact page render the OCR engine read (Phase 7 chain).
+    """Serve the exact page render the OCR engine read (page-image chain).
 
     Resolves authoritatively from the chunk record (document_id + page), so
     the image is provably the one behind the served evidence. 404 when the

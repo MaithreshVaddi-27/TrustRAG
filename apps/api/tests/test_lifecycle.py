@@ -1,5 +1,5 @@
 """
-Unit tests for index lifecycle: snapshots, rollback, delete purge (Phase 8).
+Unit tests for index lifecycle: snapshots, rollback, delete purge .
 
 RED: snapshot/rollback routes do not exist; rollback has no empty-snapshot
 guard; snapshot chunk copies drop OCR provenance.
@@ -286,7 +286,7 @@ async def test_delete_document_purges_qdrant_points_by_document_id():
     mock_coll.delete_one.assert_awaited_once()
 
 
-# ── Page-image lifecycle (Phase 7 residual) ──────────────────────────────────
+# ── Page-image lifecycle (historical note) ──────────────────────────────────
 
 
 @pytest.mark.asyncio

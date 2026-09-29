@@ -157,7 +157,7 @@ async def delete_kb(kb_id_str: str, user_id_str: str) -> None:
     # 3. Delete the KB record itself
     await get_collection(Collections.KNOWLEDGE_BASES).delete_one({"_id": kb_id})
 
-    # 4. Purge OCR page-image files (Phase 7 chain). Best-effort, never raises.
+    # 4. Purge OCR page-image files (page-image chain). Best-effort, never raises.
     page_images_mod.delete_kb_page_images(kb_id_str)
 
     # Cached answers must never outlive the evidence that produced them.
@@ -306,7 +306,7 @@ async def create_kb_snapshot(kb_id_str: str, user_id_str: str, version: str = "1
 
     for chunk in existing_chunks:
         remapped_doc_id = doc_id_map.get(str(chunk["document_id"]), str(chunk["document_id"]))
-        # Phase 7 chain: snapshot owns COPIES of page images (live files may
+        # page-image chain: snapshot owns COPIES of page images (live files may
         # be deleted later); copy failures fail open with a warning, never
         # fail the snapshot.
         new_image_ref: str | None = None
@@ -551,7 +551,7 @@ async def delete_document(doc_id_str: str, user_id_str: str) -> None:
     # 3. Delete document record itself
     await doc_coll.delete_one({"_id": doc_id})
 
-    # 4. Purge OCR page-image files (Phase 7 chain). Best-effort: the helper
+    # 4. Purge OCR page-image files (page-image chain). Best-effort: the helper
     # never raises, and chunks/vectors are already gone so nothing can serve
     # a dangling ref.
     page_images_mod.delete_doc_page_images(kb_id_str, doc_id_str)

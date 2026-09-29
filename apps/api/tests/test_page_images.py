@@ -1,5 +1,5 @@
 """
-Unit tests for OCR page-image persistence (Phase 7 residual).
+Unit tests for OCR page-image persistence (historical note).
 
 RED: app/ingestion/page_images.py does not exist yet.
 """

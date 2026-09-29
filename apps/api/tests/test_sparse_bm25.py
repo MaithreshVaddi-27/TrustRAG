@@ -1,5 +1,5 @@
 """
-Unit tests for BM25-style sparse weighting (Phase 1).
+Unit tests for BM25-style sparse weighting .
 
 Properties under test (all deterministic, no live services):
 - TF saturation: repeated terms grow sublinearly (sat, not linear TF).

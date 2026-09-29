@@ -1,7 +1,7 @@
 """
 TRUSTRAG — Configuration and settings unit tests.
 
-Tests for Phase 1:
+Tests for:
   - models.yaml loads and validates correctly
   - ModelConfig exposes correct values
   - Settings rejects invalid/missing required fields

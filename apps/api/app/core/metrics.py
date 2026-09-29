@@ -1,5 +1,5 @@
 """
-TRUSTRAG — Phase 10: lightweight Prometheus-style metrics (no new dependencies).
+TRUSTRAG — Lightweight Prometheus-style metrics (no new dependencies).
 
 In-memory counters + latency accumulators, rendered in Prometheus text
 exposition format at GET /metrics. Thread-safe via a single lock.

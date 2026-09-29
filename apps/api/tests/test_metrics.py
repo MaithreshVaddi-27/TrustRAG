@@ -1,5 +1,5 @@
 """
-Phase 10 — Speed + Production Engineering tests.
+Production engineering tests for metrics and budgets.
 
 Covers: Prometheus /metrics exposition, token estimation, pre-request
 budget enforcement, and metrics counters. No live services needed.

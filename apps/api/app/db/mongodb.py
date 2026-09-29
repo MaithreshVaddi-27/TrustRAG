@@ -85,8 +85,6 @@ class Collections:
     EVIDENCE = "evidence"
     RECOVERY_RUNS = "recovery_runs"
     TRACE_EVENTS = "trace_events"
-    EXPERIMENTS = "experiments"
-    FEATURE_FLAGS = "feature_flags"
     FEEDBACK = "feedback"
     REVOKED_TOKENS = "revoked_tokens"
     STREAM_TICKETS = "stream_tickets"
@@ -430,14 +428,6 @@ async def create_indexes() -> None:
             [("timestamp", pymongo.ASCENDING)],
             name="trace_timestamp_ttl",
             expireAfterSeconds=2_592_000,  # 30 days
-        )
-    )
-
-    # ── experiments ────────────────────────────────────────────────────────
-    index_tasks.append(
-        db[Collections.EXPERIMENTS].create_index(
-            [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
-            name="exp_owner_time",
         )
     )
 

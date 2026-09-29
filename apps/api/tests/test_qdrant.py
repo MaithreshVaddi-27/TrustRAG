@@ -1,5 +1,5 @@
 """
-Unit tests for Qdrant collection init + IDF sparse migration (Phase 1).
+Unit tests for Qdrant collection init + IDF sparse migration .
 
 All Qdrant I/O is mocked — no live services.
 """

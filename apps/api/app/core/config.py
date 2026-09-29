@@ -976,7 +976,7 @@ class ModelConfig:
         val = self._get("cost_controls", "max_analysis_seconds", required=False)
         return int(val or 0)
 
-    # ── Observability (Phase 10) ─────────────────────────────────────────
+    # ── Observability ─────────────────────────────────────────
     @property
     def pre_request_budget_enforcement(self) -> bool:
         return bool(
@@ -1048,7 +1048,7 @@ class ModelConfig:
         env_val = _blank_as_none("LOCAL_LLM_KEEP_ALIVE")
         return env_val if env_val is not None else str(value or "5m")
 
-    # ── Speculative Decoding / Early Exit (Phase 2.5) ──────────────────────
+    # ── Speculative Decoding / Early Exit ──────────────────────
     @property
     def local_llm_min_p(self) -> float:
         """Min-p sampling: only tokens with p >= min_p * p_max are considered.
@@ -1073,7 +1073,7 @@ class ModelConfig:
             return _parse_bool(env_val)
         return _parse_bool(value, True)  # Default enabled for speed
 
-    # ── Model Offloading (Phase 4.1) ────────────────────────────────────────────
+    # ── Model Offloading ────────────────────────────────────────────
     @property
     def local_llm_model_unload_enabled(self) -> bool:
         """Enable auto-unloading of inactive models from memory."""
@@ -1121,7 +1121,7 @@ class ModelConfig:
             return _parse_bool(env_val)
         return _parse_bool(value, True)
 
-    # ── Context Compression (Phase 2.4) ─────────────────────────────────────────
+    # ── Context Compression ─────────────────────────────────────────
     @property
     def context_compression_enabled(self) -> bool:
         value = self._get("optimization", "context_compression_enabled", required=False)

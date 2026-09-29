@@ -202,7 +202,7 @@ _META_CLAIM_PATTERNS = (
 # Evidence-layout references only when digit-anchored ("Segment 2 states…",
 # "Page 8 lists…", "Path A (…"), so subject-matter uses of these words
 # ("network segment", "landing page", "career path") pass through.
-# The segment pattern excludes bracketed Phase-4 citations ("[Segment 1]"),
+# The segment pattern excludes bracketed inline citations ("[Segment 1]"),
 # which are legitimate provenance markers, not scaffold echo.
 _META_CLAIM_REGEXES = (
     re.compile(r"(?<!\[)\bsegments?\s+\d"),
@@ -721,9 +721,9 @@ Strict Rules for each claim:
 """
 
 
-FUSED_DECOMPOSE_VERIFY_PROMPT_TEMPLATE = """You are an expert fact-checker. In ONE step:
-(1) split the Answer below into atomic, self-contained factual claims,
-then (2) verify EACH claim against ONLY the Context segments.
+FUSED_DECOMPOSE_VERIFY_PROMPT_TEMPLATE = """You are an expert fact-checker. First
+split the Answer below into atomic, self-contained factual claims,
+then verify EACH claim against ONLY the Context segments.
 
 [CONTEXT]
 {context_str}
@@ -731,13 +731,13 @@ then (2) verify EACH claim against ONLY the Context segments.
 [ANSWER]
 {answer}
 
-Rules for step 1 (decompose):
+Rules for decomposing the answer into claims:
 - Each claim checks independently (resolve pronouns to actual names).
 - Exclude greetings, filler, opinions, and anything about the question,
   the asker, or the answering process ("The user asks…").
 - If the answer has no subject-matter facts, return an empty items list.
 
-Rules for step 2 (verify each claim):
+Rules for verifying each claim:
 - SUPPORTED: context explicitly supports it. CONTRADICTED: context refutes
   it. NEUTRAL: insufficient info.
 - "verdict" MUST be exactly one of: SUPPORTED, CONTRADICTED, NEUTRAL.
@@ -1406,12 +1406,12 @@ async def execute_claim_verification(
             if 0 <= chunk_idx < len(evidence_ids):
                 supporting_evidence_ids.append(evidence_ids[chunk_idx])
 
-        # Targeted-retrieval linkage from step 2b (freshly persisted evidence).
+        # Targeted-retrieval linkage from targeted retrieval (freshly persisted evidence).
         for extra_id in claim_evidence_ids.get(i, []):
             if extra_id not in supporting_evidence_ids:
                 supporting_evidence_ids.append(extra_id)
 
-        # Inline provenance markers surviving in the claim text (Phase-4
+        # Inline provenance markers surviving in the claim text
         # "[Segment N]" citations) link their segments too.
         for cited_num in extract_citations(text):
             if 1 <= cited_num <= len(context_chunk_indices):

@@ -1,5 +1,5 @@
 """
-Unit tests for the cross-encoder reranker (Phase 2).
+Unit tests for the cross-encoder reranker .
 
 The real CrossEncoder is NEVER loaded (no torch/model downloads): scoring is
 driven by a FakeCrossEncoder through the get_reranker seam, and config by a

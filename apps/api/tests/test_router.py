@@ -1,5 +1,5 @@
 """
-Unit tests for the deterministic query router + fan-out merge (Phase 6).
+Unit tests for the deterministic query router + fan-out merge.
 
 RED: app.agent.router does not exist — every import here fails first.
 Router contract (no LLM anywhere on this path):

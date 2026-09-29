@@ -1,5 +1,5 @@
 """
-Unit tests for GET /documents/{id}/pages/{page}/image (Phase 7 residual).
+Unit tests for GET /documents/{id}/pages/{page}/image (historical note).
 
 RED: the route does not exist yet.
 """

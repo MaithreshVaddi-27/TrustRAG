@@ -1,5 +1,5 @@
 """
-TRUSTRAG — Red-team security test suite (Phase 9).
+TRUSTRAG — Red-team security test suite .
 
 Adversarial documents/queries must:
 - Never alter system behavior (no prompt injection execution)
@@ -286,7 +286,7 @@ def test_ocr_garbled_chunk_not_trusted_as_high_confidence():
 
 
 def test_ocr_store_page_images_config_present():
-    """Phase 7 provenance: page image ref must be plumbable."""
+    """OCR provenance: page image ref must be plumbable."""
     from app.core.config import get_model_config
 
     cfg = get_model_config()

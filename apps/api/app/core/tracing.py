@@ -52,7 +52,7 @@ async def tracing_middleware(request: Request, call_next: Callable[[Request], An
         duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
         response.headers["X-Response-Time"] = f"{duration_ms}ms"
 
-        # Phase 10: record Prometheus-style counters (never break the request path)
+        # Record Prometheus-style counters (never break the request path)
         try:
             record_http_request(method, path, response.status_code, duration_ms)
         except Exception:

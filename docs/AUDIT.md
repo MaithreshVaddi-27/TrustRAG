@@ -1,6 +1,6 @@
 # TrustRAG Production Pass — 2026-09-28 (ui-redesign)
 
-- **Branch:** `ui-redesign` (local only, never pushed)
+- **Branch:** `ui-redesign` (pushed to origin after the docs commit; all subsequent commits pushed)
 - **Scope:** full-repo audit — architecture/code quality, security, backend/API, RAG pipeline, AI/ML inference, DevOps, frontend UX, QA
 - **Method:** inspect → audit → fix → verify (unit + live E2E) → regression-check → document → commit, phase by phase
 - **Consolidates:** this is now the single live audit tracker. Earlier point-in-time reports (`docs/audit-2026-09-28-ui-redesign-full.md` — ingestion H1–H2/M1–M5/L1–L2, ONNX-only enforcement, test hermeticity, CI-1–CI-3; and the RAM/optimization pass) were removed; their findings remain fixed and their history is preserved in git.
@@ -12,6 +12,7 @@
 | Check | Result |
 |-------|--------|
 | Backend `pytest` (with coverage) | 734 passed, 79% line coverage |
+| (after C-1 removal) Backend `pytest` | 725 passed (9 experiment tests removed with their feature), 79% |
 | Backend `ruff check` | clean |
 | Frontend `vitest` | 33 passed (8 files) |
 | Frontend `eslint --max-warnings 0` | clean |
@@ -27,6 +28,8 @@
 | A-3 | Observability | LOW | `onnx_reranker.py` used stdlib `logging.getLogger` while every other `app/core` module uses structlog — mixed formats break JSON log parsing in prod | Switched to `structlog.get_logger(__name__)` | reranker + onnx tests green |
 | UX-1 | Frontend | MEDIUM | **DashboardPage had no error or first-load state**: `useQuery` failures were swallowed by `= []` defaults (a backend outage silently rendered zeros, indistinguishable from an empty account), and first paint showed "No analysis runs yet" + zeroed metrics while data was still loading | Added `isLoading/isError/error` per query; error banner with per-feed message + Retry button (`role="alert"`); `SkeletonRows` first-paint state for the recent-analyses feed (`aria-busy`); error/skeleton mutually exclusive with real content | eslint/vitest/build green; manual UI inspection |
 | OPS-1 | Tooling | LOW | `ruff format` drift: 1 file unformatted (`sparse_vector.py`, introduced by A-1 edit) — would fail CI `ruff format --check` | Formatted; `140 files already formatted` | format check clean |
+| C-1 | Dead feature | MEDIUM | Experiments surface was dead weight end-to-end: `/api/v1/experiments` (evaluation-run tracking) and `/api/v1/experimentation/flags` (feature flags) had **no frontend consumers** and no in-app callers — the only writer was manual API calls. The flags manager also kept a Mongo round-trip on a code path nobody used | Removed both routers + `experiment_service.py`, `core/experimentation.py`, `schemas/experiment.py`, their 2 test files, the `experiments`/`feature_flags` Mongo collections and the `exp_owner_time` index creation; README endpoint/UI tables updated | Import probe: 0 experiment routes on the app; 725/725 pytest; ruff clean |
+| C-2 | Comments | LOW | ~55 comments/docstrings carried planning-scaffold language ("Phase 7", "Phase 10", "step 1", "Phase 2.5") referencing long-finished internal work packages — meaningless to any new reader | Rewrote in plain descriptive language naming the actual mechanism ("page-image chain", "OCR provenance", "verification outcome counters", "Rules for decomposing the answer into claims"); the fused-verify prompt's "In ONE step: (1)…(2)…" numbering dropped for natural instructions | grep `phase [0-9]` / `step [0-9]` clean; pytest+ruff green (prompt edits covered by verifier tests) |
 
 ## Verified-solid (audited, no change needed)
 

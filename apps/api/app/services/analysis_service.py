@@ -276,7 +276,7 @@ async def create_analysis(
                 detail=f"kb_dim={kb.embedding_dim} server_dim={cfg.embedding_dimensionality}",
             )
 
-    # Phase 10: pre-request token budget enforcement (zero LLM calls).
+    # Pre-request token budget enforcement (zero LLM calls).
     # Estimate query cost up front; reject absurd inputs with 422 instead of
     # burning embedding/retrieval/generation on a request that cannot fit.
     query_text = schema.query.strip()

@@ -114,7 +114,7 @@ def onnx_model_status() -> dict[str, Any]:
 
 # ─── Bounded LLM Registry (replaces lru_cache on get_llm/get_verification_model) ────
 # Limits concurrent model instances to prevent RAM/GPU leak from user-controlled keys.
-# Phase 2.2: Aggressive eviction - configurable max instances based on RAM
+# Aggressive eviction - configurable max instances based on RAM
 _MAX_LLM_INSTANCES = 2  # Reduced from 4 for ultra-low RAM usage (8GB systems)
 _LLM_REGISTRY: OrderedDict[str, BaseChatModel] = OrderedDict()
 _LLM_REGISTRY_LOCK = threading.RLock()

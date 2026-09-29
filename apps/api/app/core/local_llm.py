@@ -273,7 +273,7 @@ class ChatOllamaClient(BaseChatModel):
         # Optimization flags from models.yaml
         use_prompt_cache = cfg.prompt_caching
 
-        # Speculative Decoding / Early Exit (Phase 2.5)
+        # Speculative Decoding / Early Exit
         min_p = cfg.local_llm_min_p
         top_k = cfg.local_llm_top_k
         early_exit_eos = cfg.local_llm_early_exit_eos
@@ -301,7 +301,7 @@ class ChatOllamaClient(BaseChatModel):
         # -1 = keep all (full prompt caching), 0 = disable, N = keep first N tokens
         if use_prompt_cache:
             options["num_keep"] = kwargs.get("num_keep", -1)
-        # Early exit on EOS for Ollama (speculative decoding / early exit - Phase 2.5)
+        # Early exit on EOS for Ollama (speculative decoding / early exit)
         # Union with caller-provided stops instead of overwriting (P1-1 fix).
         # NOTE: never add "\n\n" here — thinking models (qwen3, deepseek-r1)
         # open with "<think>\n\n", so a blank-line stop decapitates every
@@ -444,12 +444,12 @@ class ChatLlamaCppClient(BaseChatModel):
         # Use config values with env override, fallback to hardcoded defaults
         default_num_batch = cfg.local_llm_num_batch
 
-        # Optimization flags from models.yaml (Phase 1: wire existing flags)
+        # Optimization flags from models.yaml (wired model flags)
         kv_cache_quant = cfg.kv_cache_quantization
         use_flash_attn = cfg.flash_attention
         use_prompt_cache = cfg.prompt_caching
 
-        # Speculative Decoding / Early Exit (Phase 2.5)
+        # Speculative Decoding / Early Exit
         min_p = cfg.local_llm_min_p
         top_k = cfg.local_llm_top_k
         early_exit_eos = cfg.local_llm_early_exit_eos

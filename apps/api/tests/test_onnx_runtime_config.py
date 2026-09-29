@@ -1,7 +1,7 @@
 """
 ONNX central-config regression tests (hermetic — no model files needed).
 
-Guards the v1.23 `onnx:` block + shared session factory, plus the Phase 2/3
+Guards the v1.23 `onnx:` block + shared session factory, plus the shared
 centralized knobs (retrieval budgets, adaptive Top-K, query cache, upsert
 batch, reranker seq-len):
 - every ORT/infra knob lives in models.yaml with an env override,
@@ -115,7 +115,7 @@ def test_reranker_batch_precedence(_clean_onnx_env, monkeypatch):
 
 
 def test_retrieval_infra_yaml_defaults(_clean_onnx_env):
-    """Phase 3 knobs: budgets unset (module fallback), adaptive + cache set."""
+    """Runtime knobs: budgets unset (module fallback), adaptive + cache set."""
     from app.core.config import get_model_config
 
     cfg = get_model_config()

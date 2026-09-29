@@ -840,7 +840,7 @@ async def test_verification_node_outage_fast_path_skips_verification(mock_execut
     assert res["attempts"] == get_model_config().max_recovery_attempts
 
 
-# ─── Phase 8: Adaptive Recovery Tests ───────────────────────────────────────────
+# ─── Adaptive recovery tests ───────────────────────────────────────────
 
 
 def test_select_recovery_strategy_diagnosis_mapping():

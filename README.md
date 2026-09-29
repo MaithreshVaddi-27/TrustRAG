@@ -79,7 +79,7 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 | **Workbench UI** | Dashboard, Playground, knowledge bases, evidence, claims, conflicts, trace viewer |
 | **Efficiency** | ONNX embedding runtime (torch-free, ~500–1000 MB RAM saved); Metal/CUDA auto-detection |
 | **Inference Acceleration** | KV cache quantization (q8_0 default), flash attention, prompt caching, context compression |
-| **Ops** | KB snapshots + rollback; Prometheus `/metrics`; experimentation feature flags via API |
+| **Ops** | KB snapshots + rollback; Prometheus `/metrics` |
 
 ---
 
@@ -467,7 +467,6 @@ Interactive docs: <http://localhost:8000/docs> (Swagger) · `/redoc`. Base URL `
 | **Knowledge bases** | `POST/GET /api/v1/knowledge-bases` · `GET/DELETE /api/v1/knowledge-bases/{id}` · `POST …/{id}/documents` · `POST …/{id}/documents/from-url` · `POST …/{id}/snapshots` · `POST …/{id}/rollback/{snapshot_id}` |
 | **Analyses** | `POST/GET /api/v1/analyses` · `GET /api/v1/analyses/{id}` · `…/{id}/claims` · `…/{id}/evidence` · `…/{id}/trace` · `…/{id}/detail` · `…/{id}/export` · `POST …/{id}/stream-ticket` · `GET …/{id}/stream` (SSE) |
 | **Evidence & claims** | `GET /api/v1/evidence` · `GET /api/v1/claims` · `GET /api/v1/conflicts` |
-| **Experiments (API)** | `POST/GET /api/v1/experiments` · `GET /api/v1/experiments/{exp_id}` (API-only; no dedicated UI page) |
 | **Documents** | `GET/DELETE /api/v1/documents/{id}` |
 | **Ops** | `GET /api/v1/health` · `GET /api/v1/health/detailed` · `GET /api/v1/metrics` · `GET /api/v1/models/providers` · `GET /api/v1/models/hardware` · `POST /api/v1/internal/ingest/document` · `POST /api/v1/internal/ingest/url` · `POST /api/v1/internal/search` · `POST /api/v1/internal/verify/claims` (service-token auth) |
 

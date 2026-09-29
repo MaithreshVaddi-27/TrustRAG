@@ -175,7 +175,7 @@ def _rerank_sync(
         # Build query-document input pairs
         pairs = [(query, c["text"]) for c in candidates]
 
-        # Phase 3.2: Reranker Result Caching
+        # Reranker result caching
         # Check cache first to avoid re-scoring
         cache = _get_reranker_cache()
         cached_scores: dict[int, float] = {}

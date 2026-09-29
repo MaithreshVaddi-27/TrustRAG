@@ -252,7 +252,7 @@ def main() -> int:
     print("           dominates it -- see note in _run)")
     print()
 
-    # ── Phase 1: prefill-only. max_tokens=1 isolates the system prompt's
+    # ── Prefill-only. max_tokens=1 isolates the system prompt's
     # contribution, removing decode noise from the comparison.
     print("[1] Prefill cost (max_tokens=1, isolates system-prompt tokens)")
     old_pre = _run("old", OLD_SYSTEM_PROMPT, 1)
@@ -266,7 +266,7 @@ def main() -> int:
     print(f"  delta     : {nt - ot:+.0f} tok ({(nt - ot) / ot * 100:+.1f}%), {n - o:+.0f} ms")
     print()
 
-    # ── Phase 2: full grounded generation, fixed decode budget.
+    # ── Full grounded generation, fixed decode budget.
     print("[2] End-to-end grounded generation (max_tokens=200, fixed decode budget)")
     old_gen = _run("old", OLD_SYSTEM_PROMPT, 200)
     new_gen = _run("new", new_prompt, 200)
@@ -281,7 +281,7 @@ def main() -> int:
     print(f"  delta: {n_tot - o_tot:+.0f} ms ({(n_tot - o_tot) / o_tot * 100:+.1f}%)")
     print()
 
-    # ── Phase 3: grounding behaviour. The rewrite's dominant effect.
+    # ── Grounding behaviour. The rewrite's dominant effect.
     print("[3] Grounding probes (behaviour, not latency)")
     g = _grounding_probe(new_prompt)
     for arm in ("old", "new"):

@@ -75,7 +75,7 @@ def _retrieval_timeouts() -> tuple[float, float]:
     return branch_f, hybrid_f
 
 
-# NOTE (Phase 6): the AmbiguityDetector post-retrieval entropy heuristic lived
+# NOTE: an earlier AmbiguityDetector post-retrieval entropy heuristic lived
 # here with zero callers — pre-retrieval deterministic routing
 # (app/agent/router.py) supersedes it, so it was removed, not adopted.
 
@@ -354,7 +354,7 @@ def reciprocal_rank_fusion(
                 "chunk_index": payload.get("chunk_index", 0),
                 "document_id": payload.get("document_id"),
                 "knowledge_base_id": payload.get("knowledge_base_id"),
-                # Phase 7 provenance: OCR flags + image ref + version ride the
+                # OCR provenance: OCR flags + image ref + version ride the
                 # fused row so answers stay traceable to page images.
                 "ocr_used": bool(payload.get("ocr_used", False)),
                 "ocr_confidence": payload.get("ocr_confidence"),
@@ -412,7 +412,7 @@ async def apply_temporal_filtering(
         doc_meta = docs_map.get(doc_id_str)
 
         if doc_meta is None and doc_id_str is not None:
-            # Retrieval-time stale-evidence guard (Phase 7 residual): the
+            # Retrieval-time stale-evidence guard (historical note): the
             # parent document record is gone (deleted/rolled-back) but its
             # vectors still serve — drop the point, never serve it.
             logger.debug("Dropping orphan point with no parent document", doc_id=doc_id_str)
@@ -430,7 +430,7 @@ async def apply_temporal_filtering(
         r["filename"] = doc_meta.get("filename")
         r["effective_from"] = eff_from
         r["effective_until"] = eff_until
-        # Phase 7 chain: live version truth comes from the parent record.
+        # page-image chain: live version truth comes from the parent record.
         r["document_version"] = doc_meta.get("version", "1.0")
         r["is_snapshot"] = bool(doc_meta.get("is_snapshot", False))
 

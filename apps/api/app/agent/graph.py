@@ -500,7 +500,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                                 "character_offset": c.get("character_offset", 0),
                                 "zone": chunk_zone,
                                 "text": c["text"],
-                                # Self-heal must not strip Phase 7 provenance.
+                                # Self-heal must not strip OCR provenance.
                                 "ocr_used": bool(c.get("ocr_used", False)),
                                 "ocr_confidence": c.get("ocr_confidence"),
                                 "page_image_ref": c.get("page_image_ref"),
@@ -691,7 +691,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                     "document_id": doc_id,
                     "filename": c.get("filename"),
                     "url": c.get("url"),
-                    # Phase 7 provenance: evidence stays traceable to the
+                    # OCR provenance: evidence stays traceable to the
                     # source page (and its OCR image when one exists).
                     "page": c.get("page"),
                     "chunk_index": c.get("chunk_index"),
@@ -1032,7 +1032,7 @@ async def verification_node(state: AgentState) -> AgentState:
     state["diagnosis_type"] = verdict.diagnosis_type.value
     state["diagnosis_failures"] = verdict.diagnosis_failures
 
-    # Phase 10: verification outcome counters (never break verification path)
+    # Verification outcome counters (never break verification path)
     try:
         record_verification_claims(supported, contradicted, neutral)
     except Exception:
@@ -1223,7 +1223,7 @@ async def recovery_node(state: AgentState) -> AgentState:
         }
         await get_collection(Collections.RECOVERY_RUNS).insert_one(run_doc)
 
-        # Phase 10: recovery strategy counter (never break recovery path)
+        # Recovery strategy counter (never break recovery path)
         try:
             record_recovery_attempt(strategy)
         except Exception:  # noqa: S110

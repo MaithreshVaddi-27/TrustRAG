@@ -1,5 +1,5 @@
 """
-Unit tests for inline segment citations (Phase 4).
+Unit tests for inline segment citations .
 
 RED: extract_citations / strip_invalid_citations do not exist yet and the
 grounding prompt has no citation rule — every test here must fail first.

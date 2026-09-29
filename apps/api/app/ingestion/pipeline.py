@@ -95,7 +95,7 @@ async def _index_parsed_chunks(
         if doc:
             user_id = doc.get("user_id")
             doc_filename = doc.get("filename", "Document")
-        # Phase 7 provenance: parent-document version rides into every chunk
+        # OCR provenance: parent-document version rides into every chunk
         # record + vector payload so answers stay traceable to a version.
         doc_version = doc.get("version", "1.0") if doc else "1.0"
         doc_is_snapshot = bool(doc.get("is_snapshot", False)) if doc else False
@@ -105,7 +105,7 @@ async def _index_parsed_chunks(
         # parameter is kept for backward compatibility and ignored here —
         # this stage only embeds and indexes the chunks it receives.
 
-        # Phase 7 chain: persist each OCR page render ONCE (many chunks share
+        # page-image chain: persist each OCR page render ONCE (many chunks share
         # one render). Fail-open: disk trouble must never fail ingestion.
         page_image_refs: dict[Any, str | None] = {}
         if get_model_config().ocr_store_page_images:

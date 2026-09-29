@@ -226,7 +226,7 @@ def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
                         )
                         text = ocr_result.text.strip()
                         ocr_used, ocr_confidence = True, ocr_result.confidence
-                        # Keep the exact pixels the engine read (Phase 7 chain).
+                        # Keep the exact pixels the engine read (page-image chain).
                         page_image_png = png_bytes
                         logger.info(
                             "OCR fallback used for PDF page",

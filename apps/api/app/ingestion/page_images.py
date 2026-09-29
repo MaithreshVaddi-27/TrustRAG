@@ -1,5 +1,5 @@
 """
-TRUSTRAG — OCR page-image persistence (Phase 7 provenance residual).
+TRUSTRAG — OCR page-image persistence (page-image provenance).
 
 Completes the provenance chain ``Answer → OCR chunk → page → original image``:
 page renders that fed the OCR engine are stored on disk once per

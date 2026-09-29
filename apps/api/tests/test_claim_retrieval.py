@@ -1,5 +1,5 @@
 """
-Unit tests for targeted per-claim evidence retrieval (Phase 5).
+Unit tests for targeted per-claim evidence retrieval .
 
 RED: retrieve_evidence_for_claim does not exist; execute_claim_verification
 takes no kb_id; dead reliability weights still sit in models.yaml.

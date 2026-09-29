@@ -253,7 +253,7 @@ any analysis scaffolding.
 """
 
 
-# ─── Context Compression (Phase 2.4) ───────────────────────────────────────────
+# ─── Context Compression ───────────────────────────────────────────
 
 # Compression prompt for summarizing context before main generation
 CONTEXT_COMPRESSION_PROMPT = (
@@ -816,7 +816,7 @@ async def generate_grounded_answer(
         # citation validity range for the post-check after generation)
         context_str, chunk_indices = format_context_with_chunk_indices(chunks)
 
-        # Phase 2.4: Context Compression - compress large contexts before LLM call.
+        # Context compression: compress large contexts before LLM call.
         # Pass the already-formatted context so chunks are formatted exactly once.
         # Gate: only compress for cloud providers (gemini, nvidia) to avoid
         # doubling local LLM cost (compression call ≈ generation call on 1.2B).

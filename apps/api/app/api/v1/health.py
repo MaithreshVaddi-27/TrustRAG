@@ -37,7 +37,7 @@ router = APIRouter(tags=["health"])
     include_in_schema=False,
 )
 async def prometheus_metrics() -> PlainTextResponse:
-    """Phase 10: dependency-free Prometheus exposition (public, counters only — no secrets)."""
+    """Prometheus exposition, dependency-free (public, counters only — no secrets)."""
     return PlainTextResponse(render_prometheus(), media_type="text/plain; version=0.0.4")
 
 
