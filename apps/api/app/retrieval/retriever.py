@@ -24,39 +24,9 @@ from app.ingestion.sparse_vector import generate_sparse_vector
 
 logger = get_logger(__name__)
 
-# Retrieval time budgets. Module constants stay the monkeypatch-able fallback
-# (tests set RETRIEVAL_BRANCH_TIMEOUT directly); ops tune via models.yaml
-# `retrieval.branch_timeout_seconds` / `hybrid_timeout_seconds` (0 = unset →
-# fall back here) or RETRIEVAL_BRANCH_TIMEOUT_SECONDS /
-# RETRIEVAL_HYBRID_TIMEOUT_SECONDS env vars. One hung branch degrades to the
-# other branch's results; both timing out is a hard outage.
-RETRIEVAL_BRANCH_TIMEOUT = 45.0
+
+# Maximum time allowed for the complete hybrid retrieval operation.
 HYBRID_TIMEOUT = 60.0
-
-def _retrieval_timeouts() -> tuple[float, float]:
-    """(branch_timeout, hybrid_timeout): yaml/env override or module fallback.
-
-    Module globals are read at call time so tests can still monkeypatch
-    RETRIEVAL_BRANCH_TIMEOUT; a positive yaml/env value wins over both.
-    """
-    cfg = get_model_config()
-    # Precedence: env > yaml (>0) > module global (monkeypatch-able in tests).
-    branch = os.environ.get("RETRIEVAL_BRANCH_TIMEOUT_SECONDS") or cfg.branch_timeout_seconds
-    hybrid = os.environ.get("RETRIEVAL_HYBRID_TIMEOUT_SECONDS") or cfg.hybrid_timeout_seconds
-    try:
-        branch_f = float(branch) if branch else float(RETRIEVAL_BRANCH_TIMEOUT)
-    except (TypeError, ValueError):
-        branch_f = float(RETRIEVAL_BRANCH_TIMEOUT)
-    try:
-        hybrid_f = float(hybrid) if hybrid else float(HYBRID_TIMEOUT)
-    except (TypeError, ValueError):
-        hybrid_f = float(HYBRID_TIMEOUT)
-    return branch_f, hybrid_f
-
-
-# NOTE: an earlier AmbiguityDetector post-retrieval entropy heuristic lived
-# here with zero callers — pre-retrieval deterministic routing
-# (app/agent/router.py) supersedes it, so it was removed, not adopted.
 
 async def _get_collection_dimension(
     client: Any,
@@ -66,6 +36,14 @@ async def _get_collection_dimension(
     col_info = await client.get_collection(collection_name)
     return getattr(col_info.config.params.vectors, "size", None)
 
+def _hybrid_timeout() -> float:
+    cfg = get_model_config()
+    value = os.environ.get("RETRIEVAL_HYBRID_TIMEOUT_SECONDS") or cfg.hybrid_timeout_seconds
+
+    try:
+        return float(value) if value else HYBRID_TIMEOUT
+    except (TypeError, ValueError):
+        return HYBRID_TIMEOUT
 
 async def dense_search(
     query: str,
@@ -371,8 +349,8 @@ async def retrieve_hybrid_chunks(
     sparse_top = top_k_override if top_k_override is not None else cfg.sparse_top_k
     fusion_top_k = cfg.fusion_top_k
 
-    _, hybrid_timeout = _retrieval_timeouts()
-
+    hybrid_timeout = _hybrid_timeout()
+ 
     dense_task = asyncio.create_task(
         dense_search(query, kb_id, top_k=dense_top)
     )
