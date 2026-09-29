@@ -248,7 +248,7 @@ class Settings(BaseSettings):
     search_provider: str = Field(
         default="auto",
         validation_alias=AliasChoices("SEARCH_PROVIDER"),
-        description="Web search engine: 'auto', 'tavily', 'duckduckgo', or 'both'",
+        description="Web search engine: 'tavily'",
     )
 
     # ── MongoDB Atlas ──────────────────────────────────────────────────────────

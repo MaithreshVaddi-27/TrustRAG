@@ -2,9 +2,7 @@
 TRUSTRAG — Web Search Grounding Service.
 
 Provides unified, secure web search capabilities using:
-  1. Tavily AI Search (AI-curated RAG search with clean snippets)
-  2. DuckDuckGo Search (100% Free, zero-API-key fallback)
-  3. Hybrid Web Search (executes both and deduplicates by URL)
+Tavily AI Search (AI-curated RAG search with clean snippets)
 
 Includes SSRF/XSS URL sanitization, query boundary enforcement, and timeout guards.
 """
@@ -529,9 +527,6 @@ async def tavily_search(query: str, max_results: int = 5) -> list[dict[str, Any]
         return []
 
     settings = get_settings()
-    if not settings.tavily_api_key:
-        logger.warning("TAVILY_API_KEY is not configured, falling back to DuckDuckGo")
-        return await duckduckgo_search(safe_query, max_results=max_results)
 
     try:
         from tavily import TavilyClient
@@ -571,120 +566,17 @@ async def tavily_search(query: str, max_results: int = 5) -> list[dict[str, Any]
 
     except TimeoutError:
         logger.warning(
-            "Tavily search timed out, falling back to DuckDuckGo",
+            "Tavily search timed out",
             timeout=SEARCH_TIMEOUT_SECONDS,
         )
-        return await duckduckgo_search(safe_query, max_results=max_results)
+        return []
+
     except Exception as exc:
-        logger.error("Tavily search failed, falling back to DuckDuckGo", error=str(exc))
-        return await duckduckgo_search(safe_query, max_results=max_results)
-
-
-async def duckduckgo_search(query: str, max_results: int = 5) -> list[dict[str, Any]]:
-    """
-    Execute free web search using DuckDuckGo (Zero API Key required).
-    """
-    safe_query = (query or "").strip()[:MAX_QUERY_LENGTH]
-    if not safe_query:
+        logger.error("Tavily search failed", error=str(exc))
         return []
-
-    try:
-        try:
-            from ddgs import DDGS
-        except ImportError:
-            from duckduckgo_search import DDGS
-
-        def _do_ddg_search() -> list[dict[str, Any]]:
-            ddgs = DDGS()
-            raw = ddgs.text(safe_query, max_results=max_results)
-            return list(raw) if raw else []
-
-        raw_results = await asyncio.wait_for(
-            asyncio.to_thread(_do_ddg_search),
-            timeout=SEARCH_TIMEOUT_SECONDS,
-        )
-
-        results: list[dict[str, Any]] = []
-        for idx, item in enumerate(raw_results):
-            raw_href = item.get("href") or item.get("url") or ""
-            safe_url = sanitize_url(raw_href)
-            snippet = str(item.get("body") or item.get("snippet") or "").strip()
-            if not snippet:
-                continue
-
-            results.append(
-                {
-                    "title": str(item.get("title") or "Untitled Web Result").strip(),
-                    "url": safe_url,
-                    "content": snippet,
-                    "score": round(max(0.5, 0.9 - (idx * 0.08)), 2),
-                    "source": "duckduckgo",
-                }
-            )
-
-        logger.info("DuckDuckGo search complete", query=safe_query, count=len(results))
-        return results
-
-    except TimeoutError:
-        logger.warning("DuckDuckGo search timed out", timeout=SEARCH_TIMEOUT_SECONDS)
-        return []
-    except Exception as exc:
-        logger.error("DuckDuckGo search failed", error=str(exc))
-        return []
-
 
 async def execute_web_search(
     query: str,
-    provider: str = "both",
     max_results: int = 5,
 ) -> list[dict[str, Any]]:
-    """
-    High-level search dispatcher supporting:
-      - 'tavily': Only Tavily AI search
-      - 'duckduckgo': Only DuckDuckGo free search
-      - 'both': Runs both concurrently and fuses results deduplicated by URL
-    """
-    provider_clean = (provider or "both").lower().strip()
-
-    if provider_clean in ("tavily", "tavily_mcp"):
-        return await tavily_search(query, max_results=max_results)
-
-    if provider_clean in ("duckduckgo", "ddg", "duckduckgo_mcp"):
-        return await duckduckgo_search(query, max_results=max_results)
-
-    # ── Hybrid Mode: Run Both Concurrently ──────────────────────────────────
-    logger.info("Executing hybrid web search (Tavily + DuckDuckGo)", query=query)
-    # Split max_results between both services to avoid excess computation
-    half_results = max(1, max_results // 2)
-    tavily_task = tavily_search(query, max_results=half_results)
-    ddg_task = duckduckgo_search(query, max_results=half_results)
-
-    tavily_res, ddg_res = await asyncio.gather(tavily_task, ddg_task, return_exceptions=True)
-
-    combined: list[dict[str, Any]] = []
-    seen_urls: set[str] = set()
-
-    t_items = tavily_res if isinstance(tavily_res, list) else []
-    d_items = ddg_res if isinstance(ddg_res, list) else []
-
-    max_len = max(len(t_items), len(d_items))
-    for i in range(max_len):
-        if i < len(t_items):
-            url = t_items[i].get("url", "")
-            if url and url not in seen_urls:
-                seen_urls.add(url)
-                combined.append(t_items[i])
-            elif not url:
-                combined.append(t_items[i])
-        if i < len(d_items):
-            url = d_items[i].get("url", "")
-            if url and url not in seen_urls:
-                seen_urls.add(url)
-                combined.append(d_items[i])
-            elif not url:
-                combined.append(d_items[i])
-
-    # Cap to max_results total (safety net for uneven splits)
-    final_results = combined[:max_results]
-    logger.info("Hybrid web search completed", count=len(final_results))
-    return final_results
+    return await tavily_search(query, max_results=max_results)

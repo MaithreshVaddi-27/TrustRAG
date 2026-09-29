@@ -34,8 +34,6 @@ dependencies = [
     # ── Model Context Protocol & Search ──────────────────────────────────────
     "mcp>=2.1.0",
     "tavily-python>=0.8.0",
-    "duckduckgo-search>=8.0.0",
-    "ddgs>=9.16.0",
 
     # ── Vector store ─────────────────────────────────────────────────────────
     "qdrant-client>=1.10.0",
