@@ -12,13 +12,12 @@ from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 
 from app.api.deps import require_service_permission
 from app.core.exceptions import RetrievalOutageError
 from app.core.model_registry import registry_status
-from app.core.rate_limiter import limiter
 from app.core.security import create_service_token
 from app.retrieval.retriever import retrieve_hybrid_chunks
 from app.services.kb_service import add_document
@@ -27,7 +26,6 @@ from app.verification.verifier import batch_verify_claims_nli
 
 # Cost-DoS backstop for service-to-service routes (generous: functionality is
 # already gated by service-token permissions, this only bounds LLM fan-out).
-_INTERNAL_RATE_LIMIT = "60/minute"
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -105,9 +103,8 @@ async def generate_service_token_endpoint(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Internal document ingestion trigger",
 )
-@limiter.limit(_INTERNAL_RATE_LIMIT)
+
 async def internal_ingest_document(
-    request: Request,
     kb_id: str,
     document_data: InternalDocumentIngest,
     current_service: Mapping[str, Any] = Depends(require_service_permission("ingest:write")),
@@ -159,9 +156,8 @@ async def internal_ingest_document(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Internal URL ingestion trigger",
 )
-@limiter.limit(_INTERNAL_RATE_LIMIT)
+
 async def internal_ingest_url(
-    request: Request,
     kb_id: str,
     url_data: InternalUrlIngest,
     current_service: Mapping[str, Any] = Depends(require_service_permission("ingest:write")),
@@ -195,9 +191,8 @@ async def internal_ingest_url(
     "/search",
     summary="Internal hybrid search",
 )
-@limiter.limit(_INTERNAL_RATE_LIMIT)
+
 async def internal_search(
-    request: Request,
     query: str,
     kb_id: str,
     top_k: int = 10,
@@ -234,9 +229,8 @@ async def internal_search(
     "/verify/claims",
     summary="Internal claim verification",
 )
-@limiter.limit(_INTERNAL_RATE_LIMIT)
+
 async def internal_verify_claims(
-    request: Request,
     claims: list[str],
     evidence_texts: list[str],
     current_service: Mapping[str, Any] = Depends(require_service_permission("verify:execute")),

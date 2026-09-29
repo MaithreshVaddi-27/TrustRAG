@@ -25,9 +25,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
+
 
 from app.api.router import api_router
 from app.core.config import get_model_config, get_settings
@@ -61,7 +59,7 @@ from app.core.model_registry import (
     get_embedding_model,
     onnx_model_status,
 )
-from app.core.rate_limiter import limiter
+
 from app.core.semantic_cache import _cleanup_expired_entries, load_cache
 from app.core.tracing import init_tracing, tracing_middleware
 from app.db.mongodb import connect_db, create_indexes, disconnect_db
@@ -267,14 +265,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await close_all_llm_instances(seal=True)
     await disconnect_db()
 
-
-# ─── Rate limiter ─────────────────────────────────────────────────────────────
-# Import shared limiter (defined in app.core.rate_limiter to avoid circular imports)
-
-
 # ─── Exception handlers ───────────────────────────────────────────────────────
-
-
 def _error_response(status_code: int, code: str, message: str) -> JSONResponse:
     """Produce a consistent error response. Never includes internal detail."""
     return JSONResponse(
@@ -465,11 +456,6 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if not settings.is_production() else None,
         openapi_url="/openapi.json" if not settings.is_production() else None,
     )
-
-    # ── Rate limiting ──────────────────────────────────────────────────────
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-    app.add_middleware(SlowAPIMiddleware)
 
     # ── CORS ───────────────────────────────────────────────────────────────
     # SEC-H-A: In production, only explicit CORS_ORIGINS allowed.

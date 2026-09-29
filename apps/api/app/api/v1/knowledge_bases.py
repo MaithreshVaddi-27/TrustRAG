@@ -18,7 +18,6 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
-    Request,
     UploadFile,
     status,
 )
@@ -26,9 +25,8 @@ from pydantic import BaseModel, Field, HttpUrl
 
 from app.api.deps import get_current_user
 from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
-from app.core.config import get_model_config, get_settings
+from app.core.config import get_model_config
 from app.core.exceptions import FileTooLargeError, UnsupportedFormatError
-from app.core.rate_limiter import limiter
 from app.ingestion.chunking_strategies import get_chunking_strategy
 from app.ingestion.parser import parse_document
 from app.ingestion.pipeline import index_parsed_chunks
@@ -190,9 +188,8 @@ async def _ingest_content(
     status_code=status.HTTP_201_CREATED,
     summary="Upload and register document",
 )
-@limiter.limit(lambda: f"{get_settings().rate_limit_upload_per_minute}/minute")
+
 async def upload_document_endpoint(
-    request: Request,
     kb_id: str,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
@@ -262,9 +259,8 @@ async def upload_document_endpoint(
     status_code=status.HTTP_201_CREATED,
     summary="Ingest document from URL",
 )
-@limiter.limit(lambda: f"{get_settings().rate_limit_url_ingest_per_minute}/minute")
+
 async def ingest_document_from_url_endpoint(
-    request: Request,
     kb_id: str,
     background_tasks: BackgroundTasks,
     url_request: URLDocumentRequest,

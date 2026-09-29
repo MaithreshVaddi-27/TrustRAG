@@ -50,7 +50,6 @@ dependencies = [
     # ── Security ─────────────────────────────────────────────────────────────
     "python-jose[cryptography]>=3.3.0",  # JWT
     "passlib[bcrypt]>=1.7.4",            # Password hashing
-    "slowapi>=0.1.9",                    # Rate limiting for FastAPI
     "email-validator>=2.0.0",            # Email format validation for Pydantic EmailStr
     "python-dotenv>=1.0.0",              # .env file loading
 

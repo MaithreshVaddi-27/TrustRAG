@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_user
@@ -22,14 +22,10 @@ from app.api.v1.schemas.analysis import (
     TraceEventResponse,
 )
 from app.core.config import get_settings
-from app.core.rate_limiter import limiter
 from app.db.mongodb import Collections, get_collection
 from app.services import analysis_service
 
 router = APIRouter(prefix="/analyses", tags=["analyses"])
-
-# Rate limit string evaluated once at module load (SlowAPI expects a string, not a callable)
-_ANALYSIS_RATE_LIMIT = f"{get_settings().rate_limit_analyses_per_minute}/minute"
 
 # SSE stream tickets live in MongoDB (stream_tickets, TTL janitor), NOT in
 # process memory — ticket issuance and stream consumption can land on different
@@ -70,9 +66,8 @@ async def _consume_stream_ticket(ticket: str, analysis_id: str) -> str | None:
     status_code=status.HTTP_201_CREATED,
     summary="Initiate analysis run",
 )
-@limiter.limit(_ANALYSIS_RATE_LIMIT)
+
 async def create_analysis_endpoint(
-    request: Request,
     schema: AnalysisCreate,
     background_tasks: BackgroundTasks,
     current_user: Mapping[str, Any] = Depends(get_current_user),

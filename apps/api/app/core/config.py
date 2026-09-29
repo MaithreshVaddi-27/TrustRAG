@@ -167,7 +167,6 @@ class Settings(BaseSettings):
     jwt_issuer: str = "trustrag-api"
     jwt_audience: str = "trustrag-client"
     cors_origins: str = "http://localhost:5173"
-    trusted_proxy_ips: str = ""  # Comma-separated proxy IPs/CIDRs allowed to supply X-Forwarded-For
     login_max_attempts: int = 5
     login_lockout_seconds: int = 900  # 15 min
 
@@ -260,18 +259,6 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str = ""  # Empty string = no auth (local dev)
 
-    # ── Rate limiting ─────────────────────────────────────────────────────────
-    rate_limit_analyses_per_minute: int = 10
-    rate_limit_auth_per_minute: int = 20
-    rate_limit_upload_per_minute: int = 10
-    rate_limit_url_ingest_per_minute: int = 10
-    # Shared limiter state store. Empty -> in-process memory, which is per worker
-    # and therefore wrong behind multiple uvicorn/gunicorn workers (each enforces
-    # its own bucket, multiplying the effective limit). Set a Redis URI in prod.
-    # Previously read via getattr(..., "", ...), so the field did not exist and
-    # the setting was silently ignored.
-    rate_limit_storage_uri: str = ""
-
     # ── Model Configuration Overrides (env takes precedence over models.yaml) ──
     gemini_model: str = Field(
         default="",
@@ -293,10 +280,6 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
-
-    @property
-    def trusted_proxy_list(self) -> list[str]:
-        return [p.strip() for p in self.trusted_proxy_ips.split(",") if p.strip()]
 
     # ── Validation ────────────────────────────────────────────────────────────
     @field_validator("jwt_secret")
