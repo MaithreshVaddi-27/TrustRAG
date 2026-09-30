@@ -1,8 +1,8 @@
 """
-TRUSTRAG — grounded answer generation using Google Gemini.
+TRUSTRAG — grounded answer generation using local LLMs and Gemini.
 
-Formulates prompts protecting against instructions injection and enforces
-abstention rules when context is insufficient.
+Formulates prompts that protect against instruction injection
+and generates answers grounded strictly in retrieved evidence.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from app.core.llm_utils import normalize_llm_content
 from app.core.local_llm import LOCAL_LLM_PROVIDERS, local_cap_kwargs
 from app.core.logging import get_logger
 from app.core.model_registry import get_llm
-from app.core.semantic_cache import prune_context_tokens
 
 logger = get_logger(__name__)
 
@@ -29,8 +28,7 @@ logger = get_logger(__name__)
 # Local-only params (num_ctx, num_batch/n_batch, keep_alive, max_tokens) must
 # never reach cloud chat models: Gemini's GenerateContentConfig rejects
 # unknown fields (num_ctx/keep_alive → ValidationError) and ignores
-# max_tokens (it reads max_output_tokens), while NVIDIA forwards extras into
-# the API payload. Same discipline as verifier.py / graph.py via
+# max_tokens (it reads max_output_tokens). Same discipline as verifier.py / graph.py via
 # local_cap_kwargs.
 
 
@@ -215,10 +213,7 @@ You are a grounded question-answering assistant. Answer only from the Context.
 the Context. Never invent, infer, extrapolate, or soften anything not written
 there. Partial coverage is fine — answer the supported parts and say plainly
 which parts the Context does not cover.
-2. ABSTAIN: when the Context does not support an answer to the question actually
-asked, output exactly "ABSTAIN" and nothing else. Topical overlap is not
-support: Context about the general subject does not answer a specific question.
-Never answer from prior knowledge.
+2. Every statement must be supported by the Context
 3. CITATIONS: end each factual sentence with its segment number, e.g.
 "... [Segment 2]". Use only numbers that appear in the Context. Never invent a
 number. A sentence you cannot cite is a sentence you must not write. Headings
@@ -250,180 +245,6 @@ any analysis scaffolding.
 """
 
 
-# ─── Context Compression ───────────────────────────────────────────
-
-# Compression prompt for summarizing context before main generation
-CONTEXT_COMPRESSION_PROMPT = (
-    "You are a context compression assistant. Your task is to summarize the "
-    "provided text segments while preserving ALL factual information relevant "
-    "to the query.\n\n"
-    "Query: {query}\n\n"
-    "Context Segments:\n{context}\n\n"
-    "Instructions:\n"
-    "1. Extract and condense ALL information relevant to answering the query.\n"
-    "2. Remove redundant, boilerplate, or tangential content.\n"
-    "3. Preserve specific facts, numbers, names, dates, and technical details.\n"
-    "4. Maintain traceability: reference the original segment numbers "
-    "[Segment N] for key facts.\n"
-    "5. Output a compressed version that is 40-60% of the original length.\n"
-    "6. Do NOT answer the query - only compress the context for downstream use.\n\n"
-    "Compressed Context:"
-)
-
-
-def _compression_budget(target_tokens: int) -> int:
-    """Output budget for the compression call.
-
-    `target_tokens` is the size of the summary we WANT, not the budget the model
-    needs to finish writing it. Capping the call at exactly the target truncated
-    summaries mid-sentence and silently degraded the result (audit B-7), so
-    allow headroom, with a small floor for very small targets.
-    """
-    return max(int(target_tokens) + 128, int(target_tokens * 1.25), 256)
-
-
-async def compress_context(
-    query: str,
-    chunks: list[dict[str, Any]],
-    provider: str | None = None,
-    model: str | None = None,
-    target_reduction: float = 0.5,
-    preformatted: tuple[str, list[int]] | None = None,
-) -> tuple[str, list[int]]:
-    """
-    Compress context using a smaller/faster model before main generation.
-
-    This implements hierarchical summarization:
-    1. Format chunks with segment indices (or reuse the caller's formatting)
-    2. Use a fast model to compress while preserving key facts
-    3. Return compressed context with original chunk indices for citation mapping
-
-    Args:
-        query: The user query (used to focus compression)
-        chunks: Evidence chunks from retrieval
-        provider: LLM provider for compression (can use faster/smaller model)
-        model: Specific model for compression
-        target_reduction: Target size reduction ratio (0.5 = 50% size)
-        preformatted: Optional (context_str, chunk_indices) already built by the
-            caller — reused as-is so the context is formatted exactly once.
-
-    Returns:
-        Tuple of (compressed_context_str, surviving_chunk_indices). The
-        surviving list is parsed from the [Segment N] refs kept in the
-        summary; when the summary carries no refs it falls back to the
-        original indices.
-    """
-    if not chunks:
-        return "No context segments available.", []
-
-    cfg = get_model_config()
-
-    # Use a fast model for compression if not specified
-    # Default to the same provider but we could use a smaller model
-    compression_provider = provider or cfg.llm_provider
-    compression_model = model or cfg.llm_model_for(compression_provider)
-
-    # Format context with segment indices first (once — reuse caller's work).
-    if preformatted is not None:
-        context_str, chunk_indices = preformatted
-    else:
-        context_str, chunk_indices = format_context_with_chunk_indices(chunks)
-
-    # Check if compression is worthwhile (context is large enough)
-    context_tokens = count_tokens(context_str, compression_model)
-    target_tokens = int(context_tokens * target_reduction)
-
-    # If context is already small, skip compression
-    if context_tokens <= 1000:
-        logger.debug("Context small, skipping compression", tokens=context_tokens)
-        return context_str, chunk_indices
-
-    # Compression is only worth an extra LLM call when the context is large
-    # enough to threaten the model's window. Cloud tiers have 128K-1M windows,
-    # so at a ~3000-char formatted cap this rarely helps and always costs a
-    # second full call on the same expensive model (audit B-7).
-    if cfg.context_compression_min_tokens and context_tokens < cfg.context_compression_min_tokens:
-        logger.debug(
-            "Context below compression threshold",
-            tokens=context_tokens,
-            threshold=cfg.context_compression_min_tokens,
-        )
-        return context_str, chunk_indices
-
-    # Build compression prompt
-    compression_prompt = CONTEXT_COMPRESSION_PROMPT.format(
-        query=query,
-        context=context_str,
-    )
-
-    try:
-        # Get a lightweight LLM for compression
-        llm = get_llm(provider=compression_provider, model=compression_model)
-
-        messages = [
-            SystemMessage(content="You are a precise context compression assistant."),
-            HumanMessage(content=compression_prompt),
-        ]
-
-        logger.info(
-            "Compressing context for generation",
-            original_tokens=context_tokens,
-            target_tokens=target_tokens,
-            provider=compression_provider,
-        )
-
-        response = await invoke_counted(
-            llm,
-            messages,
-            # Provider-aware caps: local gets max_tokens, Gemini gets
-            # max_output_tokens. temperature is universal. 
-            # Never send num_ctx/keep_alive to cloud models.
-            # Headroom above the target: the target is the desired summary
-            # size, not the budget the model needs to finish writing it. Capping
-            # at exactly `target_tokens` truncated summaries mid-sentence
-            # (audit B-7).
-            **_invoke_kwargs_for_provider(compression_provider, _compression_budget(target_tokens)),
-            temperature=0.1,  # Low temperature for faithful compression
-        )
-
-        compressed = normalize_llm_content(response.content)
-        if not compressed:
-            logger.warning("Compression returned empty, using original context")
-            return context_str, chunk_indices
-
-        compressed = compressed.strip()
-        compressed = strip_think_blocks(compressed).strip()
-        compressed_tokens = count_tokens(compressed, compression_model)
-
-        logger.info(
-            "Context compression completed",
-            original_tokens=context_tokens,
-            compressed_tokens=compressed_tokens,
-            reduction_ratio=round(compressed_tokens / context_tokens, 2),
-        )
-
-        # Return compressed context with SURVIVING chunk indices: the summary
-        # keeps [Segment N] refs for the segments it preserved, so map those
-        # display numbers back onto the original chunk positions. A summary
-        # with no refs falls back to the full original mapping.
-        surviving = extract_citations(compressed)
-        if surviving:
-            by_display = dict(enumerate(chunk_indices, start=1))
-            mapped = [by_display[n] for n in surviving if n in by_display]
-            if mapped:
-                return compressed, mapped
-            logger.warning(
-                "Compressed summary cites unknown segments; keeping original mapping",
-                cited=surviving,
-                served=len(chunk_indices),
-            )
-        return compressed, chunk_indices
-
-    except Exception as exc:
-        logger.error("Context compression failed, using original", error=str(exc))
-        return context_str, chunk_indices
-
-
 # Thinking traces thinking models leak into content (<think>, <thinking>,
 # <thought> — DeepSeek-R1, Qwen3, QwQ; some servers inline them into
 # message.content instead of a separate field). A trace must never reach
@@ -450,42 +271,6 @@ def strip_think_blocks(answer: str) -> str:
     if match:
         cleaned = cleaned[: match.start()]
     return cleaned
-
-
-def strip_stray_abstain(answer: str) -> str:
-    """Remove a trailing standalone ABSTAIN token from a substantive answer.
-
-    Small local models obey "output exactly ABSTAIN when unsupported" by
-    APPENDING the token to a full answer instead of emitting it alone. Feeding
-    that token to decomposition/NLI poisons verification (and rendering it
-    confuses users). A trailing bare ABSTAIN is never content: drop trailing
-    blank lines and a final all-caps ABSTAIN token/line, then return the rest —
-    or "ABSTAIN" when nothing substantive remains. Case-sensitive and
-    end-anchored on purpose: a sentence ending "...right to abstain." is
-    lowercase prose and must survive.
-    """
-    if not answer:
-        return answer
-    text = answer.strip()
-    if text == "ABSTAIN":
-        return "ABSTAIN"
-    # Drop trailing blank lines, then a final standalone ABSTAIN token,
-    # optionally followed by a period (repeated: "ABSTAIN ABSTAIN").
-    while True:
-        stripped = text.rstrip()
-        if not stripped:
-            return "ABSTAIN"
-        parts = stripped.rsplit(None, 1)
-        last = parts[-1].rstrip(".") if parts else ""
-        if last == "ABSTAIN":
-            text = stripped[: len(stripped) - len(parts[-1])].rstrip()
-            continue
-        break
-    text = text.strip()
-    if len(text) < 20:
-        return "ABSTAIN"
-    return text
-
 
 def _sanitize_label(value: str, max_len: int = 80) -> str:
     """Strip control characters and truncate label to prevent context boundary injection."""
@@ -813,32 +598,6 @@ async def generate_grounded_answer(
         # citation validity range for the post-check after generation)
         context_str, chunk_indices = format_context_with_chunk_indices(chunks)
 
-        # Context compression: compress large contexts before LLM call.
-        # Pass the already-formatted context so chunks are formatted exactly once.
-        # Gate: only compress for cloud providers (gemini) to avoid
-        # doubling local LLM cost (compression call ≈ generation call on 1.2B).
-        provider_for_compression = cfg.context_compression_provider
-        should_compress = cfg.context_compression_enabled and (
-            provider_for_compression == "off"
-            or (
-                provider_for_compression == "cloud"
-                and resolved_provider in ("gemini")
-            )
-            or (
-                provider_for_compression == "local"
-                and resolved_provider in ("ollama", "llama_cpp", "mlx")
-            )
-        )
-        if should_compress:
-            context_str, chunk_indices = await compress_context(
-                query=query,
-                chunks=chunks,
-                provider=resolved_provider,
-                model=resolved_model,
-                target_reduction=cfg.context_compression_target_reduction,
-                preformatted=(context_str, chunk_indices),
-            )
-
         # Dynamic context sizing: calculate optimal num_ctx based on actual token counts
         max_output_tokens = cfg.llm_max_output_tokens
         dynamic_num_ctx = calculate_dynamic_num_ctx(
@@ -926,17 +685,6 @@ async def generate_grounded_answer(
                 clean_len=len(no_think),
             )
             answer = no_think
-
-        # Peel a stray trailing ABSTAIN token small models append to real
-        # answers (instruction-following failure, not a refusal).
-        peeled = strip_stray_abstain(answer)
-        if peeled != answer:
-            logger.info(
-                "Stripped stray trailing ABSTAIN token from generation",
-                raw_len=len(answer),
-                clean_len=len(peeled),
-            )
-            answer = peeled
 
         # Strip hallucinated provenance: cited segments that were never served
         # (valid range 1..len(chunk_indices)). Valid refs pass through untouched.
