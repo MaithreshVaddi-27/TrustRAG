@@ -39,8 +39,7 @@ _SENSITIVE_KEYS = frozenset(
 # logger.error(..., error=str(exc)). That is a log-side credential leak
 # (audit B-17). These patterns catch the value wherever it appears.
 _SECRET_VALUE_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"AIza[0-9A-Za-z_\-]{35}"),  # Google / Gemini API key
-    re.compile(r"nvapi-[A-Za-z0-9_\-]{16,}"),  # NVIDIA NIM API key
+    re.compile(r"AIza[0-9A-Za-z_\-]{35}"),  # Gemini API key
     re.compile(r"sk-[A-Za-z0-9_\-]{20,}"),  # OpenAI-style key
     re.compile(r"(?i)bearer\s+[A-Za-z0-9._\-]{16,}"),  # Authorization header echo
     re.compile(r"hf_[A-Za-z0-9]{20,}"),  # HuggingFace token

@@ -161,12 +161,8 @@ def verification_cap_kwargs(
 
     if norm in LOCAL_LLM_PROVIDERS:
         return {"max_tokens": cap}
-    if norm in ("gemini", "google_genai"):
+    if norm in ("gemini"):
         return {"max_output_tokens": cap}
-    if norm in ("nvidia", "nim"):
-        # ChatNVIDIA deprecates `max_tokens` (warns on every call); the
-        # OpenAI-compatible spelling is `max_completion_tokens` (audit B-18).
-        return {"max_completion_tokens": cap}
     # Unknown provider: inject nothing rather than risk a foreign kwarg.
     return {}
 
@@ -726,7 +722,7 @@ def _classify_cloud_probe_error(exc: BaseException, norm: str, model: str | None
 async def probe_cloud_llm(
     provider: str, model: str | None, timeout: float = CLOUD_PROBE_TIMEOUT_SECONDS
 ) -> None:
-    """Fail fast when a cloud chat model (nvidia, gemini) is not responding.
+    """Fail fast when a cloud chat model (gemini) is not responding.
 
     Sends a minimal 8-token completion bounded by ``timeout``, and reuses a
     recent success for ``CLOUD_PROBE_SUCCESS_TTL_SECONDS`` so a burst of
@@ -735,7 +731,7 @@ async def probe_cloud_llm(
     key) propagate unchanged — it already names the fix.
 
     Args:
-        provider: 'nvidia'/'nim' or 'gemini'/'google_genai'.
+        provider: 'gemini'
         model: Explicit model id (already resolved by the caller).
         timeout: Probe budget in seconds. 60s distinguishes a dead endpoint
             (no first byte) from a merely slow one.
@@ -763,7 +759,7 @@ async def probe_cloud_llm(
         ) from exc
 
     # Provider-correct output cap (mirrors generator._invoke_kwargs_for_provider).
-    cap = {"max_output_tokens": 8} if norm in ("gemini", "google_genai") else {"max_tokens": 8}
+    cap = {"max_output_tokens": 8} if norm in ("gemini") else {"max_tokens": 8}
     try:
         await asyncio.wait_for(
             invoke_counted(llm, "Reply with the word OK.", **cap), timeout=timeout

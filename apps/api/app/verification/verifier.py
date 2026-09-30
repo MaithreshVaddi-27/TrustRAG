@@ -15,13 +15,11 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from bson import ObjectId
-from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core import config as config_mod
 from app.core.config import get_model_config, normalize_provider
 from app.core.llm_ledger import invoke_counted, llm_budget_exhausted
-from app.core.llm_utils import build_structured_output_runnable
 from app.core.local_llm import is_reasoning_model, verification_cap_kwargs
 from app.core.logging import get_logger
 from app.core.model_registry import get_verification_model
@@ -48,9 +46,9 @@ NLI_PER_CALL_TIMEOUT_SECONDS = 90
 # Cloud NLI calls get a longer, provider-configured budget instead. The 90s cap
 # above defends against a *hung local* server, but applying it to a billed cloud
 # request cancels generation the provider has already started work on — and a
-# cancelled Gemini/NVIDIA request is not free (audit B-18). A slow cloud call is
+# cancelled Gemini request is not free (audit B-18). A slow cloud call is
 # normally progressing, not hung, so we defer to the configured llm timeout.
-_CLOUD_PROVIDERS = frozenset({"gemini", "google_genai", "nvidia", "nim"})
+_CLOUD_PROVIDERS = frozenset({"gemini"})
 
 
 def _nli_timeout_seconds() -> int:
@@ -131,36 +129,24 @@ def _apply_cap_via_model_copy(model_obj: Any, cap: dict[str, Any]) -> Any:
         logger.debug("model_copy cap application failed", error=str(exc))
         return model_obj
 
+def _structured_verifier(
+    model_obj: Any,
+    provider: str | None,
+    schema: Any,
+    cap: dict[str, Any],
+):
+    """Build the structured-output verifier for the active provider."""
 
-def _structured_verifier(model_obj: Any, provider: str | None, schema: Any, cap: dict[str, Any]):
-    """Structured-output runnable with per-provider transport.
-
-    Native tool-calling structured output is reliable for local and Gemini
-    models, but NVIDIA unknown-type models have flaky server-side
-    constrained decoding (observed live on muse-glimmer-30b: HTTP 400 on
-    guided_json, partial verdict arrays). Those go through the prompt-based
-    JSON path proven for local models (response_format json_object + the
-    shared repair logic) — verified 3/3 SUPPORTED twice where native
-    returned 2/3 and intermittently 400'd on the same prompt.
-    """
     norm = (provider or get_model_config().verification_provider or "").strip().lower()
-    if norm not in ("nvidia", "nim"):
-        if norm in ("gemini", "google_genai"):
-            # Gemini's with_structured_output raises ValueError on any extra
-            # kwarg, so the cap must ride on the model, not the call.
-            return _apply_cap_via_model_copy(model_obj, cap).with_structured_output(schema)
-        return model_obj.with_structured_output(schema, **cap)
 
-    async def _generate_via_ainvoke(messages: Any, **kwargs: Any) -> ChatResult:
-        ai_message = await invoke_counted(model_obj, messages, **kwargs)
-        return ChatResult(generations=[ChatGeneration(message=ai_message)])
+    if norm in ("gemini", "google_genai"):
+        # Gemini's with_structured_output rejects extra kwargs,
+        # so apply output caps to the model instance itself.
+        return _apply_cap_via_model_copy(
+            model_obj, cap
+        ).with_structured_output(schema)
 
-    return build_structured_output_runnable(
-        generate_fn=_generate_via_ainvoke,
-        schema=schema,
-        json_format_kwargs={"response_format": {"type": "json_object"}},
-        extra_kwargs=dict(cap),
-    )
+    return model_obj.with_structured_output(schema, **cap)
 
 
 # ─── Meta-claim filter ─────────────────────────────────────────────────────────

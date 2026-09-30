@@ -304,7 +304,7 @@ async def create_analysis(
     # Normalize the provider to its canonical spelling: the request validator
     # already does this, so persisting the raw value stored "google_genai" /
     # "nim" / "llamacpp" while the allowlist check ran against "gemini" /
-    # "nvidia" / "llama_cpp" (audit B-15/B-18).
+    # "llama_cpp" (audit B-15/B-18).
     effective_llm_provider = normalize_provider(schema.llm_provider or cfg.llm_provider or "")
     effective_llm_model = schema.llm_model or cfg.llm_model_for(effective_llm_provider)
     effective_embedding_model = cfg.embedding_model
@@ -326,11 +326,7 @@ async def create_analysis(
             llm_base_url = settings.llamacpp_base_url
             probe_provider = "llama_cpp"
         await local_llm_mod.probe_local_llm_server(probe_provider, llm_base_url)
-    # CLOUD PREFLIGHT: a stalled cloud model (observed: NVIDIA endpoints
-    # returning zero bytes indefinitely while auth/metadata stay healthy)
-    # otherwise burns the full per-call timeout on every sequential pipeline
-    # call. One tiny completion up front fails fast → 503 with retry guidance.
-    elif effective_llm_provider in ("nvidia", "nim", "gemini", "google_genai"):
+    elif effective_llm_provider in ("gemini"):
         await local_llm_mod.probe_cloud_llm(effective_llm_provider, effective_llm_model)
     analysis_doc = {
         "user_id": ObjectId(user_id_str),

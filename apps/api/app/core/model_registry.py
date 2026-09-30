@@ -17,9 +17,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
-import warnings
 from collections import OrderedDict
-from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -39,26 +37,6 @@ if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
 logger = get_logger(__name__)
-
-
-@contextmanager
-def _suppress_nvidia_unknown_type_warning(model: str):
-    """Silence the vendor 'type is unknown' UserWarning on ChatNVIDIA init.
-
-    langchain-nvidia-ai-endpoints warns (with a venv path) on every
-    construction for models it can't classify — observed for
-    nvidia/nemotron-3.5-lightning-30b-a3b. Nothing app-side avoids it short
-    of switching models; liveness is covered by probe_cloud_llm, so the raw
-    warning is noise. A debug line keeps the signal.
-    """
-    logger.debug("Constructing ChatNVIDIA client (type-check warning suppressed)", model=model)
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message=".*but type is unknown and inference may fail.*",
-            category=UserWarning,
-        )
-        yield
 
 
 def _resolve_embedding_onnx_path(cache_dir: Path) -> Path | None:
@@ -223,47 +201,6 @@ def _create_llm(
         )
         return llm
 
-    if provider in ("nvidia", "nim"):
-        from langchain_nvidia_ai_endpoints import ChatNVIDIA
-
-        if not settings.nvidia_api_key:
-            raise ConfigurationError("NVIDIA_API_KEY must be set when AI_PROVIDER is 'nvidia'")
-
-        # Guard the constructor: pydantic validation failures embed the
-        # offending value in `input_value=`, so an unguarded str(exc) would
-        # carry the API key into graph.py's logger.error(exc_info=True)
-        # (audit B-17). Never surface the raw SDK message for a cloud client.
-        try:
-            with _suppress_nvidia_unknown_type_warning(model):
-                llm = ChatNVIDIA(
-                    model=model,
-                    api_key=settings.nvidia_api_key,
-                    # Honor the configured endpoint (audit B-13). This was dead
-                    # config: NVIDIA_BASE_URL only took effect when load_dotenv
-                    # happened to export it into the process environment, so a
-                    # Kubernetes secret mounted as a file, a programmatic
-                    # override, or a self-hosted / OpenAI-compatible NIM gateway
-                    # was silently ignored.
-                    base_url=cfg.nvidia_base_url or settings.nvidia_base_url,
-                    temperature=temperature,
-                    # Local clients receive top_p; omitting it here made cloud
-                    # sampling silently diverge from the configured value
-                    # (audit B-18).
-                    top_p=top_p if top_p is not None else cfg.llm_top_p,
-                    max_completion_tokens=(
-                        max_completion_tokens or max_tokens or cfg.llm_max_output_tokens
-                    ),
-                    timeout=timeout,
-                )
-        except ConfigurationError:
-            raise
-        except Exception as exc:
-            raise ConfigurationError(
-                f"Failed to initialize NVIDIA cloud client for model '{model}'. "
-                "The API key may be invalid, revoked, or not permitted for this model."
-            ) from exc
-        return llm
-
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     if not settings.gemini_api_key:
@@ -283,9 +220,6 @@ def _create_llm(
             max_retries=max_retries if max_retries is not None else cfg.llm_max_retries,
         )
     except Exception as exc:
-        # Same rationale as the NVIDIA branch above: the raw pydantic message
-        # can contain the key. The chained `from exc` keeps the traceback for
-        # local debugging while the user-facing message stays key-free.
         raise ConfigurationError(
             f"Failed to initialize Google Gemini client for model '{model}'. "
             "The API key may be invalid, revoked, or not permitted for this model."
@@ -338,7 +272,7 @@ def _schedule_close(llm: BaseChatModel) -> None:
 # RAM-derived cap is meaningless for them, and evicting one can aclose() a
 # client that has an in-flight — and billed — request in progress (audit B-16).
 # Cloud clients are therefore never evicted and never closed on the LRU path.
-CLOUD_LLM_PROVIDERS = frozenset({"gemini", "google_genai", "nvidia", "nim"})
+CLOUD_LLM_PROVIDERS = frozenset({"gemini"})
 
 
 def _is_cloud_provider(provider: str | None) -> bool:
@@ -445,8 +379,7 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
       - llama_cpp / llamacpp: ChatLlamaCppClient (local, OpenAI-compatible server)
       - mlx: ChatLlamaCppClient pointed at mlx_lm.server (Apple Silicon, OpenAI-compatible)
       - gemini: ChatGoogleGenerativeAI via langchain-google-genai
-      - nvidia: ChatNVIDIA via langchain-nvidia-ai-endpoints
-
+      
     Uses bounded registry (max instances scale with RAM: 1/2/4) with LRU
     eviction to prevent RAM/GPU leak from user-controlled model strings.
     """
@@ -566,7 +499,7 @@ def get_embedding_model() -> Embeddings:
     ``BAAI/bge-small-en-v1.5``). There is no provider choice and no
     per-request override — the engine is always ONNX Runtime BGE.
 
-    Cloud embeddings (google_genai, nvidia) were removed: embeddings are a
+    Cloud embeddings (google_genai) were removed: embeddings are a
     local-only concern now, so ingestion and retrieval work fully offline.
     NOTE (2026-09-06): Ollama / llama.cpp are LLM-only providers — their embedding
     usage was removed.
@@ -761,7 +694,6 @@ def registry_status() -> dict[str, Any]:
         "verification_model": cfg.verification_model,
         "search_provider": settings.search_provider,
         "tavily_configured": bool(settings.tavily_api_key),
-        "nvidia_configured": bool(settings.nvidia_api_key),
         "gemini_configured": bool(settings.gemini_api_key),
         "reranker_enabled": cfg.reranker_enabled,
         "reranker_model": cfg.reranker_model if cfg.reranker_enabled else None,

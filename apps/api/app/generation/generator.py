@@ -55,12 +55,10 @@ def _invoke_kwargs_for_provider(
         if keep_alive is not None:
             kwargs["keep_alive"] = keep_alive
         return kwargs
-    if norm in ("gemini", "google_genai"):
+    if norm in ("gemini"):
         return {"max_output_tokens": int(max_tokens)}
-    # nvidia/nim speak the OpenAI dialect, where the non-deprecated spelling is
-    # `max_completion_tokens`; `max_tokens` emits a DeprecationWarning per call
-    # from langchain-nvidia-ai-endpoints (audit B-18).
-    return {"max_completion_tokens": int(max_tokens)}
+
+    raise ValueError(f"Unsupported LLM provider: {provider}")
 
 
 # ─── Token Counting Utilities ──────────────────────────────────────────────────
@@ -114,7 +112,7 @@ def calculate_dynamic_num_ctx(
         system_prompt: The system prompt
         query: The user query
         max_output_tokens: Maximum tokens for generation
-        provider: LLM provider (ollama, llama_cpp, mlx, gemini, nvidia)
+        provider: LLM provider (ollama, llama_cpp, mlx, gemini)
         model: Specific model name
         safety_margin: Extra tokens to reserve for overhead
 
@@ -137,19 +135,18 @@ def calculate_dynamic_num_ctx(
         "llama_cpp": cfg.local_llm_num_ctx,
         "mlx": cfg.local_llm_num_ctx,
         "gemini": 1000000,  # Large context window
-        "nvidia": 128000,  # Nemotron context
     }
 
     # Get the active provider if not specified
     if provider is None:
         provider = cfg.llm_provider
 
-    # Normalize aliases before lookup. 'google_genai' and 'nim' are accepted
+    # Normalize aliases before lookup. 'gemini' accepted
     # provider spellings (schemas/analysis.py) but were missing from the table
     # above, so they fell through to the 4096 local default and emitted a bogus
     # "evidence will be truncated" warning for a 1M-token model (audit B-14).
     norm = (provider or "").strip().lower()
-    norm = {"google_genai": "gemini", "nim": "nvidia", "llamacpp": "llama_cpp"}.get(norm, norm)
+    norm = {"gemini": "gemini", "llamacpp": "llama_cpp"}.get(norm, norm)
     max_ctx = provider_limits.get(norm, cfg.local_llm_num_ctx)
 
     # Clamp to provider max, but ensure minimum for basic functionality.
@@ -379,8 +376,8 @@ async def compress_context(
             llm,
             messages,
             # Provider-aware caps: local gets max_tokens, Gemini gets
-            # max_output_tokens, NVIDIA gets max_tokens. temperature is
-            # universal. Never send num_ctx/keep_alive to cloud models.
+            # max_output_tokens. temperature is universal. 
+            # Never send num_ctx/keep_alive to cloud models.
             # Headroom above the target: the target is the desired summary
             # size, not the budget the model needs to finish writing it. Capping
             # at exactly `target_tokens` truncated summaries mid-sentence
@@ -788,7 +785,7 @@ async def generate_grounded_answer(
     model: str | None = None,
 ) -> str:
     """
-    Invoke LLM (Ollama, llama.cpp, Gemini, or NVIDIA) to generate a grounded answer
+    Invoke LLM (Ollama, llama.cpp, Gemini) to generate a grounded answer
     based on candidate evidence chunks.
 
     If chunks list is empty, returns 'ABSTAIN' immediately without LLM invocation
@@ -818,14 +815,14 @@ async def generate_grounded_answer(
 
         # Context compression: compress large contexts before LLM call.
         # Pass the already-formatted context so chunks are formatted exactly once.
-        # Gate: only compress for cloud providers (gemini, nvidia) to avoid
+        # Gate: only compress for cloud providers (gemini) to avoid
         # doubling local LLM cost (compression call ≈ generation call on 1.2B).
         provider_for_compression = cfg.context_compression_provider
         should_compress = cfg.context_compression_enabled and (
             provider_for_compression == "off"
             or (
                 provider_for_compression == "cloud"
-                and resolved_provider in ("gemini", "google_genai", "nvidia", "nim")
+                and resolved_provider in ("gemini")
             )
             or (
                 provider_for_compression == "local"
@@ -884,9 +881,8 @@ async def generate_grounded_answer(
         )
 
         # Provider-aware invoke kwargs: local providers get dynamic num_ctx
-        # plus batch/keep_alive tuning; Gemini gets max_output_tokens and
-        # NVIDIA gets max_tokens. Local-only keys must never reach cloud
-        # models (Gemini rejects them, NVIDIA forwards them to the API).
+        # plus batch/keep_alive tuning; Gemini gets max_output_tokens.
+        # Local-only keys must never reach cloud models (Gemini rejects them).
         response = await invoke_counted(
             llm,
             messages,

@@ -56,17 +56,16 @@ def _load_models_yaml() -> dict[str, Any]:
 
 
 # Canonical provider spellings. Several aliases are accepted on input
-# (`google_genai`, `nim`, `llamacpp`); normalizing in one place keeps the
+# (`gemini`, `llamacpp`); normalizing in one place keeps the
 # allowlist check, the resolved model, the persisted document, and downstream
 # provider switches from disagreeing about the provider's name (audit B-15/B-18).
 _PROVIDER_ALIASES = {
-    "google_genai": "gemini",
-    "nim": "nvidia",
+    "gemini": "gemini",
     "llamacpp": "llama_cpp",
     "llama-cpp": "llama_cpp",
 }
 
-SUPPORTED_LLM_PROVIDERS = frozenset({"ollama", "llama_cpp", "mlx", "gemini", "nvidia"})
+SUPPORTED_LLM_PROVIDERS = frozenset({"ollama", "llama_cpp", "mlx", "gemini"})
 
 
 def normalize_provider(provider: str | None) -> str:
@@ -219,17 +218,7 @@ class Settings(BaseSettings):
         description="Override MLX model identifier from models.yaml via env",
     )
 
-    # ── NVIDIA NIM & Tavily Search ─────────────────────────────────────────────
-    nvidia_api_key: str = Field(
-        default="",
-        validation_alias=AliasChoices("NVIDIA_API_KEY", "NIM_API_KEY"),
-        description="NVIDIA NIM API key for Llama, Mistral, and Nemotron models",
-    )
-    nvidia_base_url: str = Field(
-        default="https://integrate.api.nvidia.com/v1",
-        validation_alias=AliasChoices("NVIDIA_BASE_URL"),
-        description="NVIDIA NIM API base URL",
-    )
+    # ── Tavily Search ───────────────────────────────
     tavily_api_key: str = Field(
         default="",
         validation_alias=AliasChoices("TAVILY_API_KEY"),
@@ -242,7 +231,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("AI_PROVIDER", "LLM_PROVIDER"),
         description=(
             "Active AI generation & verification provider: 'ollama', "
-            "'llama_cpp', 'mlx' (Apple Silicon), 'gemini', or 'nvidia'"
+            "'llama_cpp', 'mlx' (Apple Silicon), 'gemini'"
         ),
     )
     search_provider: str = Field(
@@ -405,11 +394,7 @@ class ModelConfig:
         env_model = os.environ.get("LLM_MODEL") or os.environ.get("GEMINI_MODEL")
         if env_model:
             return env_model
-        if p in ("nvidia", "nim"):
-            # Never fall back to llm.model here: it is a local GGUF id the
-            # cloud endpoint cannot serve (same rule as the mlx branch).
-            return str(self._get("llm", "model_nvidia", required=False) or "openai/gpt-oss-20b")
-        if p in ("gemini", "google_genai"):
+        if p in ("gemini"):
             # Never fall back to llm.model here: it is a local GGUF id, not a
             # Gemini model id. Override via LLM_MODEL env or model_gemini yaml.
             return str(self._get("llm", "model_gemini", required=False) or "gemini-3.5-flash-lite")
@@ -445,20 +430,6 @@ class ModelConfig:
         # Separate port (:8090) so llama-server (:8080) and mlx_lm.server (:8090)
         # can run side-by-side. pydantic env > Field default > _DEFAULT_MLX_BASE_URL.
         return str(self._get("llm", "mlx_base_url", required=False) or _DEFAULT_MLX_BASE_URL)
-
-    @property
-    def nvidia_base_url(self) -> str:
-        """NVIDIA NIM endpoint. Overridable to target a self-hosted or
-        OpenAI-compatible NIM gateway (audit B-13).
-
-        Previously this only reached the client when `load_dotenv` happened to
-        export NVIDIA_BASE_URL into the process environment, so any other
-        configuration source was silently ignored.
-        """
-        env_url = os.environ.get("NVIDIA_BASE_URL") or os.environ.get("NIM_BASE_URL")
-        if env_url:
-            return env_url
-        return str(self._get("llm", "nvidia_base_url", required=False) or "")
 
     @property
     def llm_temperature(self) -> float:
@@ -567,14 +538,7 @@ class ModelConfig:
         )
         if env_model:
             return env_model
-        if p in ("nvidia", "nim"):
-            # Never fall back to verification.model / llm.model (local GGUF ids).
-            return str(
-                self._get("verification", "model_nvidia", required=False)
-                or self._get("llm", "model_nvidia", required=False)
-                or "openai/gpt-oss-20b"
-            )
-        if p in ("gemini", "google_genai"):
+        if p in ("gemini"):
             # Never fall back to verification.model / llm.model (local GGUF ids).
             return str(
                 self._get("verification", "model_gemini", required=False)
@@ -591,14 +555,6 @@ class ModelConfig:
             return [str(m) for m in val]
         # Fallback mirrors the last hardcoded set (pre-1.20 configs).
         return ["gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"]
-
-    @property
-    def supported_nvidia_models(self) -> list[str]:
-        """Cloud allowlist: models API callers may select for nvidia."""
-        val = self._get("llm", "supported_models_nvidia", required=False)
-        if isinstance(val, list) and val:
-            return [str(m) for m in val]
-        return ["openai/gpt-oss-20b", "google/gemma-4-31b-it", "meta/muse-glimmer-30b"]
 
     @property
     def verification_temperature(self) -> float:
@@ -1124,7 +1080,7 @@ class ModelConfig:
 
     @property
     def context_compression_provider(self) -> str:
-        """Which providers should use context compression: 'cloud' (gemini, nvidia),
+        """Which providers should use context compression: 'cloud' (gemini),
         'local' (ollama, llama_cpp, mlx), or 'off' (disabled)."""
         value = self._get("optimization", "context_compression_provider", required=False)
         env_val = os.environ.get("CONTEXT_COMPRESSION_PROVIDER")
@@ -1156,7 +1112,7 @@ class ModelConfig:
             Dict with max_verification_claims, max_context_chunks, max_claim_retrievals
         """
         prov = (provider or self.llm_provider).lower()
-        is_cloud = prov in ("gemini", "google_genai", "nvidia", "nim")
+        is_cloud = prov in "gemini"
         is_mlx = prov == "mlx"
 
         if is_cloud:
