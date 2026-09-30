@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
 from datetime import UTC, datetime
 from typing import Any
 
@@ -25,9 +24,6 @@ from app.ingestion.sparse_vector import generate_sparse_vector
 logger = get_logger(__name__)
 
 
-# Maximum time allowed for the complete hybrid retrieval operation.
-HYBRID_TIMEOUT = 60.0
-
 async def _get_collection_dimension(
     client: Any,
     collection_name: str,
@@ -36,14 +32,6 @@ async def _get_collection_dimension(
     col_info = await client.get_collection(collection_name)
     return getattr(col_info.config.params.vectors, "size", None)
 
-def _hybrid_timeout() -> float:
-    cfg = get_model_config()
-    value = os.environ.get("RETRIEVAL_HYBRID_TIMEOUT_SECONDS") or cfg.hybrid_timeout_seconds
-
-    try:
-        return float(value) if value else HYBRID_TIMEOUT
-    except (TypeError, ValueError):
-        return HYBRID_TIMEOUT
 
 async def dense_search(
     query: str,
@@ -349,44 +337,10 @@ async def retrieve_hybrid_chunks(
     sparse_top = top_k_override if top_k_override is not None else cfg.sparse_top_k
     fusion_top_k = cfg.fusion_top_k
 
-    hybrid_timeout = _hybrid_timeout()
- 
-    dense_task = asyncio.create_task(
-        dense_search(query, kb_id, top_k=dense_top)
+    dense_res, sparse_res = await asyncio.gather(
+        dense_search(query, kb_id, top_k=dense_top),
+        sparse_search(query, kb_id, top_k=sparse_top),
     )
-    sparse_task = asyncio.create_task(
-        sparse_search(query, kb_id, top_k=sparse_top)
-    )
-
-    try:
-        dense_res, sparse_res = await asyncio.wait_for(
-            asyncio.gather(dense_task, sparse_task),
-            timeout=hybrid_timeout,
-        )
-    except TimeoutError as exc:
-        dense_task.cancel()
-        sparse_task.cancel()
-
-        await asyncio.gather(
-            dense_task,
-            sparse_task,
-            return_exceptions=True,
-        )
-
-        raise RetrievalOutageError(
-            f"Hybrid retrieval timed out after {hybrid_timeout:g}s",
-            detail=str(exc),
-        ) from exc
-    except Exception:
-        dense_task.cancel()
-        sparse_task.cancel()
-
-        await asyncio.gather(
-            dense_task,
-            sparse_task,
-            return_exceptions=True,
-        )
-        raise
 
     fused = reciprocal_rank_fusion(
         dense_res,
