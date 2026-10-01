@@ -20,6 +20,7 @@ from app.core.llm_ledger import invoke_counted
 from app.core.llm_utils import normalize_llm_content
 from app.core.local_llm import LOCAL_LLM_PROVIDERS, local_cap_kwargs
 from app.core.logging import get_logger
+from app.core.semantic_cache import prune_context_tokens
 from app.core.model_registry import get_llm
 
 logger = get_logger(__name__)
@@ -213,7 +214,10 @@ You are a grounded question-answering assistant. Answer only from the Context.
 the Context. Never invent, infer, extrapolate, or soften anything not written
 there. Partial coverage is fine — answer the supported parts and say plainly
 which parts the Context does not cover.
-2. Every statement must be supported by the Context
+2. ABSTAIN: when the Context does not support an answer to the question actually
+asked, output exactly "ABSTAIN" and nothing else.
+Topical overlap is not support.
+Never answer from prior knowledge.
 3. CITATIONS: end each factual sentence with its segment number, e.g.
 "... [Segment 2]". Use only numbers that appear in the Context. Never invent a
 number. A sentence you cannot cite is a sentence you must not write. Headings
@@ -294,6 +298,39 @@ def extract_citations(answer: str) -> list[int]:
         return []
     return [int(match.group(1)) for match in _CITATION_RE.finditer(answer)]
 
+def strip_stray_abstain(answer: str) -> str:
+    """Remove a trailing standalone ABSTAIN token from a substantive answer.
+
+    Small local models obey "output exactly ABSTAIN when unsupported" by
+    APPENDING the token to a full answer instead of emitting it alone. Feeding
+    that token to decomposition/NLI poisons verification (and rendering it
+    confuses users). A trailing bare ABSTAIN is never content: drop trailing
+    blank lines and a final all-caps ABSTAIN token/line, then return the rest —
+    or "ABSTAIN" when nothing substantive remains. Case-sensitive and
+    end-anchored on purpose: a sentence ending "...right to abstain." is
+    lowercase prose and must survive.
+    """
+    if not answer:
+        return answer
+    text = answer.strip()
+    if text == "ABSTAIN":
+        return "ABSTAIN"
+    # Drop trailing blank lines, then a final standalone ABSTAIN token,
+    # optionally followed by a period (repeated: "ABSTAIN ABSTAIN").
+    while True:
+        stripped = text.rstrip()
+        if not stripped:
+            return "ABSTAIN"
+        parts = stripped.rsplit(None, 1)
+        last = parts[-1].rstrip(".") if parts else ""
+        if last == "ABSTAIN":
+            text = stripped[: len(stripped) - len(parts[-1])].rstrip()
+            continue
+        break
+    text = text.strip()
+    if len(text) < 20:
+        return "ABSTAIN"
+    return text
 
 def strip_invalid_citations(answer: str, valid_segments: int) -> tuple[str, list[int]]:
     """Remove [Segment N] refs with N outside 1..valid_segments.
@@ -685,6 +722,16 @@ async def generate_grounded_answer(
                 clean_len=len(no_think),
             )
             answer = no_think
+        # Peel a stray trailing ABSTAIN token small models append to real
+        # answers (instruction-following failure, not a refusal).
+        peeled = strip_stray_abstain(answer)
+        if peeled != answer:
+            logger.info(
+                "Stripped stray trailing ABSTAIN token from generation",
+                raw_len=len(answer),
+                clean_len=len(peeled),
+            )
+            answer = peeled
 
         # Strip hallucinated provenance: cited segments that were never served
         # (valid range 1..len(chunk_indices)). Valid refs pass through untouched.
