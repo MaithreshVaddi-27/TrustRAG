@@ -17,8 +17,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from app.core.exceptions import AuthenticationError, AuthorizationError
-from app.core.security import create_access_token, create_service_token, decode_access_token
+from app.core.security.exceptions import AuthenticationError, AuthorizationError
+from app.core.security.security import (
+    create_access_token,
+    create_service_token,
+    decode_access_token,
+)
 
 # ─── Adversarial Fixtures ─────────────────────────────────────────────────────
 
@@ -76,7 +80,6 @@ def _state(**overrides) -> dict:
         "web_search_provider": "both",
         "llm_provider": None,
         "llm_model": None,
-        "cache_hit": False,
         "node_errors": [],
         "recovery_tokens_used": 0,
         "recovery_latency_ms": 0,
@@ -273,7 +276,7 @@ def test_stale_chunk_passes_through_but_temporal_filter_exists():
 def test_ocr_garbled_chunk_not_trusted_as_high_confidence():
     """OCR garbled text at low confidence must not be treated as reliable."""
     # OCR pipeline drops low-confidence pages (min_confidence 0.5)
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     cfg = get_model_config()
     assert cfg.ocr_min_confidence >= 0.5
@@ -287,7 +290,7 @@ def test_ocr_garbled_chunk_not_trusted_as_high_confidence():
 
 def test_ocr_store_page_images_config_present():
     """OCR provenance: page image ref must be plumbable."""
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     cfg = get_model_config()
     # store_page_images is a bool config
@@ -368,7 +371,7 @@ def test_expired_token_rejected():
 
 def test_max_file_size_config_exists():
     """Upload size guard must be configured."""
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     cfg = get_model_config()
     assert cfg.max_file_size_mb > 0
@@ -382,7 +385,7 @@ def test_max_total_tokens_per_doc_config_exists():
     (pre-request 422 guard). The legacy ingestion.max_total_tokens_per_doc key
     was removed as dead config — it was never read by application code.
     """
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     cfg = get_model_config()
     assert cfg.max_input_tokens > 0

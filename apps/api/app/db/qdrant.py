@@ -12,9 +12,10 @@ from pathlib import Path
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models
 
-from app.core.config import get_model_config, get_settings
-from app.core.exceptions import VectorStoreError
-from app.core.logging import get_logger
+from app.core.config.model_config import get_model_config
+from app.core.config.settings import get_settings
+from app.core.observability.logging import get_logger
+from app.core.security.exceptions import VectorStoreError
 
 logger = get_logger(__name__)
 

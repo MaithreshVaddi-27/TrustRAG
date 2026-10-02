@@ -10,12 +10,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.core.config import (
+from app.core.config.model_config import (
     SUPPORTED_LLM_PROVIDERS,
     get_model_config,
-    get_settings,
     normalize_provider,
 )
+from app.core.config.settings import get_settings
 
 # Module-level imports (verified cycle-free): the AnalysisCreate validator
 # resolves provider allowlists on every request, so keeping these at the top

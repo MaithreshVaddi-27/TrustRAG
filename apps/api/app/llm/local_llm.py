@@ -26,10 +26,10 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field
 
-from app.core.concurrency import get_global_semaphore
-from app.core.config import get_model_config
-from app.core.exceptions import ConfigurationError, LLMUnavailableError
-from app.core.logging import get_logger
+from app.core.config.model_config import get_model_config
+from app.core.observability.logging import get_logger
+from app.core.security.exceptions import ConfigurationError, LLMUnavailableError
+from app.core.system.concurrency import get_global_semaphore
 from app.llm.llm_ledger import invoke_counted
 
 logger = get_logger(__name__)
@@ -42,13 +42,8 @@ _HTTP_CLIENTS_LOCK = threading.Lock()
 
 
 # Shared global semaphore for local LLM inference.
-# Managed by app.core.concurrency.get_global_semaphore() - hardware-aware
+# Managed by app.core.system.concurrency.get_global_semaphore() - hardware-aware
 # (2/4/8 based on RAM) with LOCAL_LLM_MAX_CONCURRENCY env override.
-def _get_local_llm_semaphore() -> asyncio.Semaphore:
-    """Get the global concurrency semaphore for local LLM inference."""
-    return get_global_semaphore()
-
-
 def _shared_http_client(base_url: str, timeout: float) -> httpx.AsyncClient:
     """Return a per-event-loop, per-endpoint pooled AsyncClient with connection limits."""
     try:
@@ -331,7 +326,7 @@ class ChatOllamaClient(BaseChatModel):
             payload["format"] = requested_format
 
         try:
-            async with _get_local_llm_semaphore():
+            async with get_global_semaphore():
                 client = _shared_http_client(self.base_url, self.timeout)
                 res = await client.post(endpoint, json=payload)
                 if res.status_code == 404:
@@ -501,7 +496,7 @@ class ChatLlamaCppClient(BaseChatModel):
             payload["response_format"] = {"type": "json_object"}
 
         try:
-            async with _get_local_llm_semaphore():
+            async with get_global_semaphore():
                 client = _shared_http_client(self.base_url, self.timeout)
                 res = await client.post(endpoint, json=payload)
             res.raise_for_status()
@@ -1121,8 +1116,6 @@ async def check_mlx_status(
     any_connected = False
 
     # Check consecutive ports starting from base_url port
-    import re
-
     base_port_match = re.search(r":(\d+)", base_url)
     start_port = int(base_port_match.group(1)) if base_port_match else 8090
 

@@ -14,8 +14,8 @@ import ipaddress
 from typing import Any
 from urllib.parse import urlparse
 
-from app.core.config import get_settings
-from app.core.logging import get_logger
+from app.core.config.settings import get_settings
+from app.core.observability.logging import get_logger
 
 logger = get_logger(__name__)
 

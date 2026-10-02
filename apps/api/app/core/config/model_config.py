@@ -1,44 +1,27 @@
 """
-TRUSTRAG API — core settings.
+TRUSTRAG — models.yaml registry (single source of truth for IDs/params).
 
-Reads from environment (via .env) and from config/models.yaml.
-Business code must import from this module — never read env vars directly.
-
-Separation of concerns:
-  .env          → secrets, deployment-specific values (GEMINI_API_KEY, URIs, etc.)
-  models.yaml   → model IDs, thresholds, tuning parameters, retrieval config
+Secrets stay in .env; this module reads model IDs, thresholds, and tuning
+parameters. See app.core.config.settings for env-sourced Settings.
 """
 
 from __future__ import annotations
 
 import os
-from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
 import structlog
 import yaml
-from dotenv import load_dotenv
-from pydantic import AliasChoices, Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.core.config.settings import (
+    _DEFAULT_MLX_BASE_URL,
+    _MODELS_YAML_PATH,
+    _blank_as_none,
+    _parse_bool,
+    get_ports,
+)
 
 logger = structlog.get_logger(__name__)
-
-# ─── Paths ────────────────────────────────────────────────────────────────
-
-# apps/api/ root (one level above app/)
-_API_ROOT = Path(__file__).resolve().parents[2]
-_MODELS_YAML_PATH = _API_ROOT / "config" / "models.yaml"
-# Repo root config/ports.yaml — canonical port registry (see scripts/apply_ports.py)
-_PORTS_YAML_PATH = _API_ROOT.parent.parent / "config" / "ports.yaml"
-
-# P0-CFG FIX (2026-09-06 audit): ModelConfig reads os.environ directly while
-# Settings loads .env via pydantic-settings (which does NOT export to
-# os.environ). Without this, .env values like AI_PROVIDER
-# were silently ignored and models.yaml defaults won. Loading .env into
-# os.environ here keeps both paths consistent.
-load_dotenv(_API_ROOT / ".env", override=False)
-load_dotenv(_API_ROOT.parent.parent / ".env", override=False)
 
 
 def _load_models_yaml() -> dict[str, Any]:
@@ -73,254 +56,6 @@ def normalize_provider(provider: str | None) -> str:
     so the caller can reject them with a useful message."""
     p = (provider or "").strip().lower()
     return _PROVIDER_ALIASES.get(p, p)
-
-
-def _load_ports_yaml() -> dict[str, int]:
-    """Load repo-root config/ports.yaml. Returns {} if absent (dev fallback)."""
-    try:
-        if not _PORTS_YAML_PATH.exists():
-            return {}
-        with _PORTS_YAML_PATH.open("r", encoding="utf-8") as fh:
-            data = yaml.safe_load(fh)
-        ports = (data or {}).get("ports", {}) if isinstance(data, dict) else {}
-        return {k: int(v) for k, v in ports.items() if isinstance(v, int)}
-    except Exception:
-        logger.debug("Failed to load ports.yaml, using empty config")
-        return {}
-
-
-def _blank_as_none(name: str) -> str | None:
-    """Return env var value, treating missing/blank as None.
-
-    Docker/`.env` files often carry empty entries (e.g. `LOCAL_LLM_NUM_CTX=`),
-    which must fall back to the yaml default instead of crashing
-    `int("")`/`float("")`.
-    """
-    val = os.environ.get(name)
-    if val is None or not val.strip():
-        return None
-    return val
-
-
-def _parse_bool(value: Any, default: bool = False) -> bool:
-    """Coerce a yaml/env flag to bool (single place for truthy-string parsing).
-
-    Accepts real bools, None (→ default), and the common truthy strings
-    1/true/yes/on (case-insensitive, whitespace-tolerant).
-    """
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in ("1", "true", "yes", "on")
-
-
-# Local LLM base URLs derived once from the canonical port registry so a fresh
-# checkout works with zero provider config — explicit env vars still win
-# (pydantic env > Field default), and models.yaml stays the ID source.
-_PORTS_FALLBACK = _load_ports_yaml()
-_DEFAULT_OLLAMA_BASE_URL = f"http://localhost:{_PORTS_FALLBACK.get('ollama', 11434)}"
-_DEFAULT_LLAMACPP_BASE_URL = f"http://127.0.0.1:{_PORTS_FALLBACK.get('llamacpp', 8080)}/v1"
-_DEFAULT_MLX_BASE_URL = f"http://127.0.0.1:{_PORTS_FALLBACK.get('mlx', 8090)}/v1"
-
-
-# ─── Settings ─────────────────────────────────────────────────────────────
-
-
-class Settings(BaseSettings):
-    """
-    Application settings.
-
-    Values come from environment variables (or .env file).
-    Model/AI configuration is read from models.yaml via model_config property.
-    """
-
-    # pydantic-settings applies env files in order with LATER files winning,
-    # so list least-precedence first. Anchored entries last guarantee Settings
-    # reads the same files as the module-level load_dotenv() calls
-    # (repo-root .env, then apps/api/.env wins) no matter which directory
-    # uvicorn/pytest starts from. CWD-relative entries stay as fallback for
-    # exotic layouts. Missing files are skipped.
-    model_config = SettingsConfigDict(
-        env_file=(
-            "../../.env",
-            "../.env",
-            ".env",
-            str(_API_ROOT.parent.parent / ".env"),
-            str(_API_ROOT / ".env"),
-        ),
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
-
-    # ── Application ───────────────────────────────────────────────────────────
-    app_env: str = "development"
-    log_level: str = "INFO"
-    app_name: str = "TRUSTRAG"
-    app_version: str = "0.1.0"
-
-    # ── Security ──────────────────────────────────────────────────────────────
-    jwt_secret: str
-    jwt_expiry_minutes: int = 60
-    jwt_issuer: str = "trustrag-api"
-    jwt_audience: str = "trustrag-client"
-    cors_origins: str = "http://localhost:5173"
-    login_max_attempts: int = 5
-    login_lockout_seconds: int = 900  # 15 min
-
-    # ── Hugging Face ──────────────────────────────────────────────────────────
-    hf_token: str = ""  # Optional read-only token to prevent download rate-limits
-    hf_tokenizer_revision: str = Field(
-        default="5c38ec7c405ec4b44b94cc5a9bb96e735b38267a",
-        validation_alias=AliasChoices("HF_TOKENIZER_REVISION"),
-        description=(
-            "Pinned tokenizer revision for ONNX embeddings (Bandit B615 supply-chain "
-            "pin). Only change alongside a fresh `scripts/export_bge_onnx.py` run."
-        ),
-    )
-
-    # ── Google Gemini (Optional if using local LLMs) ───────────────────────────
-    gemini_api_key: str = ""
-
-    # ── Local LLM Providers (Ollama & llama.cpp) ──────────────────────────────
-    # Defaults derive from config/ports.yaml (see _DEFAULT_*_BASE_URL above);
-    # set OLLAMA_BASE_URL / LLAMACPP_BASE_URL env vars to override per deploy
-    # (e.g. host.docker.internal inside containers).
-    ollama_base_url: str = Field(
-        default=_DEFAULT_OLLAMA_BASE_URL,
-        validation_alias=AliasChoices("OLLAMA_BASE_URL", "OLLAMA_HOST"),
-        description="Ollama local API server endpoint",
-    )
-    ollama_model: str = Field(
-        default="",
-        validation_alias=AliasChoices("OLLAMA_MODEL"),
-        description="Override Ollama model name from models.yaml via env",
-    )
-    llamacpp_base_url: str = Field(
-        default=_DEFAULT_LLAMACPP_BASE_URL,
-        validation_alias=AliasChoices("LLAMACPP_BASE_URL", "LLAMA_CPP_BASE_URL"),
-        description="llama.cpp server OpenAI-compatible base URL",
-    )
-    llamacpp_model: str = Field(
-        default="",
-        validation_alias=AliasChoices("LLAMACPP_MODEL", "LLAMA_CPP_MODEL"),
-        description="Override llama.cpp model identifier from models.yaml via env",
-    )
-    mlx_base_url: str = Field(
-        default=_DEFAULT_MLX_BASE_URL,
-        validation_alias=AliasChoices("MLX_BASE_URL"),
-        description="MLX server OpenAI-compatible base URL (Apple Silicon only)",
-    )
-    mlx_model: str = Field(
-        default="",
-        validation_alias=AliasChoices("MLX_MODEL"),
-        description="Override MLX model identifier from models.yaml via env",
-    )
-
-    # ── Tavily Search ───────────────────────────────
-    tavily_api_key: str = Field(
-        default="",
-        validation_alias=AliasChoices("TAVILY_API_KEY"),
-        description="Tavily AI Search API key",
-    )
-
-    # ── Multi-Provider Engine Selectors ────────────────────────────────────────
-    ai_provider: str = Field(
-        default="ollama",
-        validation_alias=AliasChoices("AI_PROVIDER", "LLM_PROVIDER"),
-        description=(
-            "Active AI generation & verification provider: 'ollama', "
-            "'llama_cpp', 'mlx' (Apple Silicon), 'gemini'"
-        ),
-    )
-    search_provider: str = Field(
-        default="auto",
-        validation_alias=AliasChoices("SEARCH_PROVIDER"),
-        description="Web search engine: 'tavily'",
-    )
-
-    # ── MongoDB Atlas ──────────────────────────────────────────────────────────
-    mongodb_uri: str
-    mongodb_database: str = "trustrag_db"
-
-    # ── Qdrant ─────────────────────────────────────────────────────────────────
-    qdrant_url: str = "http://localhost:6333"
-    qdrant_api_key: str = ""  # Empty string = no auth (local dev)
-
-    # ── Model Configuration Overrides (env takes precedence over models.yaml) ──
-    gemini_model: str = Field(
-        default="",
-        validation_alias=AliasChoices("GEMINI_MODEL", "LLM_MODEL"),
-        description="Override primary LLM model ID in .env",
-    )
-    gemini_verification_model: str = Field(
-        default="",
-        validation_alias=AliasChoices("GEMINI_VERIFICATION_MODEL", "VERIFICATION_MODEL"),
-        description="Override verification LLM model ID in .env",
-    )
-    embedding_dim: int | None = Field(
-        default=None,
-        validation_alias=AliasChoices("EMBEDDING_DIM", "EMBEDDING_DIMENSIONALITY"),
-        description="Override embedding dimensionality in .env",
-    )
-
-    # ── Derived: parsed CORS list ─────────────────────────────────────────────
-    @property
-    def cors_origins_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
-
-    # ── Validation ────────────────────────────────────────────────────────────
-    @field_validator("jwt_secret")
-    @classmethod
-    def jwt_secret_must_be_strong(cls, v: str) -> str:
-        if len(v) < 32:
-            raise ValueError(
-                "JWT_SECRET must be at least 32 characters. "
-                'Generate with: python -c "import secrets; print(secrets.token_hex(64))"'
-            )
-        return v
-
-    @field_validator("app_env")
-    @classmethod
-    def valid_app_env(cls, v: str) -> str:
-        allowed = {"development", "staging", "production"}
-        if v not in allowed:
-            raise ValueError(f"APP_ENV must be one of {allowed}, got '{v}'")
-        return v
-
-    @field_validator("log_level")
-    @classmethod
-    def valid_log_level(cls, v: str) -> str:
-        allowed = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
-        v_upper = v.upper()
-        if v_upper not in allowed:
-            raise ValueError(f"LOG_LEVEL must be one of {allowed}")
-        return v_upper
-
-    @model_validator(mode="after")
-    def production_must_have_qdrant_key(self) -> Settings:
-        if self.app_env == "production":
-            if not self.qdrant_api_key:
-                raise ValueError("QDRANT_API_KEY must be set in production")
-            # The .env.example placeholder is 44 chars, so it clears the
-            # length check above — without this it would silently become the
-            # production signing key for anyone who copies the template.
-            if self.jwt_secret.upper().startswith(("REPLACE_WITH", "CHANGE_ME", "CHANGEME")):
-                raise ValueError(
-                    "JWT_SECRET is still the .env.example placeholder. "
-                    'Generate a real one: python -c "import secrets; print(secrets.token_hex(64))"'
-                )
-        return self
-
-    def is_production(self) -> bool:
-        return self.app_env == "production"
-
-    def is_development(self) -> bool:
-        return self.app_env == "development"
-
-
-# ─── Model config (from models.yaml) ──────────────────────────────────────
 
 
 class ModelConfig:
@@ -475,8 +210,6 @@ class ModelConfig:
     def embedding_cache_dir(self) -> str:
         # MODEL_CACHE_DIR wins so the backend reads the same directory that
         # scripts/bootstrap.py writes (see ensure_onnx_models._cache_dir).
-        # NOTE: CACHE_DIR is intentionally NOT honored here — at runtime it
-        # means the SQLite disk cache (disk_cache.py), not model weights.
         env_dir = os.environ.get("MODEL_CACHE_DIR")
         if env_dir and env_dir.strip():
             return env_dir
@@ -550,10 +283,6 @@ class ModelConfig:
         raise KeyError("Required key 'llm.supported_models_gemini' missing from models.yaml")
 
     @property
-    def verification_temperature(self) -> float:
-        return float(self._get("verification", "temperature"))
-
-    @property
     def verification_max_output_tokens(self) -> int:
         return int(self._get("verification", "max_output_tokens"))
 
@@ -624,13 +353,6 @@ class ModelConfig:
         if env_val is not None:
             return env_val
         return str(val or "")
-
-    @property
-    def reranker_cache_size(self) -> int:
-        """Maximum number of query-document pairs to cache for reranker."""
-        value = self._get("reranker", "cache_size", required=False)
-        env_val = _blank_as_none("RERANKER_CACHE_SIZE")
-        return int(env_val) if env_val is not None else int(value or 500)
 
     @property
     def reranker_max_seq_length(self) -> int:
@@ -750,15 +472,6 @@ class ModelConfig:
         """Hybrid retrieval budget; 0 = unset (module fallback 60s)."""
         value = self._get("retrieval", "hybrid_timeout_seconds", required=False)
         return float(value) if value is not None else 0.0
-
-    @property
-    def query_cache_capacity(self) -> int:
-        """Query-vector LRU capacity (models.yaml; env wins)."""
-        value = self._get("retrieval", "query_cache_capacity", required=False)
-        env_val = _blank_as_none("RETRIEVAL_QUERY_CACHE_CAPACITY")
-        if env_val is not None:
-            return int(env_val)
-        return int(value) if value is not None else 1024
 
     @property
     def sparse_k1(self) -> float:
@@ -987,23 +700,6 @@ class ModelConfig:
             return _parse_bool(env_val)
         return _parse_bool(value, True)  # Default enabled for speed
 
-    # ── Model Offloading ────────────────────────────────────────────
-    @property
-    def local_llm_model_unload_enabled(self) -> bool:
-        """Enable auto-unloading of inactive models from memory."""
-        value = self._get("local_llm", "model_unload_enabled", required=False)
-        env_val = os.environ.get("LOCAL_LLM_MODEL_UNLOAD_ENABLED")
-        if env_val is not None:
-            return _parse_bool(env_val)
-        return _parse_bool(value, True)  # Default enabled for low RAM
-
-    @property
-    def local_llm_model_unload_timeout(self) -> str:
-        """Time before considering a model idle for unloading."""
-        value = self._get("local_llm", "model_unload_timeout", required=False)
-        env_val = _blank_as_none("LOCAL_LLM_MODEL_UNLOAD_TIMEOUT")
-        return env_val if env_val is not None else str(value or "5m")
-
     # ── Inference Acceleration & KV Cache Optimization ────────────────────────
     @property
     def kv_cache_quantization(self) -> str:
@@ -1027,15 +723,6 @@ class ModelConfig:
         if env_val is not None:
             return _parse_bool(env_val)
         return _parse_bool(value, True)  # Default enabled for RAM savings
-
-    @property
-    def context_compression_target_reduction(self) -> float:
-        """Target compression ratio (e.g., 0.5 = 50% of original size)."""
-        value = self._get("optimization", "context_compression_target_reduction", required=False)
-        env_val = _blank_as_none("CONTEXT_COMPRESSION_TARGET_REDUCTION")
-        if env_val is not None:
-            return float(env_val)
-        return float(value or 0.5)
 
     @property
     def context_compression_provider(self) -> str:
@@ -1119,18 +806,16 @@ class ModelConfig:
         }
 
 
-# ─── Singletons ───────────────────────────────────────────────────────────
+# ─── Factory (no cache: fresh read per call) ────────────────────────────────
 
 
-@lru_cache(maxsize=1)
-def get_settings() -> Settings:
-    """Return the cached application Settings singleton."""
-    return Settings()  # type: ignore[call-arg]
-
-
-@lru_cache(maxsize=1)
 def get_model_config() -> ModelConfig:
-    """Return the cached ModelConfig singleton loaded from models.yaml."""
+    """Load ModelConfig from models.yaml (fresh read, no cache).
+
+    No singleton: a yaml edit takes effect without restarts or explicit
+    invalidation. The file is small (~350 lines); re-parsing per call costs
+    single-digit milliseconds and removes a whole class of stale-state bugs.
+    """
     raw = _load_models_yaml()
     cfg = ModelConfig(raw)
     _validate_chunk_windows(cfg)
@@ -1159,21 +844,3 @@ def _validate_chunk_windows(cfg: ModelConfig) -> None:
             f"Invalid ingestion chunk windows: chunk_overlap ({overlap}) >= "
             f"chunk_size ({size}). Overlap must be smaller than the window."
         )
-
-
-@lru_cache(maxsize=1)
-def get_ports() -> dict[str, int]:
-    """Return the canonical port registry from repo-root config/ports.yaml."""
-    return _load_ports_yaml()
-
-
-def reload_ports() -> dict[str, int]:
-    """Clear cached ports and re-read config/ports.yaml."""
-    get_ports.cache_clear()
-    return get_ports()
-
-
-def reload_settings() -> Settings:
-    """Clear cached settings singleton and re-read environment variables."""
-    get_settings.cache_clear()
-    return get_settings()

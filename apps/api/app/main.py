@@ -27,9 +27,11 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
-from app.core.config import get_model_config, get_settings
-from app.core.disk_cache import maybe_cleanup_cache
-from app.core.exceptions import (
+from app.core.config.model_config import get_model_config
+from app.core.config.settings import get_settings
+from app.core.observability.logging import configure_logging, get_logger
+from app.core.observability.tracing import init_tracing, tracing_middleware
+from app.core.security.exceptions import (
     AnalysisNotFoundError,
     AuthenticationError,
     AuthorizationError,
@@ -45,11 +47,8 @@ from app.core.exceptions import (
     UnsupportedFormatError,
     VectorStoreError,
 )
-from app.core.hardware import get_cached_hardware_profile
-from app.core.logging import configure_logging, get_logger
-from app.core.memory import get_memory_usage_mb
-from app.core.semantic_cache import _cleanup_expired_entries, load_cache
-from app.core.tracing import init_tracing, tracing_middleware
+from app.core.system.hardware import get_cached_hardware_profile
+from app.core.system.memory import get_memory_usage_mb
 from app.db.mongodb import connect_db, create_indexes, disconnect_db
 from app.llm.local_llm import (
     close_local_llm_clients,
@@ -57,7 +56,6 @@ from app.llm.local_llm import (
     seed_local_model_discovery,
 )
 from app.llm.model_registry import (
-    close_all_llm_instances,
     get_embedding_model,
     onnx_model_status,
 )
@@ -191,10 +189,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await connect_db()
     await create_indexes()
 
-    # Load semantic cache from disk (lazy-loaded at import, now explicit)
-    loaded = load_cache()
-    logger.info("Semantic cache loaded", entries=loaded)
-
     # Seed the local-model discovery cache from the persisted snapshot so a
     # pre-run `scripts/bootstrap.py` (or any earlier process) is
     # honored before the server answers its first request.
@@ -219,15 +213,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 error=str(warm_err),
             )
 
-    async def _cleanup_caches() -> None:
-        """Run periodic cache cleanup on startup (embedding + semantic)."""
-        try:
-            maybe_cleanup_cache()
-            _cleanup_expired_entries()
-            logger.debug("Cache TTL cleanup completed on startup")
-        except Exception as exc:
-            logger.debug("Startup cache cleanup skipped", error=str(exc))
-
     async def _warmup_hardware() -> None:
         # OPT-H9: Run the expensive hardware probe once at startup so the first
         # /models/* request never pays the subprocess cost.
@@ -248,7 +233,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await _warmup_hardware()
         logger.info("Startup warmup: embeddings", rss_mb=get_memory_usage_mb())
         await _warmup_embeddings()
-        await _cleanup_caches()
         logger.info("Startup warmup complete", rss_mb=get_memory_usage_mb())
 
     warmup_task = asyncio.create_task(_async_warmup())
@@ -260,7 +244,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         warmup_task.cancel()
     logger.info("TRUSTRAG API shutting down")
     await close_local_llm_clients()
-    await close_all_llm_instances(seal=True)
     await disconnect_db()
 
 

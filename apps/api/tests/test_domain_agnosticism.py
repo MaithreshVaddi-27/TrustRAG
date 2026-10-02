@@ -157,10 +157,13 @@ def test_fused_verify_example_is_domain_neutral() -> None:
 
 
 def test_generation_scope_block_is_not_structure_locked() -> None:
-    """The <scope> block must not enumerate one corpus's structural vocabulary."""
+    """Scope block (CRAFT <context>, legacy <scope>) stays corpus-neutral."""
     from app.rag.generation.generator import GROUNDING_SYSTEM_PROMPT as P
 
-    scope = P.split("<scope>", 1)[1].split("</scope>", 1)[0].lower()
+    if "<context>" in P:
+        scope = P.split("<context>", 1)[1].split("</context>", 1)[0].lower()
+    else:  # legacy tag (pre-CRAFT)
+        scope = P.split("<scope>", 1)[1].split("</scope>", 1)[0].lower()
     # It should delegate structure to the Context, not list subject headings.
     for word in ("syllabus", "textbook", "chapter", "unit"):
         assert word not in scope, f"{word!r} re-locks the prompt to one corpus"

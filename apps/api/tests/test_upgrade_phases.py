@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from app.core.exceptions import IngestionError
+from app.core.security.exceptions import IngestionError
 from app.rag.ingestion.parser import (
     _ENCODING_DETECT_SLICE,
     EICAR_TEST_STRING,
@@ -81,20 +81,8 @@ async def test_await_nli_call_passes_fast_result(monkeypatch):
     assert await _await_nli_call(_fast(), what="test-fast-call") == {"verdict": "SUPPORTED"}
 
 
-def test_query_cache_clear_and_dim_mismatch_path():
-    from app.rag.retrieval.retriever import _query_cache
-
-    _query_cache.set("k", [0.1, 0.2, 0.3])
-    assert _query_cache.get("k") == [0.1, 0.2, 0.3]
-    # Simulate an embedding-space change: stale 3-dim hit vs 384-dim collection.
-    cached = _query_cache.get("k")
-    assert cached is not None and len(cached) != 384
-    _query_cache.clear()
-    assert _query_cache.get("k") is None
-
-
 async def test_mcp_local_chat_rejects_cloud_provider():
-    from app.core.security import create_service_token
+    from app.core.security.security import create_service_token
     from app.mcp.server import handle_tool_call
 
     token = create_service_token("test-service")
@@ -126,27 +114,9 @@ async def test_mcp_external_still_needs_token():
         await handle_tool_call("tavily_search", {"query": "q"})
 
 
-def test_llm_registry_put_is_sync_and_bounded():
-    from app.llm.model_registry import (
-        _LLM_REGISTRY,
-        _llm_registry_key,
-        get_llm_instance,
-        put_llm_instance,
-    )
-
-    assert not asyncio.iscoroutinefunction(put_llm_instance)
-    marker = object()
-    put_llm_instance("test-prov", "test-model", marker)  # type: ignore[arg-type]
-    try:
-        assert get_llm_instance("test-prov", "test-model") is marker
-        assert _llm_registry_key("test-prov", "test-model") in _LLM_REGISTRY
-    finally:
-        _LLM_REGISTRY.pop(_llm_registry_key("test-prov", "test-model"), None)
-
-
 async def test_mcp_search_rejects_wrong_bound_kb():
-    from app.core.exceptions import AuthenticationError
-    from app.core.security import create_service_token
+    from app.core.security.exceptions import AuthenticationError
+    from app.core.security.security import create_service_token
     from app.mcp.server import handle_tool_call
 
     token = create_service_token(
@@ -168,8 +138,8 @@ async def test_mcp_search_rejects_wrong_bound_kb():
 async def test_mcp_search_rejects_foreign_bound_user():
     from unittest.mock import AsyncMock, patch
 
-    from app.core.exceptions import AuthenticationError, AuthorizationError
-    from app.core.security import create_service_token
+    from app.core.security.exceptions import AuthenticationError, AuthorizationError
+    from app.core.security.security import create_service_token
     from app.mcp.server import handle_tool_call
 
     token = create_service_token(
@@ -195,7 +165,7 @@ async def test_mcp_search_rejects_foreign_bound_user():
 async def test_mcp_search_unbound_token_proceeds():
     from unittest.mock import AsyncMock, patch
 
-    from app.core.security import create_service_token
+    from app.core.security.security import create_service_token
     from app.mcp.server import handle_tool_call
 
     token = create_service_token("svc", permissions=["search:read"])
@@ -213,7 +183,7 @@ async def test_mcp_search_unbound_token_proceeds():
 async def test_mcp_list_kbs_scoped_to_bound_user():
     from unittest.mock import patch
 
-    from app.core.security import create_service_token
+    from app.core.security.security import create_service_token
     from app.mcp.server import handle_tool_call
 
     token = create_service_token(
@@ -254,28 +224,24 @@ def test_onnx_model_status_keys():
 
 
 def test_onnx_missing_model_points_at_bootstrap():
-    from app.core.exceptions import ConfigurationError
+    # Single-model install: no per-request override. A missing ONNX file
+    # fails loudly with the bootstrap fix (not silent). No model cache
+    # exists: every call loads fresh, so no clearing needed.
+    import app.llm.model_registry as _reg
+    from app.core.security.exceptions import ConfigurationError
     from app.llm.model_registry import get_embedding_model
 
-    # Single-model install: no per-request override. A missing ONNX file
-    # fails loudly with the bootstrap fix (not silent).
-    get_embedding_model.cache_clear()
+    orig = _reg._resolve_embedding_onnx_path
+    _reg._resolve_embedding_onnx_path = lambda _cache_dir: None
     try:
-        import app.llm.model_registry as _reg
-
-        orig = _reg._resolve_embedding_onnx_path
-        _reg._resolve_embedding_onnx_path = lambda _cache_dir: None
-        try:
-            with pytest.raises(ConfigurationError, match="bootstrap"):
-                get_embedding_model()
-        finally:
-            _reg._resolve_embedding_onnx_path = orig
+        with pytest.raises(ConfigurationError, match="bootstrap"):
+            get_embedding_model()
     finally:
-        get_embedding_model.cache_clear()
+        _reg._resolve_embedding_onnx_path = orig
 
 
 def test_memory_fallback_without_psutil_or_resource(monkeypatch):
-    import app.core.memory as memory_module
+    import app.core.system.memory as memory_module
 
     monkeypatch.setattr(memory_module, "_PSUTIL_AVAILABLE", False)
     monkeypatch.setattr(memory_module, "resource", None)
@@ -297,32 +263,10 @@ def test_export_fn_accepts_model_name():
         sys.path.remove(str(Path(__file__).resolve().parents[3] / "scripts"))
 
 
-def test_semantic_matrix_rebuilds_when_dirty():
-    import app.core.semantic_cache as sc
-
-    sc.reset_module_state()
-    try:
-        vec_a = [1.0, 0.0, 0.0, 0.0]
-        vec_b = [0.0, 1.0, 0.0, 0.0]
-        sc.store_semantic_cache("q1", "kb1", vec_a, {"answer": "A"}, embedding_model="m")
-        sc.store_semantic_cache("q2", "kb1", vec_b, {"answer": "B"}, embedding_model="m")
-        # Mutations flag dirty; the next lookup must rebuild (fast path live).
-        assert sc._MATRIX_DIRTY is True
-        hit = sc.check_semantic_cache("q1", "kb1", vec_a, embedding_model="m")
-        assert sc._MATRIX_DIRTY is False
-        assert sc._MATRIX_CACHE is not None
-        assert hit == {"answer": "A"}
-        # Near-duplicate still resolves to the right entry through the matrix.
-        hit_b = sc.check_semantic_cache("q2", "kb1", [0.0, 1.0, 0.0, 0.0], embedding_model="m")
-        assert hit_b == {"answer": "B"}
-    finally:
-        sc.reset_module_state()
-
-
 def test_parse_document_rejects_eicar():
     import io
 
-    from app.core.exceptions import IngestionError
+    from app.core.security.exceptions import IngestionError
     from app.rag.ingestion.parser import EICAR_TEST_STRING, parse_document
 
     stream = io.BytesIO(b"clean header " + EICAR_TEST_STRING + b" trailer")
@@ -333,7 +277,7 @@ def test_parse_document_rejects_eicar():
 def test_parse_document_rejects_signature_mismatch():
     import io
 
-    from app.core.exceptions import IngestionError
+    from app.core.security.exceptions import IngestionError
     from app.rag.ingestion.parser import parse_document
 
     with pytest.raises(IngestionError, match=r"[Ss]ignature|mismatch|format"):
@@ -344,7 +288,7 @@ def test_parse_docx_rejects_zip_bomb():
     import io
     import zipfile
 
-    from app.core.exceptions import IngestionError
+    from app.core.security.exceptions import IngestionError
     from app.rag.ingestion.parser import parse_document
 
     buf = io.BytesIO()
@@ -359,7 +303,7 @@ def test_parse_docx_rejects_xxe():
     import io
     import zipfile
 
-    from app.core.exceptions import IngestionError
+    from app.core.security.exceptions import IngestionError
     from app.rag.ingestion.parser import parse_document
 
     evil_xml = (
@@ -378,7 +322,7 @@ def test_parse_docx_rejects_xxe():
 def test_parse_pdf_rejects_oversize():
     import io
 
-    from app.core.exceptions import IngestionError
+    from app.core.security.exceptions import IngestionError
     from app.rag.ingestion.parser import parse_document
 
     # Size guard trips before any PDF parsing (fast: no fitz work).
@@ -393,7 +337,7 @@ async def test_qdrant_rejects_schemeless_url_without_mkdir(tmp_path):
     from unittest.mock import patch
 
     import app.db.qdrant as qdrant_module
-    from app.core.exceptions import VectorStoreError
+    from app.core.security.exceptions import VectorStoreError
 
     saved = qdrant_module._client
     qdrant_module._client = None

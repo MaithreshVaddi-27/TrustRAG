@@ -89,7 +89,7 @@ def _patches(*, settings=None, cfg=None, onnx=None):
         patch("app.main.seed_local_model_discovery", AsyncMock()),
         patch("app.main.get_cached_hardware_profile", MagicMock(return_value={})),
         patch("app.main.get_embedding_model", MagicMock()),
-        patch("app.core.memory.trim_memory", MagicMock()),
+        patch("app.core.system.memory.trim_memory", MagicMock()),
     )
 
 
@@ -106,7 +106,6 @@ async def test_lifespan_starts_and_shuts_down_cleanly():
     indexes = AsyncMock(side_effect=lambda: calls.append("indexes"))
     disconnect = AsyncMock(side_effect=lambda: calls.append("disconnect"))
     close_clients = AsyncMock(side_effect=lambda: calls.append("close_clients"))
-    close_instances = AsyncMock(side_effect=lambda **_k: calls.append("close_instances"))
 
     with (
         patch("app.main.configure_logging", MagicMock()),
@@ -127,16 +126,15 @@ async def test_lifespan_starts_and_shuts_down_cleanly():
         patch("app.main.seed_local_model_discovery", AsyncMock()),
         patch("app.main.get_cached_hardware_profile", MagicMock(return_value={})),
         patch("app.main.get_embedding_model", MagicMock()),
-        patch("app.main.close_all_llm_instances", close_instances),
         patch("app.main.close_local_llm_clients", close_clients),
-        patch("app.core.memory.trim_memory", MagicMock()),
+        patch("app.core.system.memory.trim_memory", MagicMock()),
     ):
         entered: list[bool] = []
         await _run_lifespan(entered)
 
     assert entered == [True], "lifespan did not yield (server never served)"
     assert calls.index("connect") < calls.index("indexes"), "indexes created before connect"
-    for expected in ("connect", "indexes", "close_clients", "close_instances", "disconnect"):
+    for expected in ("connect", "indexes", "close_clients", "disconnect"):
         assert expected in calls, f"lifespan never did {expected}: {calls}"
 
 
@@ -162,9 +160,8 @@ async def test_missing_onnx_embedding_weights_logs_error(caplog):
         patch("app.main.seed_local_model_discovery", AsyncMock()),
         patch("app.main.get_cached_hardware_profile", MagicMock(return_value={})),
         patch("app.main.get_embedding_model", MagicMock()),
-        patch("app.main.close_all_llm_instances", AsyncMock()),
         patch("app.main.close_local_llm_clients", AsyncMock()),
-        patch("app.core.memory.trim_memory", MagicMock()),
+        patch("app.core.system.memory.trim_memory", MagicMock()),
         patch("app.main.logger.error") as spy_error,
     ):
         await _run_lifespan([])
@@ -195,9 +192,8 @@ async def test_hf_token_is_exported_to_the_environment():
         patch("app.main.seed_local_model_discovery", AsyncMock()),
         patch("app.main.get_cached_hardware_profile", MagicMock(return_value={})),
         patch("app.main.get_embedding_model", MagicMock()),
-        patch("app.main.close_all_llm_instances", AsyncMock()),
         patch("app.main.close_local_llm_clients", AsyncMock()),
-        patch("app.core.memory.trim_memory", MagicMock()),
+        patch("app.core.system.memory.trim_memory", MagicMock()),
     ):
         await _run_lifespan([])
 
@@ -227,9 +223,8 @@ async def test_langchain_tracing_is_forced_off():
         patch("app.main.seed_local_model_discovery", AsyncMock()),
         patch("app.main.get_cached_hardware_profile", MagicMock(return_value={})),
         patch("app.main.get_embedding_model", MagicMock()),
-        patch("app.main.close_all_llm_instances", AsyncMock()),
         patch("app.main.close_local_llm_clients", AsyncMock()),
-        patch("app.core.memory.trim_memory", MagicMock()),
+        patch("app.core.system.memory.trim_memory", MagicMock()),
     ):
         await _run_lifespan([])
 

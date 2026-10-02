@@ -27,8 +27,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from app.core.exceptions import RetrievalOutageError
-from app.core.logging import get_logger
+from app.core.observability.logging import get_logger
+from app.core.security.exceptions import RetrievalOutageError
 from app.rag.retrieval.retriever import retrieve_hybrid_chunks
 
 logger = get_logger(__name__)

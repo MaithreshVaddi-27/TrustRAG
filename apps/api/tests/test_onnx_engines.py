@@ -105,7 +105,7 @@ def _fake_tokenizer():
 
 def _make_embedder(session, **kwargs):
     """Construct ONNXBGEEmbeddings without touching onnxruntime or transformers."""
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
     from app.llm import onnx_embeddings as mod
 
     tok = _fake_tokenizer()

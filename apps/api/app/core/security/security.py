@@ -18,8 +18,8 @@ import structlog
 from jose import jwt
 from jose.exceptions import ExpiredSignatureError, JWTError
 
-from app.core.config import get_settings
-from app.core.exceptions import AuthenticationError
+from app.core.config.settings import get_settings
+from app.core.security.exceptions import AuthenticationError
 
 logger = structlog.get_logger(__name__)
 

@@ -9,7 +9,7 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
 import app.llm.local_llm as _llm_mod
-from app.core.exceptions import ConfigurationError
+from app.core.security.exceptions import ConfigurationError
 from app.llm.local_llm import (
     ChatLlamaCppClient,
     ChatOllamaClient,
@@ -66,49 +66,35 @@ async def test_local_llm_http_clients_are_reused_per_endpoint_and_loop():
 
 def test_model_registry_local_providers(monkeypatch):
     # Isolate from developer .env so local overrides can't flip expectations.
+    # Blank env = no override (Settings reads env fresh per call, no cache).
     for var in ("OLLAMA_MODEL", "LLAMACPP_MODEL", "LLAMA_CPP_MODEL", "LLM_MODEL", "GEMINI_MODEL"):
-        monkeypatch.delenv(var, raising=False)
-    from app.core.config import reload_settings
-    from app.llm.model_registry import clear_model_caches
+        monkeypatch.setenv(var, "")
+    from app.core.config.settings import get_settings
 
-    reload_settings()
-    clear_model_caches()
-    try:
-        # Force the no-override path: Settings reads the .env FILE (not just
-        # os.environ), so blank the model overrides on the singleton itself.
-        from app.core.config import get_settings
+    ollama_llm = get_llm("ollama")
+    assert isinstance(ollama_llm, ChatOllamaClient)
+    assert ollama_llm.model == "gemma3:1b"
 
-        s = get_settings()
-        monkeypatch.setattr(s, "ollama_model", "")
-        monkeypatch.setattr(s, "llamacpp_model", "")
-        monkeypatch.setattr(s, "mlx_model", "")
-        ollama_llm = get_llm("ollama")
-        assert isinstance(ollama_llm, ChatOllamaClient)
-        assert ollama_llm.model == "gemma3:1b"
+    llamacpp_llm = get_llm("llama_cpp")
+    assert isinstance(llamacpp_llm, ChatLlamaCppClient)
+    assert llamacpp_llm.model == "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
 
-        llamacpp_llm = get_llm("llama_cpp")
-        assert isinstance(llamacpp_llm, ChatLlamaCppClient)
-        assert llamacpp_llm.model == "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
+    mlx_llm = get_llm("mlx")
+    assert isinstance(mlx_llm, ChatLlamaCppClient)
+    assert mlx_llm.model == "mlx-community/Llama-3.2-1B-Instruct-4bit"
+    assert mlx_llm.base_url == get_settings().mlx_base_url
 
-        mlx_llm = get_llm("mlx")
-        assert isinstance(mlx_llm, ChatLlamaCppClient)
-        assert mlx_llm.model == "mlx-community/Llama-3.2-1B-Instruct-4bit"
-        assert mlx_llm.base_url == s.mlx_base_url
+    v_ollama = get_verification_model("ollama")
+    assert isinstance(v_ollama, ChatOllamaClient)
+    assert v_ollama.temperature == 0.0
 
-        v_ollama = get_verification_model("ollama")
-        assert isinstance(v_ollama, ChatOllamaClient)
-        assert v_ollama.temperature == 0.0
+    v_llamacpp = get_verification_model("llama_cpp")
+    assert isinstance(v_llamacpp, ChatLlamaCppClient)
+    assert v_llamacpp.temperature == 0.0
 
-        v_llamacpp = get_verification_model("llama_cpp")
-        assert isinstance(v_llamacpp, ChatLlamaCppClient)
-        assert v_llamacpp.temperature == 0.0
-
-        v_mlx = get_verification_model("mlx")
-        assert isinstance(v_mlx, ChatLlamaCppClient)
-        assert v_mlx.temperature == 0.0
-    finally:
-        clear_model_caches()
-        reload_settings()
+    v_mlx = get_verification_model("mlx")
+    assert isinstance(v_mlx, ChatLlamaCppClient)
+    assert v_mlx.temperature == 0.0
 
 
 @pytest.mark.asyncio
@@ -136,7 +122,7 @@ async def test_llamacpp_health_check():
 
 def test_embedding_model_is_single_onnx_engine():
     """Single embedding engine: ONNX BGE from models.yaml, no provider choice."""
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
     from app.llm.model_registry import get_embedding_model
 
     cfg = get_model_config()
@@ -149,19 +135,16 @@ def test_embedding_model_is_single_onnx_engine():
 
     assert "model" not in inspect.signature(get_embedding_model).parameters
     # Missing ONNX weights fail loudly with the bootstrap fix (not silent).
-    get_embedding_model.cache_clear()
-    try:
-        with pytest.raises(ConfigurationError, match="bootstrap"):
-            import app.llm.model_registry as _reg
+    # No model cache exists: every call loads fresh, so no clearing needed.
+    with pytest.raises(ConfigurationError, match="bootstrap"):
+        import app.llm.model_registry as _reg
 
-            orig = _reg._resolve_embedding_onnx_path
-            _reg._resolve_embedding_onnx_path = lambda _cache_dir: None
-            try:
-                get_embedding_model()
-            finally:
-                _reg._resolve_embedding_onnx_path = orig
-    finally:
-        get_embedding_model.cache_clear()
+        orig = _reg._resolve_embedding_onnx_path
+        _reg._resolve_embedding_onnx_path = lambda _cache_dir: None
+        try:
+            get_embedding_model()
+        finally:
+            _reg._resolve_embedding_onnx_path = orig
 
 
 # ─── Discovery snapshot + seeding tests ───────────────────────────────────────
@@ -399,7 +382,7 @@ async def test_probe_reaches_running_server(monkeypatch):
 async def test_probe_down_server_raises_actionable_error(monkeypatch):
     import httpx
 
-    from app.core.exceptions import LLMUnavailableError
+    from app.core.security.exceptions import LLMUnavailableError
     from app.llm.local_llm import probe_local_llm_server
 
     class _Down(_FakeHTTPClient):
@@ -441,7 +424,7 @@ async def test_probe_timeout_reports_overloaded_not_down(monkeypatch):
     """Persistent timeouts mean slow/overloaded — never 'not reachable'."""
     import httpx
 
-    from app.core.exceptions import LLMUnavailableError
+    from app.core.security.exceptions import LLMUnavailableError
     from app.llm.local_llm import probe_local_llm_server
 
     class _Slow(_FakeHTTPClient):
@@ -597,7 +580,7 @@ async def test_probe_mlx_hint_names_server_command(monkeypatch):
     """A down MLX server must tell the operator the mlx_lm.server command."""
     import httpx
 
-    from app.core.exceptions import LLMUnavailableError
+    from app.core.security.exceptions import LLMUnavailableError
     from app.llm.local_llm import probe_local_llm_server
 
     class _Down(_FakeHTTPClient):

@@ -153,7 +153,7 @@ def test_parse_pdf_ocr_failure_carries_no_image_bytes():
 
 
 def test_parse_pdf_dense_native_page_never_calls_engine():
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     assert get_model_config().ocr_enabled is True  # default on; gate below is explicit
     with (
@@ -336,7 +336,7 @@ async def test_pipeline_saves_page_image_once_per_page(tmp_path, monkeypatch):
 
 
 def test_ocr_config_defaults():
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     cfg = get_model_config()
     assert cfg.ocr_enabled is True

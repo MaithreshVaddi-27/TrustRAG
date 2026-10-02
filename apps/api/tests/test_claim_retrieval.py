@@ -159,7 +159,7 @@ async def test_claim_retrieval_budget_caps_hybrid_calls():
     # Budget is tier-aware (tier_caps override cost_controls.max_claim_retrievals:
     # lean local tier == 2, balanced/cloud == 3) — 5 neutral claims must still
     # be capped, never re-retrieved one-by-one.
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     expected_budget = get_model_config().tier_caps()["max_claim_retrievals"]
     assert hybrid_mock.await_count == expected_budget

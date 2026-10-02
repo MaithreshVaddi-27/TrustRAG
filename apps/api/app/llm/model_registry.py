@@ -14,24 +14,15 @@ Changing a model requires updating models.yaml only — no code changes.
 
 from __future__ import annotations
 
-import asyncio
-import threading
-import time
-from collections import OrderedDict
-from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.embeddings import Embeddings
 
-from app.core.config import ModelConfig, get_model_config, get_settings
-from app.core.exceptions import ConfigurationError
-from app.core.logging import get_logger
-
-try:
-    import psutil
-except ImportError:
-    psutil = None
+from app.core.config.model_config import ModelConfig, get_model_config
+from app.core.config.settings import get_settings
+from app.core.observability.logging import get_logger
+from app.core.security.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
@@ -90,49 +81,7 @@ def onnx_model_status() -> dict[str, Any]:
     }
 
 
-# ─── Bounded LLM Registry (replaces lru_cache on get_llm/get_verification_model) ────
-# Limits concurrent model instances to prevent RAM/GPU leak from user-controlled keys.
-# Aggressive eviction - configurable max instances based on RAM
-_MAX_LLM_INSTANCES = 2  # Reduced from 4 for ultra-low RAM usage (8GB systems)
-_LLM_REGISTRY: OrderedDict[str, BaseChatModel] = OrderedDict()
-_LLM_REGISTRY_LOCK = threading.RLock()
-_LLM_REGISTRY_CLOSED = False
-# TTL cache for get_max_llm_instances() (see below).
-_MAX_INSTANCES_CACHE: dict[str, float] = {}
-
-
-def get_max_llm_instances() -> int:
-    """Get the maximum number of LLM instances based on available RAM.
-
-    Cached for 60 s: the value changes ~never, and every uncached call costs
-    a psutil syscall on the LLM-construction path.
-    """
-    now = time.monotonic()
-    with _LLM_REGISTRY_LOCK:
-        cached = _MAX_INSTANCES_CACHE.get("value")
-        cached_at = _MAX_INSTANCES_CACHE.get("at", 0.0)
-        if cached is not None and (now - cached_at) < 60.0:
-            return int(cached)
-    try:
-        import psutil as _psutil
-
-        total_ram_gb = _psutil.virtual_memory().total / (1024**3)
-        if total_ram_gb <= 8:
-            resolved = 1  # Ultra-aggressive for 8GB systems
-        elif total_ram_gb <= 16:
-            resolved = 2  # Conservative for 16GB systems
-        else:
-            resolved = 4  # Standard for 32GB+ systems
-    except ImportError:
-        resolved = _MAX_LLM_INSTANCES  # Default fallback
-    with _LLM_REGISTRY_LOCK:
-        _MAX_INSTANCES_CACHE["value"] = resolved
-        _MAX_INSTANCES_CACHE["at"] = now
-    return resolved
-
-
-def _llm_registry_key(provider: str, model: str | None) -> str:
-    return f"{provider}:{model or 'default'}"
+# ─── LLM factories (no caching: fresh client per call) ────────────────────────
 
 
 def _create_llm(
@@ -145,7 +94,6 @@ def _create_llm(
     top_p: float | None = None,
     max_completion_tokens: int | None = None,
     max_retries: int | None = None,
-    registry_prefix: str = "",
 ) -> BaseChatModel:
     """Unified LLM factory used by get_llm and get_verification_model."""
     settings = get_settings()
@@ -227,149 +175,6 @@ def _create_llm(
     return llm
 
 
-async def _close_llm_instance(llm: BaseChatModel) -> None:
-    """Best-effort close for LLM instances that support it."""
-    try:
-        # Prefer async close if available
-        if hasattr(llm, "aclose"):
-            await llm.aclose()
-        elif hasattr(llm, "close"):
-            llm.close()
-    except Exception as exc:
-        logger.debug("Error closing LLM instance", error=str(exc))
-
-
-def get_llm_instance(provider: str, model: str | None) -> BaseChatModel | None:
-    """Get existing LLM instance from registry (no creation)."""
-    key = _llm_registry_key(provider, model)
-    with _LLM_REGISTRY_LOCK:
-        if key in _LLM_REGISTRY:
-            # LRU: move to end
-            _LLM_REGISTRY.move_to_end(key)
-            return _LLM_REGISTRY[key]
-    return None
-
-
-# Instances evicted while no event loop is running (sync call sites, worker
-# threads) wait here until close_all_llm_instances() drains them at shutdown.
-_PENDING_CLOSE: list[BaseChatModel] = []
-
-
-def _schedule_close(llm: BaseChatModel) -> None:
-    """Best-effort async close: direct task when a loop runs, else deferred."""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-    if loop is not None and not loop.is_closed():
-        loop.create_task(_close_llm_instance(llm))
-    else:
-        with _LLM_REGISTRY_LOCK:
-            _PENDING_CLOSE.append(llm)
-
-
-# Cloud providers hold a network connection, not a model in RAM. The
-# RAM-derived cap is meaningless for them, and evicting one can aclose() a
-# client that has an in-flight — and billed — request in progress (audit B-16).
-# Cloud clients are therefore never evicted and never closed on the LRU path.
-CLOUD_LLM_PROVIDERS = frozenset({"gemini"})
-
-
-def _is_cloud_provider(provider: str | None) -> bool:
-    return (provider or "").strip().lower() in CLOUD_LLM_PROVIDERS
-
-
-def put_llm_instance(provider: str, model: str | None, llm: BaseChatModel) -> None:
-    """Put LLM instance into bounded registry with LRU eviction (sync).
-
-    Sync by design: get_llm/get_verification_model are sync factories called
-    from both async and sync code. Evicted instances close via the running
-    loop when there is one, otherwise wait in _PENDING_CLOSE for shutdown.
-
-    Cloud providers bypass the bound entirely: the connection is cheap, the RAM
-    cap is meaningless, and closing a client mid-request wastes a paid call.
-    """
-    global _LLM_REGISTRY_CLOSED
-    if _LLM_REGISTRY_CLOSED:
-        # If registry is closed, close the new instance immediately
-        _schedule_close(llm)
-        return
-
-    key = _llm_registry_key(provider, model)
-    if _is_cloud_provider(provider):
-        with _LLM_REGISTRY_LOCK:
-            _LLM_REGISTRY[key] = llm
-            _LLM_REGISTRY.move_to_end(key)
-        return
-
-    max_instances = get_max_llm_instances()
-    evicted: tuple[str, BaseChatModel] | None = None
-    with _LLM_REGISTRY_LOCK:
-        # Evict LRU if at capacity. Never evict a cloud client: popping one
-        # here would aclose() it while a request may be in flight.
-        if len(_LLM_REGISTRY) >= max_instances and key not in _LLM_REGISTRY:
-            for candidate_key in list(_LLM_REGISTRY.keys()):
-                if not _is_cloud_provider(candidate_key.split(":", 1)[0]):
-                    evicted_llm = _LLM_REGISTRY.pop(candidate_key)
-                    evicted = (candidate_key, evicted_llm)
-                    break
-
-        _LLM_REGISTRY[key] = llm
-        _LLM_REGISTRY.move_to_end(key)
-
-    if evicted is not None:
-        evicted_key, evicted_llm = evicted
-        logger.debug("Evicted LLM from registry", evicted=evicted_key, max_instances=max_instances)
-        _schedule_close(evicted_llm)
-
-
-async def close_all_llm_instances(seal: bool = False) -> None:
-    """Close all LLM instances; seal the registry only on app shutdown.
-
-    Args:
-        seal: When True, prevent new registrations (shutdown path).
-            `clear_model_caches()` passes False so the registry reopens.
-    """
-    global _LLM_REGISTRY_CLOSED
-    with _LLM_REGISTRY_LOCK:
-        _LLM_REGISTRY_CLOSED = seal
-        pending = list(_LLM_REGISTRY.values()) + list(_PENDING_CLOSE)
-        _LLM_REGISTRY.clear()
-        _PENDING_CLOSE.clear()
-    for llm in pending:
-        await _close_llm_instance(llm)
-    if seal:
-        logger.info("Closed all LLM instances and sealed registry")
-    else:
-        logger.info("Closed all LLM instances (registry reopened)")
-
-
-def _clear_llm_registry_sync() -> None:
-    """Sync registry drain for sync call sites (clear_model_caches, tests).
-
-    Instances move to _PENDING_CLOSE and close via the running loop when
-    there is one; anything left is drained by close_all_llm_instances().
-    """
-    with _LLM_REGISTRY_LOCK:
-        pending = list(_LLM_REGISTRY.values())
-        _LLM_REGISTRY.clear()
-        _PENDING_CLOSE.extend(pending)
-    for llm in pending:
-        # Sync close when the client offers one; async-only clients wait for
-        # the loop task / shutdown drain.
-        close_fn = getattr(llm, "close", None)
-        if callable(close_fn):
-            try:
-                close_fn()
-            except Exception as exc:
-                logger.debug("Error closing LLM instance", error=str(exc))
-        else:
-            _schedule_close(llm)
-
-
-# ─── LLM ─────────────────────────────────────────────────────────────────────
-
-
 def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatModel:
     """
     Return the primary LLM for answer generation.
@@ -380,8 +185,9 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
       - mlx: ChatLlamaCppClient pointed at mlx_lm.server (Apple Silicon, OpenAI-compatible)
       - gemini: ChatGoogleGenerativeAI via langchain-google-genai
 
-    Uses bounded registry (max instances scale with RAM: 1/2/4) with LRU
-    eviction to prevent RAM/GPU leak from user-controlled model strings.
+    No instance caching: every call constructs a fresh client. HTTP-backed
+    LLM clients are cheap to build; sharing them across analyses caused
+    stale-state bugs (evicted mid-request clients, sealed registries).
     """
     settings = get_settings()
     cfg: ModelConfig = get_model_config()
@@ -399,12 +205,6 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
     else:
         active_model = model or cfg.llm_model_for(active_provider)
 
-    # Check registry first
-    cached = get_llm_instance(active_provider, active_model)
-    if cached is not None:
-        logger.debug("LLM cache hit", provider=active_provider, model=active_model)
-        return cached
-
     logger.info(
         "Initializing LLM",
         provider=active_provider,
@@ -413,7 +213,7 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
         max_output_tokens=cfg.llm_max_output_tokens,
     )
 
-    llm = _create_llm(
+    return _create_llm(
         provider=active_provider,
         model=active_model,
         temperature=cfg.llm_temperature,
@@ -422,10 +222,7 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
         top_p=cfg.llm_top_p,
         max_completion_tokens=cfg.llm_max_output_tokens,
         max_retries=cfg.llm_max_retries,
-        registry_prefix="",
     )
-    put_llm_instance(active_provider, active_model, llm)
-    return llm
 
 
 # ─── Verification LLM ─────────────────────────────────────────────────────────
@@ -438,7 +235,7 @@ def get_verification_model(provider: str | None = None, model: str | None = None
     Separate from the primary LLM to allow independent cost/quality tuning.
     Temperature is forced to 0.0 for deterministic verification.
 
-    Uses bounded registry (max 4 instances) with LRU eviction.
+    No instance caching (see get_llm).
     """
     settings = get_settings()
     cfg: ModelConfig = get_model_config()
@@ -454,12 +251,6 @@ def get_verification_model(provider: str | None = None, model: str | None = None
     else:
         active_model = model or cfg.verification_model_for(active_provider)
 
-    # Check registry first (use distinct key prefix for verification models)
-    cached = get_llm_instance(f"verify:{active_provider}", active_model)
-    if cached is not None:
-        logger.debug("Verification LLM cache hit", provider=active_provider, model=active_model)
-        return cached
-
     logger.info(
         "Initializing verification model",
         provider=active_provider,
@@ -467,7 +258,7 @@ def get_verification_model(provider: str | None = None, model: str | None = None
         temperature=0.0,
     )
 
-    llm = _create_llm(
+    return _create_llm(
         provider=active_provider,
         model=active_model,
         temperature=0.0,
@@ -476,10 +267,7 @@ def get_verification_model(provider: str | None = None, model: str | None = None
         top_p=cfg.llm_top_p,
         max_completion_tokens=cfg.verification_max_output_tokens,
         max_retries=cfg.verification_max_retries,
-        registry_prefix="verify:",
     )
-    put_llm_instance(f"verify:{active_provider}", active_model, llm)
-    return llm
 
 
 # ─── Embedding Model (single engine: ONNX BGE) ──────────────────────────────
@@ -490,7 +278,6 @@ def get_verification_model(provider: str | None = None, model: str | None = None
 # ID in models.yaml and every stage follows automatically.
 
 
-@lru_cache(maxsize=1)
 def get_embedding_model() -> Embeddings:
     """
     Return the single ONNX embedding model wrapped with persistent disk cache.
@@ -557,7 +344,6 @@ def get_embedding_model() -> Embeddings:
 # ─── Reranker ─────────────────────────────────────────────────────────────────
 
 
-@lru_cache(maxsize=1)
 def get_reranker():  # type: ignore[return]
     """
     Return the reranker model (cross-encoder via sentence-transformers or ONNX).
@@ -656,7 +442,7 @@ def get_reranker():  # type: ignore[return]
 
     logger.info("Initializing PyTorch reranker", model=cfg.reranker_model)
 
-    from app.core.hardware import get_optimal_torch_device
+    from app.core.system.hardware import get_optimal_torch_device
 
     device = get_optimal_torch_device()
     logger.debug("Reranker target device", device=device)
@@ -698,12 +484,3 @@ def registry_status() -> dict[str, Any]:
         "reranker_enabled": cfg.reranker_enabled,
         "reranker_model": cfg.reranker_model if cfg.reranker_enabled else None,
     }
-
-
-def clear_model_caches() -> None:
-    """Clear cached model singletons so updated API keys or model configs take effect."""
-    get_embedding_model.cache_clear()
-    get_reranker.cache_clear()
-    # Clear the bounded LLM registry (reopened unless sealed at shutdown)
-    _clear_llm_registry_sync()
-    logger.info("Cleared all model registry caches")

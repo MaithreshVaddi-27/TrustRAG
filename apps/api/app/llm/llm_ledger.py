@@ -25,8 +25,8 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.core.config import get_model_config
-from app.core.logging import get_logger
+from app.core.config.model_config import get_model_config
+from app.core.observability.logging import get_logger
 
 logger = get_logger(__name__)
 

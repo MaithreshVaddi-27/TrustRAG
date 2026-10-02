@@ -25,7 +25,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from app.core.config import get_model_config
+from app.core.config.model_config import get_model_config
 from app.rag.verification.verifier import FusedDecomposeVerify
 
 ANALYSIS_ID = "64ee39d09c6292376e191983"

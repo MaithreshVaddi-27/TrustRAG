@@ -26,19 +26,19 @@ except ImportError:
 
 from langchain_core.embeddings import Embeddings
 
-from app.core.config import get_model_config, get_settings
-from app.core.disk_cache import (
-    EMBEDDING_MODE_DOCUMENT,
-    EMBEDDING_MODE_QUERY,
-    get_cached_embedding,
-    get_cached_embeddings_batch,
-    set_cached_embedding,
-    set_cached_embeddings_batch,
-)
-from app.core.hardware import get_ingest_embed_batch_size
+from app.core.config.model_config import get_model_config
+from app.core.config.settings import get_settings
+from app.core.system.hardware import get_ingest_embed_batch_size
 from app.llm.onnx_runtime import build_session_options
 
 logger = structlog.get_logger(__name__)
+
+# Query and document embeddings for the same string are DIFFERENT vectors: the
+# BGE query instruction is prepended only on the query path. They must stay in
+# separate namespaces everywhere a key is built from text, or whichever ran
+# first wins and the other silently receives the wrong vector.
+EMBEDDING_MODE_QUERY = "query"
+EMBEDDING_MODE_DOCUMENT = "document"
 
 # Low-RAM / speed defaults: tokenizer threads must not fork-bloat next to
 # asyncio.to_thread. Set at import so every process (api, workers, tests)
@@ -298,14 +298,8 @@ class ONNXBGEEmbeddingsWrapper:
         if cached is not None:
             return cached
 
-        disk_hit = get_cached_embedding(text, self._model_name, EMBEDDING_MODE_QUERY)
-        if disk_hit:
-            self._store_mem(key, disk_hit)
-            return disk_hit
-
         vec = self._base.embed_query(text)
         self._store_mem(key, vec)
-        set_cached_embedding(text, self._model_name, vec, EMBEDDING_MODE_QUERY)
         return vec
 
     async def aembed_query(self, text: str) -> list[float]:
@@ -314,73 +308,55 @@ class ONNXBGEEmbeddingsWrapper:
         if cached is not None:
             return cached
 
-        disk_hit = await asyncio.to_thread(
-            get_cached_embedding, text, self._model_name, EMBEDDING_MODE_QUERY
-        )
-        if disk_hit:
-            self._store_mem(key, disk_hit)
-            return disk_hit
-
         vec = await self._base.aembed_query(text)
         self._store_mem(key, vec)
-        await asyncio.to_thread(
-            set_cached_embedding, text, self._model_name, vec, EMBEDDING_MODE_QUERY
-        )
         return vec
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
 
-        cached_map, missing_indices = get_cached_embeddings_batch(
-            texts, self._model_name, EMBEDDING_MODE_DOCUMENT
-        )
-        if not missing_indices:
-            return [cached_map[i] for i in range(len(texts))]
+        results: list[list[float]] = [None] * len(texts)  # type: ignore[list-item]
+        missing_indices: list[int] = []
+        missing_texts: list[str] = []
+        for idx, text in enumerate(texts):
+            hit = self._lookup_mem(self._mem_key(text, EMBEDDING_MODE_DOCUMENT))
+            if hit is None:
+                missing_indices.append(idx)
+                missing_texts.append(text)
+            else:
+                results[idx] = hit
 
-        missing_texts = [texts[i] for i in missing_indices]
-        computed_vectors = self._base.embed_documents(missing_texts)
+        if missing_texts:
+            computed = self._base.embed_documents(missing_texts)
+            for idx, vec in zip(missing_indices, computed, strict=True):
+                results[idx] = vec
+                self._store_mem(self._mem_key(texts[idx], EMBEDDING_MODE_DOCUMENT), vec)
 
-        # Batch write to disk cache
-        set_cached_embeddings_batch(
-            missing_texts, self._model_name, computed_vectors, EMBEDDING_MODE_DOCUMENT
-        )
-
-        for i, idx in enumerate(missing_indices):
-            vec = computed_vectors[i]
-            cached_map[idx] = vec
-            self._store_mem(self._mem_key(texts[idx], EMBEDDING_MODE_DOCUMENT), vec)
-
-        return [cached_map[i] for i in range(len(texts))]
+        return results
 
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
 
-        cached_map, missing_indices = await asyncio.to_thread(
-            get_cached_embeddings_batch, texts, self._model_name, EMBEDDING_MODE_DOCUMENT
-        )
-        if not missing_indices:
-            return [cached_map[i] for i in range(len(texts))]
+        results: list[list[float]] = [None] * len(texts)  # type: ignore[list-item]
+        missing_indices: list[int] = []
+        missing_texts: list[str] = []
+        for idx, text in enumerate(texts):
+            hit = self._lookup_mem(self._mem_key(text, EMBEDDING_MODE_DOCUMENT))
+            if hit is None:
+                missing_indices.append(idx)
+                missing_texts.append(text)
+            else:
+                results[idx] = hit
 
-        missing_texts = [texts[i] for i in missing_indices]
-        computed_vectors = await self._base.aembed_documents(missing_texts)
+        if missing_texts:
+            computed = await self._base.aembed_documents(missing_texts)
+            for idx, vec in zip(missing_indices, computed, strict=True):
+                results[idx] = vec
+                self._store_mem(self._mem_key(texts[idx], EMBEDDING_MODE_DOCUMENT), vec)
 
-        # Batch write to disk cache
-        await asyncio.to_thread(
-            set_cached_embeddings_batch,
-            missing_texts,
-            self._model_name,
-            computed_vectors,
-            EMBEDDING_MODE_DOCUMENT,
-        )
-
-        for i, idx in enumerate(missing_indices):
-            vec = computed_vectors[i]
-            cached_map[idx] = vec
-            self._store_mem(self._mem_key(texts[idx], EMBEDDING_MODE_DOCUMENT), vec)
-
-        return [cached_map[i] for i in range(len(texts))]
+        return results
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._base, name)

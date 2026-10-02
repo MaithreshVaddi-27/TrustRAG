@@ -64,8 +64,6 @@ Files: `scripts/bootstrap.py` (+ `ensure_onnx_models.py`), `apps/api/app/llm/onn
 
 | Cache | Where | Effect |
 |---|---|---|
-| SQLite embedding disk cache | `apps/api/app/core/disk_cache.py` (`CACHE_DIR`, default `apps/api/data/cache`) | Repeat/revision embeddings cost zero compute across restarts |
-| Semantic answer cache | `apps/api/app/core/semantic_cache.py`, threshold `0.94`, flag `enable_response_caching` | Repeat questions skip the LLM **100%** and still re-verify |
 
 Warm them once by ingesting your docs and asking your top questions — every repeat after that is nearly free.
 
@@ -244,7 +242,7 @@ Ingest cost is offline — spend it wisely once instead of per query forever:
 - **Chunking strategy matters once:** `sliding_window` (default) is cheapest and byte-stable. `semantic`/`layout_aware` cost more at ingest for better spans — pick per corpus, then **re-index once** and stop switching (every switch = full re-upload).
 - **OCR:** RapidOCR fires only on pages with <50 native chars and fails open. If your corpus has no scans, disable it (`ingestion.ocr.enabled: false` in `models.yaml`) to skip the `~/.onnx` first-use download stall. If it has scans, **pre-warm**: ingest one scanned PDF right after deploy.
 - **Upload size cap** (`max_file_size_mb: 20`, `max_total_tokens_per_doc: 200000`) is a free DoS guard — leave it.
-- **Embedding cache warming:** the first ingest embeds everything; every later ingest of the same bytes hits `disk_cache` and costs ~zero. Don't wipe `apps/api/data/cache` between runs.
+- **Embedding cost:** embeddings are computed fresh every ingest. There is no persistent embedding or answer cache; only a bounded in-process LRU avoids recompute within a single run.
 
 ---
 

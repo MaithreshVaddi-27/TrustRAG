@@ -28,7 +28,7 @@ from typing import Any
 import structlog
 import xxhash
 
-from app.core.config import get_model_config
+from app.core.config.model_config import get_model_config
 from app.rag.ingestion.preprocessor import ZONE_WEIGHT_BOOSTS, lexical_analyze
 
 logger = structlog.get_logger(__name__)

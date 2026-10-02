@@ -178,7 +178,7 @@ async def test_rollback_refuses_snapshot_without_vectors():
         patch.object(kb_service, "get_collection", return_value=mock_collection),
         patch.object(kb_service, "get_qdrant_client", return_value=mock_qdrant),
     ):
-        from app.core.exceptions import ConflictError
+        from app.core.security.exceptions import ConflictError
 
         with pytest.raises(ConflictError, match="no searchable vectors"):
             await kb_service.rollback_kb_to_snapshot(KB_ID, SNAP_ID, USER_ID)

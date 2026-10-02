@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.exceptions import RetrievalOutageError
+from app.core.security.exceptions import RetrievalOutageError
 from app.rag.retrieval.retriever import (
     apply_temporal_filtering,
     dense_search,
@@ -196,9 +196,7 @@ async def test_temporal_filter_drops_orphan_points_and_marks_versions():
 
 @pytest.mark.asyncio
 async def test_dense_search_raises_outage_when_qdrant_unavailable():
-    import app.rag.retrieval.retriever as retriever
 
-    retriever._query_cache._cache.clear()
     with patch(
         "app.rag.retrieval.retriever.get_qdrant_client", side_effect=Exception("connection refused")
     ):
@@ -208,9 +206,7 @@ async def test_dense_search_raises_outage_when_qdrant_unavailable():
 
 @pytest.mark.asyncio
 async def test_dense_search_returns_empty_for_genuine_no_evidence():
-    import app.rag.retrieval.retriever as retriever
 
-    retriever._query_cache._cache.clear()
     mock_client = SimpleNamespace(query_points=AsyncMock(return_value=SimpleNamespace(points=[])))
     mock_embed = MagicMock()
     mock_embed.embed_query = MagicMock(return_value=[0.1] * 8)
@@ -229,9 +225,7 @@ async def test_dense_search_returns_empty_for_genuine_no_evidence():
 
 @pytest.mark.asyncio
 async def test_dense_search_raises_outage_when_query_fails():
-    import app.rag.retrieval.retriever as retriever
 
-    retriever._query_cache._cache.clear()
     mock_client = SimpleNamespace(query_points=AsyncMock(side_effect=Exception("connection reset")))
     mock_embed = MagicMock()
     mock_embed.embed_query = MagicMock(return_value=[0.1] * 8)
@@ -370,7 +364,7 @@ async def test_hybrid_both_branches_timeout_is_outage(monkeypatch):
 @pytest.mark.asyncio
 async def test_hybrid_enforces_fusion_top_k():
     """Fused candidates are truncated to retrieval.fusion_top_k (default 20)."""
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     fusion_top_k = get_model_config().fusion_top_k
     assert fusion_top_k == 20

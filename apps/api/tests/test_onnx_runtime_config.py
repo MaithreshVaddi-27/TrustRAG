@@ -31,23 +31,17 @@ def _clean_onnx_env(monkeypatch):
         "RERANKER_MAX_SEQ_LENGTH",
         "RETRIEVAL_BRANCH_TIMEOUT_SECONDS",
         "RETRIEVAL_HYBRID_TIMEOUT_SECONDS",
-        "RETRIEVAL_QUERY_CACHE_CAPACITY",
         "QDRANT_UPSERT_BATCH",
         "MAX_ANALYSIS_SECONDS",
         "OMP_NUM_THREADS",
     ):
         monkeypatch.delenv(var, raising=False)
-    from app.core.config import get_model_config, get_settings
-
-    get_settings.cache_clear()
-    get_model_config.cache_clear()
+    # Config is cache-free: fresh reads make explicit invalidation unnecessary.
     yield
-    get_settings.cache_clear()
-    get_model_config.cache_clear()
 
 
 def test_onnx_yaml_defaults(_clean_onnx_env):
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     cfg = get_model_config()
     assert cfg.onnx_providers == ["CPUExecutionProvider"]
@@ -64,9 +58,8 @@ def test_onnx_env_overrides_win(_clean_onnx_env, monkeypatch):
     monkeypatch.setenv("ONNX_CPU_MEM_ARENA", "false")
     monkeypatch.setenv("ONNX_PROVIDERS", "CUDAExecutionProvider,CPUExecutionProvider")
     monkeypatch.setenv("ONNX_EMBED_MICRO_BATCH", "16")
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
-    get_model_config.cache_clear()
     cfg = get_model_config()
     assert cfg.onnx_intra_op_threads == 2
     assert cfg.onnx_cpu_mem_arena is False
@@ -102,40 +95,35 @@ def test_factory_honors_omp_and_explicit_args(_clean_onnx_env, monkeypatch):
 
 
 def test_reranker_batch_precedence(_clean_onnx_env, monkeypatch):
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     assert (
         get_model_config().reranker_batch_size_effective == get_model_config().reranker_batch_size
     )
     monkeypatch.setenv("RERANKER_BATCH_SIZE", "8")
-    get_model_config.cache_clear()
     assert get_model_config().reranker_batch_size_effective == 8
 
 
 def test_retrieval_infra_yaml_defaults(_clean_onnx_env):
     """Runtime knobs: budgets unset (module fallback), cache set."""
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     cfg = get_model_config()
     assert cfg.branch_timeout_seconds == 0.0
     assert cfg.hybrid_timeout_seconds == 0.0
-    assert cfg.query_cache_capacity == 1024
     assert cfg.qdrant_upsert_batch == 100
     assert cfg.reranker_max_seq_length == 512
 
 
 def test_retrieval_infra_env_overrides_win(_clean_onnx_env, monkeypatch):
-    monkeypatch.setenv("RETRIEVAL_QUERY_CACHE_CAPACITY", "256")
     monkeypatch.setenv("QDRANT_UPSERT_BATCH", "50")
     monkeypatch.setenv("RERANKER_MAX_SEQ_LENGTH", "256")
     # NOTE: branch/hybrid_timeout_seconds properties intentionally ignore env —
     # env is resolved in retriever._retrieval_timeouts() so the module globals
     # stay monkeypatch-able (see next test). Properties return yaml (0 = unset).
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
-    get_model_config.cache_clear()
     cfg = get_model_config()
-    assert cfg.query_cache_capacity == 256
     assert cfg.qdrant_upsert_batch == 50
     assert cfg.reranker_max_seq_length == 256
     assert cfg.branch_timeout_seconds == 0.0
@@ -145,21 +133,18 @@ def test_retrieval_infra_env_overrides_win(_clean_onnx_env, monkeypatch):
 def test_retrieval_timeout_resolution_prefers_env_over_yaml(_clean_onnx_env, monkeypatch):
     """Module globals stay the monkeypatch-able fallback (tests rely on it)."""
     import app.rag.retrieval.retriever as retriever_mod
-    from app.core.config import get_model_config
 
-    get_model_config.cache_clear()
     branch, hybrid = retriever_mod._retrieval_timeouts()
     assert (branch, hybrid) == (45.0, 60.0)
     monkeypatch.setenv("RETRIEVAL_BRANCH_TIMEOUT_SECONDS", "20")
     monkeypatch.setenv("RETRIEVAL_HYBRID_TIMEOUT_SECONDS", "50")
-    get_model_config.cache_clear()
     branch, hybrid = retriever_mod._retrieval_timeouts()
     assert (branch, hybrid) == (20.0, 50.0)
 
 
 def test_production_keys_default_empty_env_only(_clean_onnx_env):
     """Key field defaults are empty; only env fills them (no real key in code)."""
-    from app.core.config import Settings
+    from app.core.config.settings import Settings
 
     for field in ("gemini_api_key", "tavily_api_key", "hf_token"):
         assert Settings.model_fields[field].default == "", field
@@ -167,9 +152,8 @@ def test_production_keys_default_empty_env_only(_clean_onnx_env):
 
 def test_analysis_latency_budget_default_and_disable(_clean_onnx_env, monkeypatch):
     """Audit L-1: whole-analysis wall-clock bound (0 disables)."""
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     assert get_model_config().max_analysis_seconds == 120
     monkeypatch.setenv("MAX_ANALYSIS_SECONDS", "0")
-    get_model_config.cache_clear()
     assert get_model_config().max_analysis_seconds == 0

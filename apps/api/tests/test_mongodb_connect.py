@@ -25,8 +25,7 @@ import asyncio
 import pytest
 
 import app.db.mongodb as mongodb_mod
-from app.core.config import get_settings
-from app.core.exceptions import DatabaseError
+from app.core.security.exceptions import DatabaseError
 
 # Every one of these is permanently unusable, so no amount of retrying helps.
 BAD_URIS = [
@@ -41,8 +40,9 @@ BAD_URIS = [
 def test_malformed_uri_raises_database_error_immediately(uri, monkeypatch):
     """A config typo must fail fast and say so — not retry for minutes and then
     surface an UnboundLocalError."""
-    settings = get_settings()
-    monkeypatch.setattr(settings, "mongodb_uri", uri)
+    # get_settings() is deliberately uncached (fresh Settings per call), so patch
+    # the environment the new instance reads — not a throwaway object.
+    monkeypatch.setenv("MONGODB_URI", uri)
 
     async def _run():
         with pytest.raises(DatabaseError) as exc:
@@ -56,8 +56,7 @@ def test_malformed_uri_raises_database_error_immediately(uri, monkeypatch):
 def test_malformed_uri_does_not_retry(monkeypatch):
     """Retrying a permanently invalid address just delays the same fatal error.
     The whole point of the pre-flight check is that this returns in milliseconds."""
-    settings = get_settings()
-    monkeypatch.setattr(settings, "mongodb_uri", "mongodb://")
+    monkeypatch.setenv("MONGODB_URI", "mongodb://")
 
     slept: list[float] = []
 
@@ -76,13 +75,12 @@ def test_malformed_uri_does_not_retry(monkeypatch):
 
 def test_valid_uri_passes_validation(monkeypatch):
     """The pre-flight check must not reject a legitimate URI."""
-    settings = get_settings()
     for uri in (
         "mongodb://localhost:27017",
         "mongodb://localhost:27017/trustrag",
         "mongodb://user:pass@host.example.com:27017/db?replicaSet=rs0",
     ):
-        monkeypatch.setattr(settings, "mongodb_uri", uri)
+        monkeypatch.setenv("MONGODB_URI", uri)
         mongodb_mod._validate_mongodb_uri(uri)  # must not raise
 
 
@@ -91,8 +89,7 @@ def test_unbound_client_is_never_referenced(monkeypatch):
     raises, the handler must still produce a DatabaseError, not a NameError."""
     from pymongo.errors import InvalidURI
 
-    settings = get_settings()
-    monkeypatch.setattr(settings, "mongodb_uri", "mongodb://")
+    monkeypatch.setenv("MONGODB_URI", "mongodb://")
 
     def _boom(*_a, **_k):
         raise InvalidURI("nope")
@@ -116,8 +113,7 @@ def test_value_error_from_client_is_translated(monkeypatch):
     def _boom(*_a, **_k):
         raise ValueError("Port must be an integer between 0 and 65535")
 
-    settings = get_settings()
-    monkeypatch.setattr(settings, "mongodb_uri", "mongodb://localhost:27017")
+    monkeypatch.setenv("MONGODB_URI", "mongodb://localhost:27017")
     monkeypatch.setattr(mongodb_mod, "AsyncIOMotorClient", _boom)
     monkeypatch.setattr(mongodb_mod, "_validate_mongodb_uri", lambda _uri: None)
     monkeypatch.setattr(mongodb_mod, "_CONNECT_MAX_ATTEMPTS", 1)

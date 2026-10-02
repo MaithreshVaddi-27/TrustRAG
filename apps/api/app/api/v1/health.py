@@ -18,10 +18,11 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
 
 from app.api.deps import get_current_user
-from app.core.config import get_model_config, get_settings
-from app.core.hardware import get_cached_hardware_profile
-from app.core.memory import get_memory_usage_mb
-from app.core.metrics import render_prometheus
+from app.core.config.model_config import get_model_config
+from app.core.config.settings import get_settings
+from app.core.observability.metrics import render_prometheus
+from app.core.system.hardware import get_cached_hardware_profile
+from app.core.system.memory import get_memory_usage_mb
 from app.db.mongodb import health_check as mongo_health_check
 from app.db.qdrant import health_check as qdrant_health_check
 from app.llm.model_registry import registry_status

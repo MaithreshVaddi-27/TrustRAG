@@ -18,10 +18,10 @@ from typing import Any
 from bson import ObjectId
 from qdrant_client.http import models
 
-from app.core.config import get_model_config
-from app.core.hardware import get_ingest_embed_batch_size
-from app.core.logging import get_logger
-from app.core.memory import trim_memory
+from app.core.config.model_config import get_model_config
+from app.core.observability.logging import get_logger
+from app.core.system.hardware import get_ingest_embed_batch_size
+from app.core.system.memory import trim_memory
 from app.db.mongodb import Collections, get_collection
 from app.db.qdrant import get_collection_name, get_qdrant_client, init_kb_collection
 from app.llm.model_registry import get_embedding_model

@@ -11,8 +11,8 @@ from bson import ObjectId
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
-from app.core.exceptions import AuthenticationError
-from app.core.security import decode_access_token, decode_service_token, jti_key
+from app.core.security.exceptions import AuthenticationError
+from app.core.security.security import decode_access_token, decode_service_token, jti_key
 from app.db.mongodb import Collections, get_collection
 
 # Login endpoint URL (under the API prefix)

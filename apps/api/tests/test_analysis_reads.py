@@ -100,7 +100,7 @@ def test_route_forwards_the_callers_identity(suffix, service_name, user_id):
 def test_malformed_analysis_id_is_404_not_500(suffix, service_name, user_id):
     """A garbage id reaches ObjectId() and raises. That must surface as a clean
     404, not a 500 that the workbench reports as a server fault."""
-    from app.core.exceptions import NotFoundError
+    from app.core.security.exceptions import NotFoundError
 
     async def _not_found(*_a, **_k):
         raise NotFoundError("Analysis not found")
@@ -115,7 +115,7 @@ def test_malformed_analysis_id_is_404_not_500(suffix, service_name, user_id):
 def test_foreign_analysis_is_refused(suffix, service_name, user_id):
     """Ownership is enforced in the service, not the route. Assert the real
     service rejects a record owned by someone else."""
-    from app.core.exceptions import AuthorizationError
+    from app.core.security.exceptions import AuthorizationError
 
     async def _denied(*_a, **_k):
         raise AuthorizationError("Access denied", detail="You do not own this analysis record")

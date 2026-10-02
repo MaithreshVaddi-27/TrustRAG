@@ -547,13 +547,10 @@ TrustRAG implements extensive inference acceleration and memory optimization tec
 | **ONNX Runtime (shared)** | One tuned session factory for embeddings + reranker: capped threads, full graph fusion, sequential exec | `onnx.intra_op_threads`, `onnx.graph_optimization`, `onnx.cpu_mem_arena` | `0` (auto ≤4), `all`, `true` |
 | **Reranker Batch/SeqLen** | Tokenize+infer micro-batches; max pair length | `reranker.batch_size`, `reranker.max_seq_length` | `16`, `512` |
 | **Retrieval Budgets** | Per-branch + hybrid timeouts; one hung branch degrades instead of pinning a worker | `retrieval.branch_timeout_seconds`, `retrieval.hybrid_timeout_seconds` | `0` (45s/60s fallback) |
-| **Query-Vector LRU** | RAM-bounded cache of query embeddings | `retrieval.query_cache_capacity` | `1024` |
 | **Qdrant Upsert Batch** | Points per upsert call (no network timeouts on big docs) | `ingestion.qdrant_upsert_batch` | `100` |
 | **ONNX Embeddings** | Single torch-free embedding engine, ~500-1000 MB RAM saved | `embedding.model` | `BAAI/bge-small-en-v1.5` |
-| **Context Compression** | Hierarchical summarization before LLM call (50% reduction target) | `optimization.context_compression_enabled`, `optimization.context_compression_target_reduction` | `true`, `0.5` |
+| **Context Compression** | Hierarchical summarization before LLM call | `optimization.context_compression_enabled` | `false` |
 | **Adaptive Top-K** | Reduces retrieval when confidence high (RRF > 0.02) | `optimization.adaptive_top_k` | `true` |
-| **Reranker Result Caching** | LRU cache for query-document scores | `reranker.cache_size` | `500` |
-| **Cache TTL + VACUUM** | Embedding & semantic caches auto-expire & reclaim disk | `EMBEDDING_CACHE_TTL_SECONDS`, `SEMANTIC_CACHE_TTL_SECONDS` | 30d, 24h |
 
 ### Environment Variable Overrides
 
@@ -567,14 +564,13 @@ All config options support env overrides:
 | Adaptive Top-K | `ADAPTIVE_TOP_K` |
 | Adaptive Threshold/Cap | `ADAPTIVE_TOP_K_THRESHOLD`, `ADAPTIVE_TOP_K_CAP` |
 | Retrieval Budgets | `RETRIEVAL_BRANCH_TIMEOUT_SECONDS`, `RETRIEVAL_HYBRID_TIMEOUT_SECONDS` |
-| Query Cache | `RETRIEVAL_QUERY_CACHE_CAPACITY` |
 | Qdrant Upsert Batch | `QDRANT_UPSERT_BATCH` |
-| Context Compression | `CONTEXT_COMPRESSION_ENABLED`, `CONTEXT_COMPRESSION_TARGET_REDUCTION`, `MAX_CONTEXT_TOKENS` |
+| Context Compression | `CONTEXT_COMPRESSION_ENABLED`, `MAX_CONTEXT_TOKENS` |
 | Local LLM Params | `LOCAL_LLM_NUM_CTX`, `LOCAL_LLM_NUM_BATCH`, `LOCAL_LLM_KEEP_ALIVE`, `LOCAL_LLM_MIN_P`, `LOCAL_LLM_TOP_K`, `LOCAL_LLM_EARLY_EXIT_EOS` |
-| Reranker | `RERANKER_USE_ONNX`, `RERANKER_ONNX_MODEL_PATH`, `RERANKER_CACHE_SIZE`, `RERANKER_BATCH_SIZE`, `RERANKER_MAX_SEQ_LENGTH` |
+| Reranker | `RERANKER_USE_ONNX`, `RERANKER_ONNX_MODEL_PATH`, `RERANKER_BATCH_SIZE`, `RERANKER_MAX_SEQ_LENGTH` |
 | ONNX Runtime | `ONNX_PROVIDERS`, `ONNX_INTRA_OP_THREADS`, `ONNX_INTER_OP_THREADS`, `ONNX_GRAPH_OPTIMIZATION`, `ONNX_CPU_MEM_ARENA`, `ONNX_MEM_PATTERN`, `ONNX_EMBED_MICRO_BATCH` |
 | Embedding model | `embedding.model` in `apps/api/config/models.yaml` (single engine, no env flag) |
-| Cache TTL | `EMBEDDING_CACHE_TTL_SECONDS`, `SEMANTIC_CACHE_TTL_SECONDS`, `EMBEDDING_CACHE_CLEANUP_INTERVAL` |
+| Model weights dir | `MODEL_CACHE_DIR` (ONNX embedding + reranker `.onnx` files) |
 
 ---
 

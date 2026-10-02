@@ -6,6 +6,9 @@
 .env.*
 !.env.example
 !**/.env.example
+# Test env is committed on purpose: synthetic dummies only, so the suite is
+# hermetic and never reads a developer's real .env.
+!**/.env.test
 *.pem
 *.key
 *.p12

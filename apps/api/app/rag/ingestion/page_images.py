@@ -15,8 +15,7 @@ Safety:
 - resolve/copy/delete never raise for missing files (best-effort purge on
   KB/doc delete must not fail the delete).
 - Base dir comes from ``PAGE_IMAGES_DIR`` env (tests) or
-  ``apps/api/data/page_images`` (production default, alongside the SQLite
-  cache dir pattern in app/core/disk_cache.py).
+  ``apps/api/data/page_images`` (production default).
 """
 
 from __future__ import annotations

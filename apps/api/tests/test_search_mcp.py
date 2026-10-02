@@ -59,7 +59,7 @@ async def test_tavily_search_empty_key_returns_empty():
 async def test_duckduckgo_tool_is_gone_tavily_only():
     """DuckDuckGo was removed (Tavily-only service): the tool name must 404
     through the dispatcher instead of AttributeError-ing mid-call."""
-    from app.core.security import create_service_token
+    from app.core.security.security import create_service_token
 
     token = create_service_token("test-service")
     with pytest.raises(Exception, match="Unknown MCP tool"):
@@ -83,7 +83,7 @@ async def test_execute_web_search_is_tavily_passthrough():
 
 @pytest.mark.asyncio
 async def test_mcp_tool_execution():
-    from app.core.security import create_service_token
+    from app.core.security.security import create_service_token
 
     token = create_service_token("test-service")
     with patch(
@@ -219,7 +219,7 @@ async def test_search_service_timeout_returns_empty():
 
 @pytest.mark.asyncio
 async def test_local_llm_mcp_tools():
-    from app.core.security import create_service_token
+    from app.core.security.security import create_service_token
 
     token = create_service_token("test-service")
     # Test local_llm_status tool

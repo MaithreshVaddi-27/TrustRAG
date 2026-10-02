@@ -19,8 +19,8 @@ import asyncio
 
 import pytest
 
-from app.core import concurrency
-from app.core.concurrency import get_global_semaphore, reset_global_semaphore
+from app.core.system import concurrency
+from app.core.system.concurrency import get_global_semaphore, reset_global_semaphore
 
 
 @pytest.fixture(autouse=True)

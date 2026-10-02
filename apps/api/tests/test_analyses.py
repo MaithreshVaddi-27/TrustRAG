@@ -180,7 +180,7 @@ def test_create_analysis_fails_fast_when_local_llm_down(
     """Stopped ollama/llama-server → synchronous 503 alert, not a silent burn."""
     import app.llm.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
-    from app.core.exceptions import LLMUnavailableError
+    from app.core.security.exceptions import LLMUnavailableError
 
     monkeypatch.setattr(
         _llm_mod,
@@ -266,7 +266,7 @@ def test_create_analysis_rejects_embedding_mismatch(
         }
         # Simulate a post-deploy models.yaml model change: server now serves
         # MiniLM while the KB is pinned to BGE → guard must 422.
-        from app.core.config import ModelConfig
+        from app.core.config.model_config import ModelConfig
 
         monkeypatch.setattr(
             ModelConfig,
@@ -387,7 +387,7 @@ def test_stream_trace_rejects_invalid_and_reused_ticket(mock_create_indexes, moc
 @patch("app.db.mongodb.create_indexes")
 def test_stream_ticket_requires_ownership(mock_create_indexes, mock_connect):
     """Ticket issuance for a foreign/missing analysis must not succeed (IDOR guard)."""
-    from app.core.exceptions import NotFoundError
+    from app.core.security.exceptions import NotFoundError
 
     fake_tickets = _ticket_collection()
     with (
@@ -501,11 +501,11 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
         async def __aexit__(self, *_exc):
             return False
 
-    async def _get_sem():
+    def _get_sem():
         return _Sem()
 
     monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
-    monkeypatch.setattr(svc, "_get_concurrency_semaphore", _get_sem, raising=False)
+    monkeypatch.setattr(svc, "get_global_semaphore", _get_sem)
     monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
     monkeypatch.setattr(
         svc,
@@ -517,7 +517,10 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
             diagnosis_failures=[],
         ),
     )
-    monkeypatch.setattr("app.core.metrics.record_analysis_completed", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "app.core.observability.metrics.record_analysis_completed",
+        lambda *_a, **_k: None,
+    )
 
     await svc.run_analysis_pipeline(
         analysis_id_str="507f1f77bcf86cd799439011",
@@ -581,12 +584,12 @@ async def test_finalize_withholds_unverified_answer_from_user(
         async def __aexit__(self, *_exc):
             return False
 
-    async def _get_sem():
+    def _get_sem():
         return _Sem()
 
     monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
     monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
-    monkeypatch.setattr(svc, "_get_concurrency_semaphore", _get_sem, raising=False)
+    monkeypatch.setattr(svc, "get_global_semaphore", _get_sem)
     monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
     monkeypatch.setattr(
         svc,
@@ -598,7 +601,10 @@ async def test_finalize_withholds_unverified_answer_from_user(
             diagnosis_failures=["Only 1/2 claims supported by evidence"],
         ),
     )
-    monkeypatch.setattr("app.core.metrics.record_analysis_completed", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "app.core.observability.metrics.record_analysis_completed",
+        lambda *_a, **_k: None,
+    )
 
     await svc.run_analysis_pipeline(
         analysis_id_str="507f1f77bcf86cd799439011",
@@ -641,12 +647,12 @@ async def test_finalize_keeps_trusted_answer(monkeypatch):
         async def __aexit__(self, *_exc):
             return False
 
-    async def _get_sem():
+    def _get_sem():
         return _Sem()
 
     monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
     monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
-    monkeypatch.setattr(svc, "_get_concurrency_semaphore", _get_sem, raising=False)
+    monkeypatch.setattr(svc, "get_global_semaphore", _get_sem)
     monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
     monkeypatch.setattr(
         svc,
@@ -658,7 +664,10 @@ async def test_finalize_keeps_trusted_answer(monkeypatch):
             diagnosis_failures=[],
         ),
     )
-    monkeypatch.setattr("app.core.metrics.record_analysis_completed", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "app.core.observability.metrics.record_analysis_completed",
+        lambda *_a, **_k: None,
+    )
 
     await svc.run_analysis_pipeline(
         analysis_id_str="507f1f77bcf86cd799439011",

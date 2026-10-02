@@ -8,100 +8,21 @@ Implements early termination strategies:
 - Approximate reranking with early exit for high-confidence results
 - Batch processing with progressive scoring
 - Adaptive top-k based on score distribution
-- Result caching per query to avoid re-scoring
 """
 
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import threading
-from collections import OrderedDict
 from typing import Any
 
-from app.core.config import get_model_config
-from app.core.logging import get_logger
+from app.core.config.model_config import get_model_config
+from app.core.observability.logging import get_logger
 from app.llm.model_registry import get_reranker
 
 logger = get_logger(__name__)
 
 # Early termination configuration (fallback defaults; actual values from models.yaml via config)
 EARLY_TERMINATION_MIN_BATCH = 16  # Minimum candidates before early termination check
-
-
-# Reranker result cache (LRU, in-memory)
-# Key: hash of (query + document_text), Value: score
-# Cache size configurable via models.yaml
-class _RerankerCache:
-    """LRU cache for reranker scores (guarded by a lock: _rerank_sync runs
-    in worker threads via asyncio.to_thread)."""
-
-    def __init__(self, max_size: int = 500):
-        self._cache: OrderedDict[str, float] = OrderedDict()
-        self._max_size = max_size
-        self._lock = threading.Lock()
-        self._hits = 0
-        self._misses = 0
-
-    def _make_key(self, query: str, doc_text: str) -> str:
-        """Create a hash key for query-document pair."""
-        combined = f"{query}\x00{doc_text}"
-        return hashlib.sha256(combined.encode()).hexdigest()[:32]
-
-    def get(self, query: str, doc_text: str) -> float | None:
-        """Get cached score for query-document pair."""
-        key = self._make_key(query, doc_text)
-        with self._lock:
-            if key in self._cache:
-                self._cache.move_to_end(key)  # Mark as recently used
-                self._hits += 1
-                return self._cache[key]
-            self._misses += 1
-            return None
-
-    def set(self, query: str, doc_text: str, score: float) -> None:
-        """Cache score for query-document pair."""
-        key = self._make_key(query, doc_text)
-        with self._lock:
-            if key in self._cache:
-                self._cache.move_to_end(key)
-            elif len(self._cache) >= self._max_size:
-                self._cache.popitem(last=False)  # Remove least recently used
-            self._cache[key] = score
-
-    def get_stats(self) -> dict[str, int]:
-        """Return cache statistics."""
-        with self._lock:
-            total = self._hits + self._misses
-            hit_rate = (self._hits / total * 100) if total > 0 else 0
-            return {
-                "size": len(self._cache),
-                "max_size": self._max_size,
-                "hits": self._hits,
-                "misses": self._misses,
-                "hit_rate_percent": round(hit_rate, 1),
-            }
-
-    def clear(self) -> None:
-        """Clear the cache."""
-        with self._lock:
-            self._cache.clear()
-            self._hits = 0
-            self._misses = 0
-
-
-# Global cache instance (initialized lazily)
-_reranker_cache: _RerankerCache | None = None
-
-
-def _get_reranker_cache() -> _RerankerCache:
-    """Get or create the global reranker cache."""
-    global _reranker_cache
-    if _reranker_cache is None:
-        cfg = get_model_config()
-        max_size = cfg.reranker_cache_size if hasattr(cfg, "reranker_cache_size") else 500
-        _reranker_cache = _RerankerCache(max_size=max_size)
-    return _reranker_cache
 
 
 def _is_high_confidence(top_chunk: dict[str, Any]) -> bool:
@@ -175,66 +96,30 @@ def _rerank_sync(
         # Build query-document input pairs
         pairs = [(query, c["text"]) for c in candidates]
 
-        # Reranker result caching
-        # Check cache first to avoid re-scoring
-        cache = _get_reranker_cache()
-        cached_scores: dict[int, float] = {}
-        uncached_indices: list[int] = []
-        uncached_pairs: list[tuple[str, str]] = []
-
-        for i, (q, doc_text) in enumerate(pairs):
-            cached = cache.get(q, doc_text)
-            if cached is not None:
-                cached_scores[i] = cached
-            else:
-                uncached_indices.append(i)
-                uncached_pairs.append((q, doc_text))
-
-        logger.debug(
-            "Reranker cache lookup",
-            total=len(pairs),
-            cached=len(cached_scores),
-            uncached=len(uncached_pairs),
-            cache_stats=cache.get_stats(),
-        )
-
-        # Progressive batch scoring with early termination for uncached pairs
+        # Progressive batch scoring with early termination.
+        # No result cache: every call scores fresh (stale scores after
+        # re-ingest were worse than the re-scoring cost).
         all_scores: list[float] = [0.0] * len(pairs)
 
-        # Fill in cached scores
-        for idx, score in cached_scores.items():
-            all_scores[idx] = score
+        if pairs:
+            batch_size = min(cfg.reranker_batch_size, len(pairs))
+            # NOTE: no second `model is None` check here — None already
+            # returned above, so it is unreachable.
 
-        if uncached_pairs:
-            batch_size = min(cfg.reranker_batch_size, len(uncached_pairs))
-            # NOTE: no second `model is None` check here — get_reranker() is
-            # lru_cached and None already returned above, so it is unreachable.
+            scored: list[float] = []
 
-            logger.info(
-                "Running cross-encoder reranking",
-                model=cfg.reranker_model,
-                count=len(uncached_pairs),
-                cached=len(cached_scores),
-            )
-
-            uncached_scores: list[float] = []
-            scored_count = 0
-
-            for i in range(0, len(uncached_pairs), batch_size):
-                batch_pairs = uncached_pairs[i : i + batch_size]
+            for i in range(0, len(pairs), batch_size):
+                batch_pairs = pairs[i : i + batch_size]
                 batch_scores = model.predict(batch_pairs)
-                uncached_scores.extend(batch_scores)
+                scored.extend(batch_scores)
 
                 # Early termination check after processing enough candidates
                 processed = i + len(batch_scores)
-                scored_count = processed
                 if processed >= EARLY_TERMINATION_MIN_BATCH:
                     # Check if top result is confidently better than rest
-                    # We need to check against ALL scores (cached + uncached so far)
-                    combined_so_far = list(cached_scores.values()) + uncached_scores
-                    if len(combined_so_far) >= 3:
-                        top_score = max(combined_so_far)
-                        sorted_scores = sorted(combined_so_far, reverse=True)
+                    if len(scored) >= 3:
+                        top_score = max(scored)
+                        sorted_scores = sorted(scored, reverse=True)
                         second_best = sorted_scores[1] if len(sorted_scores) > 1 else 0.0
                         score_gap = top_score - second_best
 
@@ -248,25 +133,15 @@ def _rerank_sync(
                                 top_score=top_score,
                                 score_gap=score_gap,
                                 processed=processed,
-                                total=len(uncached_pairs),
+                                total=len(pairs),
                             )
                             # Pad remaining scores with 0.0
-                            remaining = len(uncached_pairs) - processed
-                            uncached_scores.extend([0.0] * remaining)
+                            remaining = len(pairs) - processed
+                            scored.extend([0.0] * remaining)
                             break
 
-            # Map uncached scores back to original indices.
-            # Never cache early-exit padding (0.0 for unscored tail) — it would
-            # poison future identical query-doc lookups with fake scores.
-            # Only cache items that were actually scored (not padded with 0.0).
-            # scored_count = number of items actually scored (not padded).
-            for local_idx, orig_idx in enumerate(uncached_indices):
-                score = uncached_scores[local_idx]
-                all_scores[orig_idx] = score
-                if local_idx < scored_count:
-                    cache.set(query, pairs[orig_idx][1], score)
-            # Explicitly do NOT cache padded tail (local_idx >= scored_count)
-            # This prevents 0.0 padding from polluting the cache.
+            for idx, score in enumerate(scored):
+                all_scores[idx] = score
 
         # Update scores inside chunks
         for i, score in enumerate(all_scores):

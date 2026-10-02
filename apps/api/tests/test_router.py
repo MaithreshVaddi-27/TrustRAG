@@ -119,7 +119,7 @@ async def test_fanout_runs_sub_queries_concurrently_and_merges():
 
 @pytest.mark.asyncio
 async def test_fanout_degrades_to_healthy_branch_on_partial_outage():
-    from app.core.exceptions import RetrievalOutageError
+    from app.core.security.exceptions import RetrievalOutageError
 
     async def flaky(query, **kwargs):
         if query == "bad side":
@@ -133,7 +133,7 @@ async def test_fanout_degrades_to_healthy_branch_on_partial_outage():
 
 @pytest.mark.asyncio
 async def test_fanout_total_outage_stays_an_outage():
-    from app.core.exceptions import RetrievalOutageError
+    from app.core.security.exceptions import RetrievalOutageError
 
     with patch(
         "app.rag.agent.router.retrieve_hybrid_chunks",

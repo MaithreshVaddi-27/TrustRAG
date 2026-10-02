@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.logging import _scrub_sensitive, scrub_secret_values
+from app.core.observability.logging import _scrub_sensitive, scrub_secret_values
 from app.llm.llm_ledger import (
     begin_analysis,
     calls_remaining,
@@ -166,40 +166,34 @@ def test_ledgers_are_isolated_per_context():
 # (dead credential → terminal LLM_OUTAGE; ordinary errors still recoverable).
 
 
-# ─── B-16: cloud is never evicted ──────────────────────────────────────────────
+# ─── B-16: no client registry (fresh client per call) ─────────────────────────
+# The bounded LLM registry was removed: every get_llm() constructs a fresh
+# HTTP-backed client, so there is nothing to evict and no client can be
+# closed mid-request. These pin the replacement contract.
 
 
-@pytest.fixture
-def _clean_registry():
-    from app.llm import model_registry as mr
+def test_llm_clients_are_constructed_fresh_per_call():
+    """No registry: two identical get_llm() calls return distinct objects."""
+    from app.llm.model_registry import get_llm
 
-    mr._LLM_REGISTRY.clear()
-    mr._PENDING_CLOSE.clear()
-    yield mr
-    mr._LLM_REGISTRY.clear()
-    mr._PENDING_CLOSE.clear()
-
-
-def test_local_lru_eviction_still_works(_clean_registry):
-    mr = _clean_registry
-    with patch.object(mr, "get_max_llm_instances", return_value=1):
-        mr.put_llm_instance("ollama", "a", MagicMock())
-        mr.put_llm_instance("ollama", "b", MagicMock())
-    assert list(mr._LLM_REGISTRY.keys()) == ["ollama:b"]
+    with patch("app.llm.model_registry._create_llm") as fake_create:
+        fake_create.side_effect = lambda **kwargs: MagicMock(name="llm")
+        first = get_llm("ollama", "gemma3:1b")
+        second = get_llm("ollama", "gemma3:1b")
+    assert first is not second
+    assert fake_create.call_count == 2
 
 
-def test_cloud_clients_are_never_evicted(_clean_registry):
-    """A cloud client may have an in-flight billed request; closing it wastes
-    the call and can abort the response."""
-    mr = _clean_registry
-    with patch.object(mr, "get_max_llm_instances", return_value=1):
-        mr.put_llm_instance("gemini", "g", MagicMock())
-        mr.put_llm_instance("ollama", "x", MagicMock())
-        mr.put_llm_instance("ollama", "y", MagicMock())
-    keys = list(mr._LLM_REGISTRY.keys())
-    assert "gemini:g" in keys
-    assert "ollama:y" in keys
-    assert "ollama:x" not in keys  # the local one rotated instead
+def test_cloud_clients_are_never_shared_across_calls():
+    """Same guarantee for cloud providers (previously: never evicted)."""
+    from app.llm.model_registry import get_llm
+
+    with patch("app.llm.model_registry._create_llm") as fake_create:
+        fake_create.side_effect = lambda **kwargs: MagicMock(name="llm")
+        first = get_llm("gemini", "gemini-3.5-flash-lite")
+        second = get_llm("gemini", "gemini-3.5-flash-lite")
+    assert first is not second
+    assert fake_create.call_count == 2
 
 
 # ─── B-17: credential redaction by value ───────────────────────────────────────
@@ -329,7 +323,7 @@ def test_compression_is_off_by_default():
     """Compression issues a SECOND full LLM call on the same model. Cloud tiers
     have 128K-1M windows, so firing by default doubled cloud generation cost
     (audit B-7)."""
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     cfg = get_model_config()
     assert cfg.context_compression_provider == "off", (
@@ -340,7 +334,7 @@ def test_compression_is_off_by_default():
 
 
 def test_compression_threshold_is_configurable():
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     assert get_model_config().context_compression_min_tokens > 0
 
@@ -390,7 +384,7 @@ def test_provider_normalization_is_canonical():
     """Aliases must resolve identically wherever they are handled, so the
     allowlist check, the resolved model, the persisted document, and downstream
     provider switches cannot disagree (audit B-15/B-18)."""
-    from app.core.config import normalize_provider
+    from app.core.config.model_config import normalize_provider
 
     assert normalize_provider("google_genai") == "google_genai"
     assert normalize_provider("llamacpp") == "llama_cpp"
@@ -407,7 +401,7 @@ def test_effective_cloud_model_is_validated_even_when_request_omits_it():
     from pydantic import ValidationError
 
     from app.api.v1.schemas.analysis import AnalysisCreate
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     real = get_model_config()
     base = {"knowledge_base_id": "64ee39d09c6292376e191982", "query": "hello"}
@@ -457,7 +451,7 @@ def test_cross_provider_mismatch_is_still_rejected():
     from pydantic import ValidationError
 
     from app.api.v1.schemas.analysis import AnalysisCreate
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     gemini = get_model_config().supported_gemini_models
     if not gemini:

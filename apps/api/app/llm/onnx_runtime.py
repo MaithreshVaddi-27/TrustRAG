@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from app.core.config import get_model_config
+from app.core.config.model_config import get_model_config
 
 
 def _graph_optimization_level(name: str) -> Any:
@@ -98,17 +98,3 @@ def build_session_options(
     opts.enable_cpu_mem_arena = bool(cpu_mem_arena)
     opts.enable_mem_pattern = bool(mem_pattern)
     return opts
-
-
-def create_session(model_path: str, providers: list[str] | None = None, **options: Any) -> Any:
-    """Create an ``ort.InferenceSession`` with centrally-tuned options.
-
-    ``providers=None`` → ``cfg.onnx_providers``. Extra ``**options`` are
-    forwarded to :func:`build_session_options`.
-    """
-    import onnxruntime as ort
-
-    if providers is None:
-        providers = get_model_config().onnx_providers
-    sess_options = build_session_options(**options)
-    return ort.InferenceSession(model_path, sess_options=sess_options, providers=providers)

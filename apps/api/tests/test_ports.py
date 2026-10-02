@@ -8,7 +8,7 @@ import pytest
 
 
 def test_ports_yaml_loads_with_required_keys() -> None:
-    from app.core.config import get_ports
+    from app.core.config.settings import get_ports
 
     ports = get_ports()
     for key in (
@@ -28,7 +28,7 @@ def test_ports_yaml_loads_with_required_keys() -> None:
 
 def test_ports_reserved_allocation() -> None:
     """8080 belongs to llama-server; the backend must never claim it."""
-    from app.core.config import get_ports
+    from app.core.config.settings import get_ports
 
     ports = get_ports()
     assert ports["llamacpp"] == 8080
@@ -45,9 +45,9 @@ def test_model_config_urls_honor_ports_yaml(monkeypatch) -> None:
         "LLAMA_CPP_BASE_URL",
     ):
         monkeypatch.delenv(var, raising=False)
-    from app.core.config import get_model_config, get_ports, reload_ports
+    from app.core.config.model_config import get_model_config
+    from app.core.config.settings import get_ports
 
-    reload_ports()
     cfg = get_model_config()
     ports = get_ports()
     assert cfg.ollama_base_url == f"http://localhost:{ports['ollama']}"

@@ -13,9 +13,8 @@ from bson import ObjectId
 from qdrant_client.http import models
 
 from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
-from app.core import semantic_cache as semantic_cache_mod
-from app.core.exceptions import AuthorizationError, ConflictError, NotFoundError
-from app.core.logging import get_logger
+from app.core.observability.logging import get_logger
+from app.core.security.exceptions import AuthorizationError, ConflictError, NotFoundError
 from app.db.mongodb import Collections, get_collection
 from app.db.qdrant import delete_kb_collection, get_collection_name, get_qdrant_client
 from app.rag.ingestion import page_images as page_images_mod
@@ -160,8 +159,6 @@ async def delete_kb(kb_id_str: str, user_id_str: str) -> None:
     # 4. Purge OCR page-image files (page-image chain). Best-effort, never raises.
     page_images_mod.delete_kb_page_images(kb_id_str)
 
-    # Cached answers must never outlive the evidence that produced them.
-    semantic_cache_mod.invalidate_kb_cache(kb_id_str)
     logger.info(
         "KB permanently deleted with all associated data",
         kb_id=kb_id_str,
@@ -207,8 +204,6 @@ async def add_document(
         result = await doc_coll.insert_one(doc_doc)
         doc_doc["_id"] = result.inserted_id
 
-        # New evidence can change the best answer for an already cached query.
-        semantic_cache_mod.invalidate_kb_cache(kb_id_str)
         return serialize_doc(doc_doc)
     except pymongo.errors.DuplicateKeyError as exc:
         if "doc_kb_content_hash_unique" in str(exc):
@@ -488,11 +483,7 @@ async def rollback_kb_to_snapshot(
         },
     )
 
-    # 3. Cached answers for both identities are stale after a rollback.
-    semantic_cache_mod.invalidate_kb_cache(kb_id_str)
-    semantic_cache_mod.invalidate_kb_cache(snapshot_kb_id_str)
-
-    # 4. Return the restored (formerly snapshot) KB.
+    # 3. Return the restored (formerly snapshot) KB.
     return await get_kb(snapshot_kb_id_str, user_id_str)
 
 
@@ -556,5 +547,4 @@ async def delete_document(doc_id_str: str, user_id_str: str) -> None:
     # a dangling ref.
     page_images_mod.delete_doc_page_images(kb_id_str, doc_id_str)
 
-    semantic_cache_mod.invalidate_kb_cache(kb_id_str)
     logger.info("Document deleted successfully", doc_id=doc_id_str, kb_id=kb_id_str)

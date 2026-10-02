@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from qdrant_client.http import models
 
-from app.core.exceptions import VectorStoreError
+from app.core.security.exceptions import VectorStoreError
 from app.db import qdrant as qdrant_module
 from app.db.qdrant import init_kb_collection
 

@@ -15,7 +15,7 @@ from typing import Any
 
 import structlog
 
-from app.core.config import get_settings
+from app.core.config.settings import get_settings
 
 # ─── Fields that must be scrubbed from log context ────────────────────────────
 _SENSITIVE_KEYS = frozenset(

@@ -12,7 +12,7 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.outputs import ChatResult
 from langchain_core.runnables import Runnable, RunnableLambda
 
-from app.core.logging import get_logger
+from app.core.observability.logging import get_logger
 
 T = TypeVar("T")  # bound resolved at runtime by caller's schema
 

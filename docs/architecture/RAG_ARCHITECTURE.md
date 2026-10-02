@@ -72,13 +72,18 @@ TrustRAG/
 │   │   │   │   ├── chunker.py        # Word-snapping windows (512/64)
 │   │   │   │   ├── chunking_strategies.py  # Pluggable chunking strategies
 │   │   │   │   └── sparse_vector.py  # BM25-style sparse weight generation
-│   │   │   ├── core/
-│   │   │   │   ├── config.py         # Settings + models.yaml loader
-│   │   │   │   ├── model_registry.py # Model factory (embedding, verification, LLM)
-│   │   │   │   ├── semantic_cache.py # Semantic response cache + context pruning
+│   │   │   ├── llm/
+│   │   │   │   ├── model_registry.py # Model factory (embedding, reranker, LLM)
+│   │   │   │   ├── onnx_embeddings.py  # ONNX BGE embedding engine
+│   │   │   │   ├── onnx_reranker.py    # ONNX cross-encoder reranker
+│   │   │   │   ├── onnx_runtime.py     # Shared ORT session options
 │   │   │   │   ├── local_llm.py      # Ollama + llama.cpp LangChain clients
-│   │   │   │   ├── hardware.py       # Hardware detection + llama.cpp launch args
-│   │   │   │   └── memory.py         # Conversation memory trimming
+│   │   │   │   └── llm_ledger.py     # Per-analysis LLM call budget
+│   │   │   ├── core/
+│   │   │   │   ├── config/           # settings.py + model_config.py (models.yaml loader)
+│   │   │   │   ├── observability/    # logging + metrics + tracing
+│   │   │   │   ├── security/         # Auth primitives + exception hierarchy
+│   │   │   │   └── system/           # hardware + memory + concurrency
 │   │   │   ├── db/
 │   │   │   │   ├── qdrant.py         # Qdrant client + collection init
 │   │   │   │   └── mongodb.py        # MongoDB client + indexes (`Collections`)
@@ -90,7 +95,7 @@ TrustRAG/
 │   │   │   │   └── search_service.py # Web-search orchestration (SSRF-guarded)
 │   │   │   └── mcp/                  # MCP server (`trustrag_*` tools) + client
 │   │   ├── config/
-│   │   │   └── models.yaml           # Model IDs, thresholds, tuning params (v1.15)
+│   │   │   └── models.yaml           # Model IDs, thresholds, tuning params (v1.26)
 │   │   ├── tests/                    # Backend suite incl. `tests/eval/` harness
 │   │   └── pyproject.toml
 │   └── web/                          # React frontend

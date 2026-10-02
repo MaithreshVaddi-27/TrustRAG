@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse
 
 from app.api.deps import get_current_user
 from app.api.v1.schemas.kb import DocResponse
-from app.core.exceptions import NotFoundError
+from app.core.security.exceptions import NotFoundError
 from app.db.mongodb import Collections, get_collection
 from app.services.kb_service import delete_document, get_kb, serialize_doc
 

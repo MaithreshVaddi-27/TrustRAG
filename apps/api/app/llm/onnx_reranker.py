@@ -14,7 +14,8 @@ import numpy as np
 import onnxruntime as ort
 import structlog
 
-from app.core.config import get_model_config, get_settings
+from app.core.config.model_config import get_model_config
+from app.core.config.settings import get_settings
 from app.llm.onnx_runtime import build_session_options
 
 # structlog for consistency with the rest of app/core (JSON logs in prod).

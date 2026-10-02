@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.config import get_model_config
-from app.core.logging import get_logger
+from app.core.config.model_config import get_model_config
+from app.core.observability.logging import get_logger
 from app.rag.ingestion.chunker import chunk_text
 from app.rag.ingestion.preprocessor import detect_chunk_zone, normalize_text
 

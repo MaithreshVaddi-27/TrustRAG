@@ -230,7 +230,7 @@ async def test_individual_nli_fallback_is_capped(
     """
     from bson import ObjectId
 
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     cap = int(get_model_config().max_individual_nli_fallback)
     max_claims = int(get_model_config().max_verification_claims)

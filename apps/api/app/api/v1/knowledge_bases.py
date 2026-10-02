@@ -22,8 +22,8 @@ from fastapi import (
 
 from app.api.deps import get_current_user
 from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
-from app.core.config import get_model_config
-from app.core.exceptions import FileTooLargeError, UnsupportedFormatError
+from app.core.config.model_config import get_model_config
+from app.core.security.exceptions import FileTooLargeError, UnsupportedFormatError
 from app.rag.ingestion.chunking_strategies import get_chunking_strategy
 from app.rag.ingestion.parser import parse_document
 from app.rag.ingestion.pipeline import index_parsed_chunks

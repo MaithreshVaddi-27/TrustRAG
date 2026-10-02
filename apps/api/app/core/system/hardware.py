@@ -15,9 +15,9 @@ import subprocess
 import sys
 from typing import Any
 
-from app.core.config import get_model_config
-from app.core.logging import get_logger
-from app.core.memory import get_memory_usage_mb
+from app.core.config.model_config import get_model_config
+from app.core.observability.logging import get_logger
+from app.core.system.memory import get_memory_usage_mb
 
 logger = get_logger(__name__)
 

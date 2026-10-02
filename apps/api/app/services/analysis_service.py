@@ -21,18 +21,19 @@ from app.api.v1.schemas.analysis import (
     ReliabilitySummary,
     TraceEventResponse,
 )
-from app.core import memory as memory_mod
-from app.core.concurrency import get_global_semaphore
-from app.core.config import get_model_config, get_settings, normalize_provider
-from app.core.exceptions import AuthorizationError, InputValidationError, NotFoundError
-from app.core.logging import get_logger
-from app.core.metrics import (
+from app.core.config.model_config import get_model_config, normalize_provider
+from app.core.config.settings import get_settings
+from app.core.observability.logging import get_logger
+from app.core.observability.metrics import (
     estimate_tokens,
     record_analysis_completed,
     record_analysis_created,
     record_budget_rejection,
     record_tokens_estimated,
 )
+from app.core.security.exceptions import AuthorizationError, InputValidationError, NotFoundError
+from app.core.system import memory as memory_mod
+from app.core.system.concurrency import get_global_semaphore
 from app.db.mongodb import Collections, get_collection
 from app.llm import local_llm as local_llm_mod
 from app.rag.generation.generator import strip_citation_markers
@@ -563,11 +564,6 @@ async def sse_event_generator(
         await _unsubscribe_from_analysis(analysis_id_str, queue)
 
 
-async def _get_concurrency_semaphore() -> asyncio.Semaphore:
-    """Return the global concurrency semaphore from the shared module."""
-    return get_global_semaphore()
-
-
 async def run_analysis_pipeline(
     analysis_id_str: str,
     kb_id_str: str,
@@ -593,7 +589,7 @@ async def run_analysis_pipeline(
     """
     analysis_id = ObjectId(analysis_id_str)
     analyses_coll = get_collection(Collections.ANALYSES)
-    sem = await _get_concurrency_semaphore()
+    sem = get_global_semaphore()
 
     try:
         async with sem:

@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
-from collections import OrderedDict
 from datetime import UTC, datetime
 from typing import Any
 
@@ -15,9 +14,9 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from qdrant_client.http import models
 
-from app.core.config import get_model_config
-from app.core.exceptions import RetrievalOutageError
-from app.core.logging import get_logger
+from app.core.config.model_config import get_model_config
+from app.core.observability.logging import get_logger
+from app.core.security.exceptions import RetrievalOutageError
 from app.db.mongodb import Collections, get_collection
 from app.db.qdrant import get_collection_name, get_qdrant_client
 from app.llm.model_registry import get_embedding_model
@@ -60,49 +59,6 @@ def _retrieval_timeouts() -> tuple[float, float]:
     return float(branch), float(hybrid)
 
 
-class _QueryVectorCache:
-    """Bounded LRU for query embeddings (RAM-capped inference saving).
-
-    One ONNX embed per distinct query string instead of one per retrieval
-    leg and recovery round. Entries are 384-float vectors (~1.5 KB); the
-    default 1024-entry cap bounds the cache near ~1.5 MB. Capacity comes
-    from models.yaml ``retrieval.query_cache_capacity``
-    (``RETRIEVAL_QUERY_CACHE_CAPACITY`` wins). Threading: event-loop
-    confined like the rest of retrieval — no lock needed.
-    """
-
-    def __init__(self, capacity: int = 1024) -> None:
-        self._cache: OrderedDict[str, list[float]] = OrderedDict()
-        self._capacity = max(1, int(capacity))
-
-    def get(self, key: str) -> list[float] | None:
-        try:
-            value = self._cache.pop(key)
-        except KeyError:
-            return None
-        self._cache[key] = value  # re-insert: most-recently-used
-        return value
-
-    def set(self, key: str, value: list[float]) -> None:
-        self._cache.pop(key, None)
-        self._cache[key] = value
-        while len(self._cache) > self._capacity:
-            self._cache.popitem(last=False)
-
-    def clear(self) -> None:
-        self._cache.clear()
-
-
-def _default_query_cache_capacity() -> int:
-    try:
-        return int(get_model_config().query_cache_capacity)
-    except Exception:
-        return 1024
-
-
-_query_cache = _QueryVectorCache(capacity=_default_query_cache_capacity())
-
-
 async def _get_collection_dimension(
     client: Any,
     collection_name: str,
@@ -141,14 +97,13 @@ async def dense_search(
 
         try:
             embed_model = get_embedding_model()
-            cache_key = f"onnx:{query}"
-            query_vector = _query_cache.get(cache_key)
-            if query_vector is None:
-                query_vector = await asyncio.to_thread(
-                    embed_model.embed_query,
-                    query,
-                )
-                _query_cache.set(cache_key, query_vector)
+            # No query-vector cache: embed fresh every call. A shared cache
+            # keyed by raw query text served stale vectors after embedding
+            # model switches and leaked memory across analyses.
+            query_vector = await asyncio.to_thread(
+                embed_model.embed_query,
+                query,
+            )
         except Exception as exc:
             logger.error(
                 "Embedding service unavailable for dense search",

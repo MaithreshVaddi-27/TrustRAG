@@ -11,9 +11,9 @@ from typing import Any
 from pymongo.errors import DuplicateKeyError
 
 from app.api.v1.schemas.auth import UserRegister, UserResponse
-from app.core.config import get_settings
-from app.core.exceptions import AuthenticationError, ConflictError
-from app.core.security import (
+from app.core.config.settings import get_settings
+from app.core.security.exceptions import AuthenticationError, ConflictError
+from app.core.security.security import (
     create_access_token,
     decode_access_token,
     hash_password,

@@ -18,9 +18,9 @@ from typing import Any, BinaryIO
 
 import pymupdf as fitz
 
-from app.core.config import get_model_config
-from app.core.exceptions import IngestionError, UnsupportedFormatError
-from app.core.logging import get_logger
+from app.core.config.model_config import get_model_config
+from app.core.observability.logging import get_logger
+from app.core.security.exceptions import IngestionError, UnsupportedFormatError
 from app.rag.ingestion import ocr as ocr_module
 
 logger = get_logger(__name__)

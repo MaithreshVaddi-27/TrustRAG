@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from app.core.exceptions import RetrievalOutageError
+from app.core.security.exceptions import RetrievalOutageError
 from app.rag.agent.graph import (
     generation_node,
     recovery_node,
@@ -22,7 +22,7 @@ from app.rag.agent.graph import (
 def test_should_recover_router():
     # Ceilings follow live config (max_recovery_attempts), not a hardcoded
     # value, so the router test stays valid when the budget is retuned.
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     max_recovery = get_model_config().max_recovery_attempts
 
@@ -105,24 +105,6 @@ async def test_generation_node(mock_generate):
     }
     res = await generation_node(state)
     assert res["answer"] == "Grounded answer"
-
-
-@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
-@patch("app.rag.agent.graph.generate_grounded_answer")
-@pytest.mark.asyncio
-async def test_generation_node_reuses_cached_answer_without_llm_call(mock_generate):
-    state = {
-        "analysis_id": "64ee39d09c6292376e191983",
-        "current_query": "query",
-        "chunks": [{"text": "fresh evidence"}],
-        "answer": "Previously generated answer",
-        "cache_hit": True,
-    }
-
-    res = await generation_node(state)
-
-    assert res["answer"] == "Previously generated answer"
-    mock_generate.assert_not_called()
 
 
 @patch("app.rag.agent.graph.add_trace_event", AsyncMock())
@@ -236,14 +218,12 @@ async def test_recovery_node_rewrite(mock_model, mock_collection):
         "claims": [{"text": "Claim", "state": "NEUTRAL"}],
         "attempts": 0,
         "recovery_strategy": None,
-        "cache_hit": True,
     }
 
     res = await recovery_node(state)
     assert res["attempts"] == 1
     assert res["current_query"] == "rewritten search query"
     assert res["recovery_strategy"] == "query_rewrite"
-    assert res["cache_hit"] is False
     mock_db.insert_one.assert_called_once()
     # Rewrite reserves a small output budget on local inference (RAM saving).
     mock_llm.bind.assert_called_once_with(max_tokens=128)
@@ -344,7 +324,6 @@ async def test_rewrite_prompt_uses_neutral_acronym_example(
         "chunks": [{"text": "some evidence"}],
         "attempts": 0,
         "recovery_strategy": None,
-        "cache_hit": False,
     }
 
     await recovery_node(state)
@@ -390,7 +369,6 @@ async def test_recovery_empty_rewrite_on_abstain_short_circuits(mock_model, mock
         "chunks": [{"text": "same evidence"}],
         "attempts": 0,
         "recovery_strategy": None,
-        "cache_hit": False,
     }
 
     res = await recovery_node(state)
@@ -424,7 +402,6 @@ async def test_recovery_empty_rewrite_on_hedge_short_circuits(mock_model, mock_c
         "chunks": [{"text": "same evidence"}],
         "attempts": 0,
         "recovery_strategy": None,
-        "cache_hit": False,
     }
 
     res = await recovery_node(state)
@@ -458,7 +435,6 @@ async def test_recovery_empty_rewrite_with_real_answer_retries(mock_model, mock_
         "chunks": [{"text": "same evidence"}],
         "attempts": 0,
         "recovery_strategy": None,
-        "cache_hit": False,
     }
 
     res = await recovery_node(state)
@@ -510,7 +486,7 @@ async def test_verification_node_abstain_max_attempts_passes():
 async def test_retrieval_node_outage_is_distinct_from_no_evidence(
     mock_collection, mock_retrieve, mock_rerank, mock_audit
 ):
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     mock_retrieve.side_effect = RetrievalOutageError("Vector store unavailable: down")
     state = {
@@ -803,7 +779,6 @@ async def test_generation_node_preserves_outage_answer(mock_generate):
         "answer": outage_msg,
         "diagnosis_type": "RETRIEVAL_OUTAGE",
         "diagnosis_failures": ["Vector store unavailable: down"],
-        "cache_hit": False,
     }
 
     res = await generation_node(state)
@@ -815,7 +790,7 @@ async def test_generation_node_preserves_outage_answer(mock_generate):
 @patch("app.rag.agent.graph.execute_claim_verification")
 @pytest.mark.asyncio
 async def test_verification_node_outage_fast_path_skips_verification(mock_execute):
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     outage_msg = (
         "The knowledge base search service is temporarily unavailable, "
@@ -845,7 +820,7 @@ async def test_verification_node_outage_fast_path_skips_verification(mock_execut
 
 def test_select_recovery_strategy_diagnosis_mapping():
     """Test that diagnosis types map to correct recovery strategies."""
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
     from app.rag.agent.graph import _select_recovery_strategy
 
     cfg = get_model_config()
@@ -895,7 +870,7 @@ def test_should_recover_budget_exhaustion_ends_graph():
 
 def test_should_recover_still_respects_attempts_and_pass():
     """should_recover still respects PASS verdict and max attempts."""
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     max_recovery = get_model_config().max_recovery_attempts
 
@@ -918,7 +893,7 @@ def test_should_recover_still_respects_attempts_and_pass():
 @pytest.mark.asyncio
 async def test_recovery_node_budget_enforcement(mock_get_model, mock_collection):
     """Recovery node should track budget and force abstention when exhausted."""
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
     from app.rag.agent.graph import recovery_node
 
     cfg = get_model_config()
@@ -955,7 +930,6 @@ async def test_recovery_node_budget_enforcement(mock_get_model, mock_collection)
         "web_search_provider": "both",
         "llm_provider": None,
         "llm_model": None,
-        "cache_hit": False,
         "node_errors": [],
         # Budget nearly exhausted - just under the limit
         "recovery_tokens_used": cfg.max_recovery_tokens - 100,
@@ -1018,7 +992,6 @@ async def test_recovery_node_diagnosis_based_strategy(mock_get_model, mock_colle
         "web_search_provider": "both",
         "llm_provider": None,
         "llm_model": None,
-        "cache_hit": False,
         "node_errors": [],
         "recovery_tokens_used": 0,
         "recovery_latency_ms": 0,

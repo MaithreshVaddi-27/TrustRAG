@@ -10,10 +10,11 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
-from app.core import memory as memory_mod
-from app.core.config import get_model_config, get_ports, get_settings
-from app.core.hardware import get_cached_hardware_profile
-from app.core.logging import get_logger
+from app.core.config.model_config import get_model_config
+from app.core.config.settings import get_ports, get_settings
+from app.core.observability.logging import get_logger
+from app.core.system import memory as memory_mod
+from app.core.system.hardware import get_cached_hardware_profile
 from app.llm.local_llm import (
     check_llamacpp_status,
     check_mlx_status,

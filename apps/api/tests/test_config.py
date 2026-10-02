@@ -99,7 +99,7 @@ class TestModelConfig:
     """Tests for the ModelConfig wrapper."""
 
     def _make_config(self):
-        from app.core.config import ModelConfig
+        from app.core.config.model_config import ModelConfig
 
         with _MODELS_YAML.open() as f:
             data = yaml.safe_load(f)
@@ -140,7 +140,7 @@ class TestModelConfig:
         assert snapshot["config_version"]
 
     def test_missing_required_key_raises(self) -> None:
-        from app.core.config import ModelConfig
+        from app.core.config.model_config import ModelConfig
 
         incomplete = {"runtime": {"config_version": "1.0"}}
         cfg = ModelConfig(incomplete)
@@ -168,18 +168,13 @@ class TestModelConfig:
 
     def test_mlx_base_url_default_and_env(self, monkeypatch) -> None:
         """MLX uses dedicated port 8090; env overrides it."""
-        from app.core.config import get_settings, reload_settings
+        from app.core.config.settings import get_settings
 
-        # get_settings() is an lru_cached singleton — reload between env states.
-        try:
-            monkeypatch.delenv("MLX_BASE_URL", raising=False)
-            reload_settings()
-            assert get_settings().mlx_base_url == "http://127.0.0.1:8090/v1"
-            monkeypatch.setenv("MLX_BASE_URL", "http://127.0.0.1:8091/v1")
-            reload_settings()
-            assert get_settings().mlx_base_url == "http://127.0.0.1:8091/v1"
-        finally:
-            reload_settings()
+        # Fresh read per call: no reload dance needed between env states.
+        monkeypatch.delenv("MLX_BASE_URL", raising=False)
+        assert get_settings().mlx_base_url == "http://127.0.0.1:8090/v1"
+        monkeypatch.setenv("MLX_BASE_URL", "http://127.0.0.1:8091/v1")
+        assert get_settings().mlx_base_url == "http://127.0.0.1:8091/v1"
 
 
 # ─── Settings tests ───────────────────────────────────────────────────────────
@@ -190,7 +185,7 @@ class TestSettings:
 
     def _make_settings(self, **overrides):
         """Create Settings with test values, bypassing .env file."""
-        from app.core.config import Settings
+        from app.core.config.settings import Settings
 
         base = {
             "jwt_secret": "a" * 64,
@@ -359,7 +354,7 @@ class TestAnalysisModelPolicy:
         generation's model IDs.
         """
         from app.api.v1.schemas.analysis import AnalysisCreate
-        from app.core.config import get_model_config
+        from app.core.config.model_config import get_model_config
 
         assert "gemini-3.8-flash" in get_model_config().supported_gemini_models
         request = AnalysisCreate(
@@ -398,7 +393,7 @@ class TestAnalysisModelPolicy:
         # model loader. The engine always serves models.yaml `embedding.model`.
         import app.llm.local_llm as _llm_mod
         from app.api.v1.schemas.analysis import AnalysisCreate
-        from app.core.config import get_model_config
+        from app.core.config.model_config import get_model_config
 
         _orig_get_discovered = _llm_mod.get_discovered_llms
         _llm_mod.get_discovered_llms = lambda provider: frozenset(
