@@ -13,8 +13,8 @@ from bson import ObjectId
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_user
-from app.ingestion.page_images import save_page_image
 from app.main import app
+from app.rag.ingestion.page_images import save_page_image
 
 client = TestClient(app)
 

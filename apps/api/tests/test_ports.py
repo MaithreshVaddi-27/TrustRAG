@@ -55,7 +55,7 @@ def test_model_config_urls_honor_ports_yaml(monkeypatch) -> None:
 
 
 def test_llm_discovery_excludes_embedding_models() -> None:
-    from app.core.local_llm import _is_embedding_model_name
+    from app.llm.local_llm import _is_embedding_model_name
 
     assert _is_embedding_model_name("embeddinggemma:300m-qat-q8_0")
     assert _is_embedding_model_name("nomic-embed-text")
@@ -69,7 +69,7 @@ def test_llm_discovery_excludes_embedding_models() -> None:
 @pytest.mark.asyncio
 async def test_ollama_llm_discovery_is_llm_only(monkeypatch) -> None:
     """`ollama list` output must not leak embedding models into the LLM list."""
-    import app.core.local_llm as local_llm
+    import app.llm.local_llm as local_llm
 
     async def fake_discover():
         return ["granite4.2:3b-q4_K_M", "embeddinggemma:300m-qat-q8_0", "qwen3.5:4b"]

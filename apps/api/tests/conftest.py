@@ -59,13 +59,13 @@ def _clear_all_caches() -> None:
     ):
         os.environ.pop(_leaky_var, None)
     # Reranker result cache
-    from app.retrieval import reranker as reranker_module
+    from app.rag.retrieval import reranker as reranker_module
 
     if reranker_module._reranker_cache is not None:
         reranker_module._reranker_cache.clear()
     # Query-vector embedding cache (dim-mismatch guard reads this)
     try:
-        from app.retrieval.retriever import _query_cache
+        from app.rag.retrieval.retriever import _query_cache
 
         _query_cache.clear()
     except Exception:
@@ -80,7 +80,7 @@ def _clear_all_caches() -> None:
         pass
     # OCR engine/error globals (a failed load would otherwise poison later tests)
     try:
-        from app.ingestion.ocr import reset_engine_for_tests
+        from app.rag.ingestion.ocr import reset_engine_for_tests
 
         reset_engine_for_tests()
     except Exception:

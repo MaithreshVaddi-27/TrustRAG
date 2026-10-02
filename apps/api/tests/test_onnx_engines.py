@@ -105,8 +105,8 @@ def _fake_tokenizer():
 
 def _make_embedder(session, **kwargs):
     """Construct ONNXBGEEmbeddings without touching onnxruntime or transformers."""
-    from app.core import onnx_embeddings as mod
     from app.core.config import get_model_config
+    from app.llm import onnx_embeddings as mod
 
     tok = _fake_tokenizer()
     with (
@@ -131,7 +131,7 @@ def _make_reranker(session, **kwargs):
     configures SessionOptions, so the real (installed) module is patched."""
     import onnxruntime as ort
 
-    from app.core import onnx_reranker as mod
+    from app.llm import onnx_reranker as mod
 
     tok = _fake_tokenizer()
     with (

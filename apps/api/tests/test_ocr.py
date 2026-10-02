@@ -2,7 +2,7 @@
 Unit tests for the per-page OCR fallback (RapidOCR-ONNX).
 
 The real engine is NEVER initialized here (no model downloads): all engine
-interactions go through app.ingestion.ocr._load_engine / ocr_image_bytes
+interactions go through app.rag.ingestion.ocr._load_engine / ocr_image_bytes
 seams and are patched. Real PyMuPDF is used to build tiny in-memory PDFs.
 """
 
@@ -16,10 +16,10 @@ import fitz
 import pytest
 from bson import ObjectId
 
-from app.ingestion import ocr as ocr_module
-from app.ingestion.chunker import chunk_text
-from app.ingestion.ocr import OCRPageResult, ocr_image_bytes, should_ocr_page
-from app.ingestion.parser import parse_pdf
+from app.rag.ingestion import ocr as ocr_module
+from app.rag.ingestion.chunker import chunk_text
+from app.rag.ingestion.ocr import OCRPageResult, ocr_image_bytes, should_ocr_page
+from app.rag.ingestion.parser import parse_pdf
 
 
 def _pdf_bytes(*page_texts: str):
@@ -210,7 +210,7 @@ def test_chunker_propagates_page_image_bytes():
 
 @pytest.mark.asyncio
 async def test_pipeline_payload_carries_ocr_provenance():
-    from app.ingestion.pipeline import index_parsed_chunks
+    from app.rag.ingestion.pipeline import index_parsed_chunks
 
     mock_client = MagicMock()
     mock_client.upsert = AsyncMock()
@@ -239,10 +239,10 @@ async def test_pipeline_payload_carries_ocr_provenance():
         },
     ]
     with (
-        patch("app.ingestion.pipeline.init_kb_collection", AsyncMock()),
-        patch("app.ingestion.pipeline.get_embedding_model", return_value=mock_embeddings),
-        patch("app.ingestion.pipeline.get_collection", return_value=mock_collection),
-        patch("app.ingestion.pipeline.get_qdrant_client", AsyncMock(return_value=mock_client)),
+        patch("app.rag.ingestion.pipeline.init_kb_collection", AsyncMock()),
+        patch("app.rag.ingestion.pipeline.get_embedding_model", return_value=mock_embeddings),
+        patch("app.rag.ingestion.pipeline.get_collection", return_value=mock_collection),
+        patch("app.rag.ingestion.pipeline.get_qdrant_client", AsyncMock(return_value=mock_client)),
     ):
         await index_parsed_chunks(
             doc_id_str="64ee39d09c6292376e191983",
@@ -261,7 +261,7 @@ async def test_pipeline_payload_carries_ocr_provenance():
 @pytest.mark.asyncio
 async def test_pipeline_saves_page_image_once_per_page(tmp_path, monkeypatch):
     """Two chunks from one OCR page → one PNG file; ref rides both stores."""
-    from app.ingestion.pipeline import index_parsed_chunks
+    from app.rag.ingestion.pipeline import index_parsed_chunks
 
     monkeypatch.setenv("PAGE_IMAGES_DIR", str(tmp_path / "page_images"))
     png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
@@ -305,10 +305,10 @@ async def test_pipeline_saves_page_image_once_per_page(tmp_path, monkeypatch):
         },
     ]
     with (
-        patch("app.ingestion.pipeline.init_kb_collection", AsyncMock()),
-        patch("app.ingestion.pipeline.get_embedding_model", return_value=mock_embeddings),
-        patch("app.ingestion.pipeline.get_collection", return_value=mock_collection),
-        patch("app.ingestion.pipeline.get_qdrant_client", AsyncMock(return_value=mock_client)),
+        patch("app.rag.ingestion.pipeline.init_kb_collection", AsyncMock()),
+        patch("app.rag.ingestion.pipeline.get_embedding_model", return_value=mock_embeddings),
+        patch("app.rag.ingestion.pipeline.get_collection", return_value=mock_collection),
+        patch("app.rag.ingestion.pipeline.get_qdrant_client", AsyncMock(return_value=mock_client)),
     ):
         await index_parsed_chunks(
             doc_id_str="64ee39d09c6292376e191983",

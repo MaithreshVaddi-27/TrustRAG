@@ -10,7 +10,7 @@ import os
 
 import pytest
 
-from app.ingestion import page_images
+from app.rag.ingestion import page_images
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 

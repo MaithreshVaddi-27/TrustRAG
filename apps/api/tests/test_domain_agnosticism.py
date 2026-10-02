@@ -66,14 +66,14 @@ _ZONE_CASES = [
 
 @pytest.mark.parametrize(("text", "expected"), _ZONE_CASES)
 def test_zone_detection_is_domain_neutral(text: str, expected: str) -> None:
-    from app.ingestion.preprocessor import detect_chunk_zone
+    from app.rag.ingestion.preprocessor import detect_chunk_zone
 
     assert detect_chunk_zone(text, page=1) == expected
 
 
 def test_legacy_textbook_markers_still_detected() -> None:
     """Structural outline markers are kept — they are not subject-specific."""
-    from app.ingestion.preprocessor import detect_chunk_zone
+    from app.rag.ingestion.preprocessor import detect_chunk_zone
 
     text = "Information Retrieval Systems\nUNIT-2 Syllabus\nCataloging"
     assert detect_chunk_zone(text, page=1) == "title"
@@ -107,7 +107,7 @@ _TRIPLE_CASES = [
 
 @pytest.mark.parametrize(("claim", "expected_subject"), _TRIPLE_CASES)
 def test_claim_triples_split_on_first_relational_verb(claim: str, expected_subject: str) -> None:
-    from app.verification.verifier import extract_claim_triple_heuristic
+    from app.rag.verification.verifier import extract_claim_triple_heuristic
 
     subject, predicate, obj = extract_claim_triple_heuristic(claim)
     assert subject == expected_subject
@@ -122,7 +122,7 @@ def test_claim_triple_scans_sentence_order_not_verb_list_order() -> None:
     "The rate is 5% and it" because "allows" was searched before "is". The
     subject must be the text before the FIRST relational verb in the sentence.
     """
-    from app.verification.verifier import extract_claim_triple_heuristic
+    from app.rag.verification.verifier import extract_claim_triple_heuristic
 
     subject, predicate, _ = extract_claim_triple_heuristic("The rate is 5% and it allows records.")
     assert subject == "The rate"
@@ -130,7 +130,7 @@ def test_claim_triple_scans_sentence_order_not_verb_list_order() -> None:
 
 
 def test_predicate_vocabulary_spans_multiple_domains() -> None:
-    from app.verification.verifier import _PREDICATE_VERBS
+    from app.rag.verification.verifier import _PREDICATE_VERBS
 
     # code, legal, scientific, and general relational verbs all present
     for verb in ("returns", "raises", "imports", "terminates", "obliges", "correlates", "is"):
@@ -149,7 +149,7 @@ def test_fused_verify_example_is_domain_neutral() -> None:
     An example that says "Records are available within 30 days" biases a
     domain-agnostic verifier toward commerce-shaped claims.
     """
-    from app.verification.verifier import FUSED_DECOMPOSE_VERIFY_PROMPT_TEMPLATE as T
+    from app.rag.verification.verifier import FUSED_DECOMPOSE_VERIFY_PROMPT_TEMPLATE as T
 
     assert "Record" not in T
     assert "record" not in T
@@ -158,7 +158,7 @@ def test_fused_verify_example_is_domain_neutral() -> None:
 
 def test_generation_scope_block_is_not_structure_locked() -> None:
     """The <scope> block must not enumerate one corpus's structural vocabulary."""
-    from app.generation.generator import GROUNDING_SYSTEM_PROMPT as P
+    from app.rag.generation.generator import GROUNDING_SYSTEM_PROMPT as P
 
     scope = P.split("<scope>", 1)[1].split("</scope>", 1)[0].lower()
     # It should delegate structure to the Context, not list subject headings.

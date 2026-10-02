@@ -29,7 +29,7 @@ from typing import Any
 
 from app.core.exceptions import RetrievalOutageError
 from app.core.logging import get_logger
-from app.retrieval.retriever import retrieve_hybrid_chunks
+from app.rag.retrieval.retriever import retrieve_hybrid_chunks
 
 logger = get_logger(__name__)
 

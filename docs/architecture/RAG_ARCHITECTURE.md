@@ -180,7 +180,7 @@ class AgentState(TypedDict):
 
 ### Ingestion
 
-Pipeline (`app/ingestion/pipeline.py`) stages:
+Pipeline (`app/rag/ingestion/pipeline.py`) stages:
 
 1. **Parse** — file type handler extracts raw text (PDF, DOCX, CSV, JSON, HTML, HTM, TXT, MD; scanned pages via RapidOCR-ONNX fallback)
 2. **Chunk** — word-snapping windows; configurable `chunk_size` (default 512) and `chunk_overlap` (default 64); selectable `chunking_strategy`
@@ -194,7 +194,7 @@ A per-event-loop `Semaphore(1)` serializes ingestion jobs so concurrent uploads 
 
 ### Query Processing
 
-Router (`app/agent/router.py`) applies deterministic regex rules before any retrieval:
+Router (`app/rag/agent/router.py`) applies deterministic regex rules before any retrieval:
 
 | Route | Trigger | Behavior |
 |---|---|---|
@@ -203,27 +203,29 @@ Router (`app/agent/router.py`) applies deterministic regex rules before any retr
 | COMPARISON | Markers (`vs`, `versus`, `compare`, "differences between") | Fan-out to sub-queries (≤2× base), merged via RRF |
 | COMPLEX | Multi-`?` input | Deterministic per-question split, capped at `max_sub_queries: 3` |
 
-The router is a pure function — no LLM call — so it adds zero latency. Partial branch outage degrades to surviving branches.
+The router is a pure function — no LLM call — so it adds zero latency. Retrieval is
+strict: either branch failing (or timing out) fails the query loudly instead of
+serving partial evidence silently.
 
 ---
 
 ### Retrieval
 
-Retriever (`app/retrieval/retriever.py`):
+Retriever (`app/rag/retrieval/retriever.py`):
 
-1. **Dense path** — embed query via local BGE, Qdrant `search` with cosine similarity
+1. **Dense path** — embed query via local ONNX BGE (bounded query-vector LRU), Qdrant `search` with cosine similarity
 2. **Sparse path** — BM25-style client TF saturation + Qdrant server-side IDF (`Modifier.IDF`); `sparse_top_k: 0` disables this leg (current default — set `20` for full hybrid)
 3. **Reciprocal Rank Fusion** — merge ranked lists: `score = Σ 1/(k + rank_i)` with `rrf_k: 60`, `fusion_top_k: 20` enforced
-4. **CrossEncoder reranking** — `sentence-transformers` CrossEncoder on fused candidates (off by default; needs the `local-models` extra); depth cap `top_k: 20`
-5. **Adaptive top-k** — returns fewer chunks when confidence is high, up to `max_context_chunks: 8` when confidence is low
+4. **CrossEncoder reranking** — ONNX int8 CrossEncoder on fused candidates (batched, early termination on confident heads, result cache, RRF fallback); depth cap `top_k: 20`
 
-Per-branch timeouts (45 s each) ensure one hung branch degrades gracefully instead of failing the whole query.
+Per-branch (45 s) + hybrid (60 s) timeouts bound hung branches; either branch failing
+is a hard `RetrievalOutageError`, never silent partial evidence.
 
 ---
 
 ### Generation
 
-Generator (`app/generation/generator.py`):
+Generator (`app/rag/generation/generator.py`):
 
 - System prompt enforces: ground every assertion in Context segments, never fabricate, address all sub-questions, end every factual sentence with an inline citation like `[Segment 3]`
 - Prompt injection defense: treats Context section as untrusted raw data
@@ -234,12 +236,12 @@ Generator (`app/generation/generator.py`):
 
 ### Verification
 
-Verifier (`app/verification/verifier.py`):
+Verifier (`app/rag/verification/verifier.py`):
 
 1. **Claim decomposition** — LLM breaks answer into atomic factual claims
 2. **Meta-claim filter** — removes opinion/meta claims ("I believe…") that cannot be NLI-verified
 3. **Batch NLI** — each claim scored against evidence segments as SUPPORTED / CONTRADICTED / NEUTRAL
-4. **Verdict** (`app/verification/verdict.py`):
+4. **Verdict** (`app/rag/verification/verdict.py`):
    - `VerdictStatus`: PASS or FAIL
    - `ReliabilityStatus`: TRUSTED / UNCERTAIN / FAILED / ABSTAINED
    - `DiagnosisType`: RETRIEVAL_FAILURE / OUTAGE / EVIDENCE_CONFLICT / LOW_COVERAGE / NONE
@@ -249,7 +251,7 @@ Verifier (`app/verification/verifier.py`):
 
 ### Adaptive Recovery
 
-Recovery node (`app/agent/graph.py:recovery_node`) cycles through strategies until verdict passes or `max_recovery_attempts` is exhausted:
+Recovery node (`app/rag/agent/graph.py:recovery_node`) cycles through strategies until verdict passes or `max_recovery_attempts` is exhausted:
 
 | Strategy | Behavior |
 |---|---|

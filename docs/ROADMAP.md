@@ -14,11 +14,11 @@
 | **2** | React 18 Workbench Frontend | Glassmorphism design system, 11 interactive pages, Lucide icons (`apps/web/src/`) | ✅ COMPLETE |
 | **3** | FastAPI CRUD Routes & Data Layer | MongoDB storage, asynchronous endpoints, analysis lifecycle (`apps/api/app/api/`) | ✅ COMPLETE |
 | **4** | Auth & Multi-Tenant Security | JWT authentication, bcrypt passwords, anti-IDOR checks, rate limiting (`apps/api/app/core/security.py`) | ✅ COMPLETE |
-| **5** | Document Ingestion (8 Formats) | Native parsers for PDF, DOCX (defusedxml), CSV, JSON, HTML, HTM, TXT, MD (`apps/api/app/ingestion/`) | ✅ COMPLETE |
-| **6** | Hybrid Retrieval & Reciprocal Rank Fusion | BGE-small-en-v1.5 (384d, local) + client BM25-TF saturation + server-side Qdrant IDF + RRF ($k=60$) with enforced `fusion_top_k`; deterministic query router (simple/temporal/comparison/complex) + bounded fan-out (`apps/api/app/retrieval/`, `apps/api/app/agent/router.py`) | ✅ COMPLETE |
-| **7** | Atomic Claim Decomposition & NLI Verifier | Structured extraction, Open Knowledge triples `(S, P, O)`, Gemini NLI verdict (`apps/api/app/verification/`) | ✅ COMPLETE |
-| **8** | Evidence Integrity & Provenance | Cryptographic SHA-256 hash auditing, temporal validity filters (`apps/api/app/verification/integrity.py`) | ✅ COMPLETE |
-| **9** | LangGraph Adaptive Self-Healing Loop | StateGraph recovery loop, dynamic rewrites, context expansions (`apps/api/app/agent/graph.py`) | ✅ COMPLETE |
+| **5** | Document Ingestion (8 Formats) | Native parsers for PDF, DOCX (defusedxml), CSV, JSON, HTML, HTM, TXT, MD (`apps/api/app/rag/ingestion/`) | ✅ COMPLETE |
+| **6** | Hybrid Retrieval & Reciprocal Rank Fusion | BGE-small-en-v1.5 (384d, local) + client BM25-TF saturation + server-side Qdrant IDF + RRF ($k=60$) with enforced `fusion_top_k`; deterministic query router (simple/temporal/comparison/complex) + bounded fan-out (`apps/api/app/rag/retrieval/`, `apps/api/app/rag/agent/router.py`) | ✅ COMPLETE |
+| **7** | Atomic Claim Decomposition & NLI Verifier | Structured extraction, Open Knowledge triples `(S, P, O)`, Gemini NLI verdict (`apps/api/app/rag/verification/`) | ✅ COMPLETE |
+| **8** | Evidence Integrity & Provenance | Cryptographic SHA-256 hash auditing, temporal validity filters (`apps/api/app/rag/verification/integrity.py`) | ✅ COMPLETE |
+| **9** | LangGraph Adaptive Self-Healing Loop | StateGraph recovery loop, dynamic rewrites, context expansions (`apps/api/app/rag/agent/graph.py`) | ✅ COMPLETE |
 | **10** | Live Execution Trace Streaming | Server-Sent Events (SSE) trace streaming, MongoDB persistence (`apps/api/app/services/analysis_service.py`) | ✅ COMPLETE |
 | **11** | Evaluation & Experimentation | Custom reliability metrics, benchmark dataset, ablation engine (`apps/api/app/evaluation/`) | ✅ COMPLETE |
 | **12** | Production Hardening & Security SAST | Bandit SAST 0 issues, memory streaming upload guards, defensive HTTP headers (`apps/api/app/main.py`) | ✅ COMPLETE |

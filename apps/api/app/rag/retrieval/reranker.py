@@ -21,7 +21,7 @@ from typing import Any
 
 from app.core.config import get_model_config
 from app.core.logging import get_logger
-from app.core.model_registry import get_reranker
+from app.llm.model_registry import get_reranker
 
 logger = get_logger(__name__)
 

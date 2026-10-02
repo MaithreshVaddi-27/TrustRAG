@@ -26,7 +26,7 @@ is the single source of truth), **no secrets in code or YAML** (`.env` only).
 ## 3. RAM & inference speed — what already exists (verified, not churned)
 
 Single ONNX Runtime engine (torch-free, ~500–1000 MB RSS saved vs torch): shared session
-factory `app/core/onnx_runtime.py` (sequential exec, `ORT_ENABLE_ALL`, intra-op auto→min(cpu,4),
+factory `app/llm/onnx_runtime.py` (sequential exec, `ORT_ENABLE_ALL`, intra-op auto→min(cpu,4),
 inter-op 1, CPU arena+mem-pattern on; every knob overridable via `ONNX_*` env).
 Tier-aware micro-batching (lean 32 / std 64 / high 128, `ONNX_EMBED_MICRO_BATCH` to pin),
 two-tier embedding cache (LRU + SQLite, model-namespaced), query-vector LRU shared with the
@@ -57,7 +57,7 @@ Measured baseline (docs/AUDIT.md): API-ready ~4 s, RSS 178 MB → ~700 MB reside
   two endpoints (`documents/from-url`, `internal/ingest/url`), their schemas, the
   `URL_INGEST_ALLOWLIST_EXTRA` env, and 4 test files still referenced it (app would not
   even import). Endpoints + schemas + env + tests removed; uploads are the only intake.
-- **Page-image chain implemented (TDD GREEN)**: `app/ingestion/page_images.py` did not
+- **Page-image chain implemented (TDD GREEN)**: `app/rag/ingestion/page_images.py` did not
   exist (RED tests specified it) and `kb_service` imported it, so **the app did not boot**.
   Implemented traversal-safe store (`PAGE_IMAGES_DIR` env-first), `GET
   /documents/{id}/pages/{page}/image` route, parser render-bytes handoff (gated on

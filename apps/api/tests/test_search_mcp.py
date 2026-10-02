@@ -62,7 +62,7 @@ async def test_duckduckgo_tool_is_gone_tavily_only():
     from app.core.security import create_service_token
 
     token = create_service_token("test-service")
-    with pytest.raises(Exception, match="(?i)unknown|not found|no such tool"):
+    with pytest.raises(Exception, match="Unknown MCP tool"):
         await handle_tool_call("duckduckgo_search", {"query": "ddg query", "service_token": token})
 
 
@@ -233,7 +233,7 @@ async def test_local_llm_mcp_tools():
     # Test local_llm_chat tool with mock
     mock_llm = AsyncMock()
     mock_llm.ainvoke.return_value = MagicMock(content="Mocked response from local LLM")
-    with patch("app.core.model_registry.get_llm", return_value=mock_llm):
+    with patch("app.llm.model_registry.get_llm", return_value=mock_llm):
         chat_res = await handle_tool_call(
             "local_llm_chat",
             {

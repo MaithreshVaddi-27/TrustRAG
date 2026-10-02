@@ -13,12 +13,12 @@ from app.api.deps import get_current_user
 from app.core import memory as memory_mod
 from app.core.config import get_model_config, get_ports, get_settings
 from app.core.hardware import get_cached_hardware_profile
-from app.core.local_llm import (
+from app.core.logging import get_logger
+from app.llm.local_llm import (
     check_llamacpp_status,
     check_mlx_status,
     check_ollama_status,
 )
-from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 

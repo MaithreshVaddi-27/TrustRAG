@@ -22,11 +22,11 @@ from app.core.config import get_model_config
 from app.core.hardware import get_ingest_embed_batch_size
 from app.core.logging import get_logger
 from app.core.memory import trim_memory
-from app.core.model_registry import get_embedding_model
 from app.db.mongodb import Collections, get_collection
 from app.db.qdrant import get_collection_name, get_qdrant_client, init_kb_collection
-from app.ingestion.chunking_strategies import ChunkingStrategy
-from app.ingestion.sparse_vector import generate_sparse_vector
+from app.llm.model_registry import get_embedding_model
+from app.rag.ingestion.chunking_strategies import ChunkingStrategy
+from app.rag.ingestion.sparse_vector import generate_sparse_vector
 
 logger = get_logger(__name__)
 
@@ -146,7 +146,7 @@ async def _index_parsed_chunks(
         # Best-effort: a save failure must not fail indexing.
         page_refs: dict[int, str] = {}
         try:
-            from app.ingestion import page_images as page_images_mod
+            from app.rag.ingestion import page_images as page_images_mod
 
             seen_pages: dict[int, bytes] = {}
             for c in chunks:

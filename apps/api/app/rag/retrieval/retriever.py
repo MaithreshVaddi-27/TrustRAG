@@ -18,10 +18,10 @@ from qdrant_client.http import models
 from app.core.config import get_model_config
 from app.core.exceptions import RetrievalOutageError
 from app.core.logging import get_logger
-from app.core.model_registry import get_embedding_model
 from app.db.mongodb import Collections, get_collection
 from app.db.qdrant import get_collection_name, get_qdrant_client
-from app.ingestion.sparse_vector import generate_sparse_vector
+from app.llm.model_registry import get_embedding_model
+from app.rag.ingestion.sparse_vector import generate_sparse_vector
 
 logger = get_logger(__name__)
 

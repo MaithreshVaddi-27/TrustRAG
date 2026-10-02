@@ -162,7 +162,7 @@ def _create_llm(
     )
 
     if provider == "ollama":
-        from app.core.local_llm import ChatOllamaClient
+        from app.llm.local_llm import ChatOllamaClient
 
         llm = ChatOllamaClient(
             base_url=settings.ollama_base_url,
@@ -174,7 +174,7 @@ def _create_llm(
         return llm
 
     if provider in ("llama_cpp", "llamacpp"):
-        from app.core.local_llm import ChatLlamaCppClient
+        from app.llm.local_llm import ChatLlamaCppClient
 
         llm = ChatLlamaCppClient(
             base_url=settings.llamacpp_base_url,
@@ -188,7 +188,7 @@ def _create_llm(
         return llm
 
     if provider == "mlx":
-        from app.core.local_llm import ChatLlamaCppClient
+        from app.llm.local_llm import ChatLlamaCppClient
 
         llm = ChatLlamaCppClient(
             base_url=settings.mlx_base_url,
@@ -509,7 +509,7 @@ def get_embedding_model() -> Embeddings:
     active_model = cfg.embedding_model
 
     try:
-        from app.core.onnx_embeddings import ONNXBGEEmbeddings, ONNXBGEEmbeddingsWrapper
+        from app.llm.onnx_embeddings import ONNXBGEEmbeddings, ONNXBGEEmbeddingsWrapper
     except ImportError as exc:
         raise ConfigurationError(
             "ONNX embedding stack missing (needs 'onnxruntime' + 'transformers'). "
@@ -581,7 +581,7 @@ def get_reranker():  # type: ignore[return]
     # Check if ONNX quantization is requested
     if cfg.reranker_use_onnx:
         try:
-            from app.core.onnx_reranker import ONNXCrossEncoder
+            from app.llm.onnx_reranker import ONNXCrossEncoder
 
             logger.info("Initializing ONNX reranker", model=cfg.reranker_model)
 
@@ -608,7 +608,7 @@ def get_reranker():  # type: ignore[return]
 
                         model = CrossEncoder(cfg.reranker_model)
                         # Export to ONNX
-                        from app.core.onnx_reranker import export_crossencoder_to_onnx
+                        from app.llm.onnx_reranker import export_crossencoder_to_onnx
 
                         export_crossencoder_to_onnx(
                             model, str(onnx_path), tokenizer_name=cfg.reranker_model

@@ -17,11 +17,11 @@ from pydantic import BaseModel, field_validator
 
 from app.api.deps import require_service_permission
 from app.core.exceptions import RetrievalOutageError
-from app.core.model_registry import registry_status
 from app.core.security import create_service_token
-from app.retrieval.retriever import retrieve_hybrid_chunks
+from app.llm.model_registry import registry_status
+from app.rag.retrieval.retriever import retrieve_hybrid_chunks
+from app.rag.verification.verifier import batch_verify_claims_nli
 from app.services.kb_service import add_document
-from app.verification.verifier import batch_verify_claims_nli
 
 # Cost-DoS backstop for service-to-service routes (generous: functionality is
 # already gated by service-token permissions, this only bounds LLM fan-out).

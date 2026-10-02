@@ -13,8 +13,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.retrieval import reranker as reranker_module
-from app.retrieval.reranker import _rerank_sync, rerank_candidate_chunks
+from app.rag.retrieval import reranker as reranker_module
+from app.rag.retrieval.reranker import _rerank_sync, rerank_candidate_chunks
 
 
 def _stub_cfg(**overrides):

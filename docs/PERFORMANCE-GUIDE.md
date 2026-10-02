@@ -58,7 +58,7 @@ The torch process RSS floor dominates small hosts. The ONNX path is numerically 
 apps/api/.venv/bin/python scripts/bootstrap.py
 ```
 
-Files: `scripts/bootstrap.py` (+ `ensure_onnx_models.py`), `apps/api/app/core/onnx_embeddings.py`, `apps/api/app/core/model_registry.py`. The single ONNX embedding engine is the default (no env flag) — in Docker this is mandatory anyway (the image ships `onnxruntime` but no torch — export on the host, then `docker cp` into the container).
+Files: `scripts/bootstrap.py` (+ `ensure_onnx_models.py`), `apps/api/app/llm/onnx_embeddings.py`, `apps/api/app/llm/model_registry.py`. The single ONNX embedding engine is the default (no env flag) — in Docker this is mandatory anyway (the image ships `onnxruntime` but no torch — export on the host, then `docker cp` into the container).
 
 ### 2.2 Keep both caches ON (they already are — don't turn them off)
 
@@ -78,7 +78,7 @@ One structured call instead of decompose → batch. Default on; falls back to tw
 FUSED_DECOMPOSE_VERIFY=1
 ```
 
-File: `apps/api/app/verification/verifier.py`, kill-switch in `apps/api/config/models.yaml` (`verification.fused_decompose_verify`).
+File: `apps/api/app/rag/verification/verifier.py`, kill-switch in `apps/api/config/models.yaml` (`verification.fused_decompose_verify`).
 
 ### 2.4 Use the smallest model that still verifies (free tok/s)
 
@@ -199,7 +199,7 @@ Do this if you want MLX and llama-server side by side (e.g. MLX for generation, 
 
 | # | File | Change |
 |---|---|---|
-| 1 | `apps/api/app/core/model_registry.py` | Add `"mlx"` to `LOCAL_LLM_PROVIDERS`; add `mlx` branches in `get_llm()` / `get_verification_model()` constructing the existing `ChatLlamaCppClient` with `base_url=settings.mlx_base_url` (protocol-compatible — no new client class) |
+| 1 | `apps/api/app/llm/model_registry.py` | Add `"mlx"` to `LOCAL_LLM_PROVIDERS`; add `mlx` branches in `get_llm()` / `get_verification_model()` constructing the existing `ChatLlamaCppClient` with `base_url=settings.mlx_base_url` (protocol-compatible — no new client class) |
 | 2 | `apps/api/app/core/config.py` | Add `MLX_BASE_URL` (default `http://127.0.0.1:8080/v1`), `MLX_MODEL` settings + `llm_model_for("mlx")` / `verification_model_for("mlx")` wiring |
 | 3 | `apps/api/config/models.yaml` | Add `model_mlx` defaults under `llm:` and `verification:` (mirroring `model_llamacpp`) |
 | 4 | `.env.example` | Document `MLX_BASE_URL` / `MLX_MODEL` + the :8080 conflict note |

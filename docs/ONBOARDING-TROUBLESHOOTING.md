@@ -24,7 +24,7 @@ two files in `apps/api/.model_cache/`:
 | File | Source | Size | Needed by |
 |---|---|---|---|
 | `bge-small-en-v1.5.onnx` | exported from `BAAI/bge-small-en-v1.5` via `scripts/export_bge_onnx.py` | ~130 MB | default `embedding.provider: onnx` |
-| `reranker-ms-marco-MiniLM-L-6-v2_int8.onnx` | exported from `cross-encoder/ms-marco-MiniLM-L-6-v2` via `app/core/onnx_reranker.py` | ~90 MB | `reranker.use_onnx: true` |
+| `reranker-ms-marco-MiniLM-L-6-v2_int8.onnx` | exported from `cross-encoder/ms-marco-MiniLM-L-6-v2` via `app/llm/onnx_reranker.py` | ~90 MB | `reranker.use_onnx: true` |
 
 Both exports need the torch stack (`pip install -e ".[local-models]"`:
 `sentence-transformers` pulls torch, plus `onnx`/`onnxscript`). The export is

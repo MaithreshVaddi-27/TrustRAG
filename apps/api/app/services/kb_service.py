@@ -18,7 +18,7 @@ from app.core.exceptions import AuthorizationError, ConflictError, NotFoundError
 from app.core.logging import get_logger
 from app.db.mongodb import Collections, get_collection
 from app.db.qdrant import delete_kb_collection, get_collection_name, get_qdrant_client
-from app.ingestion import page_images as page_images_mod
+from app.rag.ingestion import page_images as page_images_mod
 
 logger = get_logger(__name__)
 
@@ -364,7 +364,7 @@ async def _copy_kb_vectors(source_kb_id: str, dest_kb_id: str, doc_id_map: dict[
     # so the snapshot path re-reads source attributes per call while the rest
     # of this module uses top-level bindings. Do not hoist.
     from app.db.qdrant import get_collection_name, init_kb_collection
-    from app.ingestion.pipeline import hashlib_qdrant_id
+    from app.rag.ingestion.pipeline import hashlib_qdrant_id
 
     client = await get_qdrant_client()
     source_name = get_collection_name(source_kb_id)

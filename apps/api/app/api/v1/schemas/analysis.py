@@ -10,16 +10,17 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-# Module-level imports (verified cycle-free): the AnalysisCreate validator
-# resolves provider allowlists on every request, so keeping these at the top
-# avoids per-call import lookups.
-from app.core import local_llm as _local_llm_mod
 from app.core.config import (
     SUPPORTED_LLM_PROVIDERS,
     get_model_config,
     get_settings,
     normalize_provider,
 )
+
+# Module-level imports (verified cycle-free): the AnalysisCreate validator
+# resolves provider allowlists on every request, so keeping these at the top
+# avoids per-call import lookups.
+from app.llm import local_llm as _local_llm_mod
 
 
 class AnalysisCreate(BaseModel):

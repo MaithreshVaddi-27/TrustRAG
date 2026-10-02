@@ -13,8 +13,8 @@ from __future__ import annotations
 import pytest
 import xxhash
 
-from app.ingestion.preprocessor import stem_word
-from app.ingestion.sparse_vector import (
+from app.rag.ingestion.preprocessor import stem_word
+from app.rag.ingestion.sparse_vector import (
     VOCAB_SIZE_LIMIT,
     _tf_saturate,
     generate_sparse_vector,

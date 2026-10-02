@@ -22,10 +22,10 @@ from app.core.config import get_model_config, get_settings
 from app.core.hardware import get_cached_hardware_profile
 from app.core.memory import get_memory_usage_mb
 from app.core.metrics import render_prometheus
-from app.core.model_registry import registry_status
 from app.db.mongodb import health_check as mongo_health_check
 from app.db.qdrant import health_check as qdrant_health_check
-from app.verification.verifier import get_nli_metrics
+from app.llm.model_registry import registry_status
+from app.rag.verification.verifier import get_nli_metrics
 
 router = APIRouter(tags=["health"])
 

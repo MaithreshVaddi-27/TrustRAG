@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from app.ingestion import chunking_strategies as strategies
-from app.ingestion.chunker import chunk_text
-from app.ingestion.preprocessor import detect_chunk_zone, lexical_analyze, normalize_text
+from app.rag.ingestion import chunking_strategies as strategies
+from app.rag.ingestion.chunker import chunk_text
+from app.rag.ingestion.preprocessor import detect_chunk_zone, lexical_analyze, normalize_text
 
 # ── Normalization ────────────────────────────────────────────────────────────
 

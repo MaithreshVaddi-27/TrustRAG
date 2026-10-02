@@ -26,7 +26,7 @@ import pytest
 from bson import ObjectId
 
 from app.core.config import get_model_config
-from app.verification.verifier import FusedDecomposeVerify
+from app.rag.verification.verifier import FusedDecomposeVerify
 
 ANALYSIS_ID = "64ee39d09c6292376e191983"
 KB_ID = "64ee39d09c6292376e191982"
@@ -128,15 +128,17 @@ def analysis_deps():
     collection.find = MagicMock(return_value=cursor)
 
     with (
-        patch("app.agent.graph.retrieve_hybrid_chunks", AsyncMock(return_value=CHUNKS)),
-        patch("app.agent.graph.rerank_candidate_chunks", _passthrough_chunks),
-        patch("app.agent.graph.audit_evidence_integrity", _passthrough_audit),
-        patch("app.agent.graph.get_collection", MagicMock(return_value=collection)),
-        patch("app.agent.graph.add_trace_event", AsyncMock()),
-        patch("app.verification.verifier.get_collection", MagicMock(return_value=collection)),
-        patch("app.generation.generator.get_llm", MagicMock(return_value=llm)),
-        patch("app.agent.graph.get_verification_model", MagicMock(return_value=verifier)),
-        patch("app.verification.verifier.get_verification_model", MagicMock(return_value=verifier)),
+        patch("app.rag.agent.graph.retrieve_hybrid_chunks", AsyncMock(return_value=CHUNKS)),
+        patch("app.rag.agent.graph.rerank_candidate_chunks", _passthrough_chunks),
+        patch("app.rag.agent.graph.audit_evidence_integrity", _passthrough_audit),
+        patch("app.rag.agent.graph.get_collection", MagicMock(return_value=collection)),
+        patch("app.rag.agent.graph.add_trace_event", AsyncMock()),
+        patch("app.rag.verification.verifier.get_collection", MagicMock(return_value=collection)),
+        patch("app.rag.generation.generator.get_llm", MagicMock(return_value=llm)),
+        patch("app.rag.agent.graph.get_verification_model", MagicMock(return_value=verifier)),
+        patch(
+            "app.rag.verification.verifier.get_verification_model", MagicMock(return_value=verifier)
+        ),
     ):
         yield collection
 
@@ -152,7 +154,7 @@ async def test_execute_agentic_rag_flow_produces_a_grounded_verdict(analysis_dep
 
     Runs the real LangGraph, generator, verifier, and verdict computation.
     """
-    from app.agent.graph import execute_agentic_rag_flow
+    from app.rag.agent.graph import execute_agentic_rag_flow
 
     final = await execute_agentic_rag_flow(
         analysis_id_str=ANALYSIS_ID,
@@ -202,7 +204,7 @@ async def test_analysis_persists_evidence_and_returns_a_persistable_record(analy
     `analysis_service`'s responsibility (analyses.py update_one calls), so this
     asserts the graph returns a state complete enough to persist.
     """
-    from app.agent.graph import execute_agentic_rag_flow
+    from app.rag.agent.graph import execute_agentic_rag_flow
 
     final = await execute_agentic_rag_flow(
         analysis_id_str=ANALYSIS_ID,
@@ -225,10 +227,10 @@ async def test_analysis_persists_evidence_and_returns_a_persistable_record(analy
 @pytest.mark.asyncio
 async def test_contradicted_evidence_yields_fail_not_pass(analysis_deps):
     """The verdict must respond to evidence quality, not always return PASS."""
-    from app.agent.graph import execute_agentic_rag_flow
+    from app.rag.agent.graph import execute_agentic_rag_flow
 
     with patch(
-        "app.verification.verifier.get_verification_model",
+        "app.rag.verification.verifier.get_verification_model",
         MagicMock(return_value=_verification_model_contradicting()),
     ):
         final = await execute_agentic_rag_flow(
@@ -264,11 +266,11 @@ def _verification_model_contradicting() -> MagicMock:
 @pytest.mark.asyncio
 async def test_empty_knowledge_base_abstains_without_inventing_evidence(analysis_deps):
     """No evidence must produce ABSTAIN, never a fabricated grounded answer."""
-    from app.agent.graph import execute_agentic_rag_flow
+    from app.rag.agent.graph import execute_agentic_rag_flow
 
     with (
-        patch("app.agent.graph.retrieve_hybrid_chunks", AsyncMock(return_value=[])),
-        patch("app.agent.graph.rerank_candidate_chunks", _passthrough_chunks),
+        patch("app.rag.agent.graph.retrieve_hybrid_chunks", AsyncMock(return_value=[])),
+        patch("app.rag.agent.graph.rerank_candidate_chunks", _passthrough_chunks),
     ):
         final = await execute_agentic_rag_flow(
             analysis_id_str=ANALYSIS_ID,
@@ -290,8 +292,8 @@ def test_generation_gutted_would_fail_this_file():
     verdict.py, and the LangGraph, so replacing `generate_grounded_answer` with a
     stub — or gutting `retriever.py` — makes the assertions above fail.
     """
-    from app.agent import graph as graph_mod
-    from app.generation import generator as generator_mod
+    from app.rag.agent import graph as graph_mod
+    from app.rag.generation import generator as generator_mod
 
     # The graph must call the real generator, not a private copy.
     assert graph_mod.generate_grounded_answer is generator_mod.generate_grounded_answer

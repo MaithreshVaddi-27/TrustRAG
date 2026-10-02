@@ -17,35 +17,36 @@ from bson import ObjectId
 from langgraph.graph import END, StateGraph
 from qdrant_client.http import models as qdrant_models
 
-from app.agent.router import fanout_retrieve, route_query
-from app.core import memory, model_registry, semantic_cache
+from app.core import memory, semantic_cache
 from app.core.config import get_model_config
 from app.core.exceptions import LLMUnavailableError, RetrievalOutageError
-from app.core.llm_ledger import (
+from app.core.logging import get_logger
+from app.core.metrics import record_recovery_attempt, record_verification_claims
+from app.db import qdrant as qdrant_db
+from app.db.mongodb import Collections, get_collection
+from app.llm import model_registry
+from app.llm.llm_ledger import (
     begin_analysis,
     current_ledger,
     end_analysis,
     invoke_counted,
     llm_budget_exhausted,
 )
-from app.core.llm_utils import normalize_llm_content
-from app.core.local_llm import verification_cap_kwargs
-from app.core.logging import get_logger
-from app.core.metrics import record_recovery_attempt, record_verification_claims
-from app.core.model_registry import get_verification_model
-from app.db import qdrant as qdrant_db
-from app.db.mongodb import Collections, get_collection
-from app.generation.generator import generate_grounded_answer
-from app.ingestion import pipeline as pipeline_mod
-from app.ingestion.sparse_vector import generate_sparse_vector
+from app.llm.llm_utils import normalize_llm_content
+from app.llm.local_llm import verification_cap_kwargs
+from app.llm.model_registry import get_verification_model
 from app.mcp.client import execute_mcp_tool
-from app.retrieval.reranker import rerank_candidate_chunks
-from app.retrieval.retriever import _query_cache, retrieve_hybrid_chunks
+from app.rag.agent.router import fanout_retrieve, route_query
+from app.rag.generation.generator import generate_grounded_answer
+from app.rag.ingestion import pipeline as pipeline_mod
+from app.rag.ingestion.sparse_vector import generate_sparse_vector
+from app.rag.retrieval.reranker import rerank_candidate_chunks
+from app.rag.retrieval.retriever import _query_cache, retrieve_hybrid_chunks
+from app.rag.verification.integrity import audit_evidence_integrity
+from app.rag.verification.verdict import Thresholds, compute_verdict
+from app.rag.verification.verifier import execute_claim_verification, is_refusal_answer
 from app.services.analysis_service import add_trace_event
 from app.services.search_service import sanitize_url
-from app.verification.integrity import audit_evidence_integrity
-from app.verification.verdict import Thresholds, compute_verdict
-from app.verification.verifier import execute_claim_verification, is_refusal_answer
 
 logger = get_logger(__name__)
 

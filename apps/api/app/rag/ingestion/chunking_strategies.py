@@ -12,8 +12,8 @@ from typing import Any
 
 from app.core.config import get_model_config
 from app.core.logging import get_logger
-from app.ingestion.chunker import chunk_text
-from app.ingestion.preprocessor import detect_chunk_zone, normalize_text
+from app.rag.ingestion.chunker import chunk_text
+from app.rag.ingestion.preprocessor import detect_chunk_zone, normalize_text
 
 logger = get_logger(__name__)
 

@@ -221,14 +221,16 @@ TRUSTRAG/
 │   └── api/
 │       ├── app/
 │       │   ├── api/v1/         # REST route handlers
-│       │   ├── core/           # config, security, LLM, embeddings, metrics
+│       │   ├── core/           # config, security, logging, metrics, hardware, caches
 │       │   ├── db/             # MongoDB + Qdrant clients
-│       │   ├── agent/          # LangGraph loop + deterministic router
-│       │   ├── ingestion/      # parsers, chunkers, OCR fallback, pipeline
-│       │   ├── retrieval/      # hybrid retriever + reranker
-│       │   ├── generation/     # grounded answer generator
-│       │   ├── verification/   # decomposition + NLI + integrity audit
-│       │   ├── services/       # analysis, KB, auth, experiment, search
+│       │   ├── llm/            # LLM clients, registry, ledger, ONNX engines
+│       │   ├── rag/            # RAG pipeline stages (each with sub-folders)
+│       │   │   ├── agent/          # LangGraph loop + deterministic router
+│       │   │   ├── generation/     # grounded answer generator
+│       │   │   ├── ingestion/      # parsers, chunkers, OCR fallback, pipeline
+│       │   │   ├── retrieval/      # hybrid retriever + reranker
+│       │   │   └── verification/   # decomposition + NLI + integrity audit
+│       │   ├── services/       # analysis, KB, auth, search
 │       │   ├── mcp/            # MCP server + client
 │       │   └── main.py
 │       ├── config/

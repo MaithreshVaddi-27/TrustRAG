@@ -84,7 +84,7 @@ class _ModeAwareBase:
 
 
 def _wrapper():
-    from app.core.onnx_embeddings import ONNXBGEEmbeddingsWrapper
+    from app.llm.onnx_embeddings import ONNXBGEEmbeddingsWrapper
 
     return ONNXBGEEmbeddingsWrapper(_ModeAwareBase(), max_cache_size=16)
 

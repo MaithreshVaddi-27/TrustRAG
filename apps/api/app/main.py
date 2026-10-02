@@ -46,21 +46,21 @@ from app.core.exceptions import (
     VectorStoreError,
 )
 from app.core.hardware import get_cached_hardware_profile
-from app.core.local_llm import (
+from app.core.logging import configure_logging, get_logger
+from app.core.memory import get_memory_usage_mb
+from app.core.semantic_cache import _cleanup_expired_entries, load_cache
+from app.core.tracing import init_tracing, tracing_middleware
+from app.db.mongodb import connect_db, create_indexes, disconnect_db
+from app.llm.local_llm import (
     close_local_llm_clients,
     load_discovery_snapshot,
     seed_local_model_discovery,
 )
-from app.core.logging import configure_logging, get_logger
-from app.core.memory import get_memory_usage_mb
-from app.core.model_registry import (
+from app.llm.model_registry import (
     close_all_llm_instances,
     get_embedding_model,
     onnx_model_status,
 )
-from app.core.semantic_cache import _cleanup_expired_entries, load_cache
-from app.core.tracing import init_tracing, tracing_middleware
-from app.db.mongodb import connect_db, create_indexes, disconnect_db
 
 logger = get_logger(__name__)
 

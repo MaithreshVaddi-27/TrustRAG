@@ -21,7 +21,6 @@ from app.api.v1.schemas.analysis import (
     ReliabilitySummary,
     TraceEventResponse,
 )
-from app.core import local_llm as local_llm_mod
 from app.core import memory as memory_mod
 from app.core.concurrency import get_global_semaphore
 from app.core.config import get_model_config, get_settings, normalize_provider
@@ -35,14 +34,15 @@ from app.core.metrics import (
     record_tokens_estimated,
 )
 from app.db.mongodb import Collections, get_collection
-from app.generation.generator import strip_citation_markers
-from app.services.kb_service import get_kb
-from app.verification.verdict import (
+from app.llm import local_llm as local_llm_mod
+from app.rag.generation.generator import strip_citation_markers
+from app.rag.verification.verdict import (
     ReliabilityStatus,
     Thresholds,
     VerdictResult,
     verdict_from_state,
 )
+from app.services.kb_service import get_kb
 
 logger = get_logger(__name__)
 
@@ -604,7 +604,7 @@ async def run_analysis_pipeline(
             )
 
             # 1. Execute Agentic LangGraph workflow (retrieval, NLI verify, and recovery loop)
-            from app.agent.graph import execute_agentic_rag_flow
+            from app.rag.agent.graph import execute_agentic_rag_flow
 
             final_state = await execute_agentic_rag_flow(
                 analysis_id_str=analysis_id_str,

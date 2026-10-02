@@ -9,14 +9,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from app.agent.graph import (
+from app.core.exceptions import RetrievalOutageError
+from app.rag.agent.graph import (
     generation_node,
     recovery_node,
     retrieval_node,
     should_recover,
     verification_node,
 )
-from app.core.exceptions import RetrievalOutageError
 
 
 def test_should_recover_router():
@@ -39,11 +39,11 @@ def test_should_recover_router():
     assert should_recover(state_max) == "end"
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.audit_evidence_integrity")
-@patch("app.agent.graph.rerank_candidate_chunks")
-@patch("app.agent.graph.retrieve_hybrid_chunks")
-@patch("app.agent.graph.get_collection")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.audit_evidence_integrity")
+@patch("app.rag.agent.graph.rerank_candidate_chunks")
+@patch("app.rag.agent.graph.retrieve_hybrid_chunks")
+@patch("app.rag.agent.graph.get_collection")
 @pytest.mark.asyncio
 async def test_retrieval_node(mock_collection, mock_retrieve, mock_rerank, mock_audit):
     # Mock retriever segments output
@@ -92,8 +92,8 @@ async def test_retrieval_node(mock_collection, mock_retrieve, mock_rerank, mock_
     )
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.generate_grounded_answer")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.generate_grounded_answer")
 @pytest.mark.asyncio
 async def test_generation_node(mock_generate):
     mock_generate.return_value = "Grounded answer"
@@ -107,8 +107,8 @@ async def test_generation_node(mock_generate):
     assert res["answer"] == "Grounded answer"
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.generate_grounded_answer")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.generate_grounded_answer")
 @pytest.mark.asyncio
 async def test_generation_node_reuses_cached_answer_without_llm_call(mock_generate):
     state = {
@@ -125,8 +125,8 @@ async def test_generation_node_reuses_cached_answer_without_llm_call(mock_genera
     mock_generate.assert_not_called()
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.generate_grounded_answer")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.generate_grounded_answer")
 @pytest.mark.asyncio
 async def test_generation_node_skips_futile_regenerate_after_abstain(mock_generate):
     """Regenerate retry on identical chunks after ABSTAIN must not burn an LLM call."""
@@ -144,8 +144,8 @@ async def test_generation_node_skips_futile_regenerate_after_abstain(mock_genera
     mock_generate.assert_not_called()
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.generate_grounded_answer")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.generate_grounded_answer")
 @pytest.mark.asyncio
 async def test_generation_node_regenerates_after_failed_answer(mock_generate):
     """Regenerate retry after a real (non-ABSTAIN) failed answer still retries."""
@@ -164,8 +164,8 @@ async def test_generation_node_regenerates_after_failed_answer(mock_generate):
     mock_generate.assert_called_once()
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.execute_claim_verification")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.execute_claim_verification")
 @pytest.mark.asyncio
 async def test_verification_node_pass(mock_execute):
     mock_claims = [
@@ -188,8 +188,8 @@ async def test_verification_node_pass(mock_execute):
     assert len(res["claims"]) == 2
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.execute_claim_verification")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.execute_claim_verification")
 @pytest.mark.asyncio
 async def test_verification_node_fail(mock_execute):
     mock_claims = [
@@ -211,9 +211,9 @@ async def test_verification_node_fail(mock_execute):
     assert res["verdict_status"] == "FAIL"
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.get_collection")
-@patch("app.agent.graph.get_verification_model")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.get_collection")
+@patch("app.rag.agent.graph.get_verification_model")
 @pytest.mark.asyncio
 async def test_recovery_node_rewrite(mock_model, mock_collection):
     # Mock LLM query rewrite (local providers go through a token-capped bind)
@@ -249,8 +249,8 @@ async def test_recovery_node_rewrite(mock_model, mock_collection):
     mock_llm.bind.assert_called_once_with(max_tokens=128)
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.execute_claim_verification")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.execute_claim_verification")
 @pytest.mark.asyncio
 async def test_verification_node_refusal_skips_llm_calls(mock_execute):
     """Hedged answers skip decomposition+NLI (deterministic refusal gate)."""
@@ -273,7 +273,7 @@ async def test_verification_node_refusal_skips_llm_calls(mock_execute):
 
 def test_sanitize_rewritten_query_strips_instruction_echo():
     """Rewrite echo ("Expanded Search Query: ...") must not reach retrieval."""
-    from app.agent.graph import _sanitize_rewritten_query
+    from app.rag.agent.graph import _sanitize_rewritten_query
 
     assert (
         _sanitize_rewritten_query("Expanded Search Query: What are the steps of IRS?")
@@ -287,7 +287,7 @@ def test_sanitize_rewritten_query_strips_instruction_echo():
 
 def test_sanitize_rewritten_query_rejects_full_instruction_echo():
     """A rewrite echoing the prompt body must collapse to empty (→ original query)."""
-    from app.agent.graph import _sanitize_rewritten_query
+    from app.rag.agent.graph import _sanitize_rewritten_query
 
     # Observed production echo from gemma3:1b (analysis f407e23e).
     assert (
@@ -306,9 +306,9 @@ def test_sanitize_rewritten_query_rejects_full_instruction_echo():
     )
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.get_collection")
-@patch("app.agent.graph.get_verification_model")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.get_collection")
+@patch("app.rag.agent.graph.get_verification_model")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("with_missing_claims", [True, False])
 async def test_rewrite_prompt_uses_neutral_acronym_example(
@@ -364,9 +364,9 @@ async def test_rewrite_prompt_uses_neutral_acronym_example(
     assert "IRS" in prompt
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.get_collection")
-@patch("app.agent.graph.get_verification_model")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.get_collection")
+@patch("app.rag.agent.graph.get_verification_model")
 @pytest.mark.asyncio
 async def test_recovery_empty_rewrite_on_abstain_short_circuits(mock_model, mock_collection):
     """Empty rewrite after ABSTAIN reuses saved chunks (no repeat spend)."""
@@ -398,9 +398,9 @@ async def test_recovery_empty_rewrite_on_abstain_short_circuits(mock_model, mock
     assert res["recovery_strategy"] == "regenerate"
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.get_collection")
-@patch("app.agent.graph.get_verification_model")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.get_collection")
+@patch("app.rag.agent.graph.get_verification_model")
 @pytest.mark.asyncio
 async def test_recovery_empty_rewrite_on_hedge_short_circuits(mock_model, mock_collection):
     """Empty rewrite after a hedged refusal also reuses saved chunks."""
@@ -432,9 +432,9 @@ async def test_recovery_empty_rewrite_on_hedge_short_circuits(mock_model, mock_c
     assert res["recovery_strategy"] == "regenerate"
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.get_collection")
-@patch("app.agent.graph.get_verification_model")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.get_collection")
+@patch("app.rag.agent.graph.get_verification_model")
 @pytest.mark.asyncio
 async def test_recovery_empty_rewrite_with_real_answer_retries(mock_model, mock_collection):
     """Empty rewrite after a real failed answer keeps full re-retrieval."""
@@ -501,11 +501,11 @@ async def test_verification_node_abstain_max_attempts_passes():
     assert res["diagnosis_type"] == "RETRIEVAL_FAILURE"
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.audit_evidence_integrity")
-@patch("app.agent.graph.rerank_candidate_chunks")
-@patch("app.agent.graph.retrieve_hybrid_chunks")
-@patch("app.agent.graph.get_collection")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.audit_evidence_integrity")
+@patch("app.rag.agent.graph.rerank_candidate_chunks")
+@patch("app.rag.agent.graph.retrieve_hybrid_chunks")
+@patch("app.rag.agent.graph.get_collection")
 @pytest.mark.asyncio
 async def test_retrieval_node_outage_is_distinct_from_no_evidence(
     mock_collection, mock_retrieve, mock_rerank, mock_audit
@@ -537,11 +537,11 @@ async def test_retrieval_node_outage_is_distinct_from_no_evidence(
     mock_audit.assert_not_called()
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.audit_evidence_integrity")
-@patch("app.agent.graph.rerank_candidate_chunks")
-@patch("app.agent.graph.retrieve_hybrid_chunks")
-@patch("app.agent.graph.get_collection")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.audit_evidence_integrity")
+@patch("app.rag.agent.graph.rerank_candidate_chunks")
+@patch("app.rag.agent.graph.retrieve_hybrid_chunks")
+@patch("app.rag.agent.graph.get_collection")
 @pytest.mark.asyncio
 async def test_retrieval_node_self_heal_batches_doc_lookup(
     mock_collection, mock_retrieve, mock_rerank, mock_audit
@@ -629,12 +629,12 @@ async def test_retrieval_node_self_heal_batches_doc_lookup(
     with (
         patch("app.db.qdrant.get_qdrant_client", AsyncMock(return_value=mock_qdrant)),
         patch("app.db.qdrant.init_kb_collection", AsyncMock()),
-        patch("app.core.model_registry.get_embedding_model", return_value=mock_embed),
+        patch("app.llm.model_registry.get_embedding_model", return_value=mock_embed),
         patch(
-            "app.ingestion.sparse_vector.generate_sparse_vector",
+            "app.rag.ingestion.sparse_vector.generate_sparse_vector",
             return_value={"indices": [1], "values": [0.5]},
         ),
-        patch("app.ingestion.pipeline.hashlib_qdrant_id", return_value="point-id"),
+        patch("app.rag.ingestion.pipeline.hashlib_qdrant_id", return_value="point-id"),
     ):
         state = {
             "analysis_id": "64ee39d09c6292376e191983",
@@ -659,10 +659,10 @@ async def test_retrieval_node_self_heal_batches_doc_lookup(
     assert res["chunks"][0]["integrity_status"] == "VERIFIED"
 
 
-@patch("app.agent.graph.audit_evidence_integrity")
-@patch("app.agent.graph.rerank_candidate_chunks")
-@patch("app.agent.graph.retrieve_hybrid_chunks")
-@patch("app.agent.graph.get_collection")
+@patch("app.rag.agent.graph.audit_evidence_integrity")
+@patch("app.rag.agent.graph.rerank_candidate_chunks")
+@patch("app.rag.agent.graph.retrieve_hybrid_chunks")
+@patch("app.rag.agent.graph.get_collection")
 @pytest.mark.asyncio
 async def test_retrieval_node_self_heal_embeds_upserts_in_batches(
     mock_collection, mock_retrieve, mock_rerank, mock_audit, monkeypatch
@@ -670,7 +670,7 @@ async def test_retrieval_node_self_heal_embeds_upserts_in_batches(
     """H-BE-5: 2 chunks with batch size 1 → 2 embed calls + 2 upserts + 2 progress events."""
     from bson import ObjectId
 
-    monkeypatch.setattr("app.agent.graph.SELF_HEAL_BATCH_SIZE", 1)
+    monkeypatch.setattr("app.rag.agent.graph.SELF_HEAL_BATCH_SIZE", 1)
 
     doc_id_1 = ObjectId("64ee39d09c6292376e191981")
     doc_id_2 = ObjectId("64ee39d09c6292376e191982")
@@ -752,13 +752,13 @@ async def test_retrieval_node_self_heal_embeds_upserts_in_batches(
     with (
         patch("app.db.qdrant.get_qdrant_client", AsyncMock(return_value=mock_qdrant)),
         patch("app.db.qdrant.init_kb_collection", AsyncMock()),
-        patch("app.core.model_registry.get_embedding_model", return_value=mock_embed),
+        patch("app.llm.model_registry.get_embedding_model", return_value=mock_embed),
         patch(
-            "app.ingestion.sparse_vector.generate_sparse_vector",
+            "app.rag.ingestion.sparse_vector.generate_sparse_vector",
             return_value={"indices": [1], "values": [0.5]},
         ),
-        patch("app.ingestion.pipeline.hashlib_qdrant_id", return_value="point-id"),
-        patch("app.agent.graph.add_trace_event", trace_mock),
+        patch("app.rag.ingestion.pipeline.hashlib_qdrant_id", return_value="point-id"),
+        patch("app.rag.agent.graph.add_trace_event", trace_mock),
     ):
         state = {
             "analysis_id": "64ee39d09c6292376e191983",
@@ -788,8 +788,8 @@ async def test_retrieval_node_self_heal_embeds_upserts_in_batches(
     assert len(res["chunks"]) == 1
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.generate_grounded_answer")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.generate_grounded_answer")
 @pytest.mark.asyncio
 async def test_generation_node_preserves_outage_answer(mock_generate):
     outage_msg = (
@@ -811,8 +811,8 @@ async def test_generation_node_preserves_outage_answer(mock_generate):
     mock_generate.assert_not_called()
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.execute_claim_verification")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.execute_claim_verification")
 @pytest.mark.asyncio
 async def test_verification_node_outage_fast_path_skips_verification(mock_execute):
     from app.core.config import get_model_config
@@ -845,8 +845,8 @@ async def test_verification_node_outage_fast_path_skips_verification(mock_execut
 
 def test_select_recovery_strategy_diagnosis_mapping():
     """Test that diagnosis types map to correct recovery strategies."""
-    from app.agent.graph import _select_recovery_strategy
     from app.core.config import get_model_config
+    from app.rag.agent.graph import _select_recovery_strategy
 
     cfg = get_model_config()
 
@@ -912,14 +912,14 @@ def test_should_recover_still_respects_attempts_and_pass():
     assert should_recover(state_fail) == "recover"
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.get_collection")
-@patch("app.agent.graph.get_verification_model")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.get_collection")
+@patch("app.rag.agent.graph.get_verification_model")
 @pytest.mark.asyncio
 async def test_recovery_node_budget_enforcement(mock_get_model, mock_collection):
     """Recovery node should track budget and force abstention when exhausted."""
-    from app.agent.graph import recovery_node
     from app.core.config import get_model_config
+    from app.rag.agent.graph import recovery_node
 
     cfg = get_model_config()
 
@@ -978,13 +978,13 @@ async def test_recovery_node_budget_enforcement(mock_get_model, mock_collection)
     assert res["attempts"] == cfg.max_recovery_attempts  # Forces end
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.get_collection")
-@patch("app.agent.graph.get_verification_model")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.get_collection")
+@patch("app.rag.agent.graph.get_verification_model")
 @pytest.mark.asyncio
 async def test_recovery_node_diagnosis_based_strategy(mock_get_model, mock_collection):
     """Recovery node should select strategy based on diagnosis, not round-robin."""
-    from app.agent.graph import recovery_node
+    from app.rag.agent.graph import recovery_node
 
     # Mock LLM for query rewrite
     mock_model = MagicMock()
@@ -1060,7 +1060,7 @@ def test_build_agent_graph_has_expected_topology():
     change such as routing recovery back into generation instead of retrieval —
     which would infinite-loop a self-heal run — was invisible to the whole suite.
     """
-    from app.agent import graph as graph_mod
+    from app.rag.agent import graph as graph_mod
 
     graph_mod._compiled_graph = None
     compiled = graph_mod.build_agent_graph()
@@ -1083,7 +1083,7 @@ def test_build_agent_graph_has_expected_topology():
 def test_build_agent_graph_is_cached_singleton():
     """The compiled graph is a module singleton; rebuilding per call would
     recompile the workflow on every analysis."""
-    from app.agent import graph as graph_mod
+    from app.rag.agent import graph as graph_mod
 
     graph_mod._compiled_graph = None
     first = graph_mod.build_agent_graph()

@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_user
 from app.main import app
-from app.verification.verdict import DiagnosisType, ReliabilityStatus
+from app.rag.verification.verdict import DiagnosisType, ReliabilityStatus
 
 client = TestClient(app)
 
@@ -72,7 +72,7 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeyp
     # Patch discovered models so the default model is allowed.
     # monkeypatch (not manual assignment) so a mid-test failure cannot leak
     # the stub into later tests (global-state pollution).
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
 
     monkeypatch.setattr(
@@ -107,7 +107,7 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeyp
             patch("app.services.analysis_service.add_trace_event", AsyncMock()) as mock_add_trace,
             # Local-LLM preflight probe (no inference server in CI)
             patch(
-                "app.core.local_llm.probe_local_llm_server",
+                "app.llm.local_llm.probe_local_llm_server",
                 AsyncMock(return_value=None),
             ),
         ):
@@ -133,7 +133,7 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeyp
 
 def test_create_analysis_ignores_legacy_embedding_overrides(monkeypatch):
     """Legacy per-request embedding fields are ignored (single models.yaml engine)."""
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
     from app.api.v1.schemas.analysis import AnalysisCreate
 
     monkeypatch.setattr(
@@ -178,7 +178,7 @@ def test_create_analysis_fails_fast_when_local_llm_down(
     mock_create_indexes, mock_connect, mock_kb_doc, monkeypatch
 ):
     """Stopped ollama/llama-server → synchronous 503 alert, not a silent burn."""
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
     from app.core.exceptions import LLMUnavailableError
 
@@ -202,7 +202,7 @@ def test_create_analysis_fails_fast_when_local_llm_down(
     with (
         patch("app.services.analysis_service.get_kb", return_value=mock_kb),
         patch(
-            "app.core.local_llm.probe_local_llm_server",
+            "app.llm.local_llm.probe_local_llm_server",
             AsyncMock(
                 side_effect=LLMUnavailableError(
                     "Local LLM server 'llama_cpp' is not reachable at "
@@ -231,7 +231,7 @@ def test_create_analysis_rejects_embedding_mismatch(
     mock_create_indexes, mock_connect, mock_kb_doc, mock_user_doc, monkeypatch
 ):
     """A KB pinned to one embedding space must reject analyses after a model change."""
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
 
     monkeypatch.setattr(
@@ -454,7 +454,7 @@ def test_create_analysis_guides_new_user_without_models(
     mock_create_indexes, mock_connect, monkeypatch
 ):
     """Empty discovery → 422 with install instructions, not a bare rejection."""
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
 
     monkeypatch.setattr(_llm_mod, "get_discovered_llms", lambda provider: frozenset())
     payload = {
@@ -490,7 +490,7 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
             "reliability_score": 0.9,
         }
 
-    monkeypatch.setattr("app.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
     coll = MagicMock()
     coll.update_one = AsyncMock()
 
@@ -584,7 +584,7 @@ async def test_finalize_withholds_unverified_answer_from_user(
     async def _get_sem():
         return _Sem()
 
-    monkeypatch.setattr("app.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
     monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
     monkeypatch.setattr(svc, "_get_concurrency_semaphore", _get_sem, raising=False)
     monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
@@ -644,7 +644,7 @@ async def test_finalize_keeps_trusted_answer(monkeypatch):
     async def _get_sem():
         return _Sem()
 
-    monkeypatch.setattr("app.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
     monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
     monkeypatch.setattr(svc, "_get_concurrency_semaphore", _get_sem, raising=False)
     monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)

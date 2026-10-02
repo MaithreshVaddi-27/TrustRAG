@@ -139,7 +139,7 @@ def test_cache_directories_coalesce(monkeypatch):
     from pathlib import Path
 
     import app.core.disk_cache as disk_cache
-    import app.core.local_llm as local_llm
+    import app.llm.local_llm as local_llm
 
     api_root = Path(semantic_cache.__file__).resolve().parents[2]
     assert str(api_root).endswith("apps/api")

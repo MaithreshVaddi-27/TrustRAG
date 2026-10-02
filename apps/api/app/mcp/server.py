@@ -20,7 +20,6 @@ from typing import Any
 
 from bson import ObjectId
 
-from app.core import model_registry as model_registry_mod
 from app.core.config import get_settings
 from app.core.exceptions import (
     AuthenticationError,
@@ -28,19 +27,20 @@ from app.core.exceptions import (
     NotFoundError,
     RetrievalOutageError,
 )
-from app.core.llm_ledger import invoke_counted
-from app.core.local_llm import (
+from app.core.logging import get_logger
+from app.core.security import decode_service_token
+from app.db.mongodb import Collections, connect_db, get_collection
+from app.llm import model_registry as model_registry_mod
+from app.llm.llm_ledger import invoke_counted
+from app.llm.local_llm import (
     LOCAL_LLM_PROVIDERS,
     check_llamacpp_status,
     check_ollama_status,
 )
-from app.core.logging import get_logger
-from app.core.security import decode_service_token
-from app.db.mongodb import Collections, connect_db, get_collection
-from app.retrieval.retriever import retrieve_hybrid_chunks
+from app.rag.retrieval.retriever import retrieve_hybrid_chunks
+from app.rag.verification.verifier import batch_verify_claims_nli
 from app.services import kb_service as kb_service_mod
 from app.services import search_service as search_service_mod
-from app.verification.verifier import batch_verify_claims_nli
 
 logger = get_logger(__name__)
 

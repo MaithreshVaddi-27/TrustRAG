@@ -74,25 +74,25 @@ Natural Language Inference asks whether a premise supports, contradicts, or says
 
 | Responsibility | Main code |
 |---|---|
-| Parse and validate uploaded files | `apps/api/app/ingestion/parser.py` |
-| Normalize, classify chunks, lexical preprocessing | `apps/api/app/ingestion/preprocessor.py` |
-| Split text into chunks | `apps/api/app/ingestion/chunker.py`, `chunking_strategies.py` |
-| OCR scanned pages and preserve images | `apps/api/app/ingestion/ocr.py`, `page_images.py` |
-| Generate sparse vectors | `apps/api/app/ingestion/sparse_vector.py` |
-| Create embeddings and index chunks | `apps/api/app/ingestion/pipeline.py` |
+| Parse and validate uploaded files | `apps/api/app/rag/ingestion/parser.py` |
+| Normalize, classify chunks, lexical preprocessing | `apps/api/app/rag/ingestion/preprocessor.py` |
+| Split text into chunks | `apps/api/app/rag/ingestion/chunker.py`, `chunking_strategies.py` |
+| OCR scanned pages and preserve images | `apps/api/app/rag/ingestion/ocr.py`, `page_images.py` |
+| Generate sparse vectors | `apps/api/app/rag/ingestion/sparse_vector.py` |
+| Create embeddings and index chunks | `apps/api/app/rag/ingestion/pipeline.py` |
 | Connect/create per-KB vector collections | `apps/api/app/db/qdrant.py` |
 | Persist app records and canonical chunks | `apps/api/app/db/mongodb.py` |
-| Make dense/sparse searches and fuse ranks | `apps/api/app/retrieval/retriever.py` |
-| Deterministic query routing and fan-out | `apps/api/app/agent/router.py` |
-| Cross-encoder reranking | `apps/api/app/retrieval/reranker.py` |
-| Format evidence prompt and generate answer | `apps/api/app/generation/generator.py` |
+| Make dense/sparse searches and fuse ranks | `apps/api/app/rag/retrieval/retriever.py` |
+| Deterministic query routing and fan-out | `apps/api/app/rag/agent/router.py` |
+| Cross-encoder reranking | `apps/api/app/rag/retrieval/reranker.py` |
+| Format evidence prompt and generate answer | `apps/api/app/rag/generation/generator.py` |
 | Orchestrate analysis, persistence, SSE, recovery runs | `apps/api/app/services/analysis_service.py` |
-| Run retrieval/generation/verification/recovery graph | `apps/api/app/agent/graph.py` |
-| Decompose/verify answer claims | `apps/api/app/verification/verifier.py` |
-| Check retrieved text against canonical hash | `apps/api/app/verification/integrity.py` |
-| Calculate trust result | `apps/api/app/verification/verdict.py` |
+| Run retrieval/generation/verification/recovery graph | `apps/api/app/rag/agent/graph.py` |
+| Decompose/verify answer claims | `apps/api/app/rag/verification/verifier.py` |
+| Check retrieved text against canonical hash | `apps/api/app/rag/verification/integrity.py` |
+| Calculate trust result | `apps/api/app/rag/verification/verdict.py` |
 | Model configuration/runtime registry | `apps/api/app/core/config.py`, `model_registry.py` |
-| ONNX runtime wrappers | `apps/api/app/core/onnx_embeddings.py`, `onnx_reranker.py` |
+| ONNX runtime wrappers | `apps/api/app/llm/onnx_embeddings.py`, `onnx_reranker.py` |
 | MCP tools and web search | `apps/api/app/mcp/server.py`, `client.py`, `services/search_service.py` |
 
 ---
@@ -812,20 +812,20 @@ Then demonstrate:
 For a mentor/code review, this order follows the actual data path:
 
 1. `apps/api/app/api/v1/knowledge_bases.py` — upload/URL API surface.
-2. `apps/api/app/ingestion/parser.py` — input validation and format extraction.
-3. `apps/api/app/ingestion/ocr.py` — scanned page path.
-4. `apps/api/app/ingestion/preprocessor.py` — normalization, lexical analysis, zones.
-5. `apps/api/app/ingestion/chunker.py` and `chunking_strategies.py` — chunk boundaries and provenance.
-6. `apps/api/app/ingestion/pipeline.py` — Mongo persistence, dense/sparse vectors, Qdrant upsert.
-7. `apps/api/app/core/onnx_embeddings.py` and `onnx_reranker.py` — ONNX runtime inference.
-8. `apps/api/app/retrieval/retriever.py` — dense/sparse query, RRF, temporal filtering.
-9. `apps/api/app/agent/router.py` — deterministic routing/fan-out.
-10. `apps/api/app/retrieval/reranker.py` — cross-encoder second stage.
-11. `apps/api/app/agent/graph.py` — retrieval, generation, verification and recovery nodes.
-12. `apps/api/app/generation/generator.py` — context formatting, prompt and citation safety.
-13. `apps/api/app/verification/integrity.py` — hash-based passage identity check.
-14. `apps/api/app/verification/verifier.py` — claim decomposition, NLI, targeted retrieval, persistence mapping.
-15. `apps/api/app/verification/verdict.py` — final arithmetic and status mapping.
+2. `apps/api/app/rag/ingestion/parser.py` — input validation and format extraction.
+3. `apps/api/app/rag/ingestion/ocr.py` — scanned page path.
+4. `apps/api/app/rag/ingestion/preprocessor.py` — normalization, lexical analysis, zones.
+5. `apps/api/app/rag/ingestion/chunker.py` and `chunking_strategies.py` — chunk boundaries and provenance.
+6. `apps/api/app/rag/ingestion/pipeline.py` — Mongo persistence, dense/sparse vectors, Qdrant upsert.
+7. `apps/api/app/llm/onnx_embeddings.py` and `onnx_reranker.py` — ONNX runtime inference.
+8. `apps/api/app/rag/retrieval/retriever.py` — dense/sparse query, RRF, temporal filtering.
+9. `apps/api/app/rag/agent/router.py` — deterministic routing/fan-out.
+10. `apps/api/app/rag/retrieval/reranker.py` — cross-encoder second stage.
+11. `apps/api/app/rag/agent/graph.py` — retrieval, generation, verification and recovery nodes.
+12. `apps/api/app/rag/generation/generator.py` — context formatting, prompt and citation safety.
+13. `apps/api/app/rag/verification/integrity.py` — hash-based passage identity check.
+14. `apps/api/app/rag/verification/verifier.py` — claim decomposition, NLI, targeted retrieval, persistence mapping.
+15. `apps/api/app/rag/verification/verdict.py` — final arithmetic and status mapping.
 16. `apps/api/app/services/analysis_service.py` — analysis lifecycle, storage, trace and export.
 17. `apps/api/app/mcp/server.py` — external tool interface and optional web search dispatch.
 18. `apps/api/config/models.yaml` — active retrieval, chunking, ONNX, NLI, and recovery parameters.

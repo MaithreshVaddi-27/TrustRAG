@@ -64,7 +64,7 @@ async def get_document_page_image_endpoint(
     ref, or the file itself is missing — never leak which of those it was
     beyond the status code.
     """
-    from app.ingestion import page_images as page_images_mod
+    from app.rag.ingestion import page_images as page_images_mod
 
     try:
         oid = ObjectId(doc_id)

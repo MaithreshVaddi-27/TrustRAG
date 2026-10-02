@@ -13,7 +13,7 @@ import pytest
 import yaml
 from bson import ObjectId
 
-from app.verification.verifier import execute_claim_verification, retrieve_evidence_for_claim
+from app.rag.verification.verifier import execute_claim_verification, retrieve_evidence_for_claim
 
 ANALYSIS_ID = "64ee39d09c6292376e191983"
 
@@ -50,13 +50,15 @@ def _no_fused_two_step(neutral_claims: list[str]):
         for i in range(len(neutral_claims))
     }
     return (
-        patch("app.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None)),
         patch(
-            "app.verification.verifier.decompose_answer_to_claims",
+            "app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None)
+        ),
+        patch(
+            "app.rag.verification.verifier.decompose_answer_to_claims",
             new=AsyncMock(return_value=list(neutral_claims)),
         ),
         patch(
-            "app.verification.verifier.batch_verify_claims_nli",
+            "app.rag.verification.verifier.batch_verify_claims_nli",
             new=AsyncMock(return_value=batch_map),
         ),
     )
@@ -74,7 +76,7 @@ async def test_claim_retrieval_drops_seen_chunks_and_caps_top_k():
         _fused_chunk("C", 4, "fresh evidence text two"),
     ]
     with patch(
-        "app.retrieval.retriever.retrieve_hybrid_chunks", new=AsyncMock(return_value=hybrid)
+        "app.rag.retrieval.retriever.retrieve_hybrid_chunks", new=AsyncMock(return_value=hybrid)
     ):
         fresh = await retrieve_evidence_for_claim("some claim", "kb1", seen, top_k=5)
     assert [c["text"] for c in fresh] == ["fresh evidence text one", "fresh evidence text two"]
@@ -83,7 +85,7 @@ async def test_claim_retrieval_drops_seen_chunks_and_caps_top_k():
 @pytest.mark.asyncio
 async def test_claim_retrieval_returns_empty_on_outage():
     with patch(
-        "app.retrieval.retriever.retrieve_hybrid_chunks",
+        "app.rag.retrieval.retriever.retrieve_hybrid_chunks",
         new=AsyncMock(side_effect=Exception("Qdrant down")),
     ):
         assert await retrieve_evidence_for_claim("some claim", "kb1", set()) == []
@@ -106,16 +108,19 @@ async def test_neutral_claim_flips_supported_with_new_evidence_linkage():
         p2,
         p3,
         patch(
-            "app.retrieval.retriever.retrieve_hybrid_chunks", new=AsyncMock(return_value=[fresh])
+            "app.rag.retrieval.retriever.retrieve_hybrid_chunks",
+            new=AsyncMock(return_value=[fresh]),
         ),
-        patch("app.verification.verifier.verify_claim_nli", new=AsyncMock(return_value=reverify)),
         patch(
-            "app.verification.integrity.audit_evidence_integrity",
+            "app.rag.verification.verifier.verify_claim_nli", new=AsyncMock(return_value=reverify)
+        ),
+        patch(
+            "app.rag.verification.integrity.audit_evidence_integrity",
             new=AsyncMock(
                 side_effect=lambda chunks: [{**c, "integrity_status": "VERIFIED"} for c in chunks]
             ),
         ),
-        patch("app.verification.verifier.get_collection", return_value=_mock_collections()),
+        patch("app.rag.verification.verifier.get_collection", return_value=_mock_collections()),
     ):
         claims = await execute_claim_verification(
             analysis_id_str=ANALYSIS_ID,
@@ -139,8 +144,8 @@ async def test_claim_retrieval_budget_caps_hybrid_calls():
         p1,
         p2,
         p3,
-        patch("app.retrieval.retriever.retrieve_hybrid_chunks", new=hybrid_mock),
-        patch("app.verification.verifier.get_collection", return_value=_mock_collections()),
+        patch("app.rag.retrieval.retriever.retrieve_hybrid_chunks", new=hybrid_mock),
+        patch("app.rag.verification.verifier.get_collection", return_value=_mock_collections()),
     ):
         claims = await execute_claim_verification(
             analysis_id_str=ANALYSIS_ID,
@@ -163,13 +168,15 @@ async def test_claim_retrieval_budget_caps_hybrid_calls():
 
 @pytest.mark.asyncio
 async def test_contradicted_claims_are_never_re_retrieved():
-    p1 = patch("app.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
+    p1 = patch(
+        "app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None)
+    )
     p2 = patch(
-        "app.verification.verifier.decompose_answer_to_claims",
+        "app.rag.verification.verifier.decompose_answer_to_claims",
         new=AsyncMock(return_value=["Bad claim here."]),
     )
     p3 = patch(
-        "app.verification.verifier.batch_verify_claims_nli",
+        "app.rag.verification.verifier.batch_verify_claims_nli",
         new=AsyncMock(
             return_value={
                 1: {"verdict": "CONTRADICTED", "supporting_segments": [], "explanation": "No"}
@@ -181,8 +188,8 @@ async def test_contradicted_claims_are_never_re_retrieved():
         p1,
         p2,
         p3,
-        patch("app.retrieval.retriever.retrieve_hybrid_chunks", new=hybrid_mock),
-        patch("app.verification.verifier.get_collection", return_value=_mock_collections()),
+        patch("app.rag.retrieval.retriever.retrieve_hybrid_chunks", new=hybrid_mock),
+        patch("app.rag.verification.verifier.get_collection", return_value=_mock_collections()),
     ):
         claims = await execute_claim_verification(
             analysis_id_str=ANALYSIS_ID,
@@ -203,8 +210,8 @@ async def test_no_kb_id_skips_claim_retrieval_entirely():
         p1,
         p2,
         p3,
-        patch("app.retrieval.retriever.retrieve_hybrid_chunks", new=hybrid_mock),
-        patch("app.verification.verifier.get_collection", return_value=_mock_collections()),
+        patch("app.rag.retrieval.retriever.retrieve_hybrid_chunks", new=hybrid_mock),
+        patch("app.rag.verification.verifier.get_collection", return_value=_mock_collections()),
     ):
         claims = await execute_claim_verification(
             analysis_id_str=ANALYSIS_ID,
@@ -219,13 +226,15 @@ async def test_no_kb_id_skips_claim_retrieval_entirely():
 @pytest.mark.asyncio
 async def test_inline_answer_citations_union_into_evidence_ids():
     """Phase-4 deferral: [Segment N] markers surviving in claim text link evidence."""
-    p1 = patch("app.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
+    p1 = patch(
+        "app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None)
+    )
     p2 = patch(
-        "app.verification.verifier.decompose_answer_to_claims",
+        "app.rag.verification.verifier.decompose_answer_to_claims",
         new=AsyncMock(return_value=["Revocations are fast [Segment 1]."]),
     )
     p3 = patch(
-        "app.verification.verifier.batch_verify_claims_nli",
+        "app.rag.verification.verifier.batch_verify_claims_nli",
         new=AsyncMock(
             return_value={
                 1: {"verdict": "SUPPORTED", "supporting_segments": [], "explanation": "Ok"}
@@ -237,7 +246,7 @@ async def test_inline_answer_citations_union_into_evidence_ids():
         p1,
         p2,
         p3,
-        patch("app.verification.verifier.get_collection", return_value=_mock_collections()),
+        patch("app.rag.verification.verifier.get_collection", return_value=_mock_collections()),
     ):
         claims = await execute_claim_verification(
             analysis_id_str=ANALYSIS_ID,

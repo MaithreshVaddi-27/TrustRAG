@@ -159,7 +159,7 @@ def _export_reranker_onnx(cfg, rnk_path: Path) -> bool:
     try:
         from sentence_transformers import CrossEncoder
 
-        from app.core.onnx_reranker import export_crossencoder_to_onnx
+        from app.llm.onnx_reranker import export_crossencoder_to_onnx
 
         model = CrossEncoder(cfg.reranker_model)
         export_crossencoder_to_onnx(model, str(rnk_path), tokenizer_name=cfg.reranker_model)

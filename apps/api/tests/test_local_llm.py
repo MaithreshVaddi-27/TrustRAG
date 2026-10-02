@@ -8,9 +8,9 @@ import pytest
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
-import app.core.local_llm as _llm_mod
+import app.llm.local_llm as _llm_mod
 from app.core.exceptions import ConfigurationError
-from app.core.local_llm import (
+from app.llm.local_llm import (
     ChatLlamaCppClient,
     ChatOllamaClient,
     _shared_http_client,
@@ -18,7 +18,7 @@ from app.core.local_llm import (
     check_ollama_status,
     close_local_llm_clients,
 )
-from app.core.model_registry import get_llm, get_verification_model
+from app.llm.model_registry import get_llm, get_verification_model
 
 
 class SampleExtraction(BaseModel):
@@ -69,7 +69,7 @@ def test_model_registry_local_providers(monkeypatch):
     for var in ("OLLAMA_MODEL", "LLAMACPP_MODEL", "LLAMA_CPP_MODEL", "LLM_MODEL", "GEMINI_MODEL"):
         monkeypatch.delenv(var, raising=False)
     from app.core.config import reload_settings
-    from app.core.model_registry import clear_model_caches
+    from app.llm.model_registry import clear_model_caches
 
     reload_settings()
     clear_model_caches()
@@ -137,7 +137,7 @@ async def test_llamacpp_health_check():
 def test_embedding_model_is_single_onnx_engine():
     """Single embedding engine: ONNX BGE from models.yaml, no provider choice."""
     from app.core.config import get_model_config
-    from app.core.model_registry import get_embedding_model
+    from app.llm.model_registry import get_embedding_model
 
     cfg = get_model_config()
     assert cfg.embedding_model == "BAAI/bge-small-en-v1.5"
@@ -152,7 +152,7 @@ def test_embedding_model_is_single_onnx_engine():
     get_embedding_model.cache_clear()
     try:
         with pytest.raises(ConfigurationError, match="bootstrap"):
-            import app.core.model_registry as _reg
+            import app.llm.model_registry as _reg
 
             orig = _reg._resolve_embedding_onnx_path
             _reg._resolve_embedding_onnx_path = lambda _cache_dir: None
@@ -384,7 +384,7 @@ class _FakeHTTPClient:
 
 @pytest.mark.asyncio
 async def test_probe_reaches_running_server(monkeypatch):
-    from app.core.local_llm import probe_local_llm_server
+    from app.llm.local_llm import probe_local_llm_server
 
     class _OK(_FakeHTTPClient):
         async def get(self, url):
@@ -400,7 +400,7 @@ async def test_probe_down_server_raises_actionable_error(monkeypatch):
     import httpx
 
     from app.core.exceptions import LLMUnavailableError
-    from app.core.local_llm import probe_local_llm_server
+    from app.llm.local_llm import probe_local_llm_server
 
     class _Down(_FakeHTTPClient):
         async def get(self, url):
@@ -420,7 +420,7 @@ async def test_probe_retries_slow_server_then_succeeds(monkeypatch):
     """One slow accept must not 503 the run — retry, then pass."""
     import httpx
 
-    from app.core.local_llm import probe_local_llm_server
+    from app.llm.local_llm import probe_local_llm_server
 
     calls = []
 
@@ -442,7 +442,7 @@ async def test_probe_timeout_reports_overloaded_not_down(monkeypatch):
     import httpx
 
     from app.core.exceptions import LLMUnavailableError
-    from app.core.local_llm import probe_local_llm_server
+    from app.llm.local_llm import probe_local_llm_server
 
     class _Slow(_FakeHTTPClient):
         async def get(self, url):
@@ -598,7 +598,7 @@ async def test_probe_mlx_hint_names_server_command(monkeypatch):
     import httpx
 
     from app.core.exceptions import LLMUnavailableError
-    from app.core.local_llm import probe_local_llm_server
+    from app.llm.local_llm import probe_local_llm_server
 
     class _Down(_FakeHTTPClient):
         async def get(self, url):

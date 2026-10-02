@@ -15,7 +15,7 @@ import onnxruntime as ort
 import structlog
 
 from app.core.config import get_model_config, get_settings
-from app.core.onnx_runtime import build_session_options
+from app.llm.onnx_runtime import build_session_options
 
 # structlog for consistency with the rest of app/core (JSON logs in prod).
 logger = structlog.get_logger(__name__)

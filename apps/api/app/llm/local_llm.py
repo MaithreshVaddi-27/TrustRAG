@@ -29,8 +29,8 @@ from pydantic import BaseModel, Field
 from app.core.concurrency import get_global_semaphore
 from app.core.config import get_model_config
 from app.core.exceptions import ConfigurationError, LLMUnavailableError
-from app.core.llm_ledger import invoke_counted
 from app.core.logging import get_logger
+from app.llm.llm_ledger import invoke_counted
 
 logger = get_logger(__name__)
 
@@ -370,7 +370,7 @@ class ChatOllamaClient(BaseChatModel):
 
     def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:
         """Prompt for structured JSON and parse into the Pydantic schema."""
-        from app.core.llm_utils import build_structured_output_runnable
+        from app.llm.llm_utils import build_structured_output_runnable
 
         return build_structured_output_runnable(
             generate_fn=self._agenerate,
@@ -524,7 +524,7 @@ class ChatLlamaCppClient(BaseChatModel):
 
     def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:
         """Return a Runnable prompting llama.cpp for structured JSON, parsed into Pydantic."""
-        from app.core.llm_utils import build_structured_output_runnable
+        from app.llm.llm_utils import build_structured_output_runnable
 
         return build_structured_output_runnable(
             generate_fn=self._agenerate,
@@ -735,7 +735,7 @@ async def probe_cloud_llm(
         timeout: Probe budget in seconds. 60s distinguishes a dead endpoint
             (no first byte) from a merely slow one.
     """
-    from app.core.model_registry import get_llm  # lazy: avoids import cycle
+    from app.llm.model_registry import get_llm  # lazy: avoids import cycle
 
     norm = (provider or "").strip().lower()
     hint = (

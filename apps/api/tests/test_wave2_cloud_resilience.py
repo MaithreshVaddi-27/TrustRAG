@@ -14,7 +14,9 @@ from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from app.core.llm_ledger import (
+
+from app.core.logging import _scrub_sensitive, scrub_secret_values
+from app.llm.llm_ledger import (
     begin_analysis,
     calls_remaining,
     current_ledger,
@@ -24,9 +26,8 @@ from app.core.llm_ledger import (
     max_calls_per_analysis,
     record_call,
 )
-from app.core.logging import _scrub_sensitive, scrub_secret_values
 
-CONFIG_PATH = "app.core.llm_ledger.get_model_config"
+CONFIG_PATH = "app.llm.llm_ledger.get_model_config"
 
 
 def _cfg(provider: str, cap: int = 4) -> MagicMock:
@@ -170,7 +171,7 @@ def test_ledgers_are_isolated_per_context():
 
 @pytest.fixture
 def _clean_registry():
-    from app.core import model_registry as mr
+    from app.llm import model_registry as mr
 
     mr._LLM_REGISTRY.clear()
     mr._PENDING_CLOSE.clear()
@@ -250,12 +251,12 @@ async def test_dead_credential_yields_terminal_llm_outage_not_abstain():
     generic `except Exception`, converted to verdict FAIL, and driven through up
     to three more recovery rounds against the live API before terminating as
     `abstained` — telling the user the knowledge base lacked evidence."""
-    from app.agent.graph import _execute_with_fallback
+    from app.rag.agent.graph import _execute_with_fallback
 
     async def boom():
         raise _DeadCredential("API key not valid")
 
-    with patch("app.agent.graph.add_trace_event", AsyncMock()):
+    with patch("app.rag.agent.graph.add_trace_event", AsyncMock()):
         out = await _execute_with_fallback(
             {"analysis_id": "a1", "attempts": 0}, "generation", boom, timeout_seconds=5
         )
@@ -272,12 +273,12 @@ async def test_dead_credential_yields_terminal_llm_outage_not_abstain():
 async def test_ordinary_node_error_still_allows_recovery():
     """The outage path must not swallow ordinary bugs — those should keep
     producing node_errors and leaving the recovery budget untouched."""
-    from app.agent.graph import _execute_with_fallback
+    from app.rag.agent.graph import _execute_with_fallback
 
     async def bug():
         raise ValueError("unparseable verdict json")
 
-    with patch("app.agent.graph.add_trace_event", AsyncMock()):
+    with patch("app.rag.agent.graph.add_trace_event", AsyncMock()):
         out = await _execute_with_fallback(
             {"analysis_id": "a1", "attempts": 0}, "generation", bug, timeout_seconds=5
         )
@@ -290,7 +291,7 @@ async def test_ordinary_node_error_still_allows_recovery():
 @pytest.mark.asyncio
 async def test_budget_guard_stops_node_before_spending():
     """Once the cloud cap is spent, a node must not start another paid call."""
-    from app.agent.graph import _execute_with_fallback
+    from app.rag.agent.graph import _execute_with_fallback
 
     called = {"n": 0}
 
@@ -299,7 +300,7 @@ async def test_budget_guard_stops_node_before_spending():
         return {}
 
     with (
-        patch("app.agent.graph.add_trace_event", AsyncMock()),
+        patch("app.rag.agent.graph.add_trace_event", AsyncMock()),
         patch(CONFIG_PATH, return_value=_cfg("gemini", cap=2)),
     ):
         tok = begin_analysis()
@@ -351,7 +352,7 @@ def test_cloud_aliases_are_not_clamped_to_the_local_window():
     """'google_genai' is an accepted provider spelling but was missing
     from the limits table, so it fell through to the 4096 local default and
     logged a false 'evidence will be truncated' warning (audit B-14)."""
-    from app.generation.generator import calculate_dynamic_num_ctx
+    from app.rag.generation.generator import calculate_dynamic_num_ctx
 
     big = "word " * 4000  # ~20k tokens: far over local, well under cloud
     gemini = calculate_dynamic_num_ctx(big, "", "q", 512, "gemini")
@@ -361,7 +362,7 @@ def test_cloud_aliases_are_not_clamped_to_the_local_window():
 
 
 def test_local_aliases_also_resolve():
-    from app.generation.generator import calculate_dynamic_num_ctx
+    from app.rag.generation.generator import calculate_dynamic_num_ctx
 
     big = "word " * 4000
     assert calculate_dynamic_num_ctx(big, "", "q", 512, "llamacpp") == calculate_dynamic_num_ctx(
@@ -372,7 +373,7 @@ def test_local_aliases_also_resolve():
 def test_num_ctx_is_never_sent_to_cloud_clients():
     """The cloud context number is advisory only — sending num_ctx to a cloud
     client is a ValidationError on Gemini."""
-    from app.generation.generator import _invoke_kwargs_for_provider
+    from app.rag.generation.generator import _invoke_kwargs_for_provider
 
     for provider in ("gemini", "google_genai"):
         kwargs = _invoke_kwargs_for_provider(provider, 512, num_ctx=8192)
@@ -447,7 +448,7 @@ def test_effective_cloud_model_is_validated_even_when_request_omits_it():
     with patch(
         "app.api.v1.schemas.analysis.get_model_config", return_value=_CfgStub("gemini-allowed-only")
     ):
-        with patch("app.core.local_llm.get_discovered_llms", return_value=frozenset()):
+        with patch("app.llm.local_llm.get_discovered_llms", return_value=frozenset()):
             ok = AnalysisCreate(llm_provider="gemini", **base)
     assert ok.llm_model is None  # the caller did not ask for a specific model
 
@@ -461,7 +462,7 @@ def test_cross_provider_mismatch_is_still_rejected():
     gemini = get_model_config().supported_gemini_models
     if not gemini:
         pytest.skip("no Gemini models configured")
-    with patch("app.core.local_llm.get_discovered_llms", return_value=frozenset()):
+    with patch("app.llm.local_llm.get_discovered_llms", return_value=frozenset()):
         with pytest.raises(ValidationError):
             AnalysisCreate(
                 knowledge_base_id="64ee39d09c6292376e191982",
@@ -475,7 +476,7 @@ def test_cross_provider_mismatch_is_still_rejected():
 
 
 def test_gemini_and_local_keep_their_own_token_parameters():
-    from app.generation.generator import _invoke_kwargs_for_provider
+    from app.rag.generation.generator import _invoke_kwargs_for_provider
 
     assert "max_output_tokens" in _invoke_kwargs_for_provider("gemini", 512)
     assert "max_output_tokens" in _invoke_kwargs_for_provider("google_genai", 512)
@@ -563,7 +564,7 @@ def test_nli_timeout_is_longer_for_billed_cloud_calls(monkeypatch):
     """A fixed 90s cap cancelled cloud NLI generation mid-flight. Cancelled
     Gemini requests are still billed, so cloud must use the configured
     provider budget (audit B-18)."""
-    from app.verification import verifier
+    from app.rag.verification import verifier
 
     class _CloudCfg:
         verification_provider = "gemini"
@@ -584,7 +585,7 @@ def test_nli_timeout_is_longer_for_billed_cloud_calls(monkeypatch):
 
 def test_nli_timeout_never_goes_below_the_local_floor(monkeypatch):
     """A misconfigured short cloud timeout must not shorten the local guard."""
-    from app.verification import verifier
+    from app.rag.verification import verifier
 
     class _ShortCfg:
         verification_provider = "gemini"

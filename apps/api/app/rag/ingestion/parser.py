@@ -21,7 +21,7 @@ import pymupdf as fitz
 from app.core.config import get_model_config
 from app.core.exceptions import IngestionError, UnsupportedFormatError
 from app.core.logging import get_logger
-from app.ingestion import ocr as ocr_module
+from app.rag.ingestion import ocr as ocr_module
 
 logger = get_logger(__name__)
 

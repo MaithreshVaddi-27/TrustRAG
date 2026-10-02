@@ -75,7 +75,7 @@ def test_onnx_env_overrides_win(_clean_onnx_env, monkeypatch):
 
 
 def test_factory_caps_threads_and_fuses_graph(_clean_onnx_env):
-    from app.core.onnx_runtime import build_session_options, resolve_intra_op_threads
+    from app.llm.onnx_runtime import build_session_options, resolve_intra_op_threads
 
     assert resolve_intra_op_threads(0) == max(1, min(4, os.cpu_count() or 4))
     assert resolve_intra_op_threads(8) == 8  # explicit wins
@@ -92,7 +92,7 @@ def test_factory_caps_threads_and_fuses_graph(_clean_onnx_env):
 
 
 def test_factory_honors_omp_and_explicit_args(_clean_onnx_env, monkeypatch):
-    from app.core.onnx_runtime import build_session_options
+    from app.llm.onnx_runtime import build_session_options
 
     monkeypatch.setenv("OMP_NUM_THREADS", "2")
     assert build_session_options().intra_op_num_threads == 2
@@ -144,7 +144,7 @@ def test_retrieval_infra_env_overrides_win(_clean_onnx_env, monkeypatch):
 
 def test_retrieval_timeout_resolution_prefers_env_over_yaml(_clean_onnx_env, monkeypatch):
     """Module globals stay the monkeypatch-able fallback (tests rely on it)."""
-    import app.retrieval.retriever as retriever_mod
+    import app.rag.retrieval.retriever as retriever_mod
     from app.core.config import get_model_config
 
     get_model_config.cache_clear()

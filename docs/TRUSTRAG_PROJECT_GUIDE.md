@@ -132,7 +132,7 @@ The response is not just prose. The result screen exposes:
 
 ### 7.1 Parsing and safety
 
-`app/ingestion/parser.py` is the format gateway.
+`app/rag/ingestion/parser.py` is the format gateway.
 
 - **PDF:** PyMuPDF extracts per-page text. The code limits PDFs to 500 pages and limits rendered OCR images to 25 megapixels to control memory use.
 - **DOCX:** uses protected XML handling (`defusedxml`) and extracts paragraphs/tables.
@@ -145,7 +145,7 @@ The code also checks decompression-bomb ratios and total decompressed size. Thes
 
 ### 7.2 Text normalisation and zones
 
-`app/ingestion/preprocessor.py` normalises Unicode, whitespace, hyphenation and contractions. It contains a Porter stemmer and stop-word logic shared by indexing and searching; sharing the same preprocessing prevents an indexing/search mismatch.
+`app/rag/ingestion/preprocessor.py` normalises Unicode, whitespace, hyphenation and contractions. It contains a Porter stemmer and stop-word logic shared by indexing and searching; sharing the same preprocessing prevents an indexing/search mismatch.
 
 `detect_chunk_zone()` categorises chunks as title, header, table, list, body, or footer-like content. Sparse retrieval applies zone boosts: title terms have stronger weight and header terms are boosted. This is a simple, useful heuristic because headings often express the topic of the following passage.
 
@@ -164,7 +164,7 @@ Changing chunking strategy changes chunk boundaries and therefore requires re-in
 
 ### 7.4 Indexing lifecycle
 
-`app/ingestion/pipeline.py` serialises ingestion per event loop with a semaphore so simultaneous uploads do not overwhelm CPU/RAM. It sets document status `pending → processing → completed` (or stores an error). It prevents duplicate Mongo chunks on retries, while deterministic Qdrant point IDs make upserts idempotent.
+`app/rag/ingestion/pipeline.py` serialises ingestion per event loop with a semaphore so simultaneous uploads do not overwhelm CPU/RAM. It sets document status `pending → processing → completed` (or stores an error). It prevents duplicate Mongo chunks on retries, while deterministic Qdrant point IDs make upserts idempotent.
 
 The Qdrant point id is a deterministic hash of `(document_id, chunk_index)`. The vector payload includes the text and provenance, so a Qdrant hit can immediately become an evidence candidate. Mongo remains the canonical audit copy.
 
@@ -172,7 +172,7 @@ The Qdrant point id is a deterministic hash of `(document_id, chunk_index)`. The
 
 ### 8.1 Dense retrieval
 
-Dense search lives in `app/retrieval/retriever.py`.
+Dense search lives in `app/rag/retrieval/retriever.py`.
 
 1. It obtains a query embedding from the local BGE ONNX model.
 2. It checks a 1,024-entry in-memory LRU cache first; the embedding wrapper also has memory and SQLite disk caches.
@@ -199,13 +199,13 @@ with the configured `k = 60`. A document that ranks highly in both lists receive
 
 ### 8.4 Query routing and temporal validity
 
-The deterministic router (`app/agent/router.py`) does not spend an LLM call. It identifies simple, temporal, comparison, and complex/multi-question queries. Comparisons and multi-question prompts can fan out into at most three concurrent retrieval queries, then merge results with RRF. Date-like questions can carry a reference time.
+The deterministic router (`app/rag/agent/router.py`) does not spend an LLM call. It identifies simple, temporal, comparison, and complex/multi-question queries. Comparisons and multi-question prompts can fan out into at most three concurrent retrieval queries, then merge results with RRF. Date-like questions can carry a reference time.
 
 After fusion, the retrieval layer reads current document metadata from MongoDB and removes documents outside their `effective_from/effective_until` period. It also drops orphaned Qdrant points whose parent document no longer exists. This prevents stale deleted or time-invalid evidence from being shown just because a vector remains searchable.
 
 ### 8.5 Reranking
 
-`app/retrieval/reranker.py` takes the fused candidates and evaluates the actual pair `(question, chunk text)` with the configured cross-encoder. This is more precise than independent embeddings because the model can attend to question and passage together.
+`app/rag/retrieval/reranker.py` takes the fused candidates and evaluates the actual pair `(question, chunk text)` with the configured cross-encoder. This is more precise than independent embeddings because the model can attend to question and passage together.
 
 The reranker has a bounded candidate depth, batched inference, an LRU score cache, optional early termination for a very confident and separated top result, and adaptive top-k slicing. If the ONNX reranker cannot load, the code fails safely back to RRF order rather than silently loading a different unconfigured model.
 
@@ -249,7 +249,7 @@ The exporter needs the optional `local-models` dependencies (including PyTorch) 
 
 ## 10. Grounded generation
 
-`app/generation/generator.py` prepares a tightly controlled prompt. Evidence is sorted deterministically, deduplicated by a normalised prefix, labelled as `Segment 1`, `Segment 2`, and so on, and constrained to an approximately 3,000-character context budget. Whole segments are kept or dropped; it never slices a segment halfway because that would break the link between citation number and evidence item.
+`app/rag/generation/generator.py` prepares a tightly controlled prompt. Evidence is sorted deterministically, deduplicated by a normalised prefix, labelled as `Segment 1`, `Segment 2`, and so on, and constrained to an approximately 3,000-character context budget. Whole segments are kept or dropped; it never slices a segment halfway because that would break the link between citation number and evidence item.
 
 The generation prompt tells the LLM to answer only from context, cite supplied segments, avoid invented citations, and abstain when evidence is insufficient. If there are zero chunks, the generator returns `ABSTAIN` without calling an LLM.
 
@@ -271,7 +271,7 @@ Retrieval says “these passages look relevant”; it does not prove every sente
 
 ### 11.2 The verification procedure
 
-`app/verification/verifier.py` uses structured-output Pydantic schemas.
+`app/rag/verification/verifier.py` uses structured-output Pydantic schemas.
 
 1. **Decompose:** convert the answer into atomic factual claims. Meta-comments and refusals are filtered.
 2. **Verify:** give claims and numbered evidence segments to the verification LLM and request `SUPPORTED`, `CONTRADICTED`, or `NEUTRAL`, including supporting segment numbers and explanation.
@@ -309,7 +309,7 @@ An answer passes only if coverage is at least 0.80 and contradiction rate is at 
 
 ## 12. The LangGraph agentic recovery workflow
 
-`app/agent/graph.py` defines a LangGraph state machine:
+`app/rag/agent/graph.py` defines a LangGraph state machine:
 
 ```mermaid
 flowchart LR
@@ -492,12 +492,12 @@ This map lets a presenter answer “where is that implemented?” without relyin
 | central settings/model policy | `app/core/config.py`, `apps/api/config/models.yaml`, `.env.example` |
 | model selection/local LLM clients | `app/core/model_registry.py`, `app/core/local_llm.py`, `app/core/llm_utils.py`, `app/core/llm_ledger.py` |
 | ONNX embedding/reranking/cache | `app/core/onnx_embeddings.py`, `onnx_reranker.py`, `disk_cache.py`, `scripts/ensure_onnx_models.py`, `scripts/export_bge_onnx.py` |
-| document parsing/OCR/chunking | `app/ingestion/parser.py`, `ocr.py`, `preprocessor.py`, `chunker.py`, `chunking_strategies.py`, `page_images.py` |
-| indexing/vector DB | `app/ingestion/pipeline.py`, `sparse_vector.py`, `app/db/qdrant.py`, `app/db/mongodb.py` |
-| retrieval/reranking/router | `app/retrieval/retriever.py`, `reranker.py`, `app/agent/router.py` |
-| answer generation | `app/generation/generator.py` |
-| verification/verdict/provenance integrity | `app/verification/verifier.py`, `verdict.py`, `integrity.py` |
-| agent workflow/recovery | `app/agent/graph.py` |
+| document parsing/OCR/chunking | `app/rag/ingestion/parser.py`, `ocr.py`, `preprocessor.py`, `chunker.py`, `chunking_strategies.py`, `page_images.py` |
+| indexing/vector DB | `app/rag/ingestion/pipeline.py`, `sparse_vector.py`, `app/db/qdrant.py`, `app/db/mongodb.py` |
+| retrieval/reranking/router | `app/rag/retrieval/retriever.py`, `reranker.py`, `app/rag/agent/router.py` |
+| answer generation | `app/rag/generation/generator.py` |
+| verification/verdict/provenance integrity | `app/rag/verification/verifier.py`, `verdict.py`, `integrity.py` |
+| agent workflow/recovery | `app/rag/agent/graph.py` |
 | API use cases and persistence orchestration | `app/services/*.py`, `app/api/v1/*.py`, `app/api/v1/schemas/*.py` |
 | security/rate limits/logging/metrics | `app/core/security.py`, `rate_limiter.py`, `logging.py`, `tracing.py`, `metrics.py`, `exceptions.py` |
 | external tool/MCP bridge | `app/mcp/server.py`, `client.py`, `app/services/search_service.py` |

@@ -36,7 +36,7 @@ from app.core.disk_cache import (
     set_cached_embeddings_batch,
 )
 from app.core.hardware import get_ingest_embed_batch_size
-from app.core.onnx_runtime import build_session_options
+from app.llm.onnx_runtime import build_session_options
 
 logger = structlog.get_logger(__name__)
 

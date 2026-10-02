@@ -139,7 +139,7 @@ async def test_delete_kb_qdrant_failure_keeps_all_metadata():
 
 def test_router_cap_below_two_falls_back_to_simple():
     """Capping fan-out below 2 is meaningless — run the full query, not half."""
-    from app.agent.router import QueryRoute, route_query
+    from app.rag.agent.router import QueryRoute, route_query
 
     routed = route_query("Pro tier vs Team tier?", max_sub_queries=1)
     assert routed.route == QueryRoute.SIMPLE

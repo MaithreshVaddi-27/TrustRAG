@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.logging import get_logger
-from app.ingestion.preprocessor import detect_chunk_zone, normalize_text
+from app.rag.ingestion.preprocessor import detect_chunk_zone, normalize_text
 
 logger = get_logger(__name__)
 

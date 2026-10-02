@@ -19,8 +19,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agent import graph as graph_mod
-from app.agent.graph import build_agent_graph, execute_agentic_rag_flow
+from app.rag.agent import graph as graph_mod
+from app.rag.agent.graph import build_agent_graph, execute_agentic_rag_flow
 
 KB_ID = "64ee39d09c6292376e191982"
 ANALYSIS_ID = "64ee39d09c6292376e1919ab"
@@ -171,7 +171,7 @@ async def test_semantic_cache_hit_seeds_answer_and_marks_cache_hit():
         patch.object(graph_mod, "end_analysis", MagicMock()),
         patch.object(graph_mod, "current_ledger", return_value=None),
         patch("app.core.memory.trim_memory", MagicMock()),
-        patch("app.core.model_registry.get_embedding_model", return_value=_embed_model()),
+        patch("app.llm.model_registry.get_embedding_model", return_value=_embed_model()),
         patch("app.core.semantic_cache.check_semantic_cache", return_value=cached),
         patch.object(graph_mod, "add_trace_event", AsyncMock()) as trace,
     ):
@@ -201,7 +201,7 @@ async def test_semantic_cache_is_bypassed_when_web_search_is_enabled():
         patch.object(graph_mod, "end_analysis", MagicMock()),
         patch.object(graph_mod, "current_ledger", return_value=None),
         patch("app.core.memory.trim_memory", MagicMock()),
-        patch("app.core.model_registry.get_embedding_model", return_value=_embed_model()),
+        patch("app.llm.model_registry.get_embedding_model", return_value=_embed_model()),
         patch("app.core.semantic_cache.check_semantic_cache", checked),
         patch.object(graph_mod, "add_trace_event", AsyncMock()),
     ):
@@ -237,7 +237,7 @@ async def test_semantic_cache_stores_only_passed_non_abstain_answers():
             patch.object(graph_mod, "end_analysis", MagicMock()),
             patch.object(graph_mod, "current_ledger", return_value=None),
             patch("app.core.memory.trim_memory", MagicMock()),
-            patch("app.core.model_registry.get_embedding_model", return_value=_embed_model()),
+            patch("app.llm.model_registry.get_embedding_model", return_value=_embed_model()),
             patch("app.core.semantic_cache.check_semantic_cache", MagicMock(return_value=None)),
             patch("app.core.semantic_cache.store_semantic_cache", MagicMock()) as store,
             patch.object(graph_mod, "add_trace_event", AsyncMock()),
@@ -273,7 +273,7 @@ async def test_async_embed_falls_back_to_sync_on_failure():
         patch.object(graph_mod, "end_analysis", MagicMock()),
         patch.object(graph_mod, "current_ledger", return_value=None),
         patch("app.core.memory.trim_memory", MagicMock()),
-        patch("app.core.model_registry.get_embedding_model", return_value=emb),
+        patch("app.llm.model_registry.get_embedding_model", return_value=emb),
         patch(
             "app.core.semantic_cache.check_semantic_cache",
             MagicMock(return_value={"answer": "cached"}),
@@ -301,7 +301,7 @@ async def test_cache_failure_never_breaks_the_run():
         patch.object(graph_mod, "end_analysis", MagicMock()),
         patch.object(graph_mod, "current_ledger", return_value=None),
         patch("app.core.memory.trim_memory", MagicMock()),
-        patch("app.core.model_registry.get_embedding_model", return_value=_embed_model()),
+        patch("app.llm.model_registry.get_embedding_model", return_value=_embed_model()),
         patch(
             "app.core.semantic_cache.check_semantic_cache",
             MagicMock(side_effect=RuntimeError("redis down")),
@@ -345,7 +345,7 @@ async def test_ledger_is_closed_even_when_the_graph_raises():
 
 def test_should_recover_ends_when_analysis_deadline_spent():
     """A spent wall-clock budget must end the loop, not start another round."""
-    from app.agent.graph import should_recover
+    from app.rag.agent.graph import should_recover
 
     state = {
         "verdict_status": "FAIL",
@@ -361,7 +361,7 @@ def test_should_recover_ends_when_analysis_deadline_spent():
 
 
 def test_should_recover_continues_while_budget_remains():
-    from app.agent.graph import should_recover
+    from app.rag.agent.graph import should_recover
 
     state = {
         "verdict_status": "FAIL",
@@ -375,7 +375,7 @@ def test_should_recover_continues_while_budget_remains():
 
 def test_should_recover_unbounded_when_no_deadline_configured():
     """max_analysis_seconds: 0 disables the bound entirely."""
-    from app.agent.graph import should_recover
+    from app.rag.agent.graph import should_recover
 
     state = {
         "verdict_status": "FAIL",
@@ -389,7 +389,7 @@ def test_should_recover_unbounded_when_no_deadline_configured():
 
 def test_analysis_deadline_is_set_from_config():
     """A positive budget produces a real monotonic deadline."""
-    from app.agent.graph import _analysis_deadline
+    from app.rag.agent.graph import _analysis_deadline
 
     cfg = _cfg_stub(max_analysis_seconds=120)
     deadline = _analysis_deadline(cfg)
@@ -400,7 +400,7 @@ def test_analysis_deadline_is_set_from_config():
 
 def test_analysis_deadline_survives_garbage_config():
     """A malformed budget disables the bound instead of failing the analysis."""
-    from app.agent.graph import _analysis_deadline
+    from app.rag.agent.graph import _analysis_deadline
 
     assert _analysis_deadline(_cfg_stub(max_analysis_seconds="not-a-number")) is None
     assert _analysis_deadline(_cfg_stub(max_analysis_seconds=None)) is None

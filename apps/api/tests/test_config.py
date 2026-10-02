@@ -268,7 +268,7 @@ class TestAnalysisModelPolicy:
 
         # Patch the discovery cache to include the expected model
         monkeypatch.setattr(
-            "app.core.local_llm.get_discovered_llms",
+            "app.llm.local_llm.get_discovered_llms",
             lambda provider: (
                 frozenset(["granite4.2:3b-q4_K_M"]) if provider == "ollama" else frozenset()
             ),
@@ -306,7 +306,7 @@ class TestAnalysisModelPolicy:
 
         discovered = {"huggingface/SmolLM3-3B-GGUF:Q4_K_M"}
         monkeypatch.setattr(
-            "app.core.local_llm.get_discovered_llms",
+            "app.llm.local_llm.get_discovered_llms",
             lambda provider: frozenset(discovered) if provider == "llama_cpp" else frozenset(),
         )
 
@@ -324,7 +324,7 @@ class TestAnalysisModelPolicy:
 
         discovered = {"mlx-community/LFM2.5-1.2B-Instruct-4bit"}
         monkeypatch.setattr(
-            "app.core.local_llm.get_discovered_llms",
+            "app.llm.local_llm.get_discovered_llms",
             lambda provider: frozenset(discovered) if provider == "mlx" else frozenset(),
         )
 
@@ -385,7 +385,7 @@ class TestAnalysisModelPolicy:
             )
 
     def test_merge_discovered_llms_filters_embedding_models(self) -> None:
-        from app.core.local_llm import get_discovered_llms, merge_discovered_llms
+        from app.llm.local_llm import get_discovered_llms, merge_discovered_llms
 
         merge_discovered_llms("ollama", ["granite4.2:3b-q4_K_M", "nomic-embed-text"])
         discovered = get_discovered_llms("ollama")
@@ -396,7 +396,7 @@ class TestAnalysisModelPolicy:
         # No per-request embedding choice exists: attacker-controlled model IDs
         # in the payload are dropped (extra='ignore') and can never reach a
         # model loader. The engine always serves models.yaml `embedding.model`.
-        import app.core.local_llm as _llm_mod
+        import app.llm.local_llm as _llm_mod
         from app.api.v1.schemas.analysis import AnalysisCreate
         from app.core.config import get_model_config
 

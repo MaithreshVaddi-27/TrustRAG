@@ -19,19 +19,19 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core import config as config_mod
 from app.core.config import get_model_config, normalize_provider
-from app.core.llm_ledger import invoke_counted, llm_budget_exhausted
-from app.core.local_llm import is_reasoning_model, verification_cap_kwargs
 from app.core.logging import get_logger
-from app.core.model_registry import get_verification_model
 from app.db.mongodb import Collections, get_collection
-from app.generation.generator import (
+from app.llm.llm_ledger import invoke_counted, llm_budget_exhausted
+from app.llm.local_llm import is_reasoning_model, verification_cap_kwargs
+from app.llm.model_registry import get_verification_model
+from app.rag.generation.generator import (
     extract_citations,
     format_context,
     format_context_with_chunk_indices,
     neutralize_prompt_fences,
 )
-from app.retrieval import retriever as retriever_mod
-from app.verification import integrity as integrity_mod
+from app.rag.retrieval import retriever as retriever_mod
+from app.rag.verification import integrity as integrity_mod
 
 logger = get_logger(__name__)
 

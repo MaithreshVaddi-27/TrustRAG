@@ -342,7 +342,7 @@ async def test_snapshot_copies_page_images_with_remapped_refs():
     with (
         patch.object(kb_service, "get_collection", return_value=mock_collection),
         patch.object(kb_service, "get_qdrant_client", return_value=mock_qdrant),
-        patch("app.ingestion.page_images.copy_page_image", return_value="NEWREF") as mock_copy,
+        patch("app.rag.ingestion.page_images.copy_page_image", return_value="NEWREF") as mock_copy,
     ):
         await kb_service.create_kb_snapshot(KB_ID, USER_ID, version="1.1")
 
@@ -376,7 +376,7 @@ async def test_delete_document_purges_page_images():
     with (
         patch.object(kb_service, "get_collection", return_value=mock_coll),
         patch.object(kb_service, "get_qdrant_client", return_value=mock_qdrant),
-        patch("app.ingestion.page_images.delete_doc_page_images", return_value=2) as mock_purge,
+        patch("app.rag.ingestion.page_images.delete_doc_page_images", return_value=2) as mock_purge,
     ):
         await kb_service.delete_document(doc_id, USER_ID)
 

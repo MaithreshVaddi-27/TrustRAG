@@ -16,10 +16,9 @@ import re
 from typing import Any
 
 import pytest
-from fastapi import HTTPException
 
 from app.core.exceptions import IngestionError
-from app.ingestion.parser import (
+from app.rag.ingestion.parser import (
     _ENCODING_DETECT_SLICE,
     EICAR_TEST_STRING,
     _detect_encoding,
@@ -57,8 +56,8 @@ def test_scan_for_malware_clean_stream_passes():
 
 
 async def test_await_nli_call_times_out(monkeypatch):
-    from app.verification import verifier as verifier_module
-    from app.verification.verifier import _await_nli_call
+    from app.rag.verification import verifier as verifier_module
+    from app.rag.verification.verifier import _await_nli_call
 
     monkeypatch.setattr(verifier_module, "NLI_PER_CALL_TIMEOUT_SECONDS", 0.05)
 
@@ -71,8 +70,8 @@ async def test_await_nli_call_times_out(monkeypatch):
 
 
 async def test_await_nli_call_passes_fast_result(monkeypatch):
-    from app.verification import verifier as verifier_module
-    from app.verification.verifier import _await_nli_call
+    from app.rag.verification import verifier as verifier_module
+    from app.rag.verification.verifier import _await_nli_call
 
     monkeypatch.setattr(verifier_module, "NLI_PER_CALL_TIMEOUT_SECONDS", 5)
 
@@ -83,7 +82,7 @@ async def test_await_nli_call_passes_fast_result(monkeypatch):
 
 
 def test_query_cache_clear_and_dim_mismatch_path():
-    from app.retrieval.retriever import _query_cache
+    from app.rag.retrieval.retriever import _query_cache
 
     _query_cache.set("k", [0.1, 0.2, 0.3])
     assert _query_cache.get("k") == [0.1, 0.2, 0.3]
@@ -128,7 +127,7 @@ async def test_mcp_external_still_needs_token():
 
 
 def test_llm_registry_put_is_sync_and_bounded():
-    from app.core.model_registry import (
+    from app.llm.model_registry import (
         _LLM_REGISTRY,
         _llm_registry_key,
         get_llm_instance,
@@ -246,7 +245,7 @@ async def test_mcp_list_kbs_scoped_to_bound_user():
 
 
 def test_onnx_model_status_keys():
-    from app.core.model_registry import onnx_model_status
+    from app.llm.model_registry import onnx_model_status
 
     status = onnx_model_status()
     assert status["embedding_provider"] == "onnx"
@@ -256,13 +255,13 @@ def test_onnx_model_status_keys():
 
 def test_onnx_missing_model_points_at_bootstrap():
     from app.core.exceptions import ConfigurationError
-    from app.core.model_registry import get_embedding_model
+    from app.llm.model_registry import get_embedding_model
 
     # Single-model install: no per-request override. A missing ONNX file
     # fails loudly with the bootstrap fix (not silent).
     get_embedding_model.cache_clear()
     try:
-        import app.core.model_registry as _reg
+        import app.llm.model_registry as _reg
 
         orig = _reg._resolve_embedding_onnx_path
         _reg._resolve_embedding_onnx_path = lambda _cache_dir: None
@@ -324,7 +323,7 @@ def test_parse_document_rejects_eicar():
     import io
 
     from app.core.exceptions import IngestionError
-    from app.ingestion.parser import EICAR_TEST_STRING, parse_document
+    from app.rag.ingestion.parser import EICAR_TEST_STRING, parse_document
 
     stream = io.BytesIO(b"clean header " + EICAR_TEST_STRING + b" trailer")
     with pytest.raises(IngestionError, match=r"[Mm]alware|EICAR|blocked"):
@@ -335,7 +334,7 @@ def test_parse_document_rejects_signature_mismatch():
     import io
 
     from app.core.exceptions import IngestionError
-    from app.ingestion.parser import parse_document
+    from app.rag.ingestion.parser import parse_document
 
     with pytest.raises(IngestionError, match=r"[Ss]ignature|mismatch|format"):
         parse_document("evil.pdf", io.BytesIO(b"hello world, not a pdf"))
@@ -346,7 +345,7 @@ def test_parse_docx_rejects_zip_bomb():
     import zipfile
 
     from app.core.exceptions import IngestionError
-    from app.ingestion.parser import parse_document
+    from app.rag.ingestion.parser import parse_document
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -361,7 +360,7 @@ def test_parse_docx_rejects_xxe():
     import zipfile
 
     from app.core.exceptions import IngestionError
-    from app.ingestion.parser import parse_document
+    from app.rag.ingestion.parser import parse_document
 
     evil_xml = (
         b'<?xml version="1.0"?>'
@@ -380,7 +379,7 @@ def test_parse_pdf_rejects_oversize():
     import io
 
     from app.core.exceptions import IngestionError
-    from app.ingestion.parser import parse_document
+    from app.rag.ingestion.parser import parse_document
 
     # Size guard trips before any PDF parsing (fast: no fitz work).
     big = b"%PDF-1.7\n" + b"0" * (21 * 1024 * 1024)
@@ -410,7 +409,7 @@ async def test_qdrant_rejects_schemeless_url_without_mkdir(tmp_path):
 
 
 async def test_shared_http_client_splits_timeouts():
-    from app.core.local_llm import _shared_http_client, close_local_llm_clients
+    from app.llm.local_llm import _shared_http_client, close_local_llm_clients
 
     try:
         client = _shared_http_client("http://127.0.0.1:9", 120.0)

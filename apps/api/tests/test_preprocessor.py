@@ -4,7 +4,7 @@ Unit tests for text preprocessing, lexical analysis, and Porter Stemmer.
 
 from __future__ import annotations
 
-from app.ingestion.preprocessor import (
+from app.rag.ingestion.preprocessor import (
     PorterStemmer,
     lexical_analyze,
     normalize_text,
@@ -87,7 +87,7 @@ def test_lexical_analyze_without_stemming():
 
 
 def test_document_zoning():
-    from app.ingestion.preprocessor import detect_chunk_zone
+    from app.rag.ingestion.preprocessor import detect_chunk_zone
 
     # Title zone
     title_chunk = "Information Retrieval Systems\nUNIT-2 Syllabus\nCataloging and Indexing"
@@ -111,7 +111,7 @@ def test_document_zoning():
 
 
 def test_query_noise_stopwords():
-    from app.ingestion.preprocessor import lexical_analyze
+    from app.rag.ingestion.preprocessor import lexical_analyze
 
     # Query with conversational filler
     query = "Please explain the details regarding automatic indexing"
@@ -125,7 +125,7 @@ def test_query_noise_stopwords():
 
 
 def test_extract_ngrams():
-    from app.ingestion.preprocessor import extract_ngrams
+    from app.rag.ingestion.preprocessor import extract_ngrams
 
     tokens = ["data", "structur", "index"]
     bigrams = extract_ngrams(tokens, n=2)
@@ -133,7 +133,7 @@ def test_extract_ngrams():
 
 
 def test_zone_weighted_sparse_vector():
-    from app.ingestion.sparse_vector import generate_sparse_vector
+    from app.rag.ingestion.sparse_vector import generate_sparse_vector
 
     text = "automatic indexing"
     vec_body = generate_sparse_vector(text, zone="body")

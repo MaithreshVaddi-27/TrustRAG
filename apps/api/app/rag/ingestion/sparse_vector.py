@@ -29,7 +29,7 @@ import structlog
 import xxhash
 
 from app.core.config import get_model_config
-from app.ingestion.preprocessor import ZONE_WEIGHT_BOOSTS, lexical_analyze
+from app.rag.ingestion.preprocessor import ZONE_WEIGHT_BOOSTS, lexical_analyze
 
 logger = structlog.get_logger(__name__)
 

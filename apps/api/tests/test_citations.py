@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.generation.generator import (
+from app.rag.generation.generator import (
     GROUNDING_SYSTEM_PROMPT,
     extract_citations,
     generate_grounded_answer,
@@ -67,7 +67,7 @@ async def test_generation_strips_hallucinated_segment_refs():
     mock_response.content = "Revocations are fast [Segment 1] and free [Segment 5]."
     mock_llm.ainvoke = AsyncMock(return_value=mock_response)
     chunks = [{"filename": "doc.txt", "page": 1, "text": "Factual segment content."}]
-    with patch("app.generation.generator.get_llm", return_value=mock_llm):
+    with patch("app.rag.generation.generator.get_llm", return_value=mock_llm):
         answer = await generate_grounded_answer("Is there matching info?", chunks)
     assert "[Segment 5]" not in answer
     assert "[Segment 1]" in answer
@@ -80,7 +80,7 @@ async def test_generation_keeps_valid_citations_untouched():
     mock_response.content = "Revocations are fast [Segment 1]."
     mock_llm.ainvoke = AsyncMock(return_value=mock_response)
     chunks = [{"filename": "doc.txt", "page": 1, "text": "Factual segment content."}]
-    with patch("app.generation.generator.get_llm", return_value=mock_llm):
+    with patch("app.rag.generation.generator.get_llm", return_value=mock_llm):
         answer = await generate_grounded_answer("Is there matching info?", chunks)
     assert answer == "Revocations are fast [Segment 1]."
 
@@ -94,7 +94,7 @@ async def test_generation_keeps_valid_citations_untouched():
 
 def test_grounding_prompt_has_no_single_domain_lock():
     """No hardcoded subject matter may steer the answer shape."""
-    from app.generation.generator import GROUNDING_SYSTEM_PROMPT
+    from app.rag.generation.generator import GROUNDING_SYSTEM_PROMPT
 
     lowered = GROUNDING_SYSTEM_PROMPT.lower()
     banned = (
@@ -113,7 +113,7 @@ def test_grounding_prompt_does_not_discourage_abstention():
     """The old prompt said "Do NOT output ABSTAIN if the Context contains
     relevant discussion" — which directly contradicts grounding rule 1 and
     told the model to answer from weak context."""
-    from app.generation.generator import GROUNDING_SYSTEM_PROMPT
+    from app.rag.generation.generator import GROUNDING_SYSTEM_PROMPT
 
     lowered = GROUNDING_SYSTEM_PROMPT.lower()
     assert "do not output abstain if the context contains" not in lowered
@@ -122,6 +122,6 @@ def test_grounding_prompt_does_not_discourage_abstention():
 
 
 def test_grounding_prompt_declares_domain_agnostic():
-    from app.generation.generator import GROUNDING_SYSTEM_PROMPT
+    from app.rag.generation.generator import GROUNDING_SYSTEM_PROMPT
 
     assert "domain-agnostic" in GROUNDING_SYSTEM_PROMPT.lower()
