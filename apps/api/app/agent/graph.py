@@ -20,7 +20,7 @@ from qdrant_client.http import models as qdrant_models
 from app.agent.router import fanout_retrieve, route_query
 from app.core import memory, model_registry, semantic_cache
 from app.core.config import get_model_config
-from app.core.exceptions import RetrievalOutageError
+from app.core.exceptions import LLMUnavailableError, RetrievalOutageError
 from app.core.llm_ledger import (
     begin_analysis,
     current_ledger,
@@ -28,7 +28,6 @@ from app.core.llm_ledger import (
     invoke_counted,
     llm_budget_exhausted,
 )
-from app.core.llm_outage import classify_llm_exception
 from app.core.llm_utils import normalize_llm_content
 from app.core.local_llm import verification_cap_kwargs
 from app.core.logging import get_logger
@@ -235,63 +234,65 @@ async def _execute_with_fallback(
         state["verdict_status"] = "FAIL"
         return state
 
-    except Exception as exc:
-        # Provider outage (bad key, exhausted quota, provider 5xx, unreachable
-        # endpoint) is an infrastructure failure, not a finding about the
-        # evidence. Short-circuit with a terminal LLM_OUTAGE diagnosis so a
-        # dead credential cannot burn three recovery rounds against the live API
-        # and then be reported to the user as "insufficient evidence"
-        # (audit B-5). Mirrors the RETRIEVAL_OUTAGE fast path.
-        outage = classify_llm_exception(exc, context=node_name)
-        if outage is not None:
-            logger.error(
-                f"{node_name} node hit an LLM provider outage",
-                error=str(outage),
-                exc_info=True,
-            )
-            state["node_errors"] = [
-                *state.get("node_errors", []),
-                {
-                    "node": node_name,
-                    "error_type": "LLM_OUTAGE",
-                    "message": str(outage),
-                },
-            ]
-            await add_trace_event(
-                state["analysis_id"],
-                f"{node_name}.outage",
-                {"message": str(outage), "error_type": "LLM_OUTAGE"},
-            )
-            state["answer"] = (
-                f"The language model provider is unavailable, so I could not "
-                f"complete this analysis. This is not a finding of 'insufficient "
-                f"evidence'.\n\nReason: {outage}"
-            )
-            state["verdict_status"] = "FAIL"
-            state["reliability_score"] = 0.0
-            state["diagnosis_type"] = "LLM_OUTAGE"
-            state["diagnosis_failures"] = [str(outage)]
-            # Exhaust the recovery budget so the graph terminates immediately.
-            state["attempts"] = get_model_config().max_recovery_attempts
-            return state
+    except LLMUnavailableError as exc:
+        logger.error(
+            f"{node_name} node hit an LLM provider failure",
+            error=str(exc),
+            exc_info=True,
+        )
 
+        state["node_errors"] = [
+            *state.get("node_errors", []),
+            {
+                "node": node_name,
+                "error_type": "LLM_UNAVAILABLE",
+                "message": str(exc),
+            },
+        ]
+
+        await add_trace_event(
+            state["analysis_id"],
+            f"{node_name}.llm_unavailable",
+            {
+                "message": str(exc),
+                "error_type": "LLM_UNAVAILABLE",
+            },
+        )
+
+        state["answer"] = (
+            "The language model provider is currently unavailable, "
+            "so this analysis could not be completed."
+        )
+        state["verdict_status"] = "FAIL"
+        state["reliability_score"] = 0.0
+        state["diagnosis_type"] = "LLM_UNAVAILABLE"
+        state["diagnosis_failures"] = [str(exc)]
+        state["attempts"] = get_model_config().max_recovery_attempts
+        return state
+
+    except Exception as exc:
         logger.error(f"{node_name} node failed", error=str(exc), exc_info=True)
+
         error_info = {
             "node": node_name,
             "error_type": type(exc).__name__,
             "message": f"{node_name} failed: {type(exc).__name__}",
         }
+
         state["node_errors"] = [*state.get("node_errors", []), error_info]
 
         await add_trace_event(
             state["analysis_id"],
             f"{node_name}.error",
-            {"message": error_info["message"], "error_type": error_info["error_type"]},
+            {
+                "message": error_info["message"],
+                "error_type": error_info["error_type"],
+            },
         )
 
         if fallback_state is not None:
             return fallback_state
-        # Default fallback: mark as failed but allow recovery
+
         state["verdict_status"] = "FAIL"
         return state
 
