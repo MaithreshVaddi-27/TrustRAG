@@ -26,7 +26,6 @@ from app.core.model_registry import get_embedding_model
 from app.db.mongodb import Collections, get_collection
 from app.db.qdrant import get_collection_name, get_qdrant_client, init_kb_collection
 from app.ingestion.chunking_strategies import ChunkingStrategy
-from app.ingestion.page_images import save_page_image
 from app.ingestion.sparse_vector import generate_sparse_vector
 
 logger = get_logger(__name__)
@@ -105,28 +104,6 @@ async def _index_parsed_chunks(
         # parameter is kept for backward compatibility and ignored here —
         # this stage only embeds and indexes the chunks it receives.
 
-        # page-image chain: persist each OCR page render ONCE (many chunks share
-        # one render). Fail-open: disk trouble must never fail ingestion.
-        page_image_refs: dict[Any, str | None] = {}
-        if get_model_config().ocr_store_page_images:
-            for c in chunks:
-                pg = c.get("page")
-                png = c.get("page_image_png")
-                if pg in page_image_refs:
-                    continue
-                ref: str | None = None
-                if png:
-                    try:
-                        ref = save_page_image(kb_id_str, doc_id_str, int(pg), png)
-                    except (ValueError, OSError) as exc:
-                        logger.warning(
-                            "Page-image persist failed; chunk keeps no image ref",
-                            doc_id=doc_id_str,
-                            page=pg,
-                            error=str(exc),
-                        )
-                page_image_refs[pg] = ref
-
         # Pin check BEFORE any writes: never mix embedding spaces in one
         # collection (retriever would truncate/pad garbage). Fail loudly so the
         # operator re-uploads into a NEW KB instead of corrupting this one.
@@ -178,7 +155,6 @@ async def _index_parsed_chunks(
                     "text_hash": hashlib.sha256(c["text"].encode("utf-8")).hexdigest(),
                     "ocr_used": bool(c.get("ocr_used", False)),
                     "ocr_confidence": c.get("ocr_confidence"),
-                    "page_image_ref": page_image_refs.get(c.get("page")),
                     "document_version": doc_version,
                     "is_snapshot": doc_is_snapshot,
                 }
@@ -237,7 +213,6 @@ async def _index_parsed_chunks(
                 "text": chunk["text"],
                 "ocr_used": bool(chunk.get("ocr_used", False)),
                 "ocr_confidence": chunk.get("ocr_confidence"),
-                "page_image_ref": page_image_refs.get(chunk.get("page")),
                 "document_version": doc_version,
                 "is_snapshot": doc_is_snapshot,
             }
