@@ -17,7 +17,9 @@ export default function PlaygroundPage() {
   const [activeTab, setActiveTab] = useState('answer')
   const [errorMsg, setErrorMsg] = useState('')
   const [enableWebSearch, setEnableWebSearch] = useState(false)
-  const [webSearchProvider, setWebSearchProvider] = useState('both')
+  // Tavily is the sole web-search provider (backend ignores the value, but the
+  // request field stays for API compatibility).
+  const webSearchProvider = 'tavily'
   const [elapsedSec, setElapsedSec] = useState(0)
 
   const streamRef = useRef(null)
@@ -335,8 +337,6 @@ const activeProviderInfo = providersData?.providers?.[selectedProvider]
           selectedEmbeddingModel={selectedEmbeddingModel}
           enableWebSearch={enableWebSearch}
           setEnableWebSearch={setEnableWebSearch}
-          webSearchProvider={webSearchProvider}
-          setWebSearchProvider={setWebSearchProvider}
           providersData={providersData}
           elapsedSec={elapsedSec}
           activeProviderInfo={activeProviderInfo}
@@ -358,7 +358,6 @@ const activeProviderInfo = providersData?.providers?.[selectedProvider]
           recoveryRuns={recoveryRuns}
           query={query}
           enableWebSearch={enableWebSearch}
-          webSearchProvider={webSearchProvider}
           selectedProvider={selectedProvider}
           selectedModel={selectedModel}
           selectedEmbeddingModel={selectedEmbeddingModel}

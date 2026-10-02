@@ -78,7 +78,7 @@ class AgentState(TypedDict):
     # | GENERATION_ERROR | RECOVERY_BUDGET_EXHAUSTED | None
     diagnosis_failures: list[str]
     web_search_enabled: bool
-    web_search_provider: str  # "tavily" | "duckduckgo" | "both"
+    web_search_provider: str  # accepted for API compat; grounding is Tavily-only
     llm_provider: str | None
     llm_model: str | None
     # True when the answer text is reused from semantic cache; retrieval and
@@ -235,42 +235,22 @@ async def _execute_with_fallback(
         return state
 
     except LLMUnavailableError as exc:
-        logger.error(
-            f"{node_name} node hit an LLM provider failure",
-            error=str(exc),
-            exc_info=True,
-        )
-
-        state["node_errors"] = [
-            *state.get("node_errors", []),
-            {
-                "node": node_name,
-                "error_type": "LLM_UNAVAILABLE",
-                "message": str(exc),
-            },
-        ]
-
-        await add_trace_event(
-            state["analysis_id"],
-            f"{node_name}.llm_unavailable",
-            {
-                "message": str(exc),
-                "error_type": "LLM_UNAVAILABLE",
-            },
-        )
-
-        state["answer"] = (
-            "The language model provider is currently unavailable, "
-            "so this analysis could not be completed."
-        )
-        state["verdict_status"] = "FAIL"
-        state["reliability_score"] = 0.0
-        state["diagnosis_type"] = "LLM_UNAVAILABLE"
-        state["diagnosis_failures"] = [str(exc)]
-        state["attempts"] = get_model_config().max_recovery_attempts
-        return state
+        return await _terminal_llm_failure(state, node_name, str(exc))
 
     except Exception as exc:
+        # Dead-credential classification (audit B-5): a revoked/expired key
+        # surfaces as a bare 401/403 or an "API key not valid" message from
+        # vendor SDKs — NOT as LLMUnavailableError. Without this, the error
+        # falls into the generic path below and the recovery loop burns paid
+        # rounds against an API that can never succeed. Classify narrowly so
+        # ordinary bugs still take the recoverable path.
+        if _is_dead_credential_error(exc):
+            logger.error(
+                f"{node_name} node hit a dead credential",
+                error=str(exc),
+                exc_info=True,
+            )
+            return await _terminal_llm_failure(state, node_name, str(exc))
         logger.error(f"{node_name} node failed", error=str(exc), exc_info=True)
 
         error_info = {
@@ -295,6 +275,69 @@ async def _execute_with_fallback(
 
         state["verdict_status"] = "FAIL"
         return state
+
+
+_CREDENTIAL_FAILURE_HINTS = (
+    "api key",
+    "apikey",
+    "invalid key",
+    "expired key",
+    "revoked",
+    "permissiondenied",
+    "permission denied",
+    "unauthorized",
+    "unauthenticated",
+)
+
+
+def _is_dead_credential_error(exc: BaseException) -> bool:
+    """True when an exception looks like a dead provider credential.
+
+    Kept narrow on purpose: a misclassification here turns a recoverable
+    model bug into a hard terminal abort (worse than the status quo).
+    """
+    if getattr(exc, "status_code", None) in (401, 403):
+        return True
+    message = str(exc).lower()
+    return any(hint in message for hint in _CREDENTIAL_FAILURE_HINTS)
+
+
+async def _terminal_llm_failure(state: AgentState, node_name: str, message: str) -> AgentState:
+    """Terminal provider-failure path: no recovery rounds, fail loud."""
+    logger.error(
+        f"{node_name} node hit an LLM provider failure",
+        error=message,
+        exc_info=True,
+    )
+
+    state["node_errors"] = [
+        *state.get("node_errors", []),
+        {
+            "node": node_name,
+            "error_type": "LLM_UNAVAILABLE",
+            "message": message,
+        },
+    ]
+
+    await add_trace_event(
+        state["analysis_id"],
+        f"{node_name}.llm_unavailable",
+        {
+            "message": message,
+            "error_type": "LLM_UNAVAILABLE",
+        },
+    )
+
+    state["answer"] = (
+        "The language model provider is currently unavailable, "
+        "so this analysis could not be completed."
+    )
+    state["verdict_status"] = "FAIL"
+    state["reliability_score"] = 0.0
+    state["diagnosis_type"] = "LLM_UNAVAILABLE"
+    state["diagnosis_failures"] = [message]
+    state["attempts"] = get_model_config().max_recovery_attempts
+    return state
 
 
 # ─── Graph Nodes ─────────────────────────────────────────────────────────────
@@ -589,27 +632,17 @@ async def retrieval_node(state: AgentState) -> AgentState:
         audited_chunks = await audit_evidence_integrity(top_chunks)
         verified_chunks = [c for c in audited_chunks if c.get("integrity_status") == "VERIFIED"]
 
-        # 3b. Live Web Search Grounding via MCP (Tavily / DuckDuckGo / Both)
+        # 3b. Live Web Search Grounding via MCP (Tavily, the sole provider).
         if state.get("web_search_enabled"):
-            search_prov = state.get("web_search_provider", "both")
             await add_trace_event(
                 state["analysis_id"],
                 "web_search.started",
-                {"message": f"Executing live web search grounding via MCP ({search_prov.upper()})"},
+                {"message": "Executing live web search grounding via MCP (TAVILY)"},
             )
             try:
-                tool_name = (
-                    "tavily_search"
-                    if search_prov == "tavily"
-                    else (
-                        "duckduckgo_search" if search_prov == "duckduckgo" else "hybrid_web_search"
-                    )
-                )
                 tool_args: dict[str, Any] = {"query": state["current_query"], "max_results": 5}
-                if tool_name == "hybrid_web_search":
-                    tool_args["provider"] = "both"
 
-                web_items = await execute_mcp_tool(tool_name, tool_args)
+                web_items = await execute_mcp_tool("tavily_search", tool_args)
                 if web_items and isinstance(web_items, list):
                     logger.info("Web search MCP returned results", count=len(web_items))
                     for w_idx, w in enumerate(web_items):
@@ -627,7 +660,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                             "dense_score": float(w.get("score", 0.8)),
                             "rrf_score": float(w.get("score", 0.8)),
                             "rerank_score": float(w.get("score", 0.8)),
-                            "method": f"mcp_{w.get('source', search_prov)}",
+                            "method": f"mcp_{w.get('source', 'tavily')}",
                             "integrity_status": "EXTERNAL_UNAUDITED",
                             "page": 1,
                         }

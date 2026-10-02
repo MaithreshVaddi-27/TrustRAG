@@ -11,7 +11,6 @@ from fastapi import APIRouter, Depends, status
 
 from app.api.deps import get_current_user, oauth2_scheme
 from app.api.v1.schemas.auth import TokenResponse, UserLogin, UserRegister, UserResponse
-from app.core.config import get_settings
 from app.core.exceptions import AuthenticationError
 from app.services import auth_service
 
@@ -24,7 +23,6 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user account",
 )
-
 async def register(schema: UserRegister) -> UserResponse:
     """Register user details and return profile info."""
     return await auth_service.register_user(schema)
@@ -48,7 +46,6 @@ async def me(current_user: Mapping[str, Any] = Depends(get_current_user)) -> Use
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Revoke the current access token",
 )
-
 async def logout(token: str | None = Depends(oauth2_scheme)) -> None:
     """
     Revoke the presented access token (SEC-H1).

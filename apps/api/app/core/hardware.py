@@ -336,7 +336,7 @@ def detect_hardware_profile() -> dict[str, Any]:
     else:
         tier = "high_performance"
         # 3B class stays the local default (largest configured local weights);
-        # heavy work should route to cloud (nvidia 70B) — see model_nvidia.
+        # heavy work should route to the configured cloud provider (gemini).
         recommended_llm = "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
         recommended_llm_alt = "ggml-org/SmolLM3-3B-GGUF:Q4_K_M"
         recommended_embedding = "BAAI/bge-small-en-v1.5"

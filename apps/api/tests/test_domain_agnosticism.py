@@ -9,9 +9,10 @@ encoded one subject matter and silently degraded for everything else:
   the BM25 zone weights never applied.
 - `extract_claim_triple_heuristic` carried commerce/ops verbs only, and looped
   by predicate-list order rather than sentence order.
-- URL-ingestion allowlist could not be extended by an operator, so a KB seeded
-  from its own sources was impossible without a code change.
 - Prompt few-shot examples named one subject, biasing the model toward it.
+
+(URL document ingestion was removed 2026-10-01: uploads are the only intake,
+so the former allowlist-extensibility section has no target. History in git.)
 
 These tests pin the *behaviour across several domains*, not one domain, so
 re-introducing a single-domain assumption fails loudly.
@@ -137,41 +138,6 @@ def test_predicate_vocabulary_spans_multiple_domains() -> None:
     # The commerce-only verb from the old list is gone. Pinned literally (not
     # via a synonym) so a broad vocabulary regression is caught.
     assert "refunds" not in _PREDICATE_VERBS
-
-
-# ── URL allowlist extensibility (SSRF ceiling) ───────────────────────────────
-
-
-def test_url_allowlist_is_ceiling_by_default(monkeypatch) -> None:
-    from app.services.search_service import validate_ingestion_url
-
-    monkeypatch.delenv("URL_INGEST_ALLOWLIST_EXTRA", raising=False)
-    ok, _ = validate_ingestion_url("https://intranet.corp.example/doc")
-    assert not ok, "private host must be rejected by default"
-
-
-def test_operator_can_extend_allowlist(monkeypatch) -> None:
-    from app.services.search_service import validate_ingestion_url
-
-    monkeypatch.setenv("URL_INGEST_ALLOWLIST_EXTRA", "https://docs.acme-corp.example")
-    ok, _ = validate_ingestion_url("https://docs.acme-corp.example/guide.html")
-    assert ok, "operator-configured origin should be permitted"
-
-
-def test_extending_allowlist_does_not_disable_ssrf_guards(monkeypatch) -> None:
-    """Adding origins must not switch off the other SSRF defences."""
-    from app.services.search_service import validate_ingestion_url
-
-    monkeypatch.setenv("URL_INGEST_ALLOWLIST_EXTRA", "https://docs.acme-corp.example")
-    # request-level allowlist still narrows (intersect, not union)
-    ok, _ = validate_ingestion_url("https://docs.acme-corp.example/x", {"https://other.example"})
-    assert not ok
-    # cloud metadata endpoint still blocked
-    ok_meta, _ = validate_ingestion_url("http://169.254.169.254/latest/meta-data/")
-    assert not ok_meta
-    # non-http scheme still blocked
-    ok_file, _ = validate_ingestion_url("file:///etc/passwd")
-    assert not ok_file
 
 
 # ── Prompts must not exemplify one subject ───────────────────────────────────

@@ -452,8 +452,8 @@ export default function SettingsPage() {
                 <span className="text-[10px] text-slate-500 font-sans">NLI Verification</span>
               </div>
               <div className="p-2 bg-surface-900/80 border border-slate-800 rounded-lg text-slate-300">
-                <span className="text-cyan-400 font-semibold block">duckduckgo_search</span>
-                <span className="text-[10px] text-slate-500 font-sans">Free Web Grounding</span>
+                <span className="text-cyan-400 font-semibold block">tavily_search</span>
+                <span className="text-[10px] text-slate-500 font-sans">AI Web Grounding</span>
               </div>
               <div className="p-2 bg-surface-900/80 border border-slate-800 rounded-lg text-slate-300">
                 <span className="text-cyan-400 font-semibold block">local_llm_chat</span>

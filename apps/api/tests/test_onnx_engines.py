@@ -106,6 +106,7 @@ def _fake_tokenizer():
 def _make_embedder(session, **kwargs):
     """Construct ONNXBGEEmbeddings without touching onnxruntime or transformers."""
     from app.core import onnx_embeddings as mod
+    from app.core.config import get_model_config
 
     tok = _fake_tokenizer()
     with (
@@ -116,7 +117,9 @@ def _make_embedder(session, **kwargs):
         with patch.object(mod.ort, "InferenceSession", return_value=session):
             emb = mod.ONNXBGEEmbeddings(
                 model_path="/fake/model.onnx",
-                tokenizer_name=kwargs.pop("tokenizer_name", "BAAI/bge-small-en-v1.5"),
+                # Default tokenizer resolves from models.yaml (embedding.model),
+                # never pinned here — a yaml edit propagates to tests too.
+                tokenizer_name=kwargs.pop("tokenizer_name", get_model_config().embedding_model),
                 **kwargs,
             )
     emb.tokenizer = tok  # our instrumented tokenizer

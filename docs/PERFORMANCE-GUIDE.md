@@ -283,7 +283,7 @@ Already correct in code — these are "verify, don't change" items:
 
 ## 10. What NOT to do (costs money or hurts)
 
-- ❌ Bigger cloud LLM for "speed" — per-token cost on a ~9-call pipeline, and Gemini/NVIDIA add network latency per call. Local small models win on both.
+- ❌ Bigger cloud LLM for "speed" — per-token cost on a ~9-call pipeline, and Gemini adds network latency per call. Local small models win on both.
 - ❌ Enabling the reranker without the `local-models` extra — silent no-op in Docker that still costs code-path complexity; calibrate first.
 - ❌ Raising `LOCAL_LLM_MAX_CONCURRENCY` on Ollama/llama-server/MLX — serial servers + parallel clients = timeout cascades.
 - ❌ Cloud embeddings — removed for a reason (D-19): per-token cost inside the hot path plus cross-space contamination risk.

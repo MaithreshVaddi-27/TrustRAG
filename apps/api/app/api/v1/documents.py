@@ -47,3 +47,44 @@ async def delete_document_endpoint(
 ) -> None:
     """Delete a document, its chunks, and associated vectors, validating user ownership."""
     await delete_document(doc_id, str(current_user["_id"]))
+
+
+@router.get(
+    "/{doc_id}/pages/{page}/image",
+    summary="Serve an OCR page render (Answer → chunk → page → image chain)",
+    response_class=FileResponse,
+)
+async def get_document_page_image_endpoint(
+    doc_id: str, page: int, current_user: Mapping[str, Any] = Depends(get_current_user)
+) -> FileResponse:
+    """Serve the exact page render the OCR engine read for one document page.
+
+    Ownership is verified through the parent knowledge base (same rule as the
+    document detail route). 404 when the document, the page chunk, the stored
+    ref, or the file itself is missing — never leak which of those it was
+    beyond the status code.
+    """
+    from app.ingestion import page_images as page_images_mod
+
+    try:
+        oid = ObjectId(doc_id)
+    except Exception as exc:
+        raise NotFoundError("Document not found", detail="malformed id") from exc
+    if page < 1:
+        raise NotFoundError("Page image not found")
+
+    doc = await get_collection(Collections.DOCUMENTS).find_one({"_id": oid})
+    if not doc:
+        raise NotFoundError("Document not found")
+
+    # Verify ownership of the parent knowledge base (raises 403/404).
+    await get_kb(str(doc["knowledge_base_id"]), str(current_user["_id"]))
+
+    chunk = await get_collection(Collections.DOCUMENT_CHUNKS).find_one(
+        {"document_id": oid, "page": page}
+    )
+    ref = (chunk or {}).get("page_image_ref")
+    path = page_images_mod.resolve_page_image_path(ref) if ref else None
+    if path is None:
+        raise NotFoundError("Page image not found")
+    return FileResponse(str(path), media_type="image/png")

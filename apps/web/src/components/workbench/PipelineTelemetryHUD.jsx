@@ -13,7 +13,6 @@ export function PipelineTelemetryHUD({
   events = [],
   query = '',
   enableWebSearch = false,
-  webSearchProvider = 'both',
   provider = 'ollama',
   model = 'granite4.2:3b-q4_K_M',
   embeddingModel = 'BAAI/bge-small-en-v1.5',
@@ -104,7 +103,7 @@ export function PipelineTelemetryHUD({
           {enableWebSearch && (
             <span className="px-2 py-0.5 rounded-md bg-cyan-950/80 border border-cyan-800/50 text-cyan-300 flex items-center gap-1">
               <Globe size={11} className="text-cyan-400" />
-              MCP {webSearchProvider.toUpperCase()}
+              MCP TAVILY
             </span>
           )}
           {status.isRecovering && (

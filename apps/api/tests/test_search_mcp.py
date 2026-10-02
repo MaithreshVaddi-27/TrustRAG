@@ -3,18 +3,13 @@
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
 
 from app.mcp.client import execute_mcp_tool
 from app.mcp.server import handle_tool_call
 from app.services.search_service import (
-    _validate_resolved_addresses,
-    duckduckgo_search,
     execute_web_search,
-    fetch_document_from_url,
     tavily_search,
-    validate_ingestion_url,
 )
 
 
@@ -36,7 +31,7 @@ async def test_tavily_search_success():
         patch("app.services.search_service.get_settings") as mock_settings,
         patch("tavily.TavilyClient", return_value=mock_tavily_client),
     ):
-        mock_settings.return_value.tavily_api_key = "tvly-test-12345"
+        mock_settings.return_value.tavily_api_key = "tvly-test-12345"  # SYNTHETIC mock
         results = await tavily_search("test query", max_results=3)
 
         assert len(results) == 1
@@ -46,66 +41,44 @@ async def test_tavily_search_success():
 
 
 @pytest.mark.asyncio
-async def test_tavily_search_fallback_when_no_key():
-    fallback_mock = AsyncMock(return_value=[{"title": "Fallback"}])
+async def test_tavily_search_empty_key_returns_empty():
+    """No key, no fallback provider: auth failure yields [] (never a crash).
+
+    TavilyClient is patched to raise (no live network, no real key): the
+    service must convert any client failure into []."""
     with (
         patch("app.services.search_service.get_settings") as mock_settings,
-        patch("app.services.search_service.duckduckgo_search", fallback_mock),
+        patch("tavily.TavilyClient", side_effect=Exception("missing API key")),
     ):
         mock_settings.return_value.tavily_api_key = ""
         results = await tavily_search("test query")
-        assert len(results) == 1
-        assert results[0]["title"] == "Fallback"
+        assert results == []
 
 
 @pytest.mark.asyncio
-async def test_duckduckgo_search_success():
-    fake_ddg_results = [
-        {
-            "title": "DDG Title",
-            "href": "https://example.org/ddg",
-            "body": "DuckDuckGo search snippet text.",
-        }
-    ]
+async def test_duckduckgo_tool_is_gone_tavily_only():
+    """DuckDuckGo was removed (Tavily-only service): the tool name must 404
+    through the dispatcher instead of AttributeError-ing mid-call."""
+    from app.core.security import create_service_token
 
-    with patch("ddgs.DDGS") as mock_ddgs:
-        instance = mock_ddgs.return_value
-        instance.text.return_value = fake_ddg_results
-
-        results = await duckduckgo_search("ddg query", max_results=2)
-        assert len(results) == 1
-        assert results[0]["title"] == "DDG Title"
-        assert results[0]["url"] == "https://example.org/ddg"
-        assert results[0]["source"] == "duckduckgo"
+    token = create_service_token("test-service")
+    with pytest.raises(Exception, match="(?i)unknown|not found|no such tool"):
+        await handle_tool_call("duckduckgo_search", {"query": "ddg query", "service_token": token})
 
 
 @pytest.mark.asyncio
-async def test_execute_web_search_deduplication():
-    # Test deduplication across both providers
-    tavily_res = [
-        {"title": "Common Article", "url": "https://shared.com/item", "content": "A", "score": 0.9}
-    ]
-    ddg_res = [
-        {
-            "title": "Common Article Dup",
-            "url": "https://shared.com/item",
-            "content": "B",
-            "score": 0.8,
-        },
-        {"title": "Unique DDG", "url": "https://unique.org/item", "content": "C", "score": 0.8},
+async def test_execute_web_search_is_tavily_passthrough():
+    """Tavily is the sole web-search provider: execute_web_search delegates
+    straight through (no fan-out, no dedup layer)."""
+    tvly_res = [
+        {"title": "Sole Article", "url": "https://solo.com/item", "content": "A", "score": 0.9}
     ]
 
-    mock_tavily = AsyncMock(return_value=tavily_res)
-    mock_ddg = AsyncMock(return_value=ddg_res)
-    with (
-        patch("app.services.search_service.tavily_search", mock_tavily),
-        patch("app.services.search_service.duckduckgo_search", mock_ddg),
-    ):
-        merged = await execute_web_search("test query", provider="both")
-        assert len(merged) == 2
-        urls = [m["url"] for m in merged]
-        assert "https://shared.com/item" in urls
-        assert "https://unique.org/item" in urls
+    mock_tavily = AsyncMock(return_value=tvly_res)
+    with patch("app.services.search_service.tavily_search", mock_tavily):
+        merged = await execute_web_search("test query")
+        assert merged == tvly_res
+        mock_tavily.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -114,14 +87,14 @@ async def test_mcp_tool_execution():
 
     token = create_service_token("test-service")
     with patch(
-        "app.services.search_service.duckduckgo_search",
-        AsyncMock(return_value=[{"title": "MCP DDG", "url": "https://mcp.com", "content": "MCP"}]),
+        "app.services.search_service.tavily_search",
+        AsyncMock(return_value=[{"title": "MCP TVLY", "url": "https://mcp.com", "content": "MCP"}]),
     ):
         res = await handle_tool_call(
-            "duckduckgo_search", {"query": "mcp query", "service_token": token}
+            "tavily_search", {"query": "mcp query", "service_token": token}
         )
         assert "content" in res
-        assert "MCP DDG" in res["content"][0]["text"]
+        assert "MCP TVLY" in res["content"][0]["text"]
 
 
 # ─── Audit B-19: execute_mcp_tool had only a tautological test ─────────────────
@@ -140,8 +113,8 @@ async def test_execute_mcp_tool_uses_internal_auth_path():
         "app.mcp.client.handle_tool_call",
         AsyncMock(return_value={"content": [{"type": "text", "text": "[]"}]}),
     ) as mock_handle:
-        await execute_mcp_tool("duckduckgo_search", {"query": "q"})
-    mock_handle.assert_awaited_once_with("duckduckgo_search", {"query": "q"}, _internal=True)
+        await execute_mcp_tool("tavily_search", {"query": "q"})
+    mock_handle.assert_awaited_once_with("tavily_search", {"query": "q"}, _internal=True)
 
 
 @pytest.mark.asyncio
@@ -165,7 +138,7 @@ async def test_execute_mcp_tool_parses_json_content():
         "app.mcp.client.handle_tool_call",
         AsyncMock(return_value={"content": [{"type": "text", "text": '[{"title": "Client Ok"}]'}]}),
     ):
-        parsed = await execute_mcp_tool("duckduckgo_search", {"query": "client query"})
+        parsed = await execute_mcp_tool("tavily_search", {"query": "client query"})
     assert len(parsed) == 1
     assert parsed[0]["title"] == "Client Ok"
 
@@ -190,126 +163,6 @@ async def test_execute_mcp_tool_propagates_dispatcher_errors():
     ):
         with pytest.raises(ValueError, match="Unknown MCP tool"):
             await execute_mcp_tool("nope", {})
-
-
-def test_ingestion_url_allowlist_uses_exact_origins():
-    assert validate_ingestion_url("https://api.github.com/repos/python/cpython")[0] is True
-    assert validate_ingestion_url("https://api.github.com.evil.example/file.txt")[0] is False
-
-    # A request allowlist can narrow defaults, but cannot widen to arbitrary origins.
-    assert validate_ingestion_url("http://127.0.0.1/private", {"http://127.0.0.1"})[0] is False
-
-
-@pytest.mark.asyncio
-async def test_fetch_rejects_redirect_to_internal_host(monkeypatch):
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/start":
-            return httpx.Response(302, headers={"Location": "http://127.0.0.1/private"})
-        return httpx.Response(200, content=b"internal", headers={"Content-Type": "text/plain"})
-
-    transport = httpx.MockTransport(handler)
-
-    async def fake_new_pinned_fetch_client(hostname, timeout):
-        # The pinned transport is swapped out for a mock so no real network is
-        # touched; the allowlist/DNS hardening being tested is still exercised.
-        return httpx.AsyncClient(transport=transport, follow_redirects=False)
-
-    monkeypatch.setattr(
-        "app.services.search_service._new_pinned_fetch_client", fake_new_pinned_fetch_client
-    )
-
-    content, error = await fetch_document_from_url("https://en.wikipedia.org/start")
-
-    assert content is None
-    assert error is not None
-    assert "not in allowlist" in error
-
-
-@pytest.mark.asyncio
-async def test_fetch_success_with_pinned_client(monkeypatch):
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200, content=b"hello from wikipedia", headers={"Content-Type": "text/plain"}
-        )
-
-    async def fake_new_pinned_fetch_client(hostname, timeout):
-        return httpx.AsyncClient(transport=httpx.MockTransport(handler), follow_redirects=False)
-
-    monkeypatch.setattr(
-        "app.services.search_service._new_pinned_fetch_client", fake_new_pinned_fetch_client
-    )
-    monkeypatch.setattr(
-        "app.services.search_service._resolve_public_address",
-        AsyncMock(return_value="93.184.216.34"),
-    )
-
-    content, error = await fetch_document_from_url("https://en.wikipedia.org/wiki/Python")
-
-    assert error is None
-    assert content == b"hello from wikipedia"
-
-
-@pytest.mark.asyncio
-async def test_fetch_rejects_non_public_dns(monkeypatch):
-    monkeypatch.setattr(
-        "app.services.search_service._resolve_public_address", AsyncMock(return_value=None)
-    )
-
-    content, error = await fetch_document_from_url("https://en.wikipedia.org/wiki/Python")
-
-    assert content is None
-    assert error is not None
-    assert "public DNS" in error
-
-
-@pytest.mark.asyncio
-async def test_pinned_backend_connects_to_validated_ip_only(monkeypatch):
-    """The pinned backend must dial the validated IP, never the rebindable hostname."""
-    from app.services.search_service import _new_pinned_fetch_client
-
-    reader = MagicMock()
-    writer = MagicMock()
-    writer.get_extra_info.return_value = None
-    writer.start_tls = AsyncMock()
-    writer.close = MagicMock()
-    writer.wait_closed = AsyncMock()
-
-    connect_targets = []
-
-    async def fake_open_connection(host, port, **kwargs):
-        connect_targets.append((host, port))
-        return reader, writer
-
-    monkeypatch.setattr(
-        "app.services.search_service._resolve_public_address",
-        AsyncMock(return_value="93.184.216.34"),
-    )
-    monkeypatch.setattr("app.services.search_service.asyncio.open_connection", fake_open_connection)
-
-    client = await _new_pinned_fetch_client("attacker.example", 15.0)
-    try:
-        backend = client._transport._pool._network_backend
-        stream = await backend.connect_tcp(host="rebound.internal", port=443)
-        assert stream is not None
-    finally:
-        await client.aclose()
-
-    assert connect_targets, "expected at least one pinned connect"
-    assert connect_targets[0][0] == "93.184.216.34"
-    # The connection must go to the pinned public IP, even though the pool asked
-    # for a (potentially rebound) hostname.
-    assert connect_targets[0][1] == 443
-
-
-@pytest.mark.asyncio
-async def test_dns_resolution_rejects_private_addresses(monkeypatch):
-    class FakeLoop:
-        async def getaddrinfo(self, *args, **kwargs):
-            return [(None, None, None, None, ("127.0.0.1", 443))]
-
-    monkeypatch.setattr("app.services.search_service.asyncio.get_running_loop", lambda: FakeLoop())
-
-    assert await _validate_resolved_addresses("attacker.example") is False
 
 
 def test_sanitize_url_security():
@@ -343,29 +196,25 @@ def test_sanitize_url_security():
 
 
 @pytest.mark.asyncio
-async def test_search_service_timeout_fallback():
-    # Simulate a hanging Tavily client that exceeds timeout
+async def test_search_service_timeout_returns_empty():
+    # Simulate a hanging Tavily client that exceeds timeout: no fallback
+    # provider exists, so a hang yields [] (never a crash, never a hang).
     def _hanging_call(*args, **kwargs):
         import time
 
         time.sleep(1.0)
 
-    fallback_ddg = [{"title": "DDG Fallback", "url": "https://ddg.com", "content": "Ok"}]
     with (
         patch("app.services.search_service.get_settings") as mock_settings,
-        patch(
-            "app.services.search_service.duckduckgo_search", AsyncMock(return_value=fallback_ddg)
-        ),
         patch("app.services.search_service.SEARCH_TIMEOUT_SECONDS", 0.05),
         patch("tavily.TavilyClient") as mock_client,
     ):
-        mock_settings.return_value.tavily_api_key = "tvly-key"
+        mock_settings.return_value.tavily_api_key = "tvly-key"  # SYNTHETIC mock
         mock_instance = mock_client.return_value
         mock_instance.search.side_effect = _hanging_call
 
         results = await tavily_search("hanging query")
-        assert len(results) == 1
-        assert results[0]["title"] == "DDG Fallback"
+        assert results == []
 
 
 @pytest.mark.asyncio

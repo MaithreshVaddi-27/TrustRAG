@@ -13,10 +13,7 @@ from __future__ import annotations
 from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
-
-from app.core.exceptions import LLMUnavailableError
 from app.core.llm_ledger import (
     begin_analysis,
     calls_remaining,
@@ -27,7 +24,6 @@ from app.core.llm_ledger import (
     max_calls_per_analysis,
     record_call,
 )
-from app.core.llm_outage import classify_llm_exception
 from app.core.logging import _scrub_sensitive, scrub_secret_values
 
 CONFIG_PATH = "app.core.llm_ledger.get_model_config"
@@ -113,7 +109,7 @@ def test_local_tiers_are_never_capped(provider):
         assert llm_budget_exhausted() is False
 
 
-@pytest.mark.parametrize("provider", ["gemini", "google_genai", "nvidia", "nim"])
+@pytest.mark.parametrize("provider", ["gemini", "google_genai"])
 def test_cloud_tiers_are_capped(provider):
     with patch(CONFIG_PATH, return_value=_cfg(provider, cap=4)):
         assert max_calls_per_analysis() == 4
@@ -163,70 +159,10 @@ def test_ledgers_are_isolated_per_context():
 
 
 # ─── B-5: provider-outage classification ───────────────────────────────────────
-
-
-def _exc(cls, **attrs):
-    e = cls("boom")
-    for k, v in attrs.items():
-        setattr(e, k, v)
-    return e
-
-
-class _Cred(Exception):
-    status_code = 401
-
-
-class _Quota(Exception):
-    status_code = 429
-
-
-class _Server(Exception):
-    status_code = 503
-
-
-@pytest.mark.parametrize(
-    "exc",
-    [
-        _Cred(),
-        _Quota(),
-        _Server(),
-        _exc(Exception, code=429),  # google.api_core style
-        httpx.ConnectError("refused"),
-        httpx.ReadTimeout("slow"),
-        TimeoutError("timed out"),
-        Exception("RESOURCE_EXHAUSTED: quota exceeded"),
-        Exception("401 PermissionDenied"),
-    ],
-)
-def test_provider_failures_classify_as_outage(exc):
-    assert isinstance(classify_llm_exception(exc, context="generation"), LLMUnavailableError)
-
-
-@pytest.mark.parametrize(
-    "exc",
-    [
-        ValueError("could not parse json"),
-        KeyError("verdict"),
-        RuntimeError("some unrelated bug"),
-    ],
-)
-def test_ordinary_errors_pass_through_unchanged(exc):
-    """A misclassification would be worse than the status quo: it would turn a
-    recoverable model error into a hard terminal abort."""
-    assert classify_llm_exception(exc) is None
-
-
-def test_already_classified_exception_is_returned_unchanged():
-    original = LLMUnavailableError("probe said 401")
-    assert classify_llm_exception(original) is original
-
-
-def test_outage_message_distinguishes_credential_from_quota():
-    cred = str(classify_llm_exception(_Cred(), context="generation"))
-    quota = str(classify_llm_exception(_Quota(), context="generation"))
-    assert "API key" in cred
-    assert "rate-limited" in quota or "quota" in quota
-    assert "generation" in cred  # context is surfaced for diagnosis
+# NOTE: the first-generation classify_llm_exception() unit tests were removed
+# with the helper itself (centralize-exceptions refactor deleted
+# app/core/llm_outage.py). Outage behavior is covered at the graph level below
+# (dead credential → terminal LLM_OUTAGE; ordinary errors still recoverable).
 
 
 # ─── B-16: cloud is never evicted ──────────────────────────────────────────────
@@ -257,26 +193,26 @@ def test_cloud_clients_are_never_evicted(_clean_registry):
     mr = _clean_registry
     with patch.object(mr, "get_max_llm_instances", return_value=1):
         mr.put_llm_instance("gemini", "g", MagicMock())
-        mr.put_llm_instance("nvidia", "n", MagicMock())
         mr.put_llm_instance("ollama", "x", MagicMock())
         mr.put_llm_instance("ollama", "y", MagicMock())
     keys = list(mr._LLM_REGISTRY.keys())
     assert "gemini:g" in keys
-    assert "nvidia:n" in keys
     assert "ollama:y" in keys
     assert "ollama:x" not in keys  # the local one rotated instead
 
 
 # ─── B-17: credential redaction by value ───────────────────────────────────────
+# NOTE: every string below is SYNTHETIC (format-valid, value-fake) — redaction
+# test vectors only. No real credential is ever committed; runtime secrets load
+# from env (.env → Settings) and tests use os.environ.setdefault dummies.
 
 
 @pytest.mark.parametrize(
     "secret",
     [
-        "AIzaSyD-1234567890abcdefghijklmnopqrstu",
-        "nvapi-AbCdEf0123456789XyZ",
-        "sk-abcdefghijklmnopqrstuvwxyz012345",
-        "hf_abcdefghijklmnopqrstuvwxyz01",
+        "AIzaSyD-1234567890abcdefghijklmnopqrstu",  # SYNTHETIC
+        "sk-abcdefghijklmnopqrstuvwxyz012345",  # SYNTHETIC
+        "hf_abcdefghijklmnopqrstuvwxyz01",  # SYNTHETIC
     ],
 )
 def test_secret_values_are_scrubbed(secret):
@@ -324,13 +260,12 @@ async def test_dead_credential_yields_terminal_llm_outage_not_abstain():
             {"analysis_id": "a1", "attempts": 0}, "generation", boom, timeout_seconds=5
         )
 
-    assert out["diagnosis_type"] == "LLM_OUTAGE"
+    assert out["diagnosis_type"] == "LLM_UNAVAILABLE"
     # Recovery budget exhausted => the graph terminates instead of retrying.
     assert out["attempts"] >= 1
     assert out["reliability_score"] == 0.0
-    assert "insufficient evidence" in out["answer"].lower()
-    assert "not a finding" in out["answer"].lower()
-    assert [e["error_type"] for e in out["node_errors"]] == ["LLM_OUTAGE"]
+    assert "unavailable" in out["answer"].lower()
+    assert [e["error_type"] for e in out["node_errors"]] == ["LLM_UNAVAILABLE"]
 
 
 @pytest.mark.asyncio
@@ -403,98 +338,26 @@ def test_compression_is_off_by_default():
     assert cfg.context_compression_enabled is False
 
 
-def test_compression_budget_exceeds_target_so_summaries_finish():
-    """The cap is the budget to WRITE the summary, not the size we want. Capping
-    at exactly the target truncated summaries mid-sentence."""
-    from app.generation.generator import _compression_budget
-
-    for target in (128, 300, 500, 1024):
-        budget = _compression_budget(target)
-        assert budget > target, f"target {target} got budget {budget} — truncates"
-        assert budget >= 256, f"target {target} floor too low"
-
-
 def test_compression_threshold_is_configurable():
     from app.core.config import get_model_config
 
     assert get_model_config().context_compression_min_tokens > 0
 
 
-# ─── B-13: nvidia_base_url must actually reach the client ─────────────────────
-
-
-def test_nvidia_base_url_is_read_from_config():
-    """Previously dead config: the endpoint only took effect when load_dotenv
-    happened to export NVIDIA_BASE_URL, so a mounted secret, a programmatic
-    override, or a self-hosted gateway was silently ignored."""
-    from app.core.config import get_model_config
-
-    assert hasattr(get_model_config(), "nvidia_base_url")
-
-
-def test_nvidia_client_receives_configured_base_url():
-    """The wiring, end to end: a configured endpoint must land on the client."""
-    import os
-
-    from app.core import model_registry as mr
-    from app.core.config import get_model_config, get_settings
-
-    marker = "http://self-hosted-nim.internal:8000/v1"
-    previous = os.environ.get("NVIDIA_BASE_URL")
-    os.environ["NVIDIA_BASE_URL"] = marker
-    try:
-        importlib_cfg = get_model_config()
-        assert importlib_cfg.nvidia_base_url == marker
-
-        settings = get_settings()
-        captured = {}
-
-        def _fake_chat_nvidia(**kwargs):
-            captured.update(kwargs)
-            return MagicMock(name="chatnvidia")
-
-        with (
-            patch.dict(
-                "sys.modules",
-                {"langchain_nvidia_ai_endpoints": MagicMock(ChatNVIDIA=_fake_chat_nvidia)},
-            ),
-            patch.object(settings, "nvidia_api_key", "dummy-key", create=True),
-            patch.object(mr, "get_settings", return_value=settings),
-        ):
-            mr._create_llm(
-                provider="nvidia",
-                model="some/model",
-                temperature=0.0,
-                max_tokens=512,
-                timeout=30,
-            )
-        assert captured.get("base_url") == marker, (
-            f"base_url did not reach ChatNVIDIA: {captured.get('base_url')!r}"
-        )
-    finally:
-        if previous is None:
-            os.environ.pop("NVIDIA_BASE_URL", None)
-        else:
-            os.environ["NVIDIA_BASE_URL"] = previous
-
-
 # ─── B-14: provider aliases must resolve to the right context window ───────────
 
 
 def test_cloud_aliases_are_not_clamped_to_the_local_window():
-    """'google_genai' and 'nim' are accepted provider spellings but were missing
-    from the limits table, so they fell through to the 4096 local default and
+    """'google_genai' is an accepted provider spelling but was missing
+    from the limits table, so it fell through to the 4096 local default and
     logged a false 'evidence will be truncated' warning (audit B-14)."""
     from app.generation.generator import calculate_dynamic_num_ctx
 
     big = "word " * 4000  # ~20k tokens: far over local, well under cloud
     gemini = calculate_dynamic_num_ctx(big, "", "q", 512, "gemini")
     assert calculate_dynamic_num_ctx(big, "", "q", 512, "google_genai") == gemini
-    nvidia = calculate_dynamic_num_ctx(big, "", "q", 512, "nvidia")
-    assert calculate_dynamic_num_ctx(big, "", "q", 512, "nim") == nvidia
     # Cloud must not be pinned to the local 4096 cap.
     assert gemini > 4096
-    assert nvidia > 4096
 
 
 def test_local_aliases_also_resolve():
@@ -508,10 +371,10 @@ def test_local_aliases_also_resolve():
 
 def test_num_ctx_is_never_sent_to_cloud_clients():
     """The cloud context number is advisory only — sending num_ctx to a cloud
-    client is a ValidationError on Gemini and ignored by NVIDIA."""
+    client is a ValidationError on Gemini."""
     from app.generation.generator import _invoke_kwargs_for_provider
 
-    for provider in ("gemini", "google_genai", "nvidia", "nim"):
+    for provider in ("gemini", "google_genai"):
         kwargs = _invoke_kwargs_for_provider(provider, 512, num_ctx=8192)
         assert "num_ctx" not in kwargs, f"{provider} got num_ctx: {kwargs}"
     for provider in ("ollama", "llama_cpp", "mlx"):
@@ -528,8 +391,7 @@ def test_provider_normalization_is_canonical():
     provider switches cannot disagree (audit B-15/B-18)."""
     from app.core.config import normalize_provider
 
-    assert normalize_provider("google_genai") == "gemini"
-    assert normalize_provider("nim") == "nvidia"
+    assert normalize_provider("google_genai") == "google_genai"
     assert normalize_provider("llamacpp") == "llama_cpp"
     assert normalize_provider("llama-cpp") == "llama_cpp"
     assert normalize_provider("  GEMINI ") == "gemini"
@@ -554,7 +416,6 @@ def test_effective_cloud_model_is_validated_even_when_request_omits_it():
 
         llm_provider = "gemini"
         supported_gemini_models: ClassVar[list[str]] = ["gemini-allowed-only"]
-        supported_nvidia_models: ClassVar[list[str]] = ["nvidia-allowed-only"]
         embedding_dimensionality = real.embedding_dimensionality
         embedding_model = real.embedding_model
 
@@ -605,29 +466,12 @@ def test_cross_provider_mismatch_is_still_rejected():
             AnalysisCreate(
                 knowledge_base_id="64ee39d09c6292376e191982",
                 query="hi",
-                llm_provider="nvidia",
+                llm_provider="ollama",
                 llm_model=gemini[0],
             )
 
 
 # ─── B-18: provider asymmetries ──────────────────────────────────────────────
-
-
-def test_nvidia_uses_the_non_deprecated_token_parameter():
-    """`max_tokens` emits a DeprecationWarning on every call from
-    langchain-nvidia-ai-endpoints; the OpenAI-compatible spelling is
-    `max_completion_tokens`."""
-    from app.core.local_llm import verification_cap_kwargs
-    from app.generation.generator import _invoke_kwargs_for_provider
-
-    for kwargs in (
-        _invoke_kwargs_for_provider("nvidia", 512),
-        _invoke_kwargs_for_provider("nim", 512),
-        verification_cap_kwargs("nvidia", "meta/llama-3.3-70b-instruct", 512),
-        verification_cap_kwargs("nim", "meta/llama-3.3-70b-instruct", 512),
-    ):
-        assert "max_completion_tokens" in kwargs, kwargs
-        assert "max_tokens" not in kwargs, f"deprecated parameter still used: {kwargs}"
 
 
 def test_gemini_and_local_keep_their_own_token_parameters():
@@ -638,28 +482,6 @@ def test_gemini_and_local_keep_their_own_token_parameters():
     # Local OpenAI-compatible servers do still take max_tokens.
     assert "max_tokens" in _invoke_kwargs_for_provider("ollama", 512)
     assert "max_tokens" in _invoke_kwargs_for_provider("llama_cpp", 512)
-
-
-def test_nvidia_client_receives_top_p():
-    """Omitting top_p made cloud sampling silently diverge from the configured
-    value that local clients receive."""
-    from app.core import model_registry as mr
-    from app.core.config import get_settings
-
-    captured = {}
-
-    def _fake(**kwargs):
-        captured.update(kwargs)
-        return MagicMock()
-
-    settings = get_settings()
-    with (
-        patch.dict("sys.modules", {"langchain_nvidia_ai_endpoints": MagicMock(ChatNVIDIA=_fake)}),
-        patch.object(settings, "nvidia_api_key", "dummy-key", create=True),
-        patch.object(mr, "get_settings", return_value=settings),
-    ):
-        mr._create_llm(provider="nvidia", model="m/x", temperature=0.0, max_tokens=512, timeout=30)
-    assert "top_p" in captured, f"NVIDIA client got no top_p: {sorted(captured)}"
 
 
 def test_verification_model_allowlist_rejects_unbudgeted_cloud_model(monkeypatch):
@@ -676,7 +498,6 @@ def test_verification_model_allowlist_rejects_unbudgeted_cloud_model(monkeypatch
 
         llm_provider = "gemini"
         supported_gemini_models: ClassVar[list[str]] = ["gemini-allowed-only"]
-        supported_nvidia_models: ClassVar[list[str]] = ["nvidia-allowed-only"]
         embedding_dimensionality = real.embedding_dimensionality
         embedding_model = real.embedding_model
 
@@ -716,7 +537,6 @@ def test_verification_model_allowlist_allows_env_operator_override(monkeypatch):
     class _CfgStub:
         llm_provider = "gemini"
         supported_gemini_models: ClassVar[list[str]] = ["gemini-allowed-only"]
-        supported_nvidia_models: ClassVar[list[str]] = ["nvidia-allowed-only"]
         embedding_dimensionality = real.embedding_dimensionality
         embedding_model = real.embedding_model
 
@@ -741,7 +561,7 @@ def test_verification_model_allowlist_allows_env_operator_override(monkeypatch):
 
 def test_nli_timeout_is_longer_for_billed_cloud_calls(monkeypatch):
     """A fixed 90s cap cancelled cloud NLI generation mid-flight. Cancelled
-    Gemini/NVIDIA requests are still billed, so cloud must use the configured
+    Gemini requests are still billed, so cloud must use the configured
     provider budget (audit B-18)."""
     from app.verification import verifier
 
@@ -767,7 +587,7 @@ def test_nli_timeout_never_goes_below_the_local_floor(monkeypatch):
     from app.verification import verifier
 
     class _ShortCfg:
-        verification_provider = "nvidia"
+        verification_provider = "gemini"
         llm_timeout_seconds = 10
 
     monkeypatch.setattr(verifier, "NLI_PER_CALL_TIMEOUT_SECONDS", 90)

@@ -21,7 +21,6 @@ from app.core.model_registry import registry_status
 from app.core.security import create_service_token
 from app.retrieval.retriever import retrieve_hybrid_chunks
 from app.services.kb_service import add_document
-from app.services.search_service import validate_ingestion_url
 from app.verification.verifier import batch_verify_claims_nli
 
 # Cost-DoS backstop for service-to-service routes (generous: functionality is
@@ -52,20 +51,6 @@ class InternalDocumentIngest(BaseModel):
     def _non_negative_size(cls, value: int) -> int:
         if value < 0:
             raise ValueError("file_size must be non-negative")
-        return value
-
-
-class InternalUrlIngest(BaseModel):
-    """Strict body for service-triggered URL ingestion."""
-
-    url: str
-    user_id: str | None = None
-
-    @field_validator("user_id")
-    @classmethod
-    def _valid_user_id(cls, value: str | None) -> str | None:
-        if value is not None and not ObjectId.is_valid(value):
-            raise ValueError("user_id must be a valid ObjectId")
         return value
 
 
@@ -103,7 +88,6 @@ async def generate_service_token_endpoint(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Internal document ingestion trigger",
 )
-
 async def internal_ingest_document(
     kb_id: str,
     document_data: InternalDocumentIngest,
@@ -151,39 +135,6 @@ async def internal_ingest_document(
     }
 
 
-@router.post(
-    "/ingest/url",
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="Internal URL ingestion trigger",
-)
-
-async def internal_ingest_url(
-    kb_id: str,
-    url_data: InternalUrlIngest,
-    current_service: Mapping[str, Any] = Depends(require_service_permission("ingest:write")),
-) -> dict[str, Any]:
-    """
-    Trigger URL document ingestion from an internal service.
-
-    Requires ingest:write permission. Same SSRF validation as the public
-    from-url endpoint (allowlist + DNS pinning + per-hop checks).
-    """
-    service_name = current_service.get("sub")
-
-    is_valid, error = validate_ingestion_url(url_data.url, None)
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"URL validation failed: {error}",
-        )
-
-    return {
-        "status": "queued",
-        "url": url_data.url,
-        "triggered_by": service_name,
-    }
-
-
 # ─── Internal Search/Retrieval ────────────────────────────────────────────────
 
 
@@ -191,7 +142,6 @@ async def internal_ingest_url(
     "/search",
     summary="Internal hybrid search",
 )
-
 async def internal_search(
     query: str,
     kb_id: str,
@@ -229,7 +179,6 @@ async def internal_search(
     "/verify/claims",
     summary="Internal claim verification",
 )
-
 async def internal_verify_claims(
     claims: list[str],
     evidence_texts: list[str],

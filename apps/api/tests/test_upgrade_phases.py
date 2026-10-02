@@ -2,9 +2,10 @@
 Regression tests for hardening follow-ups (2026-09-23/24).
 
 Covers: RRF-unified adaptive thresholds, parser encoding slice + chunked AV
-scan, NLI per-call timeout helper, internal URL SSRF parity, query-cache
+scan, NLI per-call timeout helper, query-cache
 dim-mismatch invalidation, MCP tenant enforcement, ONNX startup checks,
 semantic-cache matrix rebuild, negative ingestion cases.
+(URL ingestion removed 2026-10-01; its SSRF-parity tests deleted with it.)
 """
 
 from __future__ import annotations
@@ -17,7 +18,6 @@ from typing import Any
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.internal import InternalUrlIngest, internal_ingest_url
 from app.core.exceptions import IngestionError
 from app.ingestion.parser import (
     _ENCODING_DETECT_SLICE,
@@ -25,21 +25,6 @@ from app.ingestion.parser import (
     _detect_encoding,
     scan_for_malware,
 )
-from app.retrieval.reranker import _is_high_confidence
-
-
-def test_is_high_confidence_prefers_rrf_units():
-    # RRF max for #1 in both legs ≈ 0.033 → 0.02 means near-top in both.
-    assert _is_high_confidence({"rrf_score": 0.025, "dense_score": 0.1}) is True
-    assert _is_high_confidence({"rrf_score": 0.01, "dense_score": 0.99}) is False
-
-
-def test_is_high_confidence_legacy_fallbacks():
-    # Rows that never went through RRF fusion use the legacy thresholds.
-    assert _is_high_confidence({"dense_score": 0.80}) is True
-    assert _is_high_confidence({"dense_score": 0.50}) is False
-    assert _is_high_confidence({"rerank_score": 1.2}) is True
-    assert _is_high_confidence({"rerank_score": 0.10}) is False
 
 
 def test_detect_encoding_samples_head_only(monkeypatch):
@@ -97,22 +82,6 @@ async def test_await_nli_call_passes_fast_result(monkeypatch):
     assert await _await_nli_call(_fast(), what="test-fast-call") == {"verdict": "SUPPORTED"}
 
 
-async def test_internal_ingest_url_rejects_non_allowlisted():
-    from starlette.requests import Request
-
-    body = InternalUrlIngest(url="https://example.com/doc.pdf")
-    scope = {"type": "http", "method": "POST", "path": "/internal/ingest/url", "headers": []}
-    with pytest.raises(HTTPException) as exc_info:
-        await internal_ingest_url(
-            request=Request(scope),
-            kb_id="64ee39d09c6292376e191981",
-            url_data=body,
-            current_service={"sub": "test-service", "permissions": ["ingest:write"]},
-        )
-    assert exc_info.value.status_code == 400
-    assert "allowlist" in exc_info.value.detail.lower()
-
-
 def test_query_cache_clear_and_dim_mismatch_path():
     from app.retrieval.retriever import _query_cache
 
@@ -133,7 +102,7 @@ async def test_mcp_local_chat_rejects_cloud_provider():
     with pytest.raises(ValueError, match="local providers only"):
         await handle_tool_call(
             "local_llm_chat",
-            {"prompt": "hi", "provider": "nvidia", "service_token": token},
+            {"prompt": "hi", "provider": "gemini", "service_token": token},
         )
 
 
@@ -143,11 +112,11 @@ async def test_mcp_internal_pipeline_needs_no_token():
     from app.mcp.client import execute_mcp_tool
 
     with patch(
-        "app.services.search_service.duckduckgo_search",
+        "app.services.search_service.tavily_search",
         AsyncMock(return_value=[{"title": "T", "url": "https://x.com", "content": "C"}]),
     ):
         # No service_token — in-process pipeline caller uses the internal path.
-        res = await execute_mcp_tool("duckduckgo_search", {"query": "q"})
+        res = await execute_mcp_tool("tavily_search", {"query": "q"})
         assert res[0]["title"] == "T"
 
 
@@ -155,7 +124,7 @@ async def test_mcp_external_still_needs_token():
     from app.mcp.server import handle_tool_call
 
     with pytest.raises(Exception, match="Service token required"):
-        await handle_tool_call("duckduckgo_search", {"query": "q"})
+        await handle_tool_call("tavily_search", {"query": "q"})
 
 
 def test_llm_registry_put_is_sync_and_bounded():

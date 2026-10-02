@@ -58,8 +58,20 @@ class ONNXCrossEncoder:
             except Exception as exc:
                 logger.debug("Reranker defaults fell back to built-ins", error=str(exc))
         self.model_path = model_path
-        self.tokenizer_name = tokenizer_name or "cross-encoder/ms-marco-MiniLM-L-6-v2"
-        self.max_seq_length = int(max_seq_length or 512)
+        # Fail fast: a missing models.yaml reranker key must never silently
+        # pin a stale model ID. Explicit args (tests, exports) bypass this.
+        if tokenizer_name is None:
+            raise RuntimeError(
+                "Reranker tokenizer unresolved: 'reranker.model' missing from "
+                "models.yaml and no explicit tokenizer_name was passed."
+            )
+        if max_seq_length is None:
+            raise RuntimeError(
+                "Reranker seq-len unresolved: 'reranker.max_seq_length' missing "
+                "from models.yaml and no explicit max_seq_length was passed."
+            )
+        self.tokenizer_name = tokenizer_name
+        self.max_seq_length = int(max_seq_length)
         self._session = None
         self._tokenizer = None
         self._initialize()

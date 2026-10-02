@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.api.v1.internal import InternalDocumentIngest, InternalUrlIngest
+from app.api.v1.internal import InternalDocumentIngest
 
 
 def test_internal_document_ingest_accepts_valid_body():
@@ -47,11 +47,3 @@ def test_internal_document_ingest_rejects_negative_size():
             content_hash="abc123",
             user_id="64ee39d09c6292376e191981",
         )
-
-
-def test_internal_url_ingest_accepts_and_rejects():
-    ok_body = InternalUrlIngest(url="https://example.com/doc.pdf")
-    assert ok_body.url.startswith("https://")
-    assert ok_body.user_id is None
-    with pytest.raises(ValidationError):
-        InternalUrlIngest(url="https://example.com/doc.pdf", user_id="bad-id")

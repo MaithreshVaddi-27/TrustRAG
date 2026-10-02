@@ -429,7 +429,7 @@ An earlier revision of this prompt was locked to one subject (comparing "archite
 
 **Grounding gate (service layer).** The prompt alone is not sufficient — a small model will still sometimes over-answer. `_presentable_answer` in `analysis_service.py` is the single point where the verdict is applied to user-visible text: only a `TRUSTED` verdict may present the model's own prose. `FAILED` and `UNCERTAIN` are replaced with the abstention message, so the reliability badge can never contradict the answer shown beside it. This matters because the verdict engine was already detecting ungrounded answers while the service stored and displayed them anyway.
 
-The project supports local providers (Ollama, llama.cpp, MLX) and configured cloud providers (Gemini, NVIDIA NIM). The selected provider/model is passed through the analysis state. Provider-specific invocation parameters avoid sending local server options to cloud endpoints.
+The project supports local providers (Ollama, llama.cpp, MLX) and the configured cloud provider (Gemini). The selected provider/model is passed through the analysis state. Provider-specific invocation parameters avoid sending local server options to cloud endpoints.
 
 ### 10.2.1 Prompt structure and token cost
 

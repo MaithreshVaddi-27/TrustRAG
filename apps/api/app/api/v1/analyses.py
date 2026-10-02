@@ -21,7 +21,6 @@ from app.api.v1.schemas.analysis import (
     EvidenceResponse,
     TraceEventResponse,
 )
-from app.core.config import get_settings
 from app.db.mongodb import Collections, get_collection
 from app.services import analysis_service
 
@@ -66,7 +65,6 @@ async def _consume_stream_ticket(ticket: str, analysis_id: str) -> str | None:
     status_code=status.HTTP_201_CREATED,
     summary="Initiate analysis run",
 )
-
 async def create_analysis_endpoint(
     schema: AnalysisCreate,
     background_tasks: BackgroundTasks,

@@ -379,7 +379,7 @@ def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatMo
       - llama_cpp / llamacpp: ChatLlamaCppClient (local, OpenAI-compatible server)
       - mlx: ChatLlamaCppClient pointed at mlx_lm.server (Apple Silicon, OpenAI-compatible)
       - gemini: ChatGoogleGenerativeAI via langchain-google-genai
-      
+
     Uses bounded registry (max instances scale with RAM: 1/2/4) with LRU
     eviction to prevent RAM/GPU leak from user-controlled model strings.
     """

@@ -87,7 +87,7 @@ The portfolio differentiator is the **reliability → diagnosis → recovery loo
 
 - LangChain
 - LangGraph
-- Multi-provider LLMs: llama.cpp / Ollama (local, default) + `langchain-google-genai` / NVIDIA NIM (cloud, selectable)
+- Multi-provider LLMs: llama.cpp / Ollama (local, default) + `langchain-google-genai` (cloud, selectable)
 - Local embeddings (BGE-small-en-v1.5 via HuggingFace or torch-free ONNX Runtime) + RapidOCR-ONNX fallback
 
 ### Retrieval
@@ -161,7 +161,7 @@ Provider choice must be documented and verified at deployment time because free-
 
 **Gemini / cloud LLMs (selectable, not default)**
 
-- LLM generation / verification when the Gemini (or NVIDIA) provider is selected
+- LLM generation / verification when the Gemini provider is selected
 - Embeddings are local-only (HuggingFace/ONNX, 384d) — no cloud embedding model
 
 **Qdrant**
@@ -339,7 +339,7 @@ embedding:
 
 verification:
   framework: langchain
-  provider: llama_cpp             # selectable per request (ollama/gemini/nvidia)
+  provider: llama_cpp             # selectable per request (ollama/gemini)
   model: <configured-verification-model>
   temperature: 0.0
   max_output_tokens: 512

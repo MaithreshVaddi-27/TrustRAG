@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
+from collections import OrderedDict
 from datetime import UTC, datetime
 from typing import Any
 
@@ -22,6 +24,83 @@ from app.db.qdrant import get_collection_name, get_qdrant_client
 from app.ingestion.sparse_vector import generate_sparse_vector
 
 logger = get_logger(__name__)
+
+# Time budgets (seconds). Monkeypatch-able module globals — tests rely on
+# overriding these to simulate hung branches without real 45s waits.
+# Production values resolve via _retrieval_timeouts(): explicit env vars win,
+# then non-zero models.yaml values, then these fallbacks.
+RETRIEVAL_BRANCH_TIMEOUT = 45.0
+RETRIEVAL_HYBRID_TIMEOUT = 60.0
+
+
+def _env_float(name: str) -> float | None:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def _retrieval_timeouts() -> tuple[float, float]:
+    """Resolve (branch, hybrid) retrieval budgets: env > yaml > fallback."""
+    try:
+        cfg = get_model_config()
+        yaml_branch = float(cfg.branch_timeout_seconds or 0)
+        yaml_hybrid = float(cfg.hybrid_timeout_seconds or 0)
+    except Exception:
+        yaml_branch, yaml_hybrid = 0.0, 0.0
+    branch = (
+        _env_float("RETRIEVAL_BRANCH_TIMEOUT_SECONDS") or yaml_branch or RETRIEVAL_BRANCH_TIMEOUT
+    )
+    hybrid = (
+        _env_float("RETRIEVAL_HYBRID_TIMEOUT_SECONDS") or yaml_hybrid or RETRIEVAL_HYBRID_TIMEOUT
+    )
+    return float(branch), float(hybrid)
+
+
+class _QueryVectorCache:
+    """Bounded LRU for query embeddings (RAM-capped inference saving).
+
+    One ONNX embed per distinct query string instead of one per retrieval
+    leg and recovery round. Entries are 384-float vectors (~1.5 KB); the
+    default 1024-entry cap bounds the cache near ~1.5 MB. Capacity comes
+    from models.yaml ``retrieval.query_cache_capacity``
+    (``RETRIEVAL_QUERY_CACHE_CAPACITY`` wins). Threading: event-loop
+    confined like the rest of retrieval — no lock needed.
+    """
+
+    def __init__(self, capacity: int = 1024) -> None:
+        self._cache: OrderedDict[str, list[float]] = OrderedDict()
+        self._capacity = max(1, int(capacity))
+
+    def get(self, key: str) -> list[float] | None:
+        try:
+            value = self._cache.pop(key)
+        except KeyError:
+            return None
+        self._cache[key] = value  # re-insert: most-recently-used
+        return value
+
+    def set(self, key: str, value: list[float]) -> None:
+        self._cache.pop(key, None)
+        self._cache[key] = value
+        while len(self._cache) > self._capacity:
+            self._cache.popitem(last=False)
+
+    def clear(self) -> None:
+        self._cache.clear()
+
+
+def _default_query_cache_capacity() -> int:
+    try:
+        return int(get_model_config().query_cache_capacity)
+    except Exception:
+        return 1024
+
+
+_query_cache = _QueryVectorCache(capacity=_default_query_cache_capacity())
 
 
 async def _get_collection_dimension(
@@ -62,10 +141,14 @@ async def dense_search(
 
         try:
             embed_model = get_embedding_model()
-            query_vector = await asyncio.to_thread(
-                embed_model.embed_query,
-                query,
-            )
+            cache_key = f"onnx:{query}"
+            query_vector = _query_cache.get(cache_key)
+            if query_vector is None:
+                query_vector = await asyncio.to_thread(
+                    embed_model.embed_query,
+                    query,
+                )
+                _query_cache.set(cache_key, query_vector)
         except Exception as exc:
             logger.error(
                 "Embedding service unavailable for dense search",
@@ -78,8 +161,7 @@ async def dense_search(
 
         if target_dim is not None and len(query_vector) != target_dim:
             raise ValueError(
-                "Embedding dimension mismatch: "
-                f"query={len(query_vector)}, collection={target_dim}"
+                f"Embedding dimension mismatch: query={len(query_vector)}, collection={target_dim}"
             )
 
         response = await client.query_points(
@@ -107,6 +189,7 @@ async def dense_search(
             f"Vector store query failed during dense retrieval: {exc}",
             detail=str(exc),
         ) from exc
+
 
 async def sparse_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
     """Retrieve top_k chunks using BM25-style sparse representations.
@@ -147,6 +230,12 @@ async def sparse_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
             f"Sparse vector generation failed during sparse retrieval: {exc}",
             detail=str(exc),
         ) from exc
+
+    if not sparse_rep["indices"] and not sparse_rep["values"]:
+        # Query with no indexable tokens (e.g. all stopwords): genuine
+        # "no evidence" — never send an empty vector to Qdrant (it would
+        # error) and never report an outage for it.
+        return []
 
     sparse_vec = models.SparseVector(indices=sparse_rep["indices"], values=sparse_rep["values"])
 
@@ -320,6 +409,7 @@ async def apply_temporal_filtering(
 
     return filtered_results
 
+
 async def retrieve_hybrid_chunks(
     query: str,
     kb_id: str,
@@ -328,19 +418,42 @@ async def retrieve_hybrid_chunks(
 ) -> list[dict[str, Any]]:
     """Retrieve evidence using dense + sparse retrieval and RRF.
 
-    Both retrieval branches are required. Failure of either branch fails
-    the entire retrieval operation.
+    Both retrieval branches are required: failure (or timeout) of either
+    branch fails the entire retrieval operation with RetrievalOutageError.
+    Partial evidence is never served silently — a reliability workbench
+    must not present half the evidence as the whole.
     """
     cfg = get_model_config()
 
     dense_top = top_k_override if top_k_override is not None else cfg.dense_top_k
     sparse_top = top_k_override if top_k_override is not None else cfg.sparse_top_k
     fusion_top_k = cfg.fusion_top_k
+    branch_timeout, hybrid_timeout = _retrieval_timeouts()
 
-    dense_res, sparse_res = await asyncio.gather(
-        dense_search(query, kb_id, top_k=dense_top),
-        sparse_search(query, kb_id, top_k=sparse_top),
-    )
+    async def _bounded_branch(name: str, coro: Any) -> Any:
+        try:
+            return await asyncio.wait_for(coro, timeout=branch_timeout)
+        except TimeoutError as exc:
+            raise RetrievalOutageError(
+                f"{name} retrieval branch timed out after {branch_timeout:g}s",
+                detail=f"branch={name} timeout={branch_timeout}",
+            ) from exc
+
+    try:
+        dense_res, sparse_res = await asyncio.wait_for(
+            asyncio.gather(
+                _bounded_branch("dense", dense_search(query, kb_id, top_k=dense_top)),
+                _bounded_branch("sparse", sparse_search(query, kb_id, top_k=sparse_top)),
+            ),
+            timeout=hybrid_timeout,
+        )
+    except RetrievalOutageError:
+        raise
+    except TimeoutError as exc:
+        raise RetrievalOutageError(
+            f"Hybrid retrieval exceeded the {hybrid_timeout:g}s budget (both branches hung)",
+            detail=f"hybrid_timeout={hybrid_timeout}",
+        ) from exc
 
     fused = reciprocal_rank_fusion(
         dense_res,

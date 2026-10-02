@@ -36,13 +36,11 @@ class AnalysisCreate(BaseModel):
     )
     web_search_provider: str = Field(
         default="both",
-        description="Web search provider: 'tavily', 'duckduckgo', or 'both'",
+        description="Accepted for compatibility; web grounding is Tavily-only",
     )
     llm_provider: str | None = Field(
         default=None,
-        description=(
-            "Active LLM provider override ('ollama', 'llama_cpp', 'mlx', 'gemini', 'nvidia')"
-        ),
+        description=("Active LLM provider override ('ollama', 'llama_cpp', 'mlx', 'gemini')"),
     )
     llm_model: str | None = Field(
         default=None,
@@ -77,14 +75,12 @@ class AnalysisCreate(BaseModel):
             # never hardcode model IDs here, or the next model release 422s
             # again (cf. gemini-3.8-flash).
             "gemini": set(cfg.supported_gemini_models),
-            "nvidia": set(cfg.supported_nvidia_models),
         }
         operator_llm_overrides = {
             "ollama": settings.ollama_model,
             "llama_cpp": settings.llamacpp_model,
             "mlx": settings.mlx_model,
             "gemini": settings.gemini_model,
-            "nvidia": cfg.llm_model if cfg.llm_provider == "nvidia" else "",
         }
         if operator_llm_overrides.get(provider):
             allowed_llms[provider].add(operator_llm_overrides[provider])
@@ -135,7 +131,7 @@ class AnalysisCreate(BaseModel):
         v_provider = normalize_provider(cfg.verification_provider)
         if v_provider not in SUPPORTED_LLM_PROVIDERS:
             raise ValueError(f"Unsupported verification provider: {v_provider}")
-        if v_provider in ("gemini", "nvidia"):
+        if v_provider == "gemini":
             v_allowed = set(allowed_llms[v_provider])
             # An explicit env override is an operator decision, same trust level
             # as settings.<provider>_model above: honour it rather than 422.

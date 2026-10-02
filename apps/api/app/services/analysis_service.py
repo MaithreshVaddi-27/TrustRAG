@@ -303,7 +303,7 @@ async def create_analysis(
     # rendered "DEFAULT" and audits couldn't tell granite from EXAONE).
     # Normalize the provider to its canonical spelling: the request validator
     # already does this, so persisting the raw value stored "google_genai" /
-    # "nim" / "llamacpp" while the allowlist check ran against "gemini" /
+    # "llamacpp" while the allowlist check ran against "gemini" /
     # "llama_cpp" (audit B-15/B-18).
     effective_llm_provider = normalize_provider(schema.llm_provider or cfg.llm_provider or "")
     effective_llm_model = schema.llm_model or cfg.llm_model_for(effective_llm_provider)

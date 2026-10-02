@@ -50,7 +50,7 @@ export function EmptyState({ onLoadSample }) {
         {[
           { icon: FileCheck, iconColor: 'text-emerald-400', title: 'Closed-Loop NLI', desc: 'Decomposes generated answers into atomic claims and cross-verifies every proposition against citations.' },
           { icon: Sparkles, iconColor: 'text-cyan-400', title: 'Self-Healing Loop', desc: 'LangGraph state machine automatically triggers targeted query rewrites and context expansions when uncertainty occurs.' },
-          { icon: Globe, iconColor: 'text-primary-400', title: 'Zero-Key MCP Web', desc: 'Dynamic Model Context Protocol tool execution pulls fresh web facts via DuckDuckGo with 0 API keys.' },
+          { icon: Globe, iconColor: 'text-primary-400', title: 'Tavily MCP Web', desc: 'Dynamic Model Context Protocol tool execution pulls fresh web facts via Tavily AI search.' },
         ].map((card, i) => (
           <motion.div
             key={card.title}

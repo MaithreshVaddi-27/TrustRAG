@@ -45,7 +45,6 @@ export function ResultsPanel({
   recoveryRuns,
   query,
   enableWebSearch,
-  webSearchProvider,
   selectedProvider,
   selectedModel,
   selectedEmbeddingModel,
@@ -91,7 +90,6 @@ export function ResultsPanel({
           events={currentTraceEvents}
           query={query}
           enableWebSearch={enableWebSearch}
-          webSearchProvider={webSearchProvider}
           provider={selectedProvider}
           model={selectedModel}
           embeddingModel={selectedEmbeddingModel}

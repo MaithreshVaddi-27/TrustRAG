@@ -20,8 +20,8 @@ from app.core.llm_ledger import invoke_counted
 from app.core.llm_utils import normalize_llm_content
 from app.core.local_llm import LOCAL_LLM_PROVIDERS, local_cap_kwargs
 from app.core.logging import get_logger
-from app.core.semantic_cache import prune_context_tokens
 from app.core.model_registry import get_llm
+from app.core.semantic_cache import prune_context_tokens
 
 logger = get_logger(__name__)
 
@@ -54,7 +54,7 @@ def _invoke_kwargs_for_provider(
         if keep_alive is not None:
             kwargs["keep_alive"] = keep_alive
         return kwargs
-    if norm in ("gemini"):
+    if norm in ("gemini", "google_genai"):
         return {"max_output_tokens": int(max_tokens)}
 
     raise ValueError(f"Unsupported LLM provider: {provider}")
@@ -145,7 +145,7 @@ def calculate_dynamic_num_ctx(
     # above, so they fell through to the 4096 local default and emitted a bogus
     # "evidence will be truncated" warning for a 1M-token model (audit B-14).
     norm = (provider or "").strip().lower()
-    norm = {"gemini": "gemini", "llamacpp": "llama_cpp"}.get(norm, norm)
+    norm = {"gemini": "gemini", "google_genai": "gemini", "llamacpp": "llama_cpp"}.get(norm, norm)
     max_ctx = provider_limits.get(norm, cfg.local_llm_num_ctx)
 
     # Clamp to provider max, but ensure minimum for basic functionality.
@@ -276,6 +276,7 @@ def strip_think_blocks(answer: str) -> str:
         cleaned = cleaned[: match.start()]
     return cleaned
 
+
 def _sanitize_label(value: str, max_len: int = 80) -> str:
     """Strip control characters and truncate label to prevent context boundary injection."""
     # Remove newlines, tabs, and other control chars that could break segment delimiters
@@ -297,6 +298,7 @@ def extract_citations(answer: str) -> list[int]:
     if not answer:
         return []
     return [int(match.group(1)) for match in _CITATION_RE.finditer(answer)]
+
 
 def strip_stray_abstain(answer: str) -> str:
     """Remove a trailing standalone ABSTAIN token from a substantive answer.
@@ -331,6 +333,7 @@ def strip_stray_abstain(answer: str) -> str:
     if len(text) < 20:
         return "ABSTAIN"
     return text
+
 
 def strip_invalid_citations(answer: str, valid_segments: int) -> tuple[str, list[int]]:
     """Remove [Segment N] refs with N outside 1..valid_segments.

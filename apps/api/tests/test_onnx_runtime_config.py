@@ -1,8 +1,8 @@
 """
 ONNX central-config regression tests (hermetic — no model files needed).
 
-Guards the v1.23 `onnx:` block + shared session factory, plus the shared
-centralized knobs (retrieval budgets, adaptive Top-K, query cache, upsert
+Guards the `onnx:` block + shared session factory, plus the shared
+centralized knobs (retrieval budgets, query cache, upsert
 batch, reranker seq-len):
 - every ORT/infra knob lives in models.yaml with an env override,
 - the factory caps threads for less RAM and enables full graph fusion,
@@ -29,8 +29,6 @@ def _clean_onnx_env(monkeypatch):
         "ONNX_EMBED_MICRO_BATCH",
         "RERANKER_BATCH_SIZE",
         "RERANKER_MAX_SEQ_LENGTH",
-        "ADAPTIVE_TOP_K_THRESHOLD",
-        "ADAPTIVE_TOP_K_CAP",
         "RETRIEVAL_BRANCH_TIMEOUT_SECONDS",
         "RETRIEVAL_HYBRID_TIMEOUT_SECONDS",
         "RETRIEVAL_QUERY_CACHE_CAPACITY",
@@ -115,22 +113,18 @@ def test_reranker_batch_precedence(_clean_onnx_env, monkeypatch):
 
 
 def test_retrieval_infra_yaml_defaults(_clean_onnx_env):
-    """Runtime knobs: budgets unset (module fallback), adaptive + cache set."""
+    """Runtime knobs: budgets unset (module fallback), cache set."""
     from app.core.config import get_model_config
 
     cfg = get_model_config()
     assert cfg.branch_timeout_seconds == 0.0
     assert cfg.hybrid_timeout_seconds == 0.0
-    assert cfg.adaptive_top_k_threshold == 0.02
-    assert cfg.adaptive_top_k_cap == 4
     assert cfg.query_cache_capacity == 1024
     assert cfg.qdrant_upsert_batch == 100
     assert cfg.reranker_max_seq_length == 512
 
 
 def test_retrieval_infra_env_overrides_win(_clean_onnx_env, monkeypatch):
-    monkeypatch.setenv("ADAPTIVE_TOP_K_THRESHOLD", "0.025")
-    monkeypatch.setenv("ADAPTIVE_TOP_K_CAP", "6")
     monkeypatch.setenv("RETRIEVAL_QUERY_CACHE_CAPACITY", "256")
     monkeypatch.setenv("QDRANT_UPSERT_BATCH", "50")
     monkeypatch.setenv("RERANKER_MAX_SEQ_LENGTH", "256")
@@ -141,8 +135,6 @@ def test_retrieval_infra_env_overrides_win(_clean_onnx_env, monkeypatch):
 
     get_model_config.cache_clear()
     cfg = get_model_config()
-    assert cfg.adaptive_top_k_threshold == 0.025
-    assert cfg.adaptive_top_k_cap == 6
     assert cfg.query_cache_capacity == 256
     assert cfg.qdrant_upsert_batch == 50
     assert cfg.reranker_max_seq_length == 256
@@ -169,7 +161,7 @@ def test_production_keys_default_empty_env_only(_clean_onnx_env):
     """Key field defaults are empty; only env fills them (no real key in code)."""
     from app.core.config import Settings
 
-    for field in ("gemini_api_key", "nvidia_api_key", "tavily_api_key", "hf_token"):
+    for field in ("gemini_api_key", "tavily_api_key", "hf_token"):
         assert Settings.model_fields[field].default == "", field
 
 

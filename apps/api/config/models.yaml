@@ -16,7 +16,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 runtime:
-  config_version: "1.23"
+  config_version: "1.24"
 
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
@@ -177,10 +177,6 @@ retrieval:
   # RETRIEVAL_HYBRID_TIMEOUT_SECONDS.
   branch_timeout_seconds: 0
   hybrid_timeout_seconds: 0
-  # Adaptive Top-K accuracy levers (RRF units: max ≈ 0.033 at rrf_k=60).
-  # High-confidence queries cap fused candidates at adaptive_top_k_cap.
-  adaptive_top_k_threshold: 0.02
-  adaptive_top_k_cap: 4
   # Query-vector LRU capacity (RAM-bounded; entries are 384-float vectors).
   # Lower (256) on ≤8GB hosts; raise (2048) on 32GB+ hosts.
   # Env wins: RETRIEVAL_QUERY_CACHE_CAPACITY.
@@ -310,7 +306,6 @@ optimization:
   kv_cache_quantization: "q8_0"                 # q8_0 (measured default) | q4_0 | q4_1 — honored by scripts/start_local_llm.sh (unknown values fall back to q8_0; "fp16" is not a valid llama-server k-quant)
   flash_attention: true                         # Computes attention in SRAM tiles (O(N) memory)
   prompt_caching: true                          # Reuses KV cache for static system prompt prefixes
-  adaptive_top_k: true                          # Caps fused candidates at 4 on high RRF confidence (>= 0.02)
   # Context Compression (Phase 2.4) — hierarchical summarization before LLM call
   # Compression issues a SECOND full LLM call on the same model, so it is a net
   # cost on any tier whose window comfortably fits the context. Cloud tiers have

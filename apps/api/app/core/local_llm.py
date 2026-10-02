@@ -161,7 +161,7 @@ def verification_cap_kwargs(
 
     if norm in LOCAL_LLM_PROVIDERS:
         return {"max_tokens": cap}
-    if norm in ("gemini"):
+    if norm in ("gemini", "google_genai"):
         return {"max_output_tokens": cap}
     # Unknown provider: inject nothing rather than risk a foreign kwarg.
     return {}
@@ -649,11 +649,10 @@ async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 
 
 
 # ─── Cloud-model preflight ──────────────────────────────────────────────────
-# A stalled cloud model (observed: nvidia/nemotron-3.5-lightning-30b-a3b
-# returning zero bytes indefinitely) otherwise burns the full per-call
-# timeout across every sequential pipeline call before abstaining. One tiny
-# completion up front converts that into a fast 503 with an actionable
-# message. Gemini answers the same probe in seconds.
+# A stalled cloud model (a cloud endpoint returning zero bytes indefinitely)
+# otherwise burns the full per-call timeout across every sequential pipeline
+# call before abstaining. One tiny completion up front converts that into a
+# fast 503 with an actionable message. Gemini answers the same probe in seconds.
 CLOUD_PROBE_TIMEOUT_SECONDS = 60.0
 # A successful probe is reused for this long. Without it every analysis pays a
 # billed round-trip just to re-confirm a provider that was demonstrably alive

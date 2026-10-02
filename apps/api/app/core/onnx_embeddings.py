@@ -76,8 +76,10 @@ class ONNXBGEEmbeddings(Embeddings):
     def __init__(
         self,
         model_path: str,
-        tokenizer_name: str = "BAAI/bge-small-en-v1.5",
-        max_seq_length: int = 512,
+        # None = resolve from models.yaml (embedding.model / max_seq_length):
+        # a yaml edit then propagates everywhere. Never re-pin an ID here.
+        tokenizer_name: str | None = None,
+        max_seq_length: int | None = None,
         providers: list[str] | None = None,
         sess_options: Any = None,
         micro_batch_size: int | None = None,
@@ -89,6 +91,13 @@ class ONNXBGEEmbeddings(Embeddings):
             )
 
         self.model_path = model_path
+        # Resolve engine defaults from models.yaml (single source of truth).
+        if tokenizer_name is None or max_seq_length is None:
+            _cfg = get_model_config()
+            if tokenizer_name is None:
+                tokenizer_name = _cfg.embedding_model
+            if max_seq_length is None:
+                max_seq_length = _cfg.embedding_max_seq_length
         self.max_seq_length = max_seq_length
 
         # Load tokenizer (lightweight, no torch) at the pinned revision.

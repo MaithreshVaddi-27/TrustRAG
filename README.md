@@ -62,7 +62,7 @@ Query → Route → Retrieve (hybrid) → Generate (grounded) → Decompose
 7. **Recover** — budget-aware LangGraph loop (rewrite → re-retrieve → regenerate, ≤2 attempts).
 8. **Answer or abstain** — returns the grounded answer, or refuses to guess.
 
-The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local embeddings + embedded Qdrant + local MongoDB). No API keys required — Gemini, NVIDIA NIM, and Tavily search are optional.
+The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local embeddings + embedded Qdrant + local MongoDB). No API keys required — Gemini and Tavily search are optional.
 
 ---
 
@@ -89,7 +89,7 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 |-------|------------|
 | **Frontend** | React 18, Vite 6, Tailwind CSS 3, TanStack Query 5, React Router 7 |
 | **Backend** | FastAPI 0.115, Python 3.11+, Pydantic v2, LangGraph, LangChain |
-| **LLM** | Ollama / llama.cpp / **MLX** (local, default) · Gemini / NVIDIA NIM (optional cloud) |
+| **LLM** | Ollama / llama.cpp / **MLX** (local, default) · Gemini (optional cloud) |
 | **Embeddings** | `BAAI/bge-small-en-v1.5` via ONNX Runtime (torch-free, default) |
 | **Reranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` via ONNX Runtime (int8) |
 | **Storage** | Qdrant (vectors) + MongoDB 7 (documents, async `motor`) |
@@ -357,7 +357,7 @@ MONGODB_DATABASE=trustrag_db
 ### Common optional overrides (full list in [.env.example](.env.example))
 
 ```bash
-LLM_PROVIDER=llama_cpp            # ollama | llama_cpp | mlx | gemini | nvidia
+LLM_PROVIDER=llama_cpp            # ollama | llama_cpp | mlx | gemini
 LLM_MODEL=LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
 MLX_MODEL=mlx-community/Llama-3.2-1B-Instruct-4bit   # Apple Silicon only
 # Embeddings: single ONNX engine (BAAI/bge-small-en-v1.5, 384d) from
@@ -441,7 +441,6 @@ TrustRAG supports multiple LLM providers interchangeably. Switch via `LLM_PROVID
 | **ollama** | gemma3:1b, qwen3:1.7b, llama3 | 1–3 GB | `ollama serve` + `ollama pull <model>`. Set `OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1` for 8 GB RAM |
 | **mlx** | Llama-3.2-1B-4bit, Llama-3.2-3B-4bit, LFM2.5-1.2B-4bit | 1–3 GB | Apple Silicon only. `mlx_lm.server --model <id> --port 8090`. Runs alongside llama.cpp on :8080 |
 | **gemini** | gemini-3.5-flash-lite | Cloud | Requires `GEMINI_API_KEY`. Fast, cheap, supports structured output natively |
-| **nvidia** | openai/gpt-oss-20b | Cloud | Requires `NVIDIA_API_KEY`. NVIDIA NIM endpoint. Verified live 2026-09-21 |
 
 ### Per-tier caps (auto-selected by provider + RAM)
 
@@ -512,7 +511,7 @@ Test-coverage gaps for the analysis service (the lowest-covered core module) are
 
 | Component | Local dev | Docker Compose | Production |
 |-----------|-----------|----------------|------------|
-| **LLM** | Ollama / llama.cpp on host | Host via `host.docker.internal` | Self-hosted Ollama, Gemini, or NVIDIA NIM |
+| **LLM** | Ollama / llama.cpp on host | Host via `host.docker.internal` | Self-hosted Ollama or Gemini |
 | **Embeddings** | ONNX BGE-small via `scripts/bootstrap.py` (~120 MB, one-time) | Host-exported ONNX via `docker cp` into the cache volume | Same as dev |
 | **Vectors** | Qdrant embedded (`local`) | `qdrant` container + volume | Qdrant Cloud |
 | **Database** | Host MongoDB | Host via `host.docker.internal` | MongoDB Atlas |
@@ -600,7 +599,7 @@ Full per-OS field guide (20-row failure table): [docs/ONBOARDING-TROUBLESHOOTING
 |-------|-----|
 | `LLM_UNAVAILABLE` (llama.cpp) | Start `scripts/start_local_llm.sh --max 1` |
 | `LLM_UNAVAILABLE` (ollama) | `ollama serve` + `ollama pull <model>` |
-| `LLM_UNAVAILABLE` (gemini/nvidia) | Check API key, retry, or switch provider |
+| `LLM_UNAVAILABLE` (gemini) | Check API key, retry, or switch provider |
 | `LLM_UNAVAILABLE` (MLX) | `mlx_lm.server --model <id> --port 8090` (Apple Silicon) |
 | `Database not initialized` | Ensure MongoDB running; check `MONGODB_URI` |
 | `503 Service Unavailable` | DB not connected; check `connect_db()` in lifespan |

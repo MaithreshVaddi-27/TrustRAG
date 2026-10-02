@@ -373,32 +373,31 @@ class ModelConfig:
             return (
                 env_model
                 or str(self._get("llm", "model_ollama", required=False) or "")
-                or str(self._get("llm", "model") or "gemma3:1b")
+                or str(self._get("llm", "model"))
             )
         if p in ("llama_cpp", "llamacpp"):
             env_model = os.environ.get("LLAMACPP_MODEL") or os.environ.get("LLAMA_CPP_MODEL")
             return (
                 env_model
                 or str(self._get("llm", "model_llamacpp", required=False) or "")
-                or str(self._get("llm", "model") or "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M")
+                or str(self._get("llm", "model"))
             )
         if p == "mlx":
             env_model = os.environ.get("MLX_MODEL")
-            return (
-                env_model
-                or str(self._get("llm", "model_mlx", required=False) or "")
-                # Never fall back to llm.model here: it may be a GGUF id the
-                # MLX server cannot serve (exact-match routing → 404).
-                or "mlx-community/Llama-3.2-1B-Instruct-4bit"
-            )
+            if env_model:
+                return env_model
+            # Never fall back to llm.model here: it may be a GGUF id the
+            # MLX server cannot serve (exact-match routing → 404).
+            # Required yaml key — fail fast if absent.
+            return str(self._get("llm", "model_mlx"))
         env_model = os.environ.get("LLM_MODEL") or os.environ.get("GEMINI_MODEL")
         if env_model:
             return env_model
         if p in ("gemini"):
             # Never fall back to llm.model here: it is a local GGUF id, not a
             # Gemini model id. Override via LLM_MODEL env or model_gemini yaml.
-            return str(self._get("llm", "model_gemini", required=False) or "gemini-3.5-flash-lite")
-        return str(self._get("llm", "model") or "gemini-3.5-flash-lite")
+            return str(self._get("llm", "model_gemini"))
+        return str(self._get("llm", "model"))
 
     @property
     def ollama_base_url(self) -> str:
@@ -460,8 +459,7 @@ class ModelConfig:
     # follows automatically.
     @property
     def embedding_model(self) -> str:
-        val = self._get("embedding", "model")
-        return str(val or "BAAI/bge-small-en-v1.5")
+        return str(self._get("embedding", "model"))
 
     @property
     def embedding_dimensionality(self) -> int:
@@ -486,10 +484,7 @@ class ModelConfig:
 
     @property
     def embedding_max_seq_length(self) -> int:
-        val = self._get("embedding", "max_seq_length", required=False)
-        if val is not None:
-            return int(val)
-        return 512  # Default for BGE-small
+        return int(self._get("embedding", "max_seq_length"))
 
     # ── Verification ──────────────────────────────────────────────────────
     @property
@@ -512,26 +507,22 @@ class ModelConfig:
             return (
                 env_model
                 or str(self._get("verification", "model_ollama", required=False) or "")
-                or str(self._get("verification", "model") or "gemma3:1b")
+                or str(self._get("verification", "model"))
             )
         if p in ("llama_cpp", "llamacpp"):
             env_model = os.environ.get("LLAMACPP_MODEL") or os.environ.get("LLAMA_CPP_MODEL")
             return (
                 env_model
                 or str(self._get("verification", "model_llamacpp", required=False) or "")
-                or str(
-                    self._get("verification", "model")
-                    or "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
-                )
+                or str(self._get("verification", "model"))
             )
         if p == "mlx":
             env_model = os.environ.get("MLX_MODEL")
-            return (
-                env_model
-                or str(self._get("verification", "model_mlx", required=False) or "")
-                # Same no-GGUF-fallback rule as llm_model_for (exact-match routing).
-                or "mlx-community/Llama-3.2-1B-Instruct-4bit"
-            )
+            if env_model:
+                return env_model
+            # Same no-GGUF-fallback rule as llm_model_for (exact-match routing).
+            # Required yaml key — fail fast if absent.
+            return str(self._get("verification", "model_mlx"))
         val = self._get("verification", "model")
         env_model = os.environ.get("GEMINI_VERIFICATION_MODEL") or os.environ.get(
             "VERIFICATION_MODEL"
@@ -542,19 +533,21 @@ class ModelConfig:
             # Never fall back to verification.model / llm.model (local GGUF ids).
             return str(
                 self._get("verification", "model_gemini", required=False)
-                or self._get("llm", "model_gemini", required=False)
-                or "gemini-3.5-flash-lite"
+                or self._get("llm", "model_gemini")
             )
-        return str(val or "gemini-3.5-flash-lite")
+        return str(val)
 
     @property
     def supported_gemini_models(self) -> list[str]:
-        """Cloud allowlist: models API callers may select for gemini."""
-        val = self._get("llm", "supported_models_gemini", required=False)
+        """Cloud allowlist: models API callers may select for gemini.
+
+        Required yaml key (`llm.supported_models_gemini`) — adding a newly
+        released model is a config change here, never a code change.
+        """
+        val = self._get("llm", "supported_models_gemini")
         if isinstance(val, list) and val:
             return [str(m) for m in val]
-        # Fallback mirrors the last hardcoded set (pre-1.20 configs).
-        return ["gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"]
+        raise KeyError("Required key 'llm.supported_models_gemini' missing from models.yaml")
 
     @property
     def verification_temperature(self) -> float:
@@ -757,24 +750,6 @@ class ModelConfig:
         """Hybrid retrieval budget; 0 = unset (module fallback 60s)."""
         value = self._get("retrieval", "hybrid_timeout_seconds", required=False)
         return float(value) if value is not None else 0.0
-
-    @property
-    def adaptive_top_k_threshold(self) -> float:
-        """RRF confidence threshold for adaptive cap (models.yaml, RRF units)."""
-        value = self._get("retrieval", "adaptive_top_k_threshold", required=False)
-        env_val = _blank_as_none("ADAPTIVE_TOP_K_THRESHOLD")
-        if env_val is not None:
-            return float(env_val)
-        return float(value) if value is not None else 0.02
-
-    @property
-    def adaptive_top_k_cap(self) -> int:
-        """Fused-candidate cap on high-confidence queries (models.yaml)."""
-        value = self._get("retrieval", "adaptive_top_k_cap", required=False)
-        env_val = _blank_as_none("ADAPTIVE_TOP_K_CAP")
-        if env_val is not None:
-            return int(env_val)
-        return int(value) if value is not None else 4
 
     @property
     def query_cache_capacity(self) -> int:
@@ -1037,25 +1012,9 @@ class ModelConfig:
         return env_val if env_val is not None else str(value or "q4_0")
 
     @property
-    def flash_attention(self) -> bool:
-        value = self._get("optimization", "flash_attention", required=False)
-        env_val = os.environ.get("FLASH_ATTENTION")
-        if env_val is not None:
-            return _parse_bool(env_val)
-        return _parse_bool(value, True)
-
-    @property
     def prompt_caching(self) -> bool:
         value = self._get("optimization", "prompt_caching", required=False)
         env_val = os.environ.get("PROMPT_CACHING")
-        if env_val is not None:
-            return _parse_bool(env_val)
-        return _parse_bool(value, True)
-
-    @property
-    def adaptive_top_k(self) -> bool:
-        value = self._get("optimization", "adaptive_top_k", required=False)
-        env_val = os.environ.get("ADAPTIVE_TOP_K")
         if env_val is not None:
             return _parse_bool(env_val)
         return _parse_bool(value, True)

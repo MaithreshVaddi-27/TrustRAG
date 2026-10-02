@@ -129,6 +129,7 @@ def _apply_cap_via_model_copy(model_obj: Any, cap: dict[str, Any]) -> Any:
         logger.debug("model_copy cap application failed", error=str(exc))
         return model_obj
 
+
 def _structured_verifier(
     model_obj: Any,
     provider: str | None,
@@ -142,9 +143,7 @@ def _structured_verifier(
     if norm in ("gemini", "google_genai"):
         # Gemini's with_structured_output rejects extra kwargs,
         # so apply output caps to the model instance itself.
-        return _apply_cap_via_model_copy(
-            model_obj, cap
-        ).with_structured_output(schema)
+        return _apply_cap_via_model_copy(model_obj, cap).with_structured_output(schema)
 
     return model_obj.with_structured_output(schema, **cap)
 

@@ -140,6 +140,33 @@ async def _index_parsed_chunks(
         # point IDs) but Mongo insert_many is not — clear this doc's chunks first.
         chunks_coll = get_collection(Collections.DOCUMENT_CHUNKS)
         await chunks_coll.delete_many({"document_id": doc_id})
+        # Page-image chain (Answer → chunk → page → image): persist each
+        # distinct rendered page ONCE (many chunks share one page), then link
+        # every chunk to its page's ref. Raw bytes never enter any store.
+        # Best-effort: a save failure must not fail indexing.
+        page_refs: dict[int, str] = {}
+        try:
+            from app.ingestion import page_images as page_images_mod
+
+            seen_pages: dict[int, bytes] = {}
+            for c in chunks:
+                png = c.get("page_image_png")
+                if isinstance(png, (bytes, bytearray)) and png and c.get("page") not in seen_pages:
+                    seen_pages[c["page"]] = bytes(png)
+            for page_num, png_bytes in seen_pages.items():
+                try:
+                    page_refs[page_num] = page_images_mod.save_page_image(
+                        kb_id_str, doc_id_str, int(page_num), png_bytes
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Page-image persist failed; chunk keeps text only",
+                        doc_id=doc_id_str,
+                        page=page_num,
+                        error=str(exc),
+                    )
+        except Exception as exc:
+            logger.warning("Page-image persist skipped", doc_id=doc_id_str, error=str(exc))
         mongo_chunks = []
         for c in chunks:
             mongo_chunks.append(
@@ -155,6 +182,7 @@ async def _index_parsed_chunks(
                     "text_hash": hashlib.sha256(c["text"].encode("utf-8")).hexdigest(),
                     "ocr_used": bool(c.get("ocr_used", False)),
                     "ocr_confidence": c.get("ocr_confidence"),
+                    "page_image_ref": page_refs.get(c["page"]),
                     "document_version": doc_version,
                     "is_snapshot": doc_is_snapshot,
                 }
@@ -201,7 +229,9 @@ async def _index_parsed_chunks(
             # Unique deterministic ID for Qdrant point (based on doc ID and chunk index)
             point_id = hashlib_qdrant_id(doc_id_str, chunk["chunk_index"])
 
-            # Payload contains metadata + text + zone + OCR provenance
+            # Payload contains metadata + text + zone + OCR provenance.
+            # page_image_png bytes are stripped here: only the persisted ref
+            # rides the payload (raw bytes never leak into stores).
             payload = {
                 "document_id": doc_id_str,
                 "knowledge_base_id": kb_id_str,
@@ -213,6 +243,7 @@ async def _index_parsed_chunks(
                 "text": chunk["text"],
                 "ocr_used": bool(chunk.get("ocr_used", False)),
                 "ocr_confidence": chunk.get("ocr_confidence"),
+                "page_image_ref": page_refs.get(chunk["page"]),
                 "document_version": doc_version,
                 "is_snapshot": doc_is_snapshot,
             }

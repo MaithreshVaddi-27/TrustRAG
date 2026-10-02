@@ -26,7 +26,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-
 from app.api.router import api_router
 from app.core.config import get_model_config, get_settings
 from app.core.disk_cache import maybe_cleanup_cache
@@ -59,7 +58,6 @@ from app.core.model_registry import (
     get_embedding_model,
     onnx_model_status,
 )
-
 from app.core.semantic_cache import _cleanup_expired_entries, load_cache
 from app.core.tracing import init_tracing, tracing_middleware
 from app.db.mongodb import connect_db, create_indexes, disconnect_db
@@ -264,6 +262,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await close_local_llm_clients()
     await close_all_llm_instances(seal=True)
     await disconnect_db()
+
 
 # ─── Exception handlers ───────────────────────────────────────────────────────
 def _error_response(status_code: int, code: str, message: str) -> JSONResponse:

@@ -10,6 +10,7 @@ of citation URLs returned by the search provider.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 from typing import Any
 from urllib.parse import urlparse
 
@@ -22,9 +23,43 @@ logger = get_logger(__name__)
 SEARCH_TIMEOUT_SECONDS = 8.0
 MAX_QUERY_LENGTH = 500
 
+# Hostnames that never leave the host (no DNS involved — pure string match).
+_BLOCKED_HOSTS = frozenset(
+    {
+        "localhost",
+        "metadata.google.internal",
+        "metadata.goog",
+        "instance-data",
+        "169.254.169.254",  # also caught as IP below; listed for clarity
+    }
+)
+
+
+def _host_is_blocked(host: str) -> bool:
+    host = (host or "").strip().lower().rstrip(".")
+    if not host or host in _BLOCKED_HOSTS:
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False  # public DNS name: no resolution here (lightweight path)
+    return (
+        ip.is_loopback
+        or ip.is_private
+        or ip.is_reserved
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
 
 def sanitize_url(raw_url: str | None) -> str:
-    """Allow only valid HTTP(S) citation URLs."""
+    """Allow only valid, non-internal HTTP(S) citation URLs.
+
+    Lightweight by design (no DNS lookups on this path): blocks private /
+    loopback / reserved IP literals and metadata hostnames by string, and
+    lets public DNS names through for the caller to fetch.
+    """
     if not raw_url or not isinstance(raw_url, str):
         return ""
 
@@ -36,12 +71,17 @@ def sanitize_url(raw_url: str | None) -> str:
 
         if not parsed.netloc or " " in parsed.netloc:
             return ""
+        host = parsed.hostname or ""
+        if _host_is_blocked(host):
+            return ""
         return clean
 
     except Exception:
         return ""
-    
+
+
 # ─── Search Functions ──────────────────────────────────────────────────────────
+
 
 async def tavily_search(query: str, max_results: int = 5) -> list[dict[str, Any]]:
     """
@@ -100,6 +140,7 @@ async def tavily_search(query: str, max_results: int = 5) -> list[dict[str, Any]
     except Exception as exc:
         logger.error("Tavily search failed", error=str(exc))
         return []
+
 
 async def execute_web_search(
     query: str,

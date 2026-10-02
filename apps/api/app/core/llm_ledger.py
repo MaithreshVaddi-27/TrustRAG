@@ -78,7 +78,7 @@ def max_calls_per_analysis() -> int | None:
     operator with a 70B model should not be throttled by a spend guard.
     """
     cfg = get_model_config()
-    if (cfg.llm_provider or "").strip().lower() in ("gemini", "google_genai", "nvidia", "nim"):
+    if (cfg.llm_provider or "").strip().lower() in ("gemini", "google_genai"):
         return int(cfg.max_llm_calls_per_analysis)
     return None
 

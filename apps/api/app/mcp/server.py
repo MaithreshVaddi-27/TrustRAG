@@ -113,27 +113,8 @@ MCP_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "tavily_search",
-        "description": "AI-native web search using Tavily for clean snippets and source URLs.",
+        "description": ("AI-native web search using Tavily for clean snippets and source URLs."),
         "inputSchema": dict(_SEARCH_INPUT_SCHEMA),
-    },
-    {
-        "name": "duckduckgo_search",
-        "description": "100% free web search using DuckDuckGo (zero API key needed).",
-        "inputSchema": dict(_SEARCH_INPUT_SCHEMA),
-    },
-    {
-        "name": "hybrid_web_search",
-        "description": "Concurrent search across Tavily and DuckDuckGo with deduplication.",
-        "inputSchema": {
-            **_SEARCH_INPUT_SCHEMA,
-            "properties": {
-                **_SEARCH_INPUT_SCHEMA["properties"],
-                "provider": {
-                    "type": "string",
-                    "description": "Search provider: 'tavily', 'duckduckgo', or 'both'",
-                },
-            },
-        },
     },
     {
         "name": "local_llm_chat",
@@ -239,22 +220,6 @@ async def handle_tool_call(
         _require_service_token(arguments)
         count = _clamp_results(arguments.get("max_results", 5))
         res = await search_service_mod.tavily_search(arguments["query"], max_results=count)
-        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
-
-    elif tool_name == "duckduckgo_search":
-        _require_service_token(arguments)
-        count = _clamp_results(arguments.get("max_results", 5))
-        res = await search_service_mod.duckduckgo_search(arguments["query"], max_results=count)
-        return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
-
-    elif tool_name == "hybrid_web_search":
-        _require_service_token(arguments)
-        count = _clamp_results(arguments.get("max_results", 5))
-        res = await search_service_mod.execute_web_search(
-            arguments["query"],
-            provider=arguments.get("provider", "both"),
-            max_results=count,
-        )
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
     if tool_name == "trustrag_search":
         _payload = _require_service_token(arguments)

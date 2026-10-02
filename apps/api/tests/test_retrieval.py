@@ -83,21 +83,21 @@ def test_rrf_carries_ocr_image_and_version_provenance():
 
 
 @pytest.mark.asyncio
-async def test_collection_dimension_is_cached_per_collection():
+async def test_collection_dimension_is_read_live_per_call():
+    """No dimension cache: every dense call re-reads the collection width so a
+    re-indexed collection can never serve truncated/padded garbage."""
     import app.retrieval.retriever as retriever
 
-    collection_name = "kb_dimension_cache_test"
-    retriever._collection_dimension_cache.clear()
     vectors = SimpleNamespace(size=384)
     col_info = SimpleNamespace(config=SimpleNamespace(params=SimpleNamespace(vectors=vectors)))
     client = SimpleNamespace(get_collection=AsyncMock(return_value=col_info))
 
-    first = await retriever._get_collection_dimension(client, collection_name)
-    second = await retriever._get_collection_dimension(client, collection_name)
+    first = await retriever._get_collection_dimension(client, "kb_dim_live")
+    second = await retriever._get_collection_dimension(client, "kb_dim_live")
 
     assert first == 384
     assert second == 384
-    client.get_collection.assert_awaited_once_with(collection_name)
+    assert client.get_collection.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -202,7 +202,7 @@ async def test_dense_search_raises_outage_when_qdrant_unavailable():
     with patch(
         "app.retrieval.retriever.get_qdrant_client", side_effect=Exception("connection refused")
     ):
-        with pytest.raises(RetrievalOutageError, match="Vector store unavailable"):
+        with pytest.raises(RetrievalOutageError, match="query failed"):
             await dense_search("outage probe query alpha", "kb_outage_1")
 
 
@@ -325,8 +325,9 @@ async def test_retrieve_hybrid_chunks_propagates_outage_not_empty():
 
 
 @pytest.mark.asyncio
-async def test_hybrid_degrades_to_healthy_branch_on_timeout(monkeypatch):
-    """One hung branch must not discard the healthy branch's results."""
+async def test_hybrid_one_hung_branch_is_outage_not_partial(monkeypatch):
+    """Strict retrieval: one hung branch fails the analysis — the healthy
+    branch's results are never served as if they were the whole evidence."""
     from app.retrieval import retriever
 
     monkeypatch.setattr(retriever, "RETRIEVAL_BRANCH_TIMEOUT", 0.05)
@@ -343,10 +344,8 @@ async def test_hybrid_degrades_to_healthy_branch_on_timeout(monkeypatch):
         patch("app.retrieval.retriever.dense_search", AsyncMock(side_effect=slow_dense)),
         patch("app.retrieval.retriever.sparse_search", AsyncMock(return_value=[sparse_point])),
     ):
-        res = await retrieve_hybrid_chunks("degraded branch probe", "kb_degraded_1")
-
-    assert len(res) == 1
-    assert res[0]["text"] == "sparse hit"
+        with pytest.raises(RetrievalOutageError, match="dense.*timed out"):
+            await retrieve_hybrid_chunks("strict branch probe", "kb_strict_1")
 
 
 @pytest.mark.asyncio
@@ -364,7 +363,7 @@ async def test_hybrid_both_branches_timeout_is_outage(monkeypatch):
         patch("app.retrieval.retriever.dense_search", AsyncMock(side_effect=slow)),
         patch("app.retrieval.retriever.sparse_search", AsyncMock(side_effect=slow)),
     ):
-        with pytest.raises(RetrievalOutageError, match="both"):
+        with pytest.raises(RetrievalOutageError, match="timed out"):
             await retrieve_hybrid_chunks("outage probe query zeta", "kb_outage_5")
 
 
