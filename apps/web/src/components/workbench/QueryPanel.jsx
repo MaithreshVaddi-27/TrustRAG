@@ -298,9 +298,13 @@ export function QueryPanel({
                   onChange={e => setSelectedModel(e.target.value)}
                   disabled={loading}
                   className="w-full bg-surface-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500/50">
-                {availableModels.map(m => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
+                {availableModels.length === 0 ? (
+                  <option value="">No models discovered — check server</option>
+                ) : (
+                  availableModels.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))
+                )}
                 </select>
               </div>
             </div>
@@ -439,6 +443,7 @@ export function QueryPanel({
               onKeyDown={handleKeyDown}
               placeholder="Ask a question about your documents… (Press ⌘+Enter to run)"
               rows={4}
+              maxLength={2000}
               className="w-full min-h-[105px] bg-surface-800 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-600 focus:shadow-[0_0_20px_rgba(6,182,212,0.12)] transition-all duration-200"
               disabled={loading}
             />

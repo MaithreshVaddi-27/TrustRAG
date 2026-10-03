@@ -15,7 +15,7 @@ export default function LandingFooter() {
 
         <div className="flex items-center gap-2 text-[11px] font-mono text-emerald-400">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>All Verification Nodes Operational</span>
+          <span>Local-first verification pipeline</span>
         </div>
 
         <div className="flex items-center gap-6">

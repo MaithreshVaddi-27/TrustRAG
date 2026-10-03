@@ -1,12 +1,15 @@
 import { clsx } from 'clsx'
+import { normalizeScore } from '@/lib/claimState'
 
 /**
  * ReliabilityBadge — shows the numeric reliability score with color-coded band.
- * score: 0.0–1.0
+ * score: 0.0–1.0 (values >1 are treated as 0–100 percentages and normalized
+ * via normalizeScore in lib/claimState)
  * status: 'TRUSTED' | 'UNCERTAIN' | 'ABSTAINED' | 'FAILED'
  */
 export function ReliabilityBadge({ score, status, size = 'md' }) {
-  const pct = score != null ? Math.round(score * 100) : null
+  const norm = normalizeScore(score)
+  const pct = norm != null ? Math.round(norm * 100) : null
 
   const band =
     pct == null     ? 'unknown'
@@ -15,7 +18,7 @@ export function ReliabilityBadge({ score, status, size = 'md' }) {
     :                 'low'
 
   const bandColors = {
-    high:    'text-green-400 border-green-700/50 bg-green-900/30',
+    high:    'text-emerald-400 border-emerald-700/50 bg-emerald-900/30',
     medium:  'text-amber-400 border-amber-700/50 bg-amber-900/30',
     low:     'text-red-400   border-red-700/50   bg-red-900/30',
     unknown: 'text-slate-400 border-slate-600/50 bg-slate-800/30',
@@ -36,11 +39,14 @@ export function ReliabilityBadge({ score, status, size = 'md' }) {
   }
 
   return (
-    <span className={clsx(
-      'inline-flex items-center font-mono font-semibold rounded-full border',
-      bandColors[band],
-      sizes[size],
-    )}>
+    <span
+      aria-live="polite"
+      className={clsx(
+        'inline-flex items-center font-mono font-semibold rounded-full border',
+        bandColors[band],
+        sizes[size],
+      )}
+    >
       <span className="opacity-70">{statusIcon[status] ?? '?'}</span>
       {pct != null ? `${pct}%` : '—'}
       {status && <span className="text-xs font-sans opacity-60 ml-1 font-normal">{status}</span>}
@@ -50,8 +56,11 @@ export function ReliabilityBadge({ score, status, size = 'md' }) {
 
 /**
  * ClaimStateBadge — SUPPORTED | CONTRADICTED | NEUTRAL (backend claim states)
+ *
+ * VerdictBadge is the canonical name (F-6); ClaimStateBadge stays as an alias
+ * so existing imports keep working.
  */
-export function ClaimStateBadge({ state }) {
+export function VerdictBadge({ state }) {
   const norm = state ? String(state).toUpperCase() : ''
   const map = {
     SUPPORTED:    { cls: 'badge-supported',    label: 'Supported',    icon: '✓' },
@@ -66,3 +75,5 @@ export function ClaimStateBadge({ state }) {
     </span>
   )
 }
+
+export const ClaimStateBadge = VerdictBadge

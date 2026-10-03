@@ -84,10 +84,11 @@ def test_rrf_carries_ocr_image_and_version_provenance():
 
 @pytest.mark.asyncio
 async def test_collection_dimension_is_read_live_per_call():
-    """No dimension cache: every dense call re-reads the collection width so a
-    re-indexed collection can never serve truncated/padded garbage."""
+    """Dimension is memoized per collection (P1-27): repeat reads for the
+    same collection hit cache; a new collection re-reads live."""
     import app.rag.retrieval.retriever as retriever
 
+    retriever._collection_dim_cache.clear()
     vectors = SimpleNamespace(size=384)
     col_info = SimpleNamespace(config=SimpleNamespace(params=SimpleNamespace(vectors=vectors)))
     client = SimpleNamespace(get_collection=AsyncMock(return_value=col_info))
@@ -97,7 +98,8 @@ async def test_collection_dimension_is_read_live_per_call():
 
     assert first == 384
     assert second == 384
-    assert client.get_collection.await_count == 2
+    assert client.get_collection.await_count == 1
+    retriever._collection_dim_cache.clear()
 
 
 @pytest.mark.asyncio

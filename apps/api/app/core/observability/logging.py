@@ -72,6 +72,18 @@ def _scrub_sensitive(logger: Any, method_name: str, event_dict: dict[str, Any]) 
         # vendor SDK most often echoes the credential back at us.
         if isinstance(value, str):
             event_dict[key] = scrub_secret_values(value)
+        elif isinstance(value, dict):
+            scrubbed = {}
+            for k, v in value.items():
+                if any(s in str(k).lower() for s in _SENSITIVE_KEYS):
+                    scrubbed[k] = _REDACTED
+                elif isinstance(v, str):
+                    scrubbed[k] = scrub_secret_values(v)
+                else:
+                    scrubbed[k] = v
+            event_dict[key] = scrubbed
+        elif isinstance(value, list):
+            event_dict[key] = [scrub_secret_values(v) if isinstance(v, str) else v for v in value]
     return event_dict
 
 

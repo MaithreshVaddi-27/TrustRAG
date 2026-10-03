@@ -489,7 +489,22 @@ async def retrieval_node(state: AgentState) -> AgentState:
                     {"knowledge_base_id": ObjectId(state["kb_id"])}
                 )
 
-                if points_count == 0 and mongo_chunks_count > 0:
+                from datetime import UTC as _UTC
+                from datetime import datetime as _dt
+
+                _healed_recently = False
+                try:
+                    _kb_doc = await get_collection(Collections.KNOWLEDGE_BASES).find_one(
+                        {"_id": ObjectId(state["kb_id"])}
+                    )
+                    _healed_at = (_kb_doc or {}).get("self_healed_at")
+                    if _healed_at and (_dt.now(_UTC) - _healed_at).total_seconds() < 3600:
+                        _healed_recently = True
+                        logger.info("Self-heal skipped: recently healed", kb_id=state["kb_id"])
+                except Exception:
+                    _healed_recently = False
+
+                if points_count == 0 and mongo_chunks_count > 0 and not _healed_recently:
                     logger.info(
                         "Self-healing: Re-indexing chunks from MongoDB into Qdrant",
                         kb_id=state["kb_id"],
@@ -579,6 +594,13 @@ async def retrieval_node(state: AgentState) -> AgentState:
                             },
                         )
                     candidates = await retrieve_hybrid_chunks(**retrieve_kwargs)
+                    try:
+                        await get_collection(Collections.KNOWLEDGE_BASES).update_one(
+                            {"_id": ObjectId(state["kb_id"])},
+                            {"$set": {"self_healed_at": _dt.now(_UTC)}},
+                        )
+                    except Exception as exc:
+                        logger.debug("self_healed_at marker skipped", error=str(exc))
                 elif points_count == 0 and mongo_chunks_count == 0:
                     logger.warning("Knowledge base collection is empty", kb_id=state["kb_id"])
                     await add_trace_event(

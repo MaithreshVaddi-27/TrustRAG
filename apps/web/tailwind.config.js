@@ -9,7 +9,13 @@ export default {
     extend: {
       // ── Color system (Zero purple / violet / pink) ─────────────────────
       colors: {
-        // Primary — electric cyber azure / sky
+        // Slate readability remap (P1-25/S-1): default 500 (#64748b) and
+        // 600 (#475569) fail AA on dark surfaces. Lighter values keep body
+        // copy readable; scale order is intentionally sacrificed for contrast.
+        slate: {
+          500: '#7c8ba1',
+          600: '#94a3b8',
+        },        // Primary — electric cyber azure / sky
         primary: {
           50:  '#f0f9ff',
           100: '#e0f2fe',

@@ -39,7 +39,7 @@ TrustRAG is a trustworthy Retrieval-Augmented Generation system. It goes beyond 
 | Document store | MongoDB (async `motor`) |
 | Embeddings | Local-only `BAAI/bge-small-en-v1.5` — PyTorch (`huggingface`) or ONNX Runtime (`onnx`, torch-free) |
 | Reranking | CrossEncoder (sentence-transformers, off by default) |
-| Generation | llama.cpp / Ollama (local, default) · Gemini / NVIDIA NIM (cloud, selectable) |
+| Generation | llama.cpp / Ollama / MLX (local, default) · Gemini (cloud, optional `cloud` extra) |
 | Frontend | React 18, Vite 6, Tailwind CSS 3, `motion` |
 | Container runtime | Docker Compose |
 
@@ -326,7 +326,7 @@ Motion system: `motion` package with shared config (`lib/motionConfig.js`), entr
 
 **`.env`** — secrets and deployment-specific values:
 - `JWT_SECRET`, `MONGODB_URI`, `QDRANT_URL` (+ `QDRANT_API_KEY` for cloud)
-- `GEMINI_API_KEY` / `NVIDIA_API_KEY` (only for cloud LLM providers), `TAVILY_API_KEY` (else DuckDuckGo)
+- `GEMINI_API_KEY` / `TAVILY_API_KEY` — only with the optional `cloud` extra installed (both send data off-box)
 - `LLM_PROVIDER` (`AI_PROVIDER` alias), model/endpoint overrides (env wins over `models.yaml`). Embeddings have no provider choice — single ONNX engine from `embedding.model`.
 
 **`config/ports.yaml`** — canonical port registry for all services (Qdrant, MongoDB, Ollama, llama.cpp, frontend dev server).

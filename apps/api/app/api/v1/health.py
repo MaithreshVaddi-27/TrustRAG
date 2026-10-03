@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from fastapi.responses import PlainTextResponse
 
 from app.api.deps import get_current_user
@@ -66,6 +66,28 @@ async def health() -> dict:
         "timestamp": datetime.now(UTC).isoformat(),
         "app": settings.app_name,
         "version": settings.app_version,
+    }
+
+
+@router.get("/health/ready", summary="Readiness probe (503 when degraded)")
+async def health_ready(response: Response) -> dict:
+    """Readiness for Docker/K8s: 200 when all deps ok, 503 otherwise."""
+    mongo_ok = await mongo_health_check()
+    qdrant_ok = await qdrant_health_check()
+    if not (mongo_ok and qdrant_ok):
+        response.status_code = 503
+        return {
+            "status": "degraded",
+            "timestamp": datetime.now(UTC).isoformat(),
+            "services": {
+                "mongodb": "ok" if mongo_ok else "degraded",
+                "qdrant": "ok" if qdrant_ok else "degraded",
+            },
+        }
+    return {
+        "status": "ok",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "services": {"mongodb": "ok", "qdrant": "ok"},
     }
 
 

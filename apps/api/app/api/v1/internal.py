@@ -15,7 +15,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 
-from app.api.deps import require_service_permission
+from app.api.deps import enforce_service_tenant, require_service_permission
 from app.core.security.exceptions import RetrievalOutageError
 from app.core.security.security import create_service_token
 from app.llm.model_registry import registry_status
@@ -65,6 +65,8 @@ class InternalDocumentIngest(BaseModel):
 async def generate_service_token_endpoint(
     service_name: str,
     permissions: list[str],
+    bound_kb_id: str | None = None,
+    bound_user_id: str | None = None,
     current_service: Mapping[str, Any] = Depends(require_service_permission("admin:token:create")),
 ) -> dict[str, Any]:
     """
@@ -72,7 +74,12 @@ async def generate_service_token_endpoint(
 
     Requires admin:token:create permission.
     """
-    token = create_service_token(service_name=service_name, permissions=permissions)
+    token = create_service_token(
+        service_name=service_name,
+        permissions=permissions,
+        bound_kb_id=bound_kb_id,
+        bound_user_id=bound_user_id,
+    )
     return {
         "service_name": service_name,
         "token": token,
@@ -103,19 +110,7 @@ async def internal_ingest_document(
     """
     service_name = current_service.get("sub")
 
-    # M-2 tenant binding: if token is bound to a specific KB or user, enforce it
-    bound_kb = current_service.get("bound_kb_id")
-    if bound_kb and str(bound_kb) != str(kb_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Service token not authorized for this knowledge base",
-        )
-    bound_user = current_service.get("bound_user_id")
-    if bound_user and str(bound_user) != str(document_data.user_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Service token not authorized for this user",
-        )
+    enforce_service_tenant(current_service, kb_id, document_data.user_id)
 
     # Add document metadata
     doc = await add_document(
@@ -153,6 +148,7 @@ async def internal_search(
 
     Requires search:read permission.
     """
+    enforce_service_tenant(current_service, kb_id)
     try:
         top_k = max(1, min(int(top_k), 50))
     except (TypeError, ValueError):
@@ -160,11 +156,10 @@ async def internal_search(
     try:
         results = await retrieve_hybrid_chunks(query=query, kb_id=kb_id, top_k_override=top_k)
     except RetrievalOutageError as exc:
-        return {
-            "results": [],
-            "count": 0,
-            "error": f"retrieval outage: {exc}",
-        }
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Retrieval service temporarily unavailable",
+        ) from exc
 
     return {
         "results": results,
@@ -205,16 +200,9 @@ async def internal_verify_claims(
 # ─── Health & Status ──────────────────────────────────────────────────────────
 
 
-@router.get(
-    "/health",
-    summary="Internal service health check",
-)
-async def internal_health() -> dict[str, str]:
-    """
-    Health check endpoint for service mesh / load balancer.
-    No authentication required for basic liveness.
-    """
-    return {"status": "healthy"}
+# Liveness/readiness live at /api/v1/health and /api/v1/health/ready (which
+# actually probes Mongo + Qdrant). A hardcoded "healthy" here would report
+# success during an outage.
 
 
 @router.get(

@@ -129,12 +129,7 @@
   color: #38bdf8;
 }
 
-/* ── Focus Ring (Apple Design: clear, high-contrast) ───────────────────────── */
-
-:focus-visible {
-  outline: 2px solid #0ea5e9;
-  outline-offset: 2px;
-}
+/* ── Focus Ring lives once in index.css (consolidated from 3 definitions) ── */
 
 /* ── Safe Area Insets ──────────────────────────────────────────────────────── */
 
@@ -195,7 +190,8 @@
   }
 
   .text-slate-400,
-  .text-slate-500 {
+  .text-slate-500,
+  .text-slate-600 {
     color: var(--text-muted) !important;
   }
 }

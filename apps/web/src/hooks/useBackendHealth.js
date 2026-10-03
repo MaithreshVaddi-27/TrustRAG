@@ -34,16 +34,16 @@ export default function useBackendHealth(intervalMs = POLL_MS) {
     abortRef.current = controller
 
     setIsChecking(true)
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
     try {
-      const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
       await api.get('/api/v1/health', { signal: controller.signal })
-      clearTimeout(timeoutId)
       setIsOnline(true)
     } catch (err) {
       if (err.name !== 'CanceledError' && err.code !== 'ERR_CANCELED') {
         setIsOnline(false)
       }
     } finally {
+      clearTimeout(timeoutId)
       setIsChecking(false)
       setLastChecked(Date.now())
     }

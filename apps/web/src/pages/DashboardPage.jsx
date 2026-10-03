@@ -15,6 +15,7 @@ import AppLayout from '@/layouts/AppLayout'
 import { ReliabilityBadge } from '@/components/workbench/ReliabilityBadge'
 import { SkeletonRows } from '@/components/workbench/Skeleton'
 import { kbService, analysisService, claimService, conflictService } from '@/services/api'
+import { normalizeClaimState } from '@/lib/claimState'
 import { formatDistanceToNow, format } from 'date-fns'
 
 const PIPELINE_PHASES = [
@@ -64,6 +65,13 @@ export default function DashboardPage() {
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [historyWindow, setHistoryWindow] = useState('10') // '10' | '20' | 'all'
   const [lastSync, setLastSync] = useState(new Date())
+  const [, setTick] = useState(0)
+
+  // Re-render every 30s so "Synced x ago" never freezes (N-82).
+  useEffect(() => {
+    const t = setInterval(() => setTick(x => x + 1), 30000)
+    return () => clearInterval(t)
+  }, [])
 
   // Real-time live polling every 3 seconds for active telemetry
   const {
@@ -76,7 +84,7 @@ export default function DashboardPage() {
   } = useQuery({
     queryKey: ['analyses'],
     queryFn: analysisService.list,
-    refetchInterval: autoRefresh ? 3000 : false,
+    refetchInterval: autoRefresh ? 5000 : false,
   })
 
   const {
@@ -88,7 +96,7 @@ export default function DashboardPage() {
   } = useQuery({
     queryKey: ['all-claims'],
     queryFn: claimService.list,
-    refetchInterval: autoRefresh ? 3000 : false,
+    refetchInterval: autoRefresh ? 15000 : false,
   })
 
   const {
@@ -99,7 +107,7 @@ export default function DashboardPage() {
   } = useQuery({
     queryKey: ['all-conflicts'],
     queryFn: conflictService.list,
-    refetchInterval: autoRefresh ? 5000 : false,
+    refetchInterval: autoRefresh ? 15000 : false,
   })
 
   const {
@@ -111,7 +119,7 @@ export default function DashboardPage() {
   } = useQuery({
     queryKey: ['knowledgeBases'],
     queryFn: kbService.list,
-    refetchInterval: autoRefresh ? 5000 : false,
+    refetchInterval: autoRefresh ? 30000 : false,
   })
 
   // First paint: show layout-matching skeletons instead of a false "0" state.
@@ -149,9 +157,9 @@ export default function DashboardPage() {
     })
 
     claims.forEach(c => {
-      const s = (c.state || c.status || c.verification_status || '').toLowerCase()
-      if (s === 'supported' || s === 'verified') supportedClaims++
-      else if (s === 'contradicted') contradictedClaims++
+      const s = normalizeClaimState(c)
+      if (s === 'SUPPORTED' || s === 'VERIFIED') supportedClaims++
+      else if (s === 'CONTRADICTED') contradictedClaims++
       else neutralClaims++
     })
 
@@ -194,8 +202,8 @@ export default function DashboardPage() {
         time: format(createdDate, 'HH:mm'),
         fullTime: format(createdDate, 'MMM dd, HH:mm:ss'),
         score: scoreValue,
-        threshold: 70,
-        status: a.reliability?.status || (scoreValue >= 70 ? 'TRUSTED' : (scoreValue > 0 ? 'UNCERTAIN' : 'FAILED')),
+        threshold: 75,
+        status: a.reliability?.status || (scoreValue >= 75 ? 'TRUSTED' : (scoreValue > 0 ? 'UNCERTAIN' : 'FAILED')),
         query: a.query || 'Untitled Analysis',
         shortQuery: (a.query || '').length > 30 ? (a.query || '').slice(0, 30) + '…' : (a.query || 'Untitled Analysis'),
         statusRaw: a.status,
@@ -279,7 +287,7 @@ export default function DashboardPage() {
                   ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800/60'
                   : 'bg-surface-950 text-slate-400 border-slate-800'
               }`}>
-                {autoRefresh ? 'Active Polling (3s)' : 'Paused'}
+                {autoRefresh ? 'Active Polling (5s)' : 'Paused'}
               </span>
             </div>
           </div>
@@ -375,7 +383,7 @@ export default function DashboardPage() {
               <p className="text-3xl font-extrabold text-white tracking-tight">{analyses.length}</p>
               <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
                 <span>Analyses Executed</span>
-                <span className="font-mono text-emerald-400">100% Grounded</span>
+                <span className="font-mono text-emerald-400">Evidence-linked</span>
               </div>
             </div>
           </Link>
@@ -388,14 +396,14 @@ export default function DashboardPage() {
                 <ShieldCheck size={20} />
               </div>
               <span className="flex items-center gap-1 text-[11px] font-mono font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-full">
-                <TrendingUp size={11} /> High Trust
+                <TrendingUp size={11} /> {Number(stats.avgReliability) >= 75 ? 'High Trust' : Number(stats.avgReliability) >= 50 ? 'Medium Trust' : 'Low Trust'}
               </span>
             </div>
             <div className="mt-4">
               <p className="text-3xl font-extrabold text-white tracking-tight">{stats.avgReliabilityDisplay}</p>
               <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
                 <span>Mean Reliability</span>
-                <span className="font-mono text-slate-500">Threshold: 70%</span>
+                <span className="font-mono text-slate-500">Threshold: 75%</span>
               </div>
             </div>
           </div>
@@ -432,7 +440,7 @@ export default function DashboardPage() {
                   <Activity size={16} className="text-cyan-400" />
                   Reliability Progression Curve
                 </h3>
-                <p className="text-xs text-slate-400 mt-0.5">Chronological execution history trajectory vs. safety threshold (70%)</p>
+                <p className="text-xs text-slate-400 mt-0.5">Chronological execution history trajectory vs. safety threshold (75%)</p>
               </div>
 
               {/* History Window Filter Pills */}
@@ -505,11 +513,11 @@ export default function DashboardPage() {
                       tickLine={false}
                     />
                     <ReferenceLine
-                      y={70}
+                      y={75}
                       stroke="#f59e0b"
                       strokeDasharray="3 3"
                       label={{
-                        value: 'Safety Threshold (70%)',
+                        value: 'Safety Threshold (75%)',
                         position: 'insideTopRight',
                         fill: '#f59e0b',
                         fontSize: 10,
@@ -722,7 +730,7 @@ export default function DashboardPage() {
 function CustomTimelineTooltip({ active, payload }) {
   if (!active || !payload || !payload.length) return null
   const data = payload[0].payload
-  const isTrusted = data.score >= 70
+  const isTrusted = data.score >= 75
   const isFailed = data.score === 0 || data.status === 'FAILED'
 
   return (
@@ -755,13 +763,13 @@ function CustomTimelineTooltip({ active, payload }) {
         <div className="flex items-baseline gap-1.5">
           <span
             className={`font-mono font-bold text-sm ${
-              data.score >= 70 ? 'text-emerald-400' : 'text-amber-400'
+              data.score >= 75 ? 'text-emerald-400' : 'text-amber-400'
             }`}
           >
             {data.score}%
           </span>
           <span className="text-[10px] text-slate-500 font-mono">
-            ({data.score >= 70 ? 'Passed' : 'Under 70%'})
+            ({data.score >= 75 ? 'Passed' : 'Under 75%'})
           </span>
         </div>
       </div>

@@ -25,7 +25,6 @@
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://trustrag.pages.dev/" />
     <meta property="og:site_name" content="TRUSTRAG Workbench" />
     <meta property="og:title" content="TRUSTRAG — AI Reliability & Hallucination Audit Workbench" />
     <meta property="og:description" content="Autonomous Hallucination Detection & Closed-Loop Recovery Platform. Audit claims, verify evidence citations with RRF, and self-heal low-confidence RAG responses." />
@@ -35,21 +34,8 @@
     <meta property="twitter:title" content="TRUSTRAG — AI Reliability & Hallucination Audit Workbench" />
     <meta property="twitter:description" content="Autonomous Hallucination Detection & Closed-Loop Recovery Platform. Audit claims, verify evidence citations with RRF, and self-heal low-confidence RAG responses." />
 
-    <!-- Google Fonts: Inter + JetBrains Mono (Non-blocking with offline fallback) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-      media="print"
-      onload="this.media='all'"
-    />
-    <noscript>
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-      />
-    </noscript>
+    <!-- Fonts: system stack only (P1-14/C-5). No Google Fonts CDN — air-gapped
+      installs must not degrade type or leak visitor IPs to a third party. -->
   </head>
   <body class="bg-surface-900 text-slate-100 font-sans antialiased">
     <div id="root"></div>

@@ -3,6 +3,7 @@ import { motion } from 'motion/react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import { useAuthStore } from '@/store/authStore'
 import { authService } from '@/services/auth'
 import { healthService, modelService } from '@/services/api'
@@ -46,16 +47,16 @@ export default function SettingsPage() {
     }
   }
 
-  const { data: health, isLoading } = useQuery({
-    queryKey: ['system-health'],
+  const { data: health, isLoading, isError: healthError } = useQuery({
+    queryKey: ['backend-health'],
     queryFn: healthService.get,
     refetchInterval: 30000,
   })
 
-  const { data: providersData } = useQuery({
-    queryKey: ['settings-model-providers'],
+  const { data: providersData, isError: providersError } = useQuery({
+    queryKey: ['model-providers'],
     queryFn: modelService.getProviders,
-    refetchInterval: 15000,
+    refetchInterval: 30000,
   })
 
   const copyUserId = async () => {
@@ -67,17 +68,23 @@ export default function SettingsPage() {
     }
   }
 
+  const [confirmLogout, setConfirmLogout] = useState(false)
+
   const handleLogout = async () => {
-    if (confirm('Are you sure you want to sign out?')) {
-      await authService.logout()
-      navigate('/login')
-    }
+    setConfirmLogout(true)
+  }
+
+  const doLogout = async () => {
+    setConfirmLogout(false)
+    await authService.logout()
+    navigate('/login')
   }
 
   const mongoStatus = health?.services?.mongodb === 'ok'
   const qdrantStatus = health?.services?.qdrant === 'ok'
-  const models = health?.models || {}
-  const supportedFormats = health?.supported_formats || [
+  const healthUnknown = healthError || (!isLoading && !health)
+  const models = health?.models || (healthUnknown ? {} : {})
+  const supportedFormats = health?.supported_formats || (healthUnknown ? [] : [
     'pdf',
     'txt',
     'md',
@@ -86,7 +93,7 @@ export default function SettingsPage() {
     'json',
     'html',
     'htm',
-  ]
+  ])
 
   return (
     <AppLayout>
@@ -109,17 +116,19 @@ export default function SettingsPage() {
           <div className="flex items-center gap-2">
             <span
               className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
-                health?.status === 'ok'
-                  ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800/60'
-                  : 'bg-amber-950/80 text-amber-400 border-amber-800/60'
+                healthUnknown
+                  ? 'bg-slate-800 text-slate-400 border-slate-700'
+                  : health?.status === 'ok'
+                    ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800/60'
+                    : 'bg-amber-950/80 text-amber-400 border-amber-800/60'
               }`}
             >
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
-                  health?.status === 'ok' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                  healthUnknown ? 'bg-slate-500' : health?.status === 'ok' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
                 }`}
               />
-              System {health?.status === 'ok' ? 'Operational' : 'Degraded'}
+              System {healthUnknown ? 'Unknown' : health?.status === 'ok' ? 'Operational' : 'Degraded'}
             </span>
           </div>
         </div>
@@ -157,9 +166,9 @@ export default function SettingsPage() {
               <div className="mt-3 pt-2 border-t border-slate-700/40 flex items-center justify-between text-xs">
                 <span className="text-slate-500">Status</span>
                 <span
-                  className={`font-semibold ${mongoStatus ? 'text-emerald-400' : 'text-red-400'}`}
+                  className={`font-semibold ${healthUnknown ? 'text-slate-400' : mongoStatus ? 'text-emerald-400' : 'text-red-400'}`}
                 >
-                  {mongoStatus ? 'Connected' : 'Disconnected'}
+                  {healthUnknown ? 'Unknown' : mongoStatus ? 'Connected' : 'Disconnected'}
                 </span>
               </div>
             </div>
@@ -224,7 +233,7 @@ export default function SettingsPage() {
               <div className="mt-3 pt-2 border-t border-slate-700/40 flex items-center justify-between text-xs">
                 <span className="text-slate-500">Release</span>
                 <span className="font-semibold text-slate-200 font-mono">
-                  {health?.version || '0.1.0'}
+                  {health?.version || (healthUnknown ? 'Unknown' : '0.1.0')}
                 </span>
               </div>
             </div>
@@ -278,7 +287,7 @@ export default function SettingsPage() {
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                Engine: <code className="text-amber-400 font-mono">{providersData?.hardware?.accelerator?.toUpperCase() || 'CPU'}</code> &bull; Machine: <code className="text-slate-300 font-mono">{providersData?.hardware?.machine || 'arm64'}</code>
+                Engine: <code className="text-amber-400 font-mono">{providersData?.hardware?.accelerator?.toUpperCase() || (providersError ? 'Unknown' : 'CPU')}</code> &bull; Machine: <code className="text-slate-300 font-mono">{providersData?.hardware?.machine || (providersError ? 'Unknown' : 'arm64')}</code>
               </p>
             </div>
 
@@ -477,7 +486,7 @@ export default function SettingsPage() {
             <div className="py-2.5 flex items-center justify-between">
               <span className="text-slate-400 font-medium">Active LLM Engine</span>
               <span className="font-mono text-emerald-300 bg-surface-800 px-2 py-0.5 rounded border border-slate-700/60 uppercase">
-                {models.llm_provider || 'ollama'} ({models.llm_model || 'granite4.2:3b-q4_K_M'})
+                {healthUnknown ? 'Unknown' : `${models.llm_provider || 'llama_cpp'} (${models.llm_model || 'see models.yaml'})`}
               </span>
             </div>
             <div className="py-2.5 flex items-center justify-between">
@@ -489,7 +498,7 @@ export default function SettingsPage() {
             <div className="py-2.5 flex items-center justify-between">
               <span className="text-slate-400 font-medium">NLI Claim Verifier</span>
               <span className="font-mono text-slate-200 bg-surface-800 px-2 py-0.5 rounded border border-slate-700/60">
-                {models.verification_model || 'gemini-3.5-flash-lite'} (temp=0.0)
+                {healthUnknown ? 'Unknown' : `${models.verification_model || 'see models.yaml'} (temp=0.0)`}
               </span>
             </div>
             <div className="py-2.5 flex items-center justify-between">
@@ -590,6 +599,15 @@ export default function SettingsPage() {
             </p>
           </div>
         </div>
+        <ConfirmDialog
+          open={confirmLogout}
+          title="Sign out?"
+          message="End this session and return to the login screen."
+          confirmLabel="Sign Out"
+          danger={false}
+          onCancel={() => setConfirmLogout(false)}
+          onConfirm={doLogout}
+        />
       </motion.div>
     </AppLayout>
   )

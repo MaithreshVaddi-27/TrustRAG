@@ -22,6 +22,8 @@ from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = structlog.get_logger(__name__)
+
+_ports_cache: dict[str, Any] = {"mtime": None, "ports": None}
 # ─── Paths ────────────────────────────────────────────────────────────────
 
 # apps/api/ root (three levels above this file: config/ -> core/ -> app/)
@@ -44,10 +46,17 @@ def _load_ports_yaml() -> dict[str, int]:
     try:
         if not _PORTS_YAML_PATH.exists():
             return {}
+        mtime = _PORTS_YAML_PATH.stat().st_mtime
+        cached = _ports_cache.get("mtime")
+        if cached == mtime and _ports_cache.get("ports") is not None:
+            return dict(_ports_cache["ports"])
         with _PORTS_YAML_PATH.open("r", encoding="utf-8") as fh:
             data = yaml.safe_load(fh)
         ports = (data or {}).get("ports", {}) if isinstance(data, dict) else {}
-        return {k: int(v) for k, v in ports.items() if isinstance(v, int)}
+        parsed = {k: int(v) for k, v in ports.items() if isinstance(v, int)}
+        _ports_cache["mtime"] = mtime
+        _ports_cache["ports"] = parsed
+        return dict(parsed)
     except Exception:
         logger.debug("Failed to load ports.yaml, using empty config")
         return {}

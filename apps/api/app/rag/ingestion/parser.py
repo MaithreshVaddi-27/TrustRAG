@@ -151,9 +151,11 @@ def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
                 native_text = page.get_text().strip()
                 text, ocr_used, ocr_confidence = native_text, False, None
                 page_image_png: bytes | None = None
+                ocr_attempted, ocr_failed = False, False
                 if cfg.ocr_enabled and ocr_module.should_ocr_page(
                     native_text, cfg.ocr_min_native_chars
                 ):
+                    ocr_attempted = True
                     try:
                         pix = page.get_pixmap(dpi=cfg.ocr_dpi)
                         if pix.w * pix.h > MAX_RENDER_PIXELS:
@@ -189,6 +191,7 @@ def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
                     except Exception as exc:
                         # Fail open: a broken OCR page must not kill ingestion
                         # of the whole document; keep whatever native text exists.
+                        ocr_failed = True
                         logger.warning(
                             "OCR fallback failed; keeping native page text",
                             page=i + 1,
@@ -201,6 +204,8 @@ def parse_pdf(stream: BinaryIO) -> list[dict[str, Any]]:
                         "ocr_used": ocr_used,
                         "ocr_confidence": ocr_confidence,
                         "page_image_png": page_image_png,
+                        "ocr_attempted": ocr_attempted,
+                        "ocr_failed": ocr_failed,
                     }
                 )
             return pages

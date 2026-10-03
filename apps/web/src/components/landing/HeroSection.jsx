@@ -82,8 +82,8 @@ export default function HeroSection() {
         </div>
         <div className="p-5 rounded-2xl bg-surface-900/50 border border-slate-800/80 backdrop-blur-md hover:border-emerald-400/60 hover:bg-surface-850/90 hover:-translate-y-2 hover:shadow-2xl hover:shadow-emerald-950/50 transition-all duration-300 group cursor-default relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400 font-mono group-hover:scale-105 transition-transform origin-left">0.0%</div>
-          <div className="text-xs text-slate-400 mt-1">Hallucination Leakage</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400 font-mono group-hover:scale-105 transition-transform origin-left">Abstain-safe</div>
+          <div className="text-xs text-slate-400 mt-1">Unverified answers withheld</div>
         </div>
         <div className="p-5 rounded-2xl bg-surface-900/50 border border-slate-800/80 backdrop-blur-md hover:border-cyan-400/60 hover:bg-surface-850/90 hover:-translate-y-2 hover:shadow-2xl hover:shadow-cyan-950/50 transition-all duration-300 group cursor-default relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -92,8 +92,8 @@ export default function HeroSection() {
         </div>
         <div className="p-5 rounded-2xl bg-surface-900/50 border border-slate-800/80 backdrop-blur-md hover:border-sky-400/60 hover:bg-surface-850/90 hover:-translate-y-2 hover:shadow-2xl hover:shadow-sky-950/50 transition-all duration-300 group cursor-default relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-sky-400 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="text-2xl sm:text-3xl font-extrabold text-sky-400 font-mono group-hover:scale-105 transition-transform origin-left">0 MB</div>
-          <div className="text-xs text-slate-400 mt-1">Local GPU Weights (Pure Cloud)</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-sky-400 font-mono group-hover:scale-105 transition-transform origin-left">0 bytes</div>
+          <div className="text-xs text-slate-400 mt-1">Leave your network (local-first)</div>
         </div>
       </div>
     </section>

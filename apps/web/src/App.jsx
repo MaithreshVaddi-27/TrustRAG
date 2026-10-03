@@ -57,11 +57,15 @@ function RedirectIfAuth({ children }) {
 }
 
 /**
- * Wraps a route element in an ErrorBoundary so a crash on one page
- * shows a recovery UI instead of unmounting the entire app (FE-H3).
+ * Wraps a route element in an ErrorBoundary + per-route Suspense so a lazy
+ * chunk load replaces only its route — never the whole sidebar/navbar tree.
  */
 function guarded(element) {
-  return <ErrorBoundary>{element}</ErrorBoundary>
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<PageLoading />}>{element}</Suspense>
+    </ErrorBoundary>
+  )
 }
 
 const PATH_TITLES = {
@@ -89,7 +93,7 @@ function TitleSync() {
 
 export default function App() {
   return (
-    <Suspense fallback={<PageLoading />}>
+    <>
       <TitleSync />
       <Routes>
         {/* ── Public ──────────────────────────────────────────── */}
@@ -110,6 +114,6 @@ export default function App() {
         {/* ── Fallback ────────────────────────────────────────── */}
         <Route path="*" element={guarded(<NotFoundPage />)} />
       </Routes>
-    </Suspense>
+    </>
   )
 }

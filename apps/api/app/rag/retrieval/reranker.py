@@ -80,7 +80,8 @@ def _rerank_sync(
     # discard candidates before scoring, defeating reranking entirely.
     # Copy each dict: rerank_score assignment below must not leak into the
     # caller's chunks (a list slice alone shares the dicts).
-    depth_cap = max(cfg.reranker_top_k, cfg.fusion_top_k, max_context)
+    # L-6: scale depth by tier — lean keeps 5, scoring 20 is 4x waste.
+    depth_cap = min(cfg.reranker_top_k, max(cfg.fusion_top_k, max_context * 2))
     candidates = [dict(c) for c in chunks[:depth_cap]]
 
     try:
@@ -102,7 +103,8 @@ def _rerank_sync(
         all_scores: list[float] = [0.0] * len(pairs)
 
         if pairs:
-            batch_size = min(cfg.reranker_batch_size, len(pairs))
+            _batch = getattr(cfg, "reranker_batch_size_effective", None) or cfg.reranker_batch_size
+            batch_size = min(_batch, len(pairs))
             # NOTE: no second `model is None` check here — None already
             # returned above, so it is unreachable.
 

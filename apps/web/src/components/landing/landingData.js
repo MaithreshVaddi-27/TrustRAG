@@ -196,9 +196,9 @@ export const BENCHMARKS = {
     title: 'End-to-End Latency Overhead',
     description: 'Full retrieval, claim decomposition, and NLI verification time per query in milliseconds (lower is better).',
     metrics: [
-      { label: 'TrustRAG Hybrid RRF + MRL (Ours)', value: 114, suffix: 'ms', width: '18%', color: 'from-emerald-400 to-cyan-400', badge: 'Real-time UX', highlight: true },
-      { label: 'Standard Dense RAG', value: 98, suffix: 'ms', width: '15%', color: 'from-slate-600 to-slate-500', badge: 'Blind (No Audit)' },
-      { label: 'Reranker Cross-Encoders', value: 480, suffix: 'ms', width: '48%', color: 'from-slate-700 to-slate-600', badge: 'Sluggish' },
+      { label: 'TrustRAG Hybrid RRF + MRL (Ours)', value: 114, suffix: 'ms', width: '4.6%', color: 'from-emerald-400 to-cyan-400', badge: 'Real-time UX', highlight: true },
+      { label: 'Standard Dense RAG', value: 98, suffix: 'ms', width: '4%', color: 'from-slate-600 to-slate-500', badge: 'Blind (No Audit)' },
+      { label: 'Reranker Cross-Encoders', value: 480, suffix: 'ms', width: '19.6%', color: 'from-slate-700 to-slate-600', badge: 'Sluggish' },
       { label: 'Multi-Agent Critique Loops', value: 2450, suffix: 'ms', width: '100%', color: 'from-red-900 to-red-700', badge: 'Unusable for UX' },
     ],
   },

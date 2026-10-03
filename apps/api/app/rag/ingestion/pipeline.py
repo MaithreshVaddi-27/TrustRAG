@@ -167,6 +167,10 @@ async def _index_parsed_chunks(
                     )
         except Exception as exc:
             logger.warning("Page-image persist skipped", doc_id=doc_id_str, error=str(exc))
+        # P1-9: drop in-memory PNG bytes once persisted; peak retention is one
+        # page during save, not the whole document across chunks.
+        for c in chunks:
+            c.pop("page_image_png", None)
         mongo_chunks = []
         for c in chunks:
             mongo_chunks.append(
@@ -273,8 +277,30 @@ async def _index_parsed_chunks(
 
         logger.info("Incremental indexing completed", doc_id=doc_id_str, chunks=len(points))
 
-        # 5. Mark document completed
-        await doc_coll.update_one({"_id": doc_id}, {"$set": {"ingestion_status": "completed"}})
+        # 5. Mark document completed (or degraded on partial OCR failure)
+        ocr_failed_chunks = sum(1 for c in chunks if c.get("ocr_failed"))
+        doc_ocr_failed = int((doc or {}).get("ocr_pages_failed") or 0)
+        if ocr_failed_chunks or doc_ocr_failed:
+            await doc_coll.update_one(
+                {"_id": doc_id},
+                {
+                    "$set": {
+                        "ingestion_status": "degraded",
+                        "ocr_pages_failed": max(ocr_failed_chunks, doc_ocr_failed),
+                        "error_message": (
+                            f"OCR failed on {max(ocr_failed_chunks, doc_ocr_failed)} page(s); "
+                            "those pages contributed no evidence."
+                        ),
+                    }
+                },
+            )
+            logger.warning(
+                "Ingestion degraded: OCR failures left pages empty",
+                doc_id=doc_id_str,
+                ocr_failed=max(ocr_failed_chunks, doc_ocr_failed),
+            )
+        else:
+            await doc_coll.update_one({"_id": doc_id}, {"$set": {"ingestion_status": "completed"}})
         logger.info("Ingestion completed successfully", doc_id=doc_id_str, chunks=len(points))
 
         # 6. Record embedding dimensionality on the KB (pin itself was

@@ -154,6 +154,6 @@ def test_analysis_latency_budget_default_and_disable(_clean_onnx_env, monkeypatc
     """Audit L-1: whole-analysis wall-clock bound (0 disables)."""
     from app.core.config.model_config import get_model_config
 
-    assert get_model_config().max_analysis_seconds == 120
+    assert get_model_config().max_analysis_seconds == 600
     monkeypatch.setenv("MAX_ANALYSIS_SECONDS", "0")
     assert get_model_config().max_analysis_seconds == 0

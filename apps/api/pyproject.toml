@@ -27,12 +27,10 @@ dependencies = [
     "langchain>=0.3.0",
     "langchain-core>=0.3.0",
     "langchain-community>=0.3.0",
-    "langchain-google-genai>=2.0.0",
     "langgraph>=0.2.0",
 
-    # ── Model Context Protocol & Search ──────────────────────────────────────
+    # ── Model Context Protocol ───────────────────────────────────────────────
     "mcp>=2.1.0",
-    "tavily-python>=0.8.0",
 
     # ── Vector store ─────────────────────────────────────────────────────────
     "qdrant-client>=1.10.0",
@@ -46,9 +44,10 @@ dependencies = [
 
     # ── Security ─────────────────────────────────────────────────────────────
     "python-jose[cryptography]>=3.3.0",  # JWT
-    "passlib[bcrypt]>=1.7.4",            # Password hashing
+    "bcrypt>=4.1.0",                     # Password hashing (security.py uses bcrypt directly)
     "email-validator>=2.0.0",            # Email format validation for Pydantic EmailStr
     "python-dotenv>=1.0.0",              # .env file loading
+    "slowapi>=0.1.9",                    # Rate limiting (P1-19)
 
     # ── Observability ────────────────────────────────────────────────────────
     "structlog>=24.1.0",          # Structured JSON logging
@@ -71,6 +70,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Cloud egress is opt-in (P1-14/C-5). These are the only two paths that can
+# send user data off-box: the Gemini LLM provider and Tavily web search.
+# The on-prem default install ships neither; enabling either requires
+# installing this extra AND setting the matching API key.
+cloud = [
+    "langchain-google-genai>=2.0.0",
+    "tavily-python>=0.8.0",
+]
 local-models = [
     "sentence-transformers>=3.0.0",
     "langchain-huggingface>=0.1.0",
@@ -90,7 +97,6 @@ dev = [
     "mypy>=1.10.0",
     "types-pyyaml",
     "types-python-jose",
-    "types-passlib",
 ]
 
 [build-system]
@@ -136,7 +142,10 @@ extend-immutable-calls = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=app --cov-report=term-missing -v"
+# N-93/A-15: coverage was printed every run but never gated. --cov-fail-under
+# is the ratchet: it fails the suite below the floor, so coverage cannot silently
+# regress. Lower it deliberately as the floor is raised over time.
+addopts = "--cov=app --cov-report=term-missing --cov-fail-under=78 -v"
 
 [tool.mypy]
 python_version = "3.11"

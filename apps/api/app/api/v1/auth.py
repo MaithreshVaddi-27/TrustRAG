@@ -7,7 +7,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.api.deps import get_current_user, oauth2_scheme
 from app.api.v1.schemas.auth import TokenResponse, UserLogin, UserRegister, UserResponse
@@ -15,6 +17,7 @@ from app.core.security.exceptions import AuthenticationError
 from app.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+_auth_limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post(
@@ -23,15 +26,18 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user account",
 )
-async def register(schema: UserRegister) -> UserResponse:
+@_auth_limiter.limit("3/hour")
+async def register(request: Request, schema: UserRegister) -> UserResponse:
     """Register user details and return profile info."""
     return await auth_service.register_user(schema)
 
 
 @router.post("/login", response_model=TokenResponse, summary="User login session generation")
-async def login(schema: UserLogin) -> TokenResponse:
+@_auth_limiter.limit("5/minute")
+async def login(request: Request, schema: UserLogin) -> TokenResponse:
     """Verify credentials and return access JWT token."""
-    token, user = await auth_service.authenticate_user(schema.email, schema.password)
+    client_ip = request.client.host if request.client else None
+    token, user = await auth_service.authenticate_user(schema.email, schema.password, client_ip)
     return TokenResponse(access_token=token, user=user)
 
 

@@ -31,6 +31,8 @@ logger = get_logger(__name__)
 RETRIEVAL_BRANCH_TIMEOUT = 45.0
 RETRIEVAL_HYBRID_TIMEOUT = 60.0
 
+_collection_dim_cache: dict[str, int] = {}
+
 
 def _env_float(name: str) -> float | None:
     raw = os.environ.get(name)
@@ -63,9 +65,15 @@ async def _get_collection_dimension(
     client: Any,
     collection_name: str,
 ) -> int | None:
-    """Read the Qdrant collection vector dimension."""
+    """Read the Qdrant collection vector dimension (memoized per collection)."""
+    cached = _collection_dim_cache.get(collection_name)
+    if cached is not None:
+        return cached
     col_info = await client.get_collection(collection_name)
-    return getattr(col_info.config.params.vectors, "size", None)
+    dim = getattr(col_info.config.params.vectors, "size", None)
+    if dim is not None:
+        _collection_dim_cache[collection_name] = dim
+    return dim
 
 
 async def dense_search(

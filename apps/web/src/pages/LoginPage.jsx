@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import AuthLayout from '@/layouts/AuthLayout'
@@ -10,21 +10,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [loadingTime, setLoadingTime] = useState(0)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    let interval
-    if (loading) {
-      setLoadingTime(0)
-      interval = setInterval(() => {
-        setLoadingTime((prev) => prev + 1)
-      }, 1000)
-    } else {
-      setLoadingTime(0)
-    }
-    return () => clearInterval(interval)
-  }, [loading])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -49,13 +35,10 @@ export default function LoginPage() {
           </div>
         )}
 
-        {loading && loadingTime >= 5 && (
-          <div className="rounded-lg border border-cyan-800/50 bg-cyan-950/30 px-3 py-2.5 text-xs text-cyan-300 animate-pulse space-y-1">
+        {loading && (
+          <div className="rounded-lg border border-cyan-800/50 bg-cyan-950/30 px-3 py-2.5 text-xs text-cyan-300 space-y-1">
             <p className="font-semibold flex items-center gap-1.5">
-              ⚡ Connecting to TrustRAG API ({loadingTime}s elapsed)
-            </p>
-            <p className="text-slate-400 text-[11px] leading-relaxed">
-              Verifying credentials against local authentication database. Please wait while the secure session initializes.
+              <Loader2 size={13} className="animate-spin" /> Signing in…
             </p>
           </div>
         )}

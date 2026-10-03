@@ -86,7 +86,7 @@ async def get_kb(kb_id_str: str, user_id_str: str) -> KBResponse:
     try:
         kb_id = ObjectId(kb_id_str)
     except Exception as exc:
-        raise NotFoundError("Knowledge Base not found", detail=str(exc)) from exc
+        raise NotFoundError("Knowledge Base not found") from exc
 
     kb = await get_collection(Collections.KNOWLEDGE_BASES).find_one({"_id": kb_id})
     if not kb:
@@ -103,14 +103,25 @@ async def get_kb(kb_id_str: str, user_id_str: str) -> KBResponse:
     return serialize_kb(kb, doc_count)
 
 
-async def list_kbs(user_id_str: str) -> list[KBResponse]:
+async def list_kbs(user_id_str: str, limit: int = 200, skip: int = 0) -> list[KBResponse]:
     """List all knowledge bases owned by user with document counts in a single aggregation."""
     kb_coll = get_collection(Collections.KNOWLEDGE_BASES)
     doc_coll = get_collection(Collections.DOCUMENTS)
 
     # Fetch all KBs owned by user in one query
     user_obj_id = ObjectId(user_id_str)
-    kbs_raw = await kb_coll.find({"user_id": user_obj_id}).sort("created_at", -1).to_list(500)
+    capped = min(max(limit, 1), 500)
+    kbs_raw = (
+        await kb_coll.find({"user_id": user_obj_id})
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(capped)
+        .to_list(capped)
+    )
+    if len(kbs_raw) == 500 and skip == 0:
+        from app.core.observability.logging import get_logger as _get_logger
+
+        _get_logger(__name__).warning("KB list truncated at 500; use skip/limit pagination")
 
     if not kbs_raw:
         return []
@@ -214,14 +225,23 @@ async def add_document(
         raise
 
 
-async def list_kb_documents(kb_id_str: str, user_id_str: str) -> list[DocResponse]:
+async def list_kb_documents(
+    kb_id_str: str, user_id_str: str, limit: int = 200, skip: int = 0
+) -> list[DocResponse]:
     """List all documents registered in a knowledge base."""
     # Verify owner
     await get_kb(kb_id_str, user_id_str)
 
     doc_coll = get_collection(Collections.DOCUMENTS)
     docs = []
-    async for d in doc_coll.find({"knowledge_base_id": ObjectId(kb_id_str)}).sort("created_at", -1):
+    capped = min(max(limit, 1), 500)
+    cursor = (
+        doc_coll.find({"knowledge_base_id": ObjectId(kb_id_str)})
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(capped)
+    )
+    async for d in cursor:
         docs.append(serialize_doc(d))
     return docs
 
@@ -496,7 +516,7 @@ async def delete_document(doc_id_str: str, user_id_str: str) -> None:
     try:
         doc_id = ObjectId(doc_id_str)
     except Exception as exc:
-        raise NotFoundError("Document not found", detail=str(exc)) from exc
+        raise NotFoundError("Document not found") from exc
 
     doc_coll = get_collection(Collections.DOCUMENTS)
     doc = await doc_coll.find_one({"_id": doc_id})

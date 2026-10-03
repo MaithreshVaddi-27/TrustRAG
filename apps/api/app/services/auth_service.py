@@ -79,43 +79,56 @@ def _get_failed_logins_coll():
     return get_collection(Collections.FAILED_LOGINS)
 
 
-async def _is_locked_out(email: str) -> bool:
+async def _is_locked_out(email: str, client_ip: str | None = None) -> bool:
     settings = get_settings()
     now_dt = datetime.now(UTC)
     coll = _get_failed_logins_coll()
-    doc = await coll.find_one({"_id": email})
+    key = f"{email}|{client_ip}" if client_ip else email
+    doc = await coll.find_one({"_id": key})
+    if not doc and client_ip:
+        doc = await coll.find_one({"_id": email})
     if not doc:
         return False
     # If window expired, TTL will clean it; but double-check
     if doc.get("window_expires") and doc["window_expires"] < now_dt:
-        await coll.delete_one({"_id": email})
+        await coll.delete_one({"_id": doc["_id"]})
         return False
     return doc.get("count", 0) >= settings.login_max_attempts
 
 
-async def _record_failed_login(email: str) -> None:
+async def _record_failed_login(email: str, client_ip: str | None = None) -> None:
     settings = get_settings()
     now_dt = datetime.now(UTC)
-    window = settings.login_lockout_seconds
-    window_expires = datetime.fromtimestamp(now_dt.timestamp() + window, tz=UTC)
+    base_window = settings.login_lockout_seconds
+    key = f"{email}|{client_ip}" if client_ip else email
     coll = _get_failed_logins_coll()
+    existing = await coll.find_one({"_id": key})
+    prior = int((existing or {}).get("count", 0))
+    # Exponential escalation: each full window of failures doubles the lockout.
+    multiplier = 2 ** (prior // max(1, settings.login_max_attempts))
+    window = base_window * multiplier
+    window_expires = datetime.fromtimestamp(now_dt.timestamp() + window, tz=UTC)
     await coll.update_one(
-        {"_id": email},
+        {"_id": key},
         {
             "$inc": {"count": 1},
             "$push": {"attempts": now_dt},
-            "$set": {"window_expires": window_expires},
+            "$set": {"window_expires": window_expires, "client_ip": client_ip},
         },
         upsert=True,
     )
 
 
-async def _clear_failed_logins(email: str) -> None:
+async def _clear_failed_logins(email: str, client_ip: str | None = None) -> None:
     coll = _get_failed_logins_coll()
+    if client_ip:
+        await coll.delete_one({"_id": f"{email}|{client_ip}"})
     await coll.delete_one({"_id": email})
 
 
-async def authenticate_user(email: str, password: str) -> tuple[str, UserResponse]:
+async def authenticate_user(
+    email: str, password: str, client_ip: str | None = None
+) -> tuple[str, UserResponse]:
     """
     Verify login credentials and generate access token.
 
@@ -123,7 +136,7 @@ async def authenticate_user(email: str, password: str) -> tuple[str, UserRespons
     """
     email_clean = email.strip().lower()
 
-    if await _is_locked_out(email_clean):
+    if await _is_locked_out(email_clean, client_ip):
         raise AuthenticationError(
             "Too many failed attempts",
             detail="Account temporarily locked. Try again later.",
@@ -138,17 +151,17 @@ async def authenticate_user(email: str, password: str) -> tuple[str, UserRespons
         # A malformed dummy hash would make bcrypt fail fast instead of doing the full
         # cost-12 computation, reopening the exact timing side-channel this guards against.
         verify_password(password, "$2b$12$Fhvxd2NUDtaI9Np/Ct9Tn.jCLcGFUPgwN5oMcPCk8PlX36lOm2iFO")
-        await _record_failed_login(email_clean)
+        await _record_failed_login(email_clean, client_ip)
         raise AuthenticationError("Authentication failed", detail="Invalid email or password")
 
     if not verify_password(password, user["hashed_password"]):
-        await _record_failed_login(email_clean)
+        await _record_failed_login(email_clean, client_ip)
         raise AuthenticationError("Authentication failed", detail="Invalid email or password")
 
     if not user.get("is_active", True):
         raise AuthenticationError("Authentication failed", detail="Account is deactivated")
 
-    await _clear_failed_logins(email_clean)
+    await _clear_failed_logins(email_clean, client_ip)
     # Generate token
     token = create_access_token(str(user["_id"]))
     return token, serialize_user(user)

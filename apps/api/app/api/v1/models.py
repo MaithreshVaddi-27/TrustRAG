@@ -35,7 +35,7 @@ async def _safe_provider_status(check_fn, base_url: str, provider: str) -> dict[
     """
     try:
         return await check_fn(base_url)
-    except Exception as exc:
+    except Exception:
         logger.warning("Provider status check failed; degrading to stub", provider=provider)
         return {
             "connected": False,
@@ -43,7 +43,7 @@ async def _safe_provider_status(check_fn, base_url: str, provider: str) -> dict[
             "base_url": base_url,
             "models": [],
             "default_model": "",
-            "error": str(exc)[:200],
+            "error": "PROVIDER_UNREACHABLE",
         }
 
 

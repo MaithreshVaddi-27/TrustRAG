@@ -52,6 +52,7 @@ export default function EvidencePage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by snippet or source filename..."
+              aria-label="Search evidence by snippet or source filename"
               className="w-full bg-surface-800/80 border border-slate-700/80 rounded-lg pl-9 pr-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40 transition-colors"
             />
           </div>

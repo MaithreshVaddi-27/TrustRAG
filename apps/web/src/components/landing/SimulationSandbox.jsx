@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Terminal, Brain, RefreshCw, Play, RotateCcw,
   CheckCircle2, XCircle
@@ -10,21 +10,33 @@ export default function SimulationSandbox() {
   const [simStep, setSimStep] = useState(4)
   const [isSimulating, setIsSimulating] = useState(false)
   const currentScenario = SCENARIOS[selectedScenarioKey]
+  const timersRef = useRef([])
+
+  useEffect(() => () => {
+    timersRef.current.forEach(clearTimeout)
+    timersRef.current = []
+  }, [])
 
   const runSimulation = () => {
     if (isSimulating) return
+    timersRef.current.forEach(clearTimeout)
+    timersRef.current = []
     setIsSimulating(true)
     setSimStep(0)
-    setTimeout(() => setSimStep(1), 600)
-    setTimeout(() => setSimStep(2), 1400)
-    setTimeout(() => setSimStep(3), 2200)
-    setTimeout(() => {
-      setSimStep(4)
-      setIsSimulating(false)
-    }, 3200)
+    timersRef.current = [
+      setTimeout(() => setSimStep(1), 600),
+      setTimeout(() => setSimStep(2), 1400),
+      setTimeout(() => setSimStep(3), 2200),
+      setTimeout(() => {
+        setSimStep(4)
+        setIsSimulating(false)
+      }, 3200),
+    ]
   }
 
   const handleSelectScenario = (key) => {
+    timersRef.current.forEach(clearTimeout)
+    timersRef.current = []
     setSelectedScenarioKey(key)
     setSimStep(4)
     setIsSimulating(false)
@@ -55,7 +67,7 @@ export default function SimulationSandbox() {
                 className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 border ${
                   isSelected
                     ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400 shadow-md shadow-cyan-950/40 scale-105'
-                    : 'bg-surface-900 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700 hover:scale-102'
+                    : 'bg-surface-900 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700 hover:scale-[1.02]'
                 }`}
               >
                 <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-cyan-400 animate-pulse' : 'bg-slate-600'}`} />

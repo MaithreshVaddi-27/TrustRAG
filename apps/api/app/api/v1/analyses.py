@@ -33,30 +33,37 @@ _STREAM_TICKET_TTL_SECONDS = 60
 
 
 async def _issue_stream_ticket(user_id: str, analysis_id: str) -> str:
+    import os
+
     ticket = secrets.token_urlsafe(32)
     await get_collection(Collections.STREAM_TICKETS).insert_one(
         {
             "_id": ticket,
             "user_id": user_id,
             "analysis_id": analysis_id,
+            "worker_pid": os.getpid(),
             "expires_at": datetime.now(UTC) + timedelta(seconds=_STREAM_TICKET_TTL_SECONDS),
         }
     )
     return ticket
 
 
-async def _consume_stream_ticket(ticket: str, analysis_id: str) -> str | None:
-    """Atomically consume a ticket. Returns user_id, or None if invalid/expired."""
+async def _consume_stream_ticket(ticket: str, analysis_id: str) -> tuple[str | None, str | None]:
+    """Atomically consume a ticket. Returns (user_id, error), error is None on success."""
+    import os
+
     doc = await get_collection(Collections.STREAM_TICKETS).find_one_and_delete({"_id": ticket})
     if not doc or doc.get("analysis_id") != analysis_id:
-        return None
+        return None, "invalid"
     expires_at = doc.get("expires_at")
     if expires_at is not None:
         if getattr(expires_at, "tzinfo", None) is None:
             expires_at = expires_at.replace(tzinfo=UTC)
         if expires_at < datetime.now(UTC):
-            return None
-    return doc.get("user_id")
+            return None, "expired"
+    if doc.get("worker_pid") is not None and doc.get("worker_pid") != os.getpid():
+        return None, "worker_mismatch"
+    return doc.get("user_id"), None
 
 
 @router.post(
@@ -194,8 +201,13 @@ async def stream_trace_endpoint(
     proxy logs, and browser history.
     """
     # Validate and consume the ticket (atomic single-use)
-    user_id_str = await _consume_stream_ticket(ticket, analysis_id)
+    user_id_str, ticket_error = await _consume_stream_ticket(ticket, analysis_id)
     if not user_id_str:
+        if ticket_error == "worker_mismatch":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Stream ticket issued by a different worker; retry or run a single worker",
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired stream ticket",

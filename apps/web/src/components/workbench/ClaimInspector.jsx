@@ -168,9 +168,15 @@ function ClaimRow({ claim, index, isForceExpanded, onCopy, isCopied }) {
         <span className="text-slate-500 text-xs font-mono font-bold mt-0.5 min-w-[1.75rem] text-right shrink-0">
           C{index}
         </span>
-        <div className="flex-1 min-w-0 pr-2 cursor-pointer" onClick={() => setOpen(o => !o)}>
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          aria-expanded={isExpanded}
+          aria-controls={`claim-body-${index}`}
+          className="flex-1 min-w-0 pr-2 cursor-pointer text-left bg-transparent border-0 p-0"
+        >
           <p className="text-sm text-slate-100 break-words leading-relaxed font-normal">{claim.text}</p>
-        </div>
+        </button>
         <div className="flex items-center gap-2 shrink-0">
           <ClaimStateBadge state={claimState} />
           <button

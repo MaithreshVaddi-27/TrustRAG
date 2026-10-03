@@ -22,9 +22,13 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from app.api.router import api_router
 from app.core.config.model_config import get_model_config
@@ -188,6 +192,34 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # manager used to load a second copy that no serving path consumed.
     await connect_db()
     await create_indexes()
+
+    # P1-18: reap analyses orphaned by restart/--reload/OOM. In-flight runs
+    # stay "processing" forever without this; mark them failed with a message.
+    try:
+        from datetime import UTC as _UTC
+        from datetime import datetime as _dt
+
+        from app.db.mongodb import Collections as _Colls
+        from app.db.mongodb import get_collection as _get_coll
+
+        _analyses = _get_coll(_Colls.ANALYSES)
+        _reaped = await _analyses.update_many(
+            {"status": "processing"},
+            {
+                "$set": {
+                    "status": "failed",
+                    "error_message": "Server restarted during analysis; please retry.",
+                    "updated_at": _dt.now(_UTC),
+                }
+            },
+        )
+        if getattr(_reaped, "modified_count", 0):
+            logger.warning(
+                "Reaped orphaned processing analyses",
+                count=_reaped.modified_count,
+            )
+    except Exception as _reap_exc:
+        logger.debug("Analysis reaper skipped", error=str(_reap_exc))
 
     # Seed the local-model discovery cache from the persisted snapshot so a
     # pre-run `scripts/bootstrap.py` (or any earlier process) is
@@ -358,6 +390,26 @@ def _register_exception_handlers(app: FastAPI) -> None:
             "An unexpected error occurred.",
         )
 
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        logger.warning("Request validation failed", path=request.url.path)
+        try:
+            msgs = []
+            for err in exc.errors():
+                msg = str(err.get("msg", "invalid"))
+                loc = ".".join(str(p) for p in err.get("loc", []) if str(p) != "body")
+                msgs.append(f"{loc}: {msg}" if loc else msg)
+            message = "; ".join(msgs[:3]) if msgs else "Request validation failed."
+        except Exception:
+            message = "Request validation failed."
+        return _error_response(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "VALIDATION_ERROR",
+            message,
+        )
+
     @app.exception_handler(Exception)
     async def generic_error_handler(request: Request, exc: Exception) -> JSONResponse:
         """
@@ -396,6 +448,13 @@ def _register_exception_handlers(app: FastAPI) -> None:
 # ─── Request ID middleware ─────────────────────────────────────────────────────
 # SEC: validate/truncate client-supplied X-Request-ID to prevent log forgery/trace confusion
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9\-]{1,64}$")
+
+
+async def _rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={"error": {"code": "RATE_LIMITED", "message": "Too many requests. Slow down."}},
+    )
 
 
 async def request_id_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -464,6 +523,11 @@ def create_app() -> FastAPI:
     # ── GZip compression (threshold 1KB, skips small responses) ──────────────
     app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+    # ── Rate limiting (P1-19) ────────────────────────────────────────────
+    limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+
     # ── Request ID ────────────────────────────────────────────────────────
     app.middleware("http")(request_id_middleware)
 
@@ -478,6 +542,11 @@ def create_app() -> FastAPI:
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; font-src 'self' data:; "
+            "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        )
         if settings.is_production():
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response

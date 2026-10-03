@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion } from 'motion/react'
 import {
   Database, FolderPlus, Plus, Upload, Trash2, FileText, Loader2,
@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import { kbService } from '@/services/api'
 import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 import { formatDistanceToNow } from 'date-fns'
@@ -94,6 +95,7 @@ export default function KnowledgeBasesPage() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Filter knowledge bases by name or topic..."
+                aria-label="Filter knowledge bases by name or topic"
                 className="w-full bg-surface-800/80 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40 transition-colors"
               />
             </div>
@@ -161,90 +163,130 @@ export default function KnowledgeBasesPage() {
 
       {/* Create KB Modal */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-surface-900 border border-slate-700/80 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-slide-up">
-            <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-surface-800/40">
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <FolderPlus size={18} className="text-primary-400" />
-                Create Knowledge Base
-              </h2>
-              <button
-                onClick={() => setIsCreateModalOpen(false)}
-                className="text-slate-500 hover:text-white transition-colors text-sm font-mono"
-              >
-                esc
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateSubmit} className="p-6 space-y-5">
-              {createErrorMsg && (
-                <div role="alert" className="p-3 bg-red-950/60 border border-red-800 rounded-xl text-xs text-red-300 flex items-start gap-2">
-                  <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                  <span>{createErrorMsg}</span>
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Knowledge Base Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newKbName}
-                  onChange={(e) => setNewKbName(e.target.value)}
-                  placeholder="e.g. Service API v3, Retention Policy 2026, Field Study 2026"
-                  className="w-full bg-surface-800/90 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40 transition-colors"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Description
-                </label>
-                <textarea
-                  value={newKbDesc}
-                  onChange={(e) => setNewKbDesc(e.target.value)}
-                  placeholder="Purpose, domain context, and expected document types..."
-                  rows={3}
-                  className="w-full bg-surface-800/90 border border-slate-700 rounded-xl p-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40 transition-colors resize-none"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="btn-secondary text-xs"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createKbMutation.isPending || !newKbName.trim()}
-                  className="btn-primary text-xs"
-                >
-                  {createKbMutation.isPending ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    'Create Collection'
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <CreateKbModal
+          newKbName={newKbName}
+          setNewKbName={setNewKbName}
+          newKbDesc={newKbDesc}
+          setNewKbDesc={setNewKbDesc}
+          createErrorMsg={createErrorMsg}
+          handleCreateSubmit={handleCreateSubmit}
+          createKbMutation={createKbMutation}
+          onClose={() => setIsCreateModalOpen(false)}
+        />
       )}
     </AppLayout>
+  )
+}
+
+function CreateKbModal({
+  newKbName, setNewKbName, newKbDesc, setNewKbDesc,
+  createErrorMsg, handleCreateSubmit, createKbMutation, onClose,
+}) {
+  const inputRef = useRef(null)
+  const closeRef = useRef(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+    const prevActive = document.activeElement
+    const onKey = e => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      if (prevActive instanceof HTMLElement) prevActive.focus()
+    }
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Create knowledge base"
+        className="bg-surface-900 border border-slate-700/80 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-slide-up"
+      >
+        <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-surface-800/40">
+          <h2 className="text-base font-bold text-white flex items-center gap-2">
+            <FolderPlus size={18} className="text-primary-400" />
+            Create Knowledge Base
+          </h2>
+          <button
+            ref={closeRef}
+            onClick={onClose}
+            aria-label="Close create knowledge base dialog (Escape)"
+            className="text-slate-400 hover:text-white transition-colors text-sm font-mono px-2 py-1 rounded hover:bg-surface-800"
+          >
+            esc
+          </button>
+        </div>
+
+        <form onSubmit={handleCreateSubmit} className="p-6 space-y-5">
+          {createErrorMsg && (
+            <div role="alert" className="p-3 bg-red-950/60 border border-red-800 rounded-xl text-xs text-red-300 flex items-start gap-2">
+              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+              <span>{createErrorMsg}</span>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Knowledge Base Name *
+            </label>
+            <input
+              ref={inputRef}
+              type="text"
+              required
+              value={newKbName}
+              onChange={(e) => setNewKbName(e.target.value)}
+              placeholder="e.g. Service API v3, Retention Policy 2026, Field Study 2026"
+              className="w-full bg-surface-800/90 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40 transition-colors"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Description
+            </label>
+            <textarea
+              value={newKbDesc}
+              onChange={(e) => setNewKbDesc(e.target.value)}
+              placeholder="Purpose, domain context, and expected document types..."
+              rows={3}
+              className="w-full bg-surface-800/90 border border-slate-700 rounded-xl p-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40 transition-colors resize-none"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="btn-secondary text-xs">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createKbMutation.isPending || !newKbName.trim()}
+              className="btn-primary text-xs"
+            >
+              {createKbMutation.isPending ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                'Create Collection'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   )
 }
 
 function KnowledgeBaseCard({ kb }) {
   const queryClient = useQueryClient()
   const [isExpanded, setIsExpanded] = useState(false)
+  const [confirmKb, setConfirmKb] = useState(false)
+  const [confirmDoc, setConfirmDoc] = useState(null)
   const fileInputRef = useRef(null)
 
   // Query documents inside this KB
@@ -347,16 +389,24 @@ function KnowledgeBaseCard({ kb }) {
           />
 
           <button
-            onClick={() => {
-              if (confirm(`Are you sure you want to delete "${kb.name}"? All indexed documents will be removed permanently.`)) {
-                deleteKbMutation.mutate(kb.id)
-              }
-            }}
+            onClick={() => setConfirmKb(true)}
             className="p-2 rounded-xl text-slate-500 hover:text-red-400 hover:bg-surface-800 transition-colors border border-slate-800"
             title="Delete Knowledge Base"
+            aria-label={`Delete knowledge base ${kb.name}`}
           >
             <Trash2 size={16} />
           </button>
+          <ConfirmDialog
+            open={confirmKb}
+            title="Delete knowledge base?"
+            message={`"${kb.name}" and all indexed documents will be removed permanently.`}
+            confirmLabel="Delete"
+            onCancel={() => setConfirmKb(false)}
+            onConfirm={() => {
+              setConfirmKb(false)
+              deleteKbMutation.mutate(kb.id)
+            }}
+          />
 
           <button
             onClick={() => setIsExpanded(prev => !prev)}
@@ -466,13 +516,10 @@ function KnowledgeBaseCard({ kb }) {
                       )}
 
                       <button
-                        onClick={() => {
-                          if (confirm(`Remove "${doc.filename}" from this knowledge base?`)) {
-                            deleteDocMutation.mutate(doc.id)
-                          }
-                        }}
+                        onClick={() => setConfirmDoc(doc)}
                         className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-surface-800 transition-colors"
                         title="Delete Document"
+                        aria-label={`Remove document ${doc.filename}`}
                       >
                         <Trash2 size={14} />
                       </button>
@@ -484,6 +531,17 @@ function KnowledgeBaseCard({ kb }) {
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={!!confirmDoc}
+        title="Remove document?"
+        message={confirmDoc ? `"${confirmDoc.filename}" will be removed from this knowledge base.` : ''}
+        confirmLabel="Remove"
+        onCancel={() => setConfirmDoc(null)}
+        onConfirm={() => {
+          if (confirmDoc) deleteDocMutation.mutate(confirmDoc.id)
+          setConfirmDoc(null)
+        }}
+      />
     </div>
   )
 }

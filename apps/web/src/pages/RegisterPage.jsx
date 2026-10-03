@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
 import AuthLayout from '@/layouts/AuthLayout'
@@ -11,21 +11,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [loadingTime, setLoadingTime] = useState(0)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    let interval
-    if (loading) {
-      setLoadingTime(0)
-      interval = setInterval(() => {
-        setLoadingTime((prev) => prev + 1)
-      }, 1000)
-    } else {
-      setLoadingTime(0)
-    }
-    return () => clearInterval(interval)
-  }, [loading])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -50,10 +36,19 @@ export default function RegisterPage() {
     try {
       await authService.register(email, password, fullName)
       // Auto-login after registration
-      await authService.login(email, password)
-      navigate('/dashboard')
+      try {
+        await authService.login(email, password)
+        navigate('/dashboard')
+      } catch {
+        navigate('/login?registered=1')
+      }
     } catch (err) {
-      setError(err.message || 'Registration failed.')
+      const msg = err.message || 'Registration failed.'
+      setError(
+        /already registered|already exists|conflict/i.test(msg)
+          ? 'This email is already registered. Sign in to continue.'
+          : msg
+      )
     } finally {
       setLoading(false)
     }
@@ -68,13 +63,10 @@ export default function RegisterPage() {
           </div>
         )}
 
-        {loading && loadingTime >= 5 && (
-          <div className="rounded-lg border border-cyan-800/50 bg-cyan-950/30 px-3 py-2.5 text-xs text-cyan-300 animate-pulse space-y-1">
+        {loading && (
+          <div className="rounded-lg border border-cyan-800/50 bg-cyan-950/30 px-3 py-2.5 text-xs text-cyan-300 space-y-1">
             <p className="font-semibold flex items-center gap-1.5">
-              ⚡ Creating TrustRAG Account ({loadingTime}s elapsed)
-            </p>
-            <p className="text-slate-400 text-[11px] leading-relaxed">
-              Setting up your isolated workspace. This usually takes less than a minute.
+              <Loader2 size={13} className="animate-spin" /> Creating account…
             </p>
           </div>
         )}

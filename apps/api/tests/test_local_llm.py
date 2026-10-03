@@ -255,8 +255,9 @@ def test_verification_cap_kwargs_reasoning_headroom():
     returned None, and silently fell back to the two-step path — 3 billed
     calls instead of 1 on the common cloud path. Unknown providers still get
     {} rather than a foreign kwarg."""
-    # Local direct-answer: identical to local_cap_kwargs (KV-saving, unchanged).
-    assert _llm_mod.verification_cap_kwargs("ollama", "gemma3:1b", 384) == {"max_tokens": 384}
+    # Local direct-answer: small (<=3B) models get the 1024 floor (L-3/L-7) —
+    # 768 tokens for 8 verdicts truncates mid-JSON on the hottest call.
+    assert _llm_mod.verification_cap_kwargs("ollama", "gemma3:1b", 384) == {"max_tokens": 1024}
     assert _llm_mod.verification_cap_kwargs("llama_cpp", "any-model", 768) == {"max_tokens": 768}
     # Cloud direct-answer: capped per call, provider-correct name.
     assert _llm_mod.verification_cap_kwargs("gemini", "gemini-3.5-flash-lite", 384) == {
@@ -304,7 +305,7 @@ def test_verification_caps_cover_local_thinking_models():
     """Thinking traces share the budget on local servers too: qwen3 with a
     128-token rewrite cap returns empty → retry spiral. 1024 floor."""
     assert _llm_mod.verification_cap_kwargs("ollama", "qwen3:1.7b", 128) == {"max_tokens": 1024}
-    assert _llm_mod.verification_cap_kwargs("ollama", "gemma3:1b", 128) == {"max_tokens": 128}
+    assert _llm_mod.verification_cap_kwargs("ollama", "gemma3:1b", 128) == {"max_tokens": 1024}
 
 
 @pytest.mark.asyncio

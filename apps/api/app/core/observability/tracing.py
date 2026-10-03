@@ -28,7 +28,13 @@ def init_tracing() -> None:
     langsmith_api_key = os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY")
     langsmith_project = os.getenv("LANGCHAIN_PROJECT", "trustrag-api")
 
-    if langsmith_api_key and os.getenv("LANGCHAIN_TRACING_V2", "").lower() == "true":
+    # Offline by default (P1-14/C-5): tracing ships prompts/chunks/answers
+    # off-box. Require explicit opt-in, not just a stray key in the env.
+    if (
+        langsmith_api_key
+        and os.getenv("TRUSTRAG_TRACING", "").lower() in ("1", "true", "on")
+        and os.getenv("LANGCHAIN_TRACING_V2", "").lower() == "true"
+    ):
         os.environ["LANGCHAIN_TRACING_V2"] = "true"
         os.environ["LANGCHAIN_PROJECT"] = langsmith_project
         logger.info("LangSmith tracing enabled", project=langsmith_project)

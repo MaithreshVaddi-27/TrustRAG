@@ -4,6 +4,7 @@ import { BookOpen, Calendar, ExternalLink, Hash, Shield, ShieldAlert, Search, Gl
 import { motion } from 'motion/react'
 import { copyToClipboard } from '@/lib/clipboard'
 import { SPRING_SNAPPY } from '@/lib/motionConfig'
+import { isWebSource } from '@/lib/claimState'
 
 /**
  * EvidenceViewer — Ultra-refined retrieved evidence viewer with live keyword filter,
@@ -20,7 +21,7 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
     let webCount = 0
     let kbCount = 0
     chunks.forEach(c => {
-      if (c.url || c.method?.includes('web') || c.method?.includes('mcp') || c.chunk_id?.startsWith('web_')) {
+      if (isWebSource(c)) {
         webCount++
       } else {
         kbCount++
@@ -31,7 +32,7 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
 
   const filteredChunks = useMemo(() => {
     return chunks.filter(c => {
-      const isWeb = Boolean(c.url || c.method?.includes('web') || c.method?.includes('mcp') || c.chunk_id?.startsWith('web_'))
+      const isWeb = isWebSource(c)
       if (sourceFilter === 'KB' && isWeb) return false
       if (sourceFilter === 'WEB' && !isWeb) return false
 
@@ -74,6 +75,7 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             placeholder="Filter evidence text or filename…"
+            aria-label="Filter evidence text or filename"
             className="w-full bg-surface-800 border border-slate-700/80 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-primary-500/50"
           />
         </div>
@@ -122,15 +124,18 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
 
       {/* Chunks List */}
       <div className="space-y-3">
-{filteredChunks.map((chunk, i) => (
-            <EvidenceChunk
-              key={chunk.chunk_id ?? chunk.id ?? i}
-              chunk={chunk}
-              rank={i + 1}
-              onCopy={() => handleCopy(chunk.text, i + 1)}
-              isCopied={copiedIndex === i + 1}
-            />
-          ))}
+{filteredChunks.map(chunk => {
+            const rank = chunks.indexOf(chunk) + 1
+            return (
+              <EvidenceChunk
+                key={chunk.chunk_id ?? chunk.id ?? rank}
+                chunk={chunk}
+                rank={rank}
+                onCopy={() => handleCopy(chunk.text, rank)}
+                isCopied={copiedIndex === rank}
+              />
+            )
+          })}
       </div>
     </div>
   )
@@ -142,7 +147,7 @@ export function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
   // status (legacy rows) renders as UNVERIFIED, never as verified.
   const integrityOk = chunk.integrity_status === 'VERIFIED'
   const integrityLabel = chunk.integrity_status || 'UNVERIFIED'
-  const isWeb = Boolean(chunk.url || chunk.method?.includes('web') || chunk.method?.includes('mcp') || chunk.chunk_id?.startsWith('web_'))
+  const isWeb = isWebSource(chunk)
   const isLong = chunk.text && chunk.text.length > 260
 
   return (

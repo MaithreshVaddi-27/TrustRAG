@@ -34,6 +34,11 @@ def test_get_optimal_torch_device():
     # about the host. cuda/mps may legitimately differ (torch may fail to load
     # where the accelerator is merely absent), but on a host where torch sees
     # nothing accelerated, neither should the profile claim acceleration.
+    # Torch-free runtimes (no torch installed) cannot probe; skip agreement.
+    import importlib.util as _ilu
+
+    if _ilu.find_spec("torch") is None:
+        return
     profile = detect_hardware_profile()
     if dev == "cpu":
         # Nothing accelerated for torch; the profile should not be claiming

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { ClaimInspector } from '@/components/workbench/ClaimInspector'
 import { claimService } from '@/services/api'
+import { normalizeClaimState } from '@/lib/claimState'
 import { Brain, Search } from 'lucide-react'
 import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
@@ -17,7 +18,7 @@ export default function ClaimsPage() {
 
   const states = ['ALL', 'SUPPORTED', 'CONTRADICTED', 'NEUTRAL']
 
-  const getClaimState = (c) => (c.state || c.status || c.verification_status || 'NEUTRAL').toUpperCase()
+  const getClaimState = (c) => normalizeClaimState(c)
 
   const stateCounts = claims.reduce((acc, c) => {
     const st = getClaimState(c)
@@ -88,6 +89,7 @@ export default function ClaimsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search claims or verification explanations..."
+            aria-label="Search claims or verification explanations"
             className="w-full bg-transparent text-sm text-slate-100 placeholder-slate-500 focus:outline-none"
           />
           {search && (

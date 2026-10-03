@@ -24,7 +24,7 @@ TRUSTRAG addresses these gaps with a pipeline of **ingestion → retrieval → g
 
 | Term | Meaning in this project |
 |---|---|
-| LLM | A generative language model. TRUSTRAG can call local Ollama, llama.cpp, or MLX servers, and can optionally use Gemini or NVIDIA NIM. |
+| LLM | A generative language model. TRUSTRAG can call local Ollama, llama.cpp, or MLX servers, and can optionally use Gemini (requires the `cloud` extra). |
 | RAG | Retrieval-Augmented Generation: retrieve relevant document chunks first, then give them to the LLM as context. |
 | Embedding | A fixed-length numeric vector representing the meaning of text. Semantically similar text should have nearby vectors. |
 | Dense retrieval | Search by embedding similarity. It is useful when wording differs but meaning is similar. |
@@ -261,7 +261,7 @@ The generator also:
 - removes model reasoning scaffolding such as `[ANSWER]`, `[FINAL_ANSWER]`, and `<think>...</think>` before verification/UI;
 - removes invalid segment citations not present in the actual prompt.
 
-Supported LLM providers are Ollama, llama.cpp, MLX, Gemini, and NVIDIA NIM. The checked-in default generator and verifier are both llama.cpp using the small local `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M` model. Environment variables can override these choices; cloud models are allowlisted in configuration.
+Supported LLM providers are Ollama, llama.cpp, MLX, and Gemini (the `cloud` extra). The checked-in default generator and verifier are both llama.cpp using the small local `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M` model. Environment variables can override these choices; cloud models are allowlisted in configuration.
 
 ## 11. Claim verification and the trust verdict
 

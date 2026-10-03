@@ -165,7 +165,7 @@ export default function ComparisonMatrix() {
 
             <div className="mt-8 pt-4 border-t border-slate-800/80 text-center text-xs font-mono text-emerald-400 font-bold flex items-center justify-center gap-1.5">
               <Check size={14} />
-              <span>99.4% Claim Precision &bull; Zero Hallucination Leakage</span>
+              <span>99.4% Claim Precision &bull; Abstain-safe by design</span>
             </div>
           </div>
         </div>
@@ -188,6 +188,15 @@ export default function ComparisonMatrix() {
                   <tr
                     key={idx}
                     onClick={() => setExpandedRowIndex(isExpanded ? null : idx)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setExpandedRowIndex(isExpanded ? null : idx)
+                      }
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    aria-expanded={isExpanded}
                     className="hover:bg-cyan-950/30 transition-colors duration-150 cursor-pointer group"
                   >
                     <td className="py-4 px-6 align-top">

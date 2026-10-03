@@ -341,7 +341,7 @@ def test_ocr_config_defaults():
     cfg = get_model_config()
     assert cfg.ocr_enabled is True
     assert cfg.ocr_min_native_chars == 50
-    assert cfg.ocr_dpi == 200  # lowered from 300 for render cost (see models.yaml)
+    assert cfg.ocr_dpi == 300  # accuracy floor for 8-10pt text (P1-10; see models.yaml)
     assert cfg.ocr_min_confidence == 0.5
     assert cfg.ocr_store_page_images is True
     assert cfg.as_snapshot()["ocr_enabled"] is True

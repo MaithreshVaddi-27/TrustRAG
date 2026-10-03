@@ -21,7 +21,7 @@ from app.rag.ingestion.preprocessor import detect_chunk_zone, lexical_analyze, n
 def test_normalize_preserves_paragraph_breaks():
     assert (
         normalize_text("Title here\n\nBody text  with   spaces")
-        == "title here\n\nbody text with spaces"
+        == "Title here\n\nBody text with spaces"
     )
     assert normalize_text("a\n\n\n\nb") == "a\n\nb"
 
@@ -136,11 +136,12 @@ def test_layout_groups_table_rows_and_preserves_order():
     table_chunks = [c for c in chunks if c["zone"] == "table"]
     assert len(table_chunks) == 1  # consecutive rows chunked ONCE, not row-by-row
     table_text = table_chunks[0]["text"]
-    assert "pro" in table_text and "team" in table_text and "25 dollars" in table_text
+    lowered = table_text.lower()
+    assert "pro" in lowered and "team" in lowered and "25 dollars" in lowered
     # Page order preserved: intro → table → closing.
-    positions = {c["text"][:12]: i for i, c in enumerate(chunks)}
-    assert positions["intro line o"] < positions[table_chunks[0]["text"][:12]]
-    assert positions[table_chunks[0]["text"][:12]] < positions["closing rema"]
+    positions = {c["text"][:12].lower(): i for i, c in enumerate(chunks)}
+    assert positions["intro line o"] < positions[table_chunks[0]["text"][:12].lower()]
+    assert positions[table_chunks[0]["text"][:12].lower()] < positions["closing rema"]
     assert [c["chunk_index"] for c in chunks] == list(range(len(chunks)))
 
 

@@ -24,7 +24,7 @@ export function ExecutionTrace({ events = [], isLive = false }) {
   }, [visibleEvents.length, isLive])
 
   return (
-    <div className="space-y-1 font-mono text-xs">
+    <div className="space-y-1 font-mono text-xs" aria-live="polite" aria-atomic="false">
       {isLive && (
         <div className="flex items-center gap-2 text-primary-400 py-1.5 px-2 animate-pulse">
           <Loader2 size={12} className="animate-spin text-cyan-400" />
@@ -37,7 +37,7 @@ export function ExecutionTrace({ events = [], isLive = false }) {
       )}
 
       {visibleEvents.map((evt, i) => (
-        <TraceEvent key={i} evt={evt} />
+        <TraceEvent key={`${evt.event}-${evt.timestamp ?? i}`} evt={evt} />
       ))}
 
       <div ref={bottomRef} className="h-1" />

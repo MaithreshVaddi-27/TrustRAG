@@ -191,7 +191,7 @@ async def handle_tool_call(
                 raise AuthenticationError("Invalid service token", detail="malformed payload")
             return payload
         except AuthenticationError as exc:
-            raise AuthenticationError("Invalid service token", detail=str(exc)) from exc
+            raise AuthenticationError("Invalid service token") from exc
 
     async def _enforce_kb_tenant(payload: dict[str, Any], kb_id: str) -> None:
         """Cross-tenant guard: a service token bound to a KB/user reads only that scope.
@@ -321,12 +321,14 @@ async def handle_tool_call(
             try:
                 status_res["ollama"] = await check_ollama_status(settings.ollama_base_url)
             except Exception as exc:
-                status_res["ollama"] = {"connected": False, "error": str(exc)[:200]}
+                logger.warning("Ollama status check failed", error=str(exc))
+                status_res["ollama"] = {"connected": False, "error": "PROVIDER_UNREACHABLE"}
         if prov in ("llama_cpp", "both"):
             try:
                 status_res["llama_cpp"] = await check_llamacpp_status(settings.llamacpp_base_url)
             except Exception as exc:
-                status_res["llama_cpp"] = {"connected": False, "error": str(exc)[:200]}
+                logger.warning("llama.cpp status check failed", error=str(exc))
+                status_res["llama_cpp"] = {"connected": False, "error": "PROVIDER_UNREACHABLE"}
         return {"content": [{"type": "text", "text": json.dumps(status_res, indent=2)}]}
 
     raise ValueError(f"Unknown MCP tool: {tool_name}")

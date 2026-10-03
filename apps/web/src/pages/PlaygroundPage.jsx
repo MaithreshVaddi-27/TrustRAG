@@ -25,6 +25,10 @@ export default function PlaygroundPage() {
   const streamRef = useRef(null)
   const pollTimerRef = useRef(null)
   const finalizedRef = useRef(false)
+  const traceEventsRef = useRef([])
+  useEffect(() => {
+    traceEventsRef.current = traceEvents
+  }, [traceEvents])
 
   useEffect(() => {
     if (!loading) return undefined
@@ -245,7 +249,7 @@ const activeProviderInfo = providersData?.providers?.[selectedProvider]
             ...finalAnalysis,
             claims: claims || [],
             evidence: evidence || [],
-            trace: (trace && trace.length > 0) ? trace : traceEvents,
+            trace: (trace && trace.length > 0) ? trace : traceEventsRef.current,
           }
 
           setAnalysis(fullAnalysis)

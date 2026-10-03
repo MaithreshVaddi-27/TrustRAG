@@ -85,7 +85,6 @@ class Collections:
     EVIDENCE = "evidence"
     RECOVERY_RUNS = "recovery_runs"
     TRACE_EVENTS = "trace_events"
-    FEEDBACK = "feedback"
     REVOKED_TOKENS = "revoked_tokens"
     STREAM_TICKETS = "stream_tickets"
     FAILED_LOGINS = "failed_logins"
@@ -332,6 +331,13 @@ async def create_indexes() -> None:
             name="chunk_kb_order",
         )
     )
+    # N-46: citation-click page-image lookup filters by document + page.
+    index_tasks.append(
+        db[Collections.DOCUMENT_CHUNKS].create_index(
+            [("document_id", pymongo.ASCENDING), ("page", pymongo.ASCENDING)],
+            name="chunk_doc_page",
+        )
+    )
 
     # ── analyses ───────────────────────────────────────────────────────────
     index_tasks.append(
@@ -382,6 +388,13 @@ async def create_indexes() -> None:
             name="claim_analysis_state",
         )
     )
+    # N-46: hottest claims read sorts by recency per analysis.
+    index_tasks.append(
+        db[Collections.CLAIMS].create_index(
+            [("analysis_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="claim_analysis_time",
+        )
+    )
 
     # ── evidence ───────────────────────────────────────────────────────────
     index_tasks.append(
@@ -398,6 +411,13 @@ async def create_indexes() -> None:
     index_tasks.append(
         db[Collections.EVIDENCE].create_index(
             [("document_id", pymongo.ASCENDING)], name="evidence_document"
+        )
+    )
+    # N-46: hottest evidence read sorts by recency per analysis.
+    index_tasks.append(
+        db[Collections.EVIDENCE].create_index(
+            [("analysis_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="evidence_analysis_time",
         )
     )
 

@@ -8,7 +8,7 @@ TRUSTRAG is an AI reliability workbench that implements a closed-loop reliabilit
 Query → Route (simple / temporal / comparison / complex, deterministic, no LLM)
       → Retrieve (Dense + BM25-TF/IDF + MCP Live Web) → RRF fusion (fusion_top_k enforced)
       → Rerank (cross-encoder, OFF by default, depth-capped)
-      → Grounded Generation, each sentence pinned to a source segment (Local llama.cpp / Ollama / Gemini / NVIDIA — per request)
+      → Grounded Generation, each sentence pinned to a source segment (Local llama.cpp / Ollama / MLX — per request; Gemini optional via the `cloud` extra)
       → Propositional Claim Decomposition → NLI Claim Verification (+ targeted NEUTRAL-only re-retrieval) 
       → Evidence Integrity & Provenance Audit → Threshold Reliability Diagnosis 
       → Adaptive Recovery Loop (LangGraph StateGraph) 
@@ -66,9 +66,8 @@ FastAPI (Python 3.11+, Default Port 8000)
             │       HuggingFace: BAAI/bge-small-en-v1.5 (384d local embeddings,
             │             torch `huggingface` provider or torch-free `onnx`)
          │
-         ├─── Cloud Engines, LLM-only (Optional):
+         ├─── Cloud Engine, LLM-only (Optional, `cloud` extra):
           │       Google Gemini: gemini-2.5-flash family (embeddings: local BGE)
-         │       NVIDIA NIM: meta/llama-3.3-70b-instruct (embeddings: local BGE)
          │
           ├─── Qdrant (Vector & Payload Store)
           │       Dense vector indexing (384d only — 768d retired) + sparse-text

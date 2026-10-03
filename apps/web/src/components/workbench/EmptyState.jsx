@@ -1,5 +1,5 @@
 import { motion } from 'motion/react'
-import { Zap, ShieldCheck, Sparkles, Globe, ArrowRight, FileCheck } from 'lucide-react'
+import { Zap, ShieldCheck, Sparkles, Globe, FileCheck } from 'lucide-react'
 import { SPRING_GENTLE } from '@/lib/motionConfig'
 
 const staggerItem = {
@@ -11,7 +11,7 @@ const staggerItem = {
   })
 }
 
-export function EmptyState({ onLoadSample }) {
+export function EmptyState({ enableWebSearch = false }) {
   return (
     <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-6 sm:p-10 space-y-6 overflow-y-auto">
       <motion.div
@@ -50,7 +50,9 @@ export function EmptyState({ onLoadSample }) {
         {[
           { icon: FileCheck, iconColor: 'text-emerald-400', title: 'Closed-Loop NLI', desc: 'Decomposes generated answers into atomic claims and cross-verifies every proposition against citations.' },
           { icon: Sparkles, iconColor: 'text-cyan-400', title: 'Self-Healing Loop', desc: 'LangGraph state machine automatically triggers targeted query rewrites and context expansions when uncertainty occurs.' },
-          { icon: Globe, iconColor: 'text-primary-400', title: 'Tavily MCP Web', desc: 'Dynamic Model Context Protocol tool execution pulls fresh web facts via Tavily AI search.' },
+          ...(enableWebSearch
+            ? [{ icon: Globe, iconColor: 'text-primary-400', title: 'Web Grounding', desc: 'MCP tool execution pulls fresh web facts alongside your local knowledge base.' }]
+            : []),
         ].map((card, i) => (
           <motion.div
             key={card.title}
@@ -71,22 +73,6 @@ export function EmptyState({ onLoadSample }) {
         ))}
       </div>
 
-      <motion.div
-        custom={5}
-        variants={staggerItem}
-        initial="hidden"
-        animate="visible"
-        className="pt-2 flex items-center gap-3"
-      >
-        <button
-          type="button"
-          onClick={onLoadSample}
-          className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-surface-800 border border-slate-700/80 hover:border-cyan-500/50 flex items-center gap-1.5 transition-all shadow-sm"
-        >
-          <span>Load Sample Query</span>
-          <ArrowRight size={12} className="text-cyan-400" />
-        </button>
-      </motion.div>
-    </div>
+      </div>
   )
 }

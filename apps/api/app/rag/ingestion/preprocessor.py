@@ -425,8 +425,10 @@ def normalize_text(text: str) -> str:
       - NFKD Unicode normalization
       - Stripping PDF bullet characters and non-printable symbols (e.g. \uf0d8, \u2022)
       - Repairing hyphenated line breaks (e.g. "docu-\\nment" -> "documentation")
-      - Expanding contractions
       - Normalizing irregular whitespace
+    Case, contractions, and wording are preserved so stored chunks and
+    citations stay verbatim (P1-5). Index-time lowercasing/stemming lives in
+    lexical_analyze, not here.
     """
     if not text:
         return ""
@@ -440,17 +442,12 @@ def normalize_text(text: str) -> str:
     # 3. Repair line-break hyphenations: "infor-\nmation" -> "information"
     normalized = re.sub(r"(\w+)-\s*\n\s*(\w+)", r"\1\2", normalized)
 
-    # 4. Expand contractions
-    text_lower = normalized.lower()
-    for contraction, expansion in CONTRACTIONS.items():
-        text_lower = text_lower.replace(contraction, expansion)
-
-    # 5. Collapse excessive horizontal whitespace, but PRESERVE line breaks.
+    # 4. Collapse excessive horizontal whitespace, but PRESERVE line breaks.
     # Load-bearing: section/table heuristics (chunking strategies) and header
     # detection (detect_chunk_zone) split on "\n". Collapsing newlines to
     # spaces silently disables all of them — and token output is identical
     # either way since the lexer treats every whitespace run as a separator.
-    cleaned = re.sub(r"[ \t\r\f\v]+", " ", text_lower)
+    cleaned = re.sub(r"[ \t\r\f\v]+", " ", normalized)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
     return cleaned
 
@@ -764,7 +761,8 @@ def lexical_analyze(
 ) -> list[str]:
     """
     Complete lexical analysis pipeline:
-      1. Text Normalization (cleaning, de-hyphenation, contraction expansion)
+      1. Text Normalization (cleaning, de-hyphenation) + index-time
+         lowercasing and contraction expansion
       2. Token extraction (alphanumeric words, preserving hyphenated terms like 'n-gram')
       3. Stopword filtering (core or query-noise)
       4. Porter stemming (if stem=True)
@@ -773,6 +771,10 @@ def lexical_analyze(
     clean_text = normalize_text(text)
     if not clean_text:
         return []
+    lowered = clean_text.lower()
+    for contraction, expansion in CONTRACTIONS.items():
+        lowered = lowered.replace(contraction, expansion)
+    clean_text = lowered
 
     # Match words and compound terms: letters, digits, and optional interior hyphens
     tokens = re.findall(r"\b[a-z0-9]+(?:-[a-z0-9]+)*\b", clean_text)

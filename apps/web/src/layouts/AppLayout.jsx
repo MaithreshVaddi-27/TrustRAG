@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useQuery } from '@tanstack/react-query'
@@ -94,6 +94,23 @@ export default function AppLayout({ children }) {
 
   // Mobile drawer state
   const [isMobileOpen, setIsMobileOpen] = useState(false)
+  const mobileCloseRef = useRef(null)
+
+  // Mobile drawer: Escape to close, scroll lock, focus close on open.
+  useEffect(() => {
+    if (!isMobileOpen) return
+    mobileCloseRef.current?.focus()
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = e => {
+      if (e.key === 'Escape') setIsMobileOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [isMobileOpen])
 
   // Playground engine override: the top pills show what the Playground will
   // actually run (user selection), falling back to the server default.
@@ -116,26 +133,14 @@ export default function AppLayout({ children }) {
   // Single embedding engine — server default only, no Playground override.
   const effEmbeddingModel = providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
 
-  // Motion values for spring animations
+  // Motion values for spring animations (useSpring retargets on value change;
+  // no manual .set() effects needed).
   const sidebarWidth = useSpring(isCollapsed ? 72 : 240, { damping: 20, stiffness: 220 })
-  const mobileDrawerX = useSpring(isMobileOpen ? 0 : -256, { damping: 20, stiffness: 220 })
 
   // Close mobile drawer on route change
   useEffect(() => {
     setIsMobileOpen(false)
   }, [location.pathname])
-
-  // Animate sidebar width on collapse/expand with spring
-  useEffect(() => {
-    const targetWidth = isCollapsed ? 72 : 240
-    sidebarWidth.set(targetWidth)
-  }, [isCollapsed, sidebarWidth])
-
-  // Animate mobile drawer
-  useEffect(() => {
-    const targetX = isMobileOpen ? 0 : -256
-    mobileDrawerX.set(targetX)
-  }, [isMobileOpen, mobileDrawerX])
 
   const toggleSidebar = useCallback(() => {
     setIsCollapsed(prev => {
@@ -476,6 +481,7 @@ export default function AppLayout({ children }) {
           <div className="flex items-center justify-between p-3 border-b border-slate-800">
             <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">Navigation</span>
             <motion.button
+              ref={mobileCloseRef}
               onClick={() => setIsMobileOpen(false)}
               whileTap={{ scale: 0.9 }}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-surface-800 transition-colors"
@@ -618,7 +624,7 @@ function SidebarLink({ to, label, icon: Icon, badge, isCollapsed }) {
                 animate={{ opacity: 1, x: 0, scale: 1 }}
                 exit={{ opacity: 0, x: -8, scale: 0.95 }}
                 transition={SPRING_GENTLE}
-                className="sidebar-tooltip"
+                className="sidebar-tooltip opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
               >
                 {label}
               </motion.div>

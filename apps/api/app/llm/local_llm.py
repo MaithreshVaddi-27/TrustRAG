@@ -192,7 +192,8 @@ def verification_cap_kwargs(
     """
     norm = (provider or "").strip().lower()
     roomy = max(int(max_tokens) * 2, 1024)
-    cap = roomy if is_reasoning_model(model) else int(max_tokens)
+    small = is_small_model(model, provider)
+    cap = roomy if (is_reasoning_model(model) or small) else int(max_tokens)
 
     if norm in LOCAL_LLM_PROVIDERS:
         return {"max_tokens": cap}

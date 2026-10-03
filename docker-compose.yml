@@ -26,13 +26,24 @@ services:
       - qdrant_storage:/qdrant/storage
     environment:
       QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-trustrag-dev-key-change-me}
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' 2>/dev/null"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:6333/readyz || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 15
       start_period: 10s
     restart: unless-stopped
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ── FastAPI backend ────────────────────────────────────────────────────────
   # NOTE: targets the hardened `runtime` stage (non-root, no build tools),
@@ -59,35 +70,44 @@ services:
       - ./apps/api/app:/app/app:ro
       - ./apps/api/config:/app/config:ro
       - ./apps/api/tests:/app/tests:ro
-      # Named volume persists the HF/tokenizer cache + SQLite embedding cache.
-      # Embeddings are single-engine (ONNX BGE from models.yaml) — no provider
-      # choice. Export on the HOST once (host venv has the torch-based
-      # `local-models` extra; the image is torch-free by design, so
-      # in-container export cannot run):
+      # Bind-mount host-exported ONNX weights (P1-16): a named volume would
+      # shadow `docker cp` content. Export once on the host:
       #   python scripts/bootstrap.py   # writes apps/api/.model_cache/*.onnx
-      #   docker cp apps/api/.model_cache/. trustrag_api:/app/.model_cache/
       # (torch/sentence-transformers are NOT in the image by design — the
       # single ONNX engine is the only embedding path.)
-      - model_cache:/app/.model_cache
+      - ./apps/api/.model_cache:/app/.model_cache:ro
     env_file:
       - .env
     environment:
       QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-trustrag-dev-key-change-me}
       # No database name suffix here: MONGODB_DATABASE (in .env) is the single
       # source of truth for the DB name — never encode it in the URI.
       MONGODB_URI: mongodb://host.docker.internal:27017
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       LLAMACPP_BASE_URL: http://host.docker.internal:8080/v1
+      MLX_BASE_URL: http://host.docker.internal:8090/v1
     depends_on:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/api/v1/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/api/v1/health/ready || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5
       start_period: 120s
     restart: unless-stopped
+    stop_grace_period: 400s
+    mem_limit: 4g
+    cpus: 4.0
+    pids_limit: 512
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ── React Frontend Workbench ──────────────────────────────────────────────
   web:
@@ -110,9 +130,17 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   qdrant_storage:
-    driver: local
-  model_cache:
     driver: local

@@ -10,9 +10,9 @@ export function Skeleton({ className = '' }) {
   return <div className={`skel ${className}`.trim()} aria-hidden="true" />
 }
 
-export function SkeletonRows({ rows = 4, className = 'h-12', gap = 'gap-2', wrapperClassName = '' }) {
+export function SkeletonRows({ rows = 4, className = 'h-12', gap = 'gap-2' }) {
   return (
-    <div className={`flex flex-col ${gap} ${wrapperClassName}`.trim()} aria-hidden="true" role="status" aria-label="Loading content">
+    <div className={`flex flex-col ${gap}`.trim()} aria-hidden="true" role="status" aria-label="Loading content">
       {Array.from({ length: rows }).map((_, i) => (
         <Skeleton key={i} className={className} />
       ))}

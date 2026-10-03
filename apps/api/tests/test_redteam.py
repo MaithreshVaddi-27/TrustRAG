@@ -92,11 +92,15 @@ def _state(**overrides) -> dict:
 
 
 def test_grounding_prompt_labels_context_untrusted():
-    """Generator prompt MUST label Context as untrusted data (defense line)."""
+    """Generator prompt MUST label the served evidence as untrusted data
+    (defense line). The block is <premise> since P1-11/F-5 separated
+    instructions from attacker-controlled document text."""
     from app.rag.generation.generator import GROUNDING_SYSTEM_PROMPT
 
     assert "untrusted" in GROUNDING_SYSTEM_PROMPT.lower()
-    assert "Context" in GROUNDING_SYSTEM_PROMPT
+    assert "<premise>" in GROUNDING_SYSTEM_PROMPT
+    # Data must never share a tag with the instructions.
+    assert "<context>" not in GROUNDING_SYSTEM_PROMPT
 
 
 def test_grounding_prompt_has_inline_citation_rule():

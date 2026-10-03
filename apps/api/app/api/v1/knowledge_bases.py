@@ -48,9 +48,13 @@ async def create_kb_endpoint(
 @router.get("", response_model=list[KBResponse], summary="List all user knowledge bases")
 async def list_kbs_endpoint(
     current_user: Mapping[str, Any] = Depends(get_current_user),
+    limit: int = 200,
+    skip: int = 0,
 ) -> list[KBResponse]:
     """List all knowledge bases owned by the authenticated user."""
-    return await kb_service.list_kbs(str(current_user["_id"]))
+    return await kb_service.list_kbs(
+        str(current_user["_id"]), limit=min(limit, 500), skip=max(skip, 0)
+    )
 
 
 @router.get("/{kb_id}", response_model=KBResponse, summary="Retrieve knowledge base metadata")
@@ -111,10 +115,15 @@ async def rollback_kb_endpoint(
     summary="List documents in knowledge base",
 )
 async def list_documents_endpoint(
-    kb_id: str, current_user: Mapping[str, Any] = Depends(get_current_user)
+    kb_id: str,
+    current_user: Mapping[str, Any] = Depends(get_current_user),
+    limit: int = 200,
+    skip: int = 0,
 ) -> list[DocResponse]:
     """List all documents registered in this knowledge base."""
-    return await kb_service.list_kb_documents(kb_id, str(current_user["_id"]))
+    return await kb_service.list_kb_documents(
+        kb_id, str(current_user["_id"]), limit=min(limit, 500), skip=max(skip, 0)
+    )
 
 
 async def _ingest_content(
@@ -136,6 +145,7 @@ async def _ingest_content(
     run in a worker thread so neither route blocks the event loop on CPU-heavy
     work.
     """
+    await kb_service.get_kb(kb_id, str(current_user["_id"]))
     stream = io.BytesIO(content)
     pages, eff_from, eff_until = await asyncio.to_thread(parse_document, filename, stream)
 
@@ -155,6 +165,29 @@ async def _ingest_content(
         effective_from=eff_from,
         effective_until=eff_until,
     )
+
+    try:
+        from bson import ObjectId as _ObjectId
+
+        from app.db.mongodb import Collections as _Collections
+        from app.db.mongodb import get_collection as _get_collection
+
+        ocr_attempted = sum(1 for p in pages if p.get("ocr_attempted"))
+        ocr_failed = sum(1 for p in pages if p.get("ocr_failed"))
+        if ocr_attempted or ocr_failed:
+            await _get_collection(_Collections.DOCUMENTS).update_one(
+                {"_id": _ObjectId(doc.id)},
+                {
+                    "$set": {
+                        "ocr_pages_attempted": ocr_attempted,
+                        "ocr_pages_failed": ocr_failed,
+                    }
+                },
+            )
+    except Exception as exc:
+        import logging as _logging
+
+        _logging.getLogger(__name__).debug("OCR stats persist skipped: %s", exc)
 
     # Indexing runs in the background: the client gets a document record back
     # immediately and the knowledge base becomes searchable shortly after.

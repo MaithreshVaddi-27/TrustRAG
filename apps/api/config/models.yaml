@@ -16,7 +16,10 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 runtime:
-  config_version: "1.26"
+  # 1.27 (2026-10-03 audit pass): sparse_top_k 0->20 (hybrid leg),
+  # max_analysis_seconds 120->600 (recovery reachable), ocr.dpi 200->300,
+  # retrieval.quantization.enabled added (INT8 gated off), local_llm.num_ctx_by_model.
+  config_version: "1.27"
 
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
@@ -163,7 +166,7 @@ onnx:
 # ─── Retrieval ────────────────────────────────────────────────────────────────
 retrieval:
   dense_top_k: 20
-  sparse_top_k: 0          # BM25 via Qdrant sparse vectors
+  sparse_top_k: 20          # BM25 via Qdrant sparse vectors
   fusion_method: rrf        # Reciprocal Rank Fusion
   rrf_k: 60                 # RRF constant (standard default)
   fusion_top_k: 20
@@ -188,6 +191,12 @@ retrieval:
   sparse_k1: 1.2             # Term-frequency saturation
   sparse_b: 0.75             # Length-normalization strength
   sparse_avg_len_tokens: 128 # Reference length ≈ default 512-char chunk
+  # Vector quantization (N-53): INT8 scalar quantization is OFF by default.
+  # Enable only after measuring recall impact on BGE-small 384-d — 1% clipping
+  # can drop the true nearest neighbour at the reranker boundary.
+  # Env wins: QDRANT_QUANTIZATION_ENABLED=1.
+  quantization:
+    enabled: false
 
 # ─── Document Processing ──────────────────────────────────────────────────────
 ingestion:
@@ -216,7 +225,7 @@ ingestion:
   ocr:
     enabled: true
     min_native_chars: 50
-    dpi: 200
+    dpi: 300
     min_confidence: 0.5
     # Persist the exact page renders the OCR engine read (Phase 7 chain:
     # Answer → chunk → page → image). Native pages render nothing (no cost);
@@ -272,7 +281,7 @@ cost_controls:
   # once spent, no new round starts and the current verdict stands (the run
   # abstains rather than guessing). 0 disables the bound. Raise only for slow
   # hardware or cloud providers with real per-call latency.
-  max_analysis_seconds: 120
+  max_analysis_seconds: 600
   max_verification_claims: 8        # Small models choke on 20; 8 keeps NLI focused
   max_individual_nli_fallback: 8    # Must cover max_verification_claims (8): when
                                     # batch NLI fails, every claim is still attempted
@@ -318,6 +327,9 @@ optimization:
 local_llm:
   # Context window size (tokens). Must match or be <= llama-server -c / Ollama num_ctx
   num_ctx: 4096
+  # Per-model overrides (L-2): a 30B GGUF served with -c 32768 must not be
+  # clamped to the small-model 4096 default. Keys are exact model ids.
+  num_ctx_by_model: {}
   # Prompt processing batch size for llama.cpp (controls KV cache build parallelism)
   num_batch: 512
   # Release GPU memory after this idle period (Ollama: keep_alive; llama.cpp: auto-unload)

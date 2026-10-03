@@ -92,6 +92,10 @@ def _upload_files(filename: str, payload: bytes) -> dict:
     return {"file": (filename, io.BytesIO(payload), "text/plain")}
 
 
+def _ok_kb():
+    return AsyncMock(return_value={"_id": ObjectId(KB_ID)})
+
+
 # ─── Upload: happy path ───────────────────────────────────────────────────────
 
 
@@ -104,6 +108,7 @@ def test_upload_accepts_a_supported_file(auth_user):
     with (
         patch("app.api.v1.knowledge_bases.parse_document", _parse()),
         patch("app.api.v1.knowledge_bases.get_chunking_strategy", return_value=strategy),
+        patch("app.api.v1.knowledge_bases.kb_service.get_kb", _ok_kb()),
         patch("app.api.v1.knowledge_bases.kb_service.add_document", capture),
         patch("app.api.v1.knowledge_bases.index_parsed_chunks", AsyncMock()),
     ):
@@ -129,6 +134,7 @@ def test_upload_computes_a_stable_content_hash(auth_user):
     with (
         patch("app.api.v1.knowledge_bases.parse_document", _parse()),
         patch("app.api.v1.knowledge_bases.get_chunking_strategy", return_value=_chunker()),
+        patch("app.api.v1.knowledge_bases.kb_service.get_kb", _ok_kb()),
         patch("app.api.v1.knowledge_bases.kb_service.add_document", capture),
         patch("app.api.v1.knowledge_bases.index_parsed_chunks", AsyncMock()),
     ):
@@ -150,6 +156,7 @@ def test_upload_derives_filename_from_the_path_and_strips_nulls(auth_user):
     with (
         patch("app.api.v1.knowledge_bases.parse_document", _parse()),
         patch("app.api.v1.knowledge_bases.get_chunking_strategy", return_value=_chunker()),
+        patch("app.api.v1.knowledge_bases.kb_service.get_kb", _ok_kb()),
         patch("app.api.v1.knowledge_bases.kb_service.add_document", capture),
         patch("app.api.v1.knowledge_bases.index_parsed_chunks", AsyncMock()),
     ):
@@ -196,6 +203,7 @@ def test_upload_of_empty_file_does_not_crash(auth_user):
     not 500 in the parser."""
     with (
         patch("app.api.v1.knowledge_bases.get_chunking_strategy", return_value=_chunker([])),
+        patch("app.api.v1.knowledge_bases.kb_service.get_kb", _ok_kb()),
         patch("app.api.v1.knowledge_bases.kb_service.add_document", _Capture()),
         patch("app.api.v1.knowledge_bases.index_parsed_chunks", AsyncMock()),
     ):

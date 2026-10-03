@@ -42,8 +42,7 @@ cp .env.example .env
 | `QDRANT_API_KEY` | Prod only | Qdrant Cloud API key |
 | `JWT_SECRET` | Yes | Min 32-char random secret |
 | `CORS_ORIGINS` | Yes | Comma-separated allowed origins |
-| `GEMINI_API_KEY` | Conditional | Only if models.yaml uses gemini |
-| `NVIDIA_API_KEY` | Conditional | Only if models.yaml uses nvidia |
+| `GEMINI_API_KEY` | Conditional | Only if models.yaml uses gemini AND the `cloud` extra is installed |
 | `TAVILY_API_KEY` | No | Web search grounding (else free DuckDuckGo) |
 | `HF_TOKEN` | No | Read-only token to avoid Hub rate-limits on embedding download |
 | `APP_ENV` | No | `development` (default) + `staging`/`production` |

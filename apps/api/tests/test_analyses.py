@@ -505,7 +505,7 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
         return _Sem()
 
     monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
-    monkeypatch.setattr(svc, "get_global_semaphore", _get_sem)
+    # P1-2: pipeline semaphore removed; per-call LLM permit is the only gate.
     monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
     monkeypatch.setattr(
         svc,
@@ -589,7 +589,7 @@ async def test_finalize_withholds_unverified_answer_from_user(
 
     monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
     monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
-    monkeypatch.setattr(svc, "get_global_semaphore", _get_sem)
+    # P1-2: pipeline semaphore removed; per-call LLM permit is the only gate.
     monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
     monkeypatch.setattr(
         svc,
@@ -652,7 +652,7 @@ async def test_finalize_keeps_trusted_answer(monkeypatch):
 
     monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
     monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
-    monkeypatch.setattr(svc, "get_global_semaphore", _get_sem)
+    # P1-2: pipeline semaphore removed; per-call LLM permit is the only gate.
     monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
     monkeypatch.setattr(
         svc,

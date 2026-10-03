@@ -105,6 +105,7 @@ def chunk_text(
                         # Provenance: OCR fallback flags ride page → chunk.
                         "ocr_used": bool(page_obj.get("ocr_used", False)),
                         "ocr_confidence": page_obj.get("ocr_confidence"),
+                        "ocr_failed": bool(page_obj.get("ocr_failed", False)),
                         # page-image chain: render bytes ride along (pipeline persists
                         # once per page; never stored per chunk).
                         "page_image_png": page_obj.get("page_image_png"),

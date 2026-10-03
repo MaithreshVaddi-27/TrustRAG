@@ -8,6 +8,7 @@ parameters. See app.core.config.settings for env-sourced Settings.
 from __future__ import annotations
 
 import os
+import threading as _threading
 from typing import Any
 
 import structlog
@@ -486,6 +487,14 @@ class ModelConfig:
         return int(self._get("retrieval", "sparse_avg_len_tokens", required=False) or 128)
 
     @property
+    def qdrant_quantization_enabled(self) -> bool:
+        value = self._get("retrieval", "quantization", "enabled", required=False)
+        env_val = os.environ.get("QDRANT_QUANTIZATION_ENABLED")
+        if env_val is not None:
+            return _parse_bool(env_val)
+        return _parse_bool(value, False)
+
+    @property
     def max_context_chunks(self) -> int:
         return int(self._get("retrieval", "max_context_chunks"))
 
@@ -643,8 +652,12 @@ class ModelConfig:
 
     @property
     def max_individual_nli_fallback(self) -> int:
+        # L-5: fallback must cover the largest tier ceiling (cloud 8); lean
+        # simply leaves spare slots unused. A fallback below the claim ceiling
+        # leaves trailing claims NEUTRAL without ever being tried (f407e23e).
         value = self._get("cost_controls", "max_individual_nli_fallback", required=False)
-        return int(value) if value is not None else 5
+        configured = int(value) if value is not None else 8
+        return max(configured, 8)
 
     @property
     def max_claim_retrievals(self) -> int:
@@ -662,6 +675,35 @@ class ModelConfig:
         value = self._get("local_llm", "num_ctx", required=False)
         env_val = _blank_as_none("LOCAL_LLM_NUM_CTX")
         return int(env_val) if env_val is not None else int(value or 4096)
+
+    def num_ctx_for(self, model: str | None = None, provider: str | None = None) -> int:
+        """Per-model context window (L-2): explicit per-model override wins,
+        else the global local_llm.num_ctx. Cloud windows are large; local
+        defaults stay conservative."""
+        try:
+            by_model = self._get("local_llm", "num_ctx_by_model", required=False) or {}
+            if model and str(model) in by_model:
+                return int(by_model[str(model)])
+        except Exception:
+            logger.debug("num_ctx_by_model lookup failed, using global default")
+        prov = (provider or self.llm_provider or "").lower()
+        if prov == "gemini":
+            return 1000000
+        return self.local_llm_num_ctx
+
+    def evidence_budget_chars(self, provider: str | None = None) -> int:
+        """Tiered generation budget (L-1/A-37): lean 3000, balanced 6000,
+        cloud 12000. Makes tier_caps actually matter for large models."""
+        try:
+            caps = self.tier_caps(provider)
+            tier_max = int(caps.get("max_context_chunks", 8))
+        except Exception:
+            tier_max = 8
+        if tier_max <= 5:
+            return 3000
+        if tier_max <= 8:
+            return 6000
+        return 12000
 
     @property
     def local_llm_num_batch(self) -> int:
@@ -706,6 +748,14 @@ class ModelConfig:
         value = self._get("optimization", "kv_cache_quantization", required=False)
         env_val = os.environ.get("KV_CACHE_QUANTIZATION")
         return env_val if env_val is not None else str(value or "q4_0")
+
+    @property
+    def flash_attention(self) -> bool:
+        value = self._get("optimization", "flash_attention", required=False)
+        env_val = os.environ.get("FLASH_ATTENTION")
+        if env_val is not None:
+            return _parse_bool(env_val)
+        return _parse_bool(value, True)
 
     @property
     def prompt_caching(self) -> bool:
@@ -758,7 +808,7 @@ class ModelConfig:
             Dict with max_verification_claims, max_context_chunks, max_claim_retrievals
         """
         prov = (provider or self.llm_provider).lower()
-        is_cloud = prov in "gemini"
+        is_cloud = prov == "gemini"
         is_mlx = prov == "mlx"
 
         if is_cloud:
@@ -806,20 +856,40 @@ class ModelConfig:
         }
 
 
-# ─── Factory (no cache: fresh read per call) ────────────────────────────────
+# ─── Factory (mtime cache: live reload at ~zero cost) ───────────────────────
+
+_config_lock = _threading.Lock()
+_config_cache: dict[str, Any] = {"mtime": None, "cfg": None}
 
 
 def get_model_config() -> ModelConfig:
-    """Load ModelConfig from models.yaml (fresh read, no cache).
+    """Load ModelConfig from models.yaml (mtime-cached).
 
-    No singleton: a yaml edit takes effect without restarts or explicit
-    invalidation. The file is small (~350 lines); re-parsing per call costs
-    single-digit milliseconds and removes a whole class of stale-state bugs.
+    A yaml edit takes effect on next call (mtime check is microseconds);
+    repeat calls within the same mtime reuse the parsed object.
     """
+    try:
+        mtime = _MODELS_YAML_PATH.stat().st_mtime
+    except OSError:
+        mtime = None
+    with _config_lock:
+        cached = _config_cache["cfg"]
+        if _config_cache["mtime"] == mtime and isinstance(cached, ModelConfig):
+            return cached
     raw = _load_models_yaml()
     cfg = ModelConfig(raw)
     _validate_chunk_windows(cfg)
+    with _config_lock:
+        _config_cache["mtime"] = mtime
+        _config_cache["cfg"] = cfg
     return cfg
+
+
+def clear_model_config_cache() -> None:
+    """Clear cached config (tests only)."""
+    with _config_lock:
+        _config_cache["mtime"] = None
+        _config_cache["cfg"] = None
 
 
 def _validate_chunk_windows(cfg: ModelConfig) -> None:

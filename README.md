@@ -62,7 +62,7 @@ Query → Route → Retrieve (hybrid) → Generate (grounded) → Decompose
 7. **Recover** — budget-aware LangGraph loop (rewrite → re-retrieve → regenerate, ≤2 attempts).
 8. **Answer or abstain** — returns the grounded answer, or refuses to guess.
 
-The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local embeddings + embedded Qdrant + local MongoDB). No API keys required — Gemini and Tavily search are optional.
+The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local embeddings + embedded Qdrant + local MongoDB). No API keys required. The two cloud clients (Gemini LLM, Tavily search) are **not installed by default** — see [Optional cloud extras](#optional-cloud-extras).
 
 ---
 
@@ -89,7 +89,7 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 |-------|------------|
 | **Frontend** | React 18, Vite 6, Tailwind CSS 3, TanStack Query 5, React Router 7 |
 | **Backend** | FastAPI 0.115, Python 3.11+, Pydantic v2, LangGraph, LangChain |
-| **LLM** | Ollama / llama.cpp / **MLX** (local, default) · Gemini (optional cloud) |
+| **LLM** | Ollama / llama.cpp / **MLX** (local, default) · Gemini (optional, `cloud` extra) |
 | **Embeddings** | `BAAI/bge-small-en-v1.5` via ONNX Runtime (torch-free, default) |
 | **Reranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` via ONNX Runtime (int8) |
 | **Storage** | Qdrant (vectors) + MongoDB 7 (documents, async `motor`) |
@@ -373,6 +373,25 @@ CORS_ORIGINS=https://your-domain.com
 ```
 
 Default ports: API `8000` · Vite `5173` · llama-server `8080` · **MLX server `8090`** · Ollama `11434` · MongoDB `27017` · Qdrant `6335→6333`. Change ports in `config/ports.yaml`, then run `python3 scripts/apply_ports.py` (enforced in CI with `--check`).
+
+### Optional cloud extras
+
+TrustRAG runs fully on-prem by default. Two features can send data off-box and
+their client libraries are therefore **not installed by default**:
+
+| Feature | Extra | Env var |
+|---|---|---|
+| Gemini LLM provider | `cloud` | `GEMINI_API_KEY` |
+| Tavily web search | `cloud` | `TAVILY_API_KEY` |
+
+```bash
+cd apps/api && uv sync --extra cloud    # or: pip install -e ".[cloud]"
+```
+
+The Docker image (`uv sync --locked --no-dev`) ships the on-prem set only, so a
+containerized deployment cannot reach either endpoint unless rebuilt with the
+extra. Distributed tracing is likewise **off unless `TRUSTRAG_TRACING=1` is set
+explicitly**, so prompts and evidence never reach a third-party SaaS by default.
 
 ---
 

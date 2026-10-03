@@ -14,6 +14,7 @@ Changing a model requires updating models.yaml only — no code changes.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -51,6 +52,23 @@ def _resolve_reranker_onnx_path(cache_dir: Path, reranker_model: str) -> Path:
     """Canonical reranker ONNX path (mirrors get_reranker auto-generation)."""
     base = reranker_model.split("/")[-1].replace(".", "_")
     return cache_dir / f"reranker-{base}_int8.onnx"
+
+
+# ─── ONNX singleton caches (P1-3) ────────────────────────────────────────────
+# ORT InferenceSession + tokenizer construction (~130MB mmap + graph opt)
+# must not run per query. Lock-guarded singletons keyed on resolved paths.
+_embedding_lock = threading.Lock()
+_embedding_cache: dict[tuple, Any] = {}
+_reranker_lock = threading.Lock()
+_reranker_cache: dict[tuple, Any] = {}
+
+
+def clear_onnx_caches() -> None:
+    """Clear cached ONNX singletons (tests only)."""
+    with _embedding_lock:
+        _embedding_cache.clear()
+    with _reranker_lock:
+        _reranker_cache.clear()
 
 
 def onnx_model_status() -> dict[str, Any]:
@@ -341,6 +359,12 @@ def get_embedding_model() -> Embeddings:
         onnx_path=str(onnx_model_path),
     )
 
+    cache_key = (active_model, str(onnx_model_path), int(cfg.embedding_max_seq_length))
+    with _embedding_lock:
+        cached = _embedding_cache.get(cache_key)
+        if isinstance(cached, Embeddings):
+            return cached
+
     try:
         base_emb = ONNXBGEEmbeddings(
             model_path=str(onnx_model_path),
@@ -353,7 +377,10 @@ def get_embedding_model() -> Embeddings:
             "Re-run 'python scripts/bootstrap.py --force' to re-export it.",
             detail=str(exc)[:300],
         ) from exc
-    return ONNXBGEEmbeddingsWrapper(base_emb, model_name=f"onnx::{active_model}")
+    wrapped = ONNXBGEEmbeddingsWrapper(base_emb, model_name=f"onnx::{active_model}")
+    with _embedding_lock:
+        _embedding_cache[cache_key] = wrapped
+    return wrapped
 
 
 # ─── Reranker ─────────────────────────────────────────────────────────────────
@@ -396,37 +423,24 @@ def get_reranker():  # type: ignore[return]
                 cache_dir = (api_base / cfg.embedding_cache_dir).resolve()
                 onnx_path = _resolve_reranker_onnx_path(cache_dir, cfg.reranker_model)
 
-            # If ONNX model doesn't exist, we'll fall back to PyTorch
+            # Request path is read-only: never download/export inside a request
+            # (P1-26). Missing weights fail closed to RRF order below.
             if not Path(onnx_path).exists():
-                logger.info("ONNX model not found, will export from PyTorch", path=str(onnx_path))
-                try:
-                    import importlib.util
+                logger.warning(
+                    "ONNX reranker weights missing, reranker disabled, using Hybrid RRF. "
+                    "Run 'python scripts/ensure_onnx_models.py' to export it.",
+                )
+                return None
 
-                    if importlib.util.find_spec("torch") is not None:
-                        # Import torch locally for export
-                        import torch  # noqa: F401 - used by CrossEncoder internally
-                        from sentence_transformers import CrossEncoder
-
-                        model = CrossEncoder(cfg.reranker_model)
-                        # Export to ONNX
-                        from app.llm.onnx_reranker import export_crossencoder_to_onnx
-
-                        export_crossencoder_to_onnx(
-                            model, str(onnx_path), tokenizer_name=cfg.reranker_model
-                        )
-                        logger.info("Successfully exported reranker to ONNX", path=str(onnx_path))
-                    else:
-                        raise ImportError("torch not available")
-                except Exception as export_exc:
-                    logger.warning(
-                        "Failed to export reranker to ONNX, falling back to PyTorch",
-                        error=str(export_exc),
-                    )
-
-            if Path(onnx_path).exists():
-                return ONNXCrossEncoder(str(onnx_path), tokenizer_name=cfg.reranker_model)
-            else:
-                logger.warning("ONNX export failed, falling back to PyTorch CrossEncoder")
+            cache_key = (cfg.reranker_model, str(onnx_path))
+            with _reranker_lock:
+                cached = _reranker_cache.get(cache_key)
+                if cached is not None:
+                    return cached
+            instance = ONNXCrossEncoder(str(onnx_path), tokenizer_name=cfg.reranker_model)
+            with _reranker_lock:
+                _reranker_cache[cache_key] = instance
+            return instance
         except ImportError:
             logger.warning("ONNX runtime not available for reranker, falling back to PyTorch")
         except Exception as exc:

@@ -70,9 +70,11 @@ def test_create_kb(mock_create_indexes, mock_connect):
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
 def test_list_kbs(mock_create_indexes, mock_connect, mock_kb_doc):
-    # Mock async cursor for find().sort().to_list()
+    # Mock async cursor for find().sort().skip().limit().to_list()
     mock_cursor = MagicMock()
     mock_cursor.sort = MagicMock(return_value=mock_cursor)
+    mock_cursor.skip = MagicMock(return_value=mock_cursor)
+    mock_cursor.limit = MagicMock(return_value=mock_cursor)
     mock_cursor.to_list = AsyncMock(return_value=[mock_kb_doc])
 
     # Mock aggregation pipeline yielding per-KB document counts

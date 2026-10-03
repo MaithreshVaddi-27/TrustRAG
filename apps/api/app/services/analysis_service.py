@@ -33,7 +33,6 @@ from app.core.observability.metrics import (
 )
 from app.core.security.exceptions import AuthorizationError, InputValidationError, NotFoundError
 from app.core.system import memory as memory_mod
-from app.core.system.concurrency import get_global_semaphore
 from app.db.mongodb import Collections, get_collection
 from app.llm import local_llm as local_llm_mod
 from app.rag.generation.generator import strip_citation_markers
@@ -53,31 +52,74 @@ logger = get_logger(__name__)
 # instead of answering. Such text must never be stored as a synthesis.
 
 _SCAFFOLD_MARKERS = (
+    # Verbatim CRAFT/TOON fence tokens from the grounding prompts.
     "<context>",
-    "<relevance>",
+    "<premise>",
+    "<craft",
+    "<role>",
+    "<action>",
+    "<format>",
+    "<tone>",
+    "<loop>",
     "answering_criteria",
     "final_section",
     "final_answer",
     "final_output",
+    # Rendered section headings the prompt itself uses. A model that restates
+    # the prompt's own structure is echoing scaffolding, not synthesising.
+    "### context",
+    "### role",
+    "### action",
+    "### format",
+    "### tone",
+    "segment 1 [source:",
 )
+
+# A short sentence repeated this many times is a decoding loop, not prose.
+_LOOP_REPEAT_THRESHOLD = 3
+# Phrases below this length are ignored by the loop detector (stopwords repeat
+# legitimately: "the limit is 30 days." is a real answer).
+_LOOP_MIN_PHRASE_LEN = 20
 
 
 def _looks_like_scaffold_echo(answer: str | None) -> bool:
-    """Detect prompt-echo / repetition-loop generations."""
+    """Detect prompt-echo / repetition-loop generations.
+
+    Three independent signals, because each catches a real small-model failure
+    that the others miss:
+      1. verbatim prompt scaffolding (fence tokens, prompt section headings);
+      2. a whole sentence repeated 3+ times;
+      3. the answer being one phrase repeated to the token cap.
+    """
     if not answer:
         return False
     lowered = answer.lower()
     if any(m in lowered for m in _SCAFFOLD_MARKERS):
         return True
-    # Same substantive sentence 3+ times = repetition loop.
+
+    flattened = lowered.replace("\n", " ")
+
+    # 2. Same substantive sentence 3+ times = repetition loop.
     seen: dict[str, int] = {}
-    for sentence in lowered.replace("\n", " ").split(". "):
+    for sentence in flattened.split(". "):
         s = sentence.strip()
-        if len(s) < 40:
+        if len(s) < _LOOP_MIN_PHRASE_LEN:
             continue
         seen[s] = seen.get(s, 0) + 1
-        if seen[s] >= 3:
+        if seen[s] >= _LOOP_REPEAT_THRESHOLD:
             return True
+
+    # 3. One phrase repeated to fill the token cap ("the limit is thirty days"
+    #    xN). Splitting on ". " above misses this because each copy keeps its
+    #    period, so they never collapse into one duplicate key.
+    words = flattened.split()
+    if len(words) >= 24:
+        for size in (4, 6, 8):
+            if len(words) % size:
+                continue
+            phrases = {" ".join(words[i : i + size]) for i in range(0, len(words), size)}
+            if len(phrases) == 1:
+                return True
     return False
 
 
@@ -116,6 +158,14 @@ def _presentable_answer(
     return _UNVERIFIED_ANSWER
 
 
+def _record_completed(status: str) -> None:
+    """Record terminal analysis status; metrics must never break the pipeline."""
+    try:
+        record_analysis_completed(status)
+    except Exception:  # noqa: S110 - telemetry is best-effort
+        pass
+
+
 # ─── In-process SSE Pub/Sub ──────────────────────────────────────────────────
 # Maps analysis_id -> set of asyncio.Queue subscribers
 _analysis_subscribers: dict[str, set[asyncio.Queue]] = {}
@@ -124,7 +174,7 @@ _subscribers_lock = asyncio.Lock()
 
 async def _subscribe_to_analysis(analysis_id: str) -> asyncio.Queue:
     """Subscribe to real-time events for an analysis."""
-    queue: asyncio.Queue = asyncio.Queue()
+    queue: asyncio.Queue = asyncio.Queue(maxsize=256)
     async with _subscribers_lock:
         if analysis_id not in _analysis_subscribers:
             _analysis_subscribers[analysis_id] = set()
@@ -386,7 +436,7 @@ async def get_analysis(analysis_id_str: str, user_id_str: str) -> AnalysisRespon
     try:
         analysis_id = ObjectId(analysis_id_str)
     except Exception as exc:
-        raise NotFoundError("Analysis not found", detail=str(exc)) from exc
+        raise NotFoundError("Analysis not found") from exc
 
     analysis = await get_collection(Collections.ANALYSES).find_one({"_id": analysis_id})
     if not analysis:
@@ -589,29 +639,27 @@ async def run_analysis_pipeline(
     """
     analysis_id = ObjectId(analysis_id_str)
     analyses_coll = get_collection(Collections.ANALYSES)
-    sem = get_global_semaphore()
 
     try:
-        async with sem:
-            # Mark status as processing
-            await analyses_coll.update_one(
-                {"_id": analysis_id},
-                {"$set": {"status": "processing", "updated_at": datetime.now(UTC)}},
-            )
+        # Mark status as processing
+        await analyses_coll.update_one(
+            {"_id": analysis_id},
+            {"$set": {"status": "processing", "updated_at": datetime.now(UTC)}},
+        )
 
-            # 1. Execute Agentic LangGraph workflow (retrieval, NLI verify, and recovery loop)
-            from app.rag.agent.graph import execute_agentic_rag_flow
+        # 1. Execute Agentic LangGraph workflow (retrieval, NLI verify, and recovery loop)
+        from app.rag.agent.graph import execute_agentic_rag_flow
 
-            final_state = await execute_agentic_rag_flow(
-                analysis_id_str=analysis_id_str,
-                kb_id_str=kb_id_str,
-                query=query,
-                user_id_str=user_id_str,
-                web_search_enabled=web_search_enabled,
-                web_search_provider=web_search_provider,
-                llm_provider=llm_provider,
-                llm_model=llm_model,
-            )
+        final_state = await execute_agentic_rag_flow(
+            analysis_id_str=analysis_id_str,
+            kb_id_str=kb_id_str,
+            query=query,
+            user_id_str=user_id_str,
+            web_search_enabled=web_search_enabled,
+            web_search_provider=web_search_provider,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
+        )
 
         if final_state.get("diagnosis_type") == "RETRIEVAL_OUTAGE":
             # Retrieval infrastructure outage — never present this as
@@ -646,10 +694,7 @@ async def run_analysis_pipeline(
                 "analysis.outage",
                 {"message": outage_failures[0]},
             )
-            try:
-                record_analysis_completed("failed")
-            except Exception:  # noqa: S110
-                pass
+            _record_completed("failed")
             return
 
         answer = final_state["answer"]
@@ -666,14 +711,7 @@ async def run_analysis_pipeline(
         if verdict.reliability_status == ReliabilityStatus.ABSTAINED:
             # Never store the bare "ABSTAIN" token as the user-facing answer.
             stored_abstain = (
-                answer
-                if answer and answer.strip() != "ABSTAIN"
-                else (
-                    "I couldn't verify an answer from this knowledge base: the "
-                    "retrieved evidence did not support a grounded response, so "
-                    "I am abstaining rather than guessing. Try a more specific "
-                    "query or add documents covering this topic."
-                )
+                answer if answer and answer.strip() != "ABSTAIN" else _UNVERIFIED_ANSWER
             )
             # Update database first, then publish trace event
             await analyses_coll.update_one(
@@ -699,10 +737,7 @@ async def run_analysis_pipeline(
                 "analysis.abstained",
                 {"message": "Agent reasoning resulted in abstention"},
             )
-            try:
-                record_analysis_completed("abstained")
-            except Exception:  # noqa: S110
-                pass
+            _record_completed("abstained")
         else:
             # GROUNDING GATE (audit G-1). The verdict engine has already decided
             # how much of the generated answer the evidence supports; this is
@@ -801,10 +836,7 @@ async def run_analysis_pipeline(
                     "verdict": verdict.diagnosis_type.value,
                 },
             )
-            try:
-                record_analysis_completed(stored_status)
-            except Exception:  # noqa: S110
-                pass
+            _record_completed(stored_status)
 
     except Exception as exc:
         logger.error(
@@ -849,10 +881,7 @@ async def run_analysis_pipeline(
                 }
             },
         )
-        try:
-            record_analysis_completed("failed")
-        except Exception:  # noqa: S110
-            pass
+        _record_completed("failed")
     finally:
         try:
             await asyncio.to_thread(memory_mod.trim_memory)
@@ -868,14 +897,23 @@ async def list_all_user_evidence(
     uid = ObjectId(user_id_str)
 
     query_filter: dict[str, Any] = {"user_id": uid}
-    if await evidence_coll.count_documents(query_filter) == 0:
-        analyses_coll = get_collection(Collections.ANALYSES)
-        user_analyses = await analyses_coll.find({"user_id": uid}, {"_id": 1}).to_list(1000)
-        analysis_ids = [a["_id"] for a in user_analyses]
-        if not analysis_ids:
-            return []
-        query_filter = {"analysis_id": {"$in": analysis_ids}}
-
+    results = []
+    cursor = (
+        evidence_coll.find(query_filter).sort("created_at", -1).skip(skip).limit(min(limit, 200))
+    )
+    async for e in cursor:
+        results.append(serialize_evidence(e))
+    if results:
+        return results
+    # Legacy fallback: docs written before user_id backfill carry only analysis_id.
+    analyses_coll = get_collection(Collections.ANALYSES)
+    user_analyses = (
+        await analyses_coll.find({"user_id": uid}, {"_id": 1}).sort("_id", -1).to_list(1000)
+    )
+    analysis_ids = [a["_id"] for a in user_analyses]
+    if not analysis_ids:
+        return []
+    query_filter = {"analysis_id": {"$in": analysis_ids}}
     results = []
     cursor = (
         evidence_coll.find(query_filter).sort("created_at", -1).skip(skip).limit(min(limit, 200))
@@ -893,14 +931,21 @@ async def list_all_user_claims(
     uid = ObjectId(user_id_str)
 
     query_filter: dict[str, Any] = {"user_id": uid}
-    if await claims_coll.count_documents(query_filter) == 0:
-        analyses_coll = get_collection(Collections.ANALYSES)
-        user_analyses = await analyses_coll.find({"user_id": uid}, {"_id": 1}).to_list(1000)
-        analysis_ids = [a["_id"] for a in user_analyses]
-        if not analysis_ids:
-            return []
-        query_filter = {"analysis_id": {"$in": analysis_ids}}
-
+    results = []
+    cursor = claims_coll.find(query_filter).sort("created_at", -1).skip(skip).limit(min(limit, 200))
+    async for c in cursor:
+        results.append(serialize_claim(c))
+    if results:
+        return results
+    # Legacy fallback: docs written before user_id backfill carry only analysis_id.
+    analyses_coll = get_collection(Collections.ANALYSES)
+    user_analyses = (
+        await analyses_coll.find({"user_id": uid}, {"_id": 1}).sort("_id", -1).to_list(1000)
+    )
+    analysis_ids = [a["_id"] for a in user_analyses]
+    if not analysis_ids:
+        return []
+    query_filter = {"analysis_id": {"$in": analysis_ids}}
     results = []
     cursor = claims_coll.find(query_filter).sort("created_at", -1).skip(skip).limit(min(limit, 200))
     async for c in cursor:
@@ -927,12 +972,12 @@ async def list_all_user_conflicts(
 
     conflicts = []
 
-    # 1. Contradicted claims
+    # 1. Contradicted claims (fetch skip+limit worth per source, paginate after merge)
+    per_source = min(skip + limit, 100)
     cursor_claims = (
         claims_coll.find({"analysis_id": {"$in": a_ids}, "state": "CONTRADICTED"})
         .sort("created_at", -1)
-        .skip(skip)
-        .limit(min(limit, 100))
+        .limit(per_source)
     )
     async for c in cursor_claims:
         conflicts.append(
@@ -958,8 +1003,7 @@ async def list_all_user_conflicts(
             {"analysis_id": {"$in": a_ids}, "integrity_status": {"$nin": ["VERIFIED", None]}}
         )
         .sort("created_at", -1)
-        .skip(skip)
-        .limit(min(limit, 100))
+        .limit(per_source)
     )
     async for e in cursor_evidence:
         conflicts.append(
@@ -979,7 +1023,9 @@ async def list_all_user_conflicts(
             }
         )
 
-    return conflicts
+    # Merge, sort newest-first, then paginate once (N-34).
+    conflicts.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    return conflicts[skip : skip + limit]
 
 
 # ─── Analytics Dashboard ──────────────────────────────────────────────────────

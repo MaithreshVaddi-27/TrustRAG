@@ -241,6 +241,6 @@ def test_chunker_long_token_falls_back_to_hard_cut():
     pages = [{"page": 1, "text": "A" * 300}]
     chunks = chunk_text(pages, chunk_size=100, chunk_overlap=10)
     assert len(chunks) >= 1
-    # normalize_text lowercases; the hard cut keeps the full window width.
-    assert chunks[0]["text"].startswith("a")
+    # P1-5: normalize preserves case for verbatim citations; hard cut keeps width.
+    assert chunks[0]["text"].startswith("A")
     assert len(chunks[0]["text"]) == 100

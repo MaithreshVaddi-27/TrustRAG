@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useReducer } from 'react'
 import { 
   Download, Copy, Sparkles, Check, Cpu, Globe, Clock
 } from 'lucide-react'
@@ -17,6 +17,12 @@ import { compactTraceEvents } from './traceEvents'
 import api from '@/lib/api'
 
 function TabIndicator({ activeTab, tabRefs }) {
+  const [, forceTick] = useReducer(x => x + 1, 0)
+  useEffect(() => {
+    const onResize = () => forceTick()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   const el = tabRefs.current[activeTab]
   if (!el) return null
   return (
@@ -80,7 +86,7 @@ export function ResultsPanel({
   }
 
   if (!analysis && !loading) {
-    return <EmptyState onLoadSample={() => {}} />
+    return <EmptyState enableWebSearch={enableWebSearch} />
   }
 
   if (loading) {
@@ -118,7 +124,7 @@ export function ResultsPanel({
   }
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+    <div className="flex-1 min-h-0 flex flex-col overflow-visible md:overflow-hidden">
       <div className="shrink-0 p-4 border-b border-slate-800/90 flex flex-wrap items-center justify-between gap-3 bg-surface-900/70 backdrop-blur-md">
         <div className="flex items-center gap-3 min-w-0">
           <ReliabilityBadge status={analysis.status} />
@@ -231,7 +237,10 @@ export function ResultsPanel({
                       Grounded Synthesis
                     </span>
                     <span className="text-[11px] text-slate-500 font-mono flex items-center gap-1 ml-2">
-                      <Clock size={11} /> ~{estimatedReadTime} min read ({answerWordCount} words)
+                      <Clock size={11} />{' '}
+                      {answerWordCount < 120
+                        ? `${selectedProvider || 'local'} · terse by design`
+                        : `~${estimatedReadTime} min read (${answerWordCount} words)`}
                     </span>
                   </div>
                   <button

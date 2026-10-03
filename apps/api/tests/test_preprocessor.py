@@ -14,12 +14,16 @@ from app.rag.ingestion.preprocessor import (
 
 def test_normalize_text_bullets_and_artifacts():
     # Tests stripping of PDF bullet artifacts (\uf0d8, \u2022)
+    # P1-5: normalize preserves case for verbatim citations; index-time
+    # lowercasing lives in lexical_analyze.
     raw = "Introduction \uf0d8 To \u2022 DataStructures"
     normalized = normalize_text(raw)
     assert "\uf0d8" not in normalized
     assert "\u2022" not in normalized
-    assert "introduction" in normalized
-    assert "datastructures" in normalized
+    assert "Introduction" in normalized
+    assert "DataStructures" in normalized
+    tokens = lexical_analyze(raw)
+    assert "introduct" in tokens or "introduction" in tokens
 
 
 def test_normalize_text_dehyphenation():
@@ -34,9 +38,10 @@ def test_normalize_text_dehyphenation():
 def test_normalize_text_contractions():
     raw = "They aren't able to search because it's cannot be found."
     normalized = normalize_text(raw)
-    assert "are not" in normalized
-    assert "is" in normalized
-    assert "can not" in normalized
+    # P1-5: storage stays verbatim; expansion happens at index time.
+    assert "aren't" in normalized
+    tokens = lexical_analyze(raw)
+    assert "are" not in tokens or "not" in tokens
 
 
 def test_porter_stemmer():
