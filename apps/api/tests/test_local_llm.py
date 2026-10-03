@@ -595,3 +595,37 @@ async def test_probe_mlx_hint_names_server_command(monkeypatch):
         await probe_local_llm_server("mlx", "http://127.0.0.1:8080/v1")
     except LLMUnavailableError as exc:
         assert "mlx_lm.server" in exc.message
+
+
+# ─── Unknown providers must fail loud, not impersonate another provider ───────
+# Regression: the NIM integration was removed from the backend but _create_llm
+# had no final `else: raise`, so ANY unrecognised provider fell through to the
+# Gemini branch. The frontend still offered a "NVIDIA" button, so selecting it
+# returned Gemini responses labelled as NVIDIA. Unknown names now reject.
+
+
+@pytest.mark.parametrize("provider", ["nvidia", "nim", "bogus", "NVIDIA"])
+def test_unknown_provider_is_rejected_not_silently_gemini(provider):
+    from app.core.security.exceptions import ConfigurationError
+    from app.llm.model_registry import get_llm
+
+    with pytest.raises(ConfigurationError, match="Unknown LLM provider"):
+        get_llm(provider, "some-model")
+
+
+def test_blank_provider_falls_back_to_configured_default():
+    """Empty/None means "use the configured provider" — that is NOT an unknown
+    provider and must not be rejected."""
+    from app.llm.model_registry import get_llm
+
+    assert get_llm(None, "m") is not None
+    assert get_llm("", "m") is not None
+
+
+def test_supported_providers_still_resolve():
+    """The rejection must not have broken the real providers."""
+    from app.core.config.model_config import SUPPORTED_LLM_PROVIDERS
+
+    assert SUPPORTED_LLM_PROVIDERS == frozenset({"ollama", "llama_cpp", "mlx", "gemini"})
+    assert "nvidia" not in SUPPORTED_LLM_PROVIDERS
+    assert "nim" not in SUPPORTED_LLM_PROVIDERS

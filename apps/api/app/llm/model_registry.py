@@ -149,6 +149,21 @@ def _create_llm(
         )
         return llm
 
+    if provider != "gemini":
+        # Without this, ANY unknown provider fell through to the Gemini branch
+        # below and silently served Gemini — the frontend still offered a
+        # "NVIDIA" button long after the NIM integration was removed, so
+        # choosing it returned Gemini responses labelled as NVIDIA.
+        # normalize_provider documents that unknown names pass through
+        # "so the caller can reject them with a useful message"; this is that
+        # rejection. Fail loud instead of answering as a different provider.
+        from app.core.config.model_config import SUPPORTED_LLM_PROVIDERS
+
+        raise ConfigurationError(
+            f"Unknown LLM provider '{provider}'. "
+            f"Supported: {', '.join(sorted(SUPPORTED_LLM_PROVIDERS))}."
+        )
+
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     if not settings.gemini_api_key:

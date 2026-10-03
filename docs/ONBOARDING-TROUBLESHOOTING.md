@@ -155,7 +155,7 @@ net start MongoDB
 
 Mocked tests are green, but these need a running stack + human judgment:
 
-- **Providers never live-tested:** Gemini, NVIDIA NIM, MLX (`./scripts/start_mlx_server.sh` on :8090).
+- **Providers never live-tested:** Gemini, MLX (`./scripts/start_mlx_server.sh` on :8090).
 - **qwen3:1.7b** hallucinated unrelated claims in manual testing — retry with
   `temperature=0` before trusting it for verification.
 - **LFM2.5-1.2B** verification fixated on SHA-256 and missed NLI context —

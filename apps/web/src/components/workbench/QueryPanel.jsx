@@ -57,8 +57,6 @@ export function QueryPanel({
       setSelectedModel('mlx-community/Llama-3.2-1B-Instruct-4bit')
     } else if (providerKey === 'gemini') {
       setSelectedModel('gemini-3.5-flash-lite')
-    } else if (providerKey === 'nvidia') {
-      setSelectedModel('meta/llama-3.3-70b-instruct')
     }
   }
 
@@ -272,20 +270,6 @@ export function QueryPanel({
                     : 'text-slate-400 hover:text-slate-200 border border-transparent'
                 }`}>
                 <span>Gemini</span>
-                <span className="text-[10px] text-slate-500">Cloud</span>
-              </motion.button>
-              <motion.button
-                type="button"
-                onClick={() => handleProviderChange('nvidia')}
-                disabled={loading}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.96, transition: SPRING_SNAPPY }}
-                className={`text-xs py-1 px-2 rounded-md font-medium flex items-center justify-between transition-all duration-150 ease-out ${
-                  selectedProvider === 'nvidia'
-                    ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
-                }`}>
-                <span>NVIDIA</span>
                 <span className="text-[10px] text-slate-500">Cloud</span>
               </motion.button>
             </div>

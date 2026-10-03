@@ -29,6 +29,5 @@ describe('providerShortLabel', () => {
     expect(providerShortLabel('llama_cpp')).toBe('llama.cpp')
     expect(providerShortLabel('llamacpp')).toBe('llama.cpp')
     expect(providerShortLabel('ollama')).toBe('Ollama')
-    expect(providerShortLabel('nvidia')).toBe('NVIDIA')
   })
 })

@@ -151,7 +151,7 @@ _SMALL_MODEL_SIZE_RE = re.compile(
     r"(?<![0-9.])0\.5b|(?<![0-9.])[123](\.[0-9])?b(?![0-9])", re.IGNORECASE
 )
 _SMALL_MODEL_FAMILIES = ("tiny", "smol", "micro", "minicpm", "lapce")
-_NEVER_SMALL_PROVIDERS = ("gemini", "google_genai", "google", "nvidia", "nim")
+_NEVER_SMALL_PROVIDERS = ("gemini", "google_genai", "google")
 
 
 def is_small_model(model: str | None, provider: str | None = None) -> bool:
