@@ -12,7 +12,7 @@ Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench
 docs/
 ├── README.md                        # Master index (this file)
 ├── TRUSTRAG_specs.md                # Full product specification (source of truth)
-├── AUDIT.md                         # Production-pass audit tracker (findings, fixes, verification, risks)
+├── AUDIT_2026-10-03.md              # Engineering audit (critical/needed/later, improvements, dead code, remove/add)
 ├── ANALYSIS_SERVICE_TEST_GAPS.md    # Uncovered regions of analysis_service.py + prioritized test plan
 ├── ONBOARDING-TROUBLESHOOTING.md    # Per-OS setup guide + failure table + live verification backlog
 ├── ROADMAP.md                       # Product vision, milestones, phase tracking
@@ -42,7 +42,7 @@ docs/
 - [**Roadmap (`ROADMAP.md`)**](ROADMAP.md): completed phases, pre-deployment checklist, and prioritized upcoming work.
 - [**Performance Guide (`PERFORMANCE-GUIDE.md`)**](PERFORMANCE-GUIDE.md): free efficiency changes (config-only speed/RAM wins) plus MLX local inference on Apple Silicon.
 - [**Onboarding & Troubleshooting (`ONBOARDING-TROUBLESHOOTING.md`)**](ONBOARDING-TROUBLESHOOTING.md): per-OS setup guide, failure table, live verification backlog.
-- [**Production-Pass Audit (`AUDIT.md`)**](AUDIT.md): latest full-pass findings with severity, fix, and verification evidence; verified-solid areas (security, RAG, inference, DevOps); live E2E results; remaining risks; and the analysis-service test-gap map ([`ANALYSIS_SERVICE_TEST_GAPS.md`](ANALYSIS_SERVICE_TEST_GAPS.md)). Earlier point-in-time audit reports were consolidated here (history in git).
+- [**Engineering Audit (`AUDIT_2026-10-03.md`)**](AUDIT_2026-10-03.md): findings split into CRITICAL / NEEDED / LATER, plus refine-refactor-small-change improvements, dead code, and a remove/add list gated on measurable benefit; constraint verification (NVIDIA-except-CUDA, ONNX-only embeddings/reranker, large-vs-small model parity, offline); and a measured test assessment with 24 named tests to add. Supersedes the 2026-09-28 production pass (history in git).
 - [**Analysis Service Test Gaps (`ANALYSIS_SERVICE_TEST_GAPS.md`)**](ANALYSIS_SERVICE_TEST_GAPS.md): line-level map of uncovered regions in `app/services/analysis_service.py` (54% → target 80%+), with concrete test-case recipes.
 
 ### 2. Architecture & Design

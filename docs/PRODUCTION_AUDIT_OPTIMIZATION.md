@@ -34,7 +34,7 @@ semantic cache, reranker result cache (500), adaptive Top-K cap (4 on RRF ≥ 0.
 fused decompose+verify (1 NLI call instead of 2), claim caps per hardware tier,
 `TOKENIZERS_PARALLELISM=false` + `MALLOC_ARENA_MAX=1`, local-LLM q8_0 KV cache + flash-attn
 (`scripts/start_local_llm.sh`), model auto-unload after 5 m idle, `LOCAL_LLM_MAX_CONCURRENCY=1`.
-Measured baseline (docs/AUDIT.md): API-ready ~4 s, RSS 178 MB → ~700 MB resident.
+Measured baseline (docs/AUDIT_2026-10-03.md): API-ready ~4 s, RSS 178 MB → ~700 MB resident.
 
 ## 4. Bloat removed / modernization (this pass)
 
@@ -140,5 +140,5 @@ Playground pipeline (response ≤100 ms on pointer-down, animate from presentati
   `hardware.py` recommendation IDs equal their `models.yaml` counterparts (kills O-4 drift).
 
 ---
-*Single live tracker: this file (optimization/RAM/config) + `docs/AUDIT.md` (prior full pass)
+*Single live tracker: this file (optimization/RAM/config) + `docs/AUDIT_2026-10-03.md` (current full pass)
 + `docs/EXECUTION_PLAN.md` (sequencing). Older point-in-time reports removed; history in git.*
