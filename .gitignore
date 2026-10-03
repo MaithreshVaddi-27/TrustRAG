@@ -212,6 +212,8 @@ trivy-report.json
 trivy-results.sarif
 semgrep-report.json
 pip-audit-report.json
+# pip-audit's DEFAULT output format is report.html (security.yml runs it unflagged).
+report.html
 
 # ─── Package manager lockfiles ────────────────────────────────────────────────
 # apps/web uses npm (package-lock.json is committed)
