@@ -6,9 +6,8 @@
  * `recheck()` function so callers can force an immediate probe
  * (e.g. after retrying a failed request).
  *
- * On mount it does NOT immediately ping — the first health check is
- * deferred to the next interval tick.  This avoids a cascade of
- * requests when the user has many tabs open.
+ * On mount it probes immediately, then polls at the interval — an offline
+ * backend surfaces on first paint instead of after one full interval.
  *
  * All requests are short-circuit aborted after 5 s so a slow backend
  * never blocks the UI.
@@ -49,8 +48,10 @@ export default function useBackendHealth(intervalMs = POLL_MS) {
     }
   }, [])
 
-  // Start polling after the first render — skip the initial tick
+  // Probe immediately on mount (so an offline backend surfaces at once),
+  // then keep polling at the configured interval.
   useEffect(() => {
+    probe()
     timerRef.current = setInterval(probe, intervalMs)
     return () => {
       clearInterval(timerRef.current)

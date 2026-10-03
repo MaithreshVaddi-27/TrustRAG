@@ -674,7 +674,15 @@ class ModelConfig:
     def local_llm_num_ctx(self) -> int:
         value = self._get("local_llm", "num_ctx", required=False)
         env_val = _blank_as_none("LOCAL_LLM_NUM_CTX")
-        return int(env_val) if env_val is not None else int(value or 4096)
+        # Explicit env override wins unclamped (the operator sized their
+        # server for it). Otherwise cap at 8192: the fleet is ≤3B, whose
+        # q8_0 KV cache at 8k is a few hundred MB, and every server slot
+        # (-c/-np on any RAM tier) fits 8192 — so the request can never
+        # overflow a slot into truncated stubs (→ false ABSTAINs).
+        if env_val is not None:
+            return int(env_val)
+        configured = int(value or 8192)
+        return max(1024, min(configured, 8192))
 
     def num_ctx_for(self, model: str | None = None, provider: str | None = None) -> int:
         """Per-model context window (L-2): explicit per-model override wins,
@@ -814,9 +822,24 @@ class ModelConfig:
         if is_cloud:
             tier = "cloud_tier"
         elif is_mlx or prov in ("ollama", "llama_cpp", "llamacpp"):
-            # Detect lean vs balanced by available RAM (proxy via num_ctx)
-            num_ctx = self.local_llm_num_ctx
-            tier = "balanced_tier" if num_ctx >= 8192 else "lean_tier"
+            # Tier by ACTUAL host RAM, not the configured server context size:
+            # num_ctx=4096 (the default) previously forced every host into
+            # lean_tier, starving 16GB+ machines of claims/context they can
+            # afford. Fall back to the num_ctx proxy only when RAM detection
+            # itself fails (it never raises — safe default is 8GB → lean).
+            try:
+                from app.core.system.hardware import get_system_memory_info
+
+                total_gb = float(get_system_memory_info().get("total_gb") or 0)
+            except Exception:
+                total_gb = 0.0
+            if total_gb > 16.5:
+                tier = "balanced_tier"
+            elif total_gb > 0:
+                tier = "lean_tier" if total_gb <= 8.5 else "balanced_tier"
+            else:
+                num_ctx = self.local_llm_num_ctx
+                tier = "balanced_tier" if num_ctx >= 8192 else "lean_tier"
         else:
             tier = "cloud_tier"  # fallback
 

@@ -221,9 +221,9 @@ def test_llamacpp_cpu_path_has_no_kv_quant_flags(monkeypatch):
     )
     args = hw.get_llamacpp_launch_args()
     assert "-ctk" not in args and "-ctv" not in args
-    # 8 GB tier is single-slot: -np 2 would halve each slot to 2048 ctx while
-    # the backend sends num_ctx=4096 through one serial consumer (measured).
-    assert args[-4:] == ["-c", "4096", "-np", "1"]
+    # ≤16GB tiers are single 8192 slot: the backend sends num_ctx=8192
+    # through one serial consumer, and the ≤3B fleet's 8k KV fits 8GB hosts.
+    assert args[-4:] == ["-c", "8192", "-np", "1"]
 
 
 def test_detect_hardware_profile():

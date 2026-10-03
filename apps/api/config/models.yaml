@@ -323,8 +323,11 @@ optimization:
 # ─── Local LLM Inference Parameters ────────────────────────────────────────────
 # Applied to Ollama, llama.cpp, and MLX clients
 local_llm:
-  # Context window size (tokens). Must match or be <= llama-server -c / Ollama num_ctx
-  num_ctx: 4096
+  # Context window size (tokens). Requested per local call; effective value
+  # is capped at 8192 (ModelConfig.local_llm_num_ctx) so it always fits the
+  # server slot on any RAM tier. Fleet is ≤3B — raise via LOCAL_LLM_NUM_CTX
+  # env (and a matching server -c) only for larger weights.
+  num_ctx: 8192
   # Per-model overrides (L-2): a 30B GGUF served with -c 32768 must not be
   # clamped to the small-model 4096 default. Keys are exact model ids.
   num_ctx_by_model: {}

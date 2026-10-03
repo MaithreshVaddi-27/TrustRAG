@@ -76,17 +76,15 @@ def get_llamacpp_launch_args() -> list[str]:
 
     # Context + concurrency budget by available memory.
     # KV cache ~ n_embd(2048) x 2 (K/V) x n_ctx x 4B x slots; conservative.
-    # llama-server divides -c evenly across -np slots, and the backend sends
-    # num_ctx=4096 requests through a single serial consumer
-    # (LOCAL_LLM_MAX_CONCURRENCY=1). So -np must keep n_ctx_slot >= 4096:
-    # measured on 8 GB (LFM2.5-1.2B): -np 2 gives 2x2048 slots (backend
-    # contexts overflow the slot) while -np 1 gives 1x4096 at the same RSS.
-    if total_gb <= 8.5:
-        args += ["-c", "4096", "-np", "1"]
-    elif total_gb <= 16.5:
-        args += ["-c", "8192", "-np", "2"]
+    # Slots are sized so one slot fits the client's whole 8192 request
+    # (ModelConfig.local_llm_num_ctx caps there): the backend is a single
+    # serial consumer (LOCAL_LLM_MAX_CONCURRENCY=1), so wide multi-slot
+    # splits only shrink the usable context at equal RSS. Sized for the
+    # ≤3B fleet — 8k q8_0 KV is a few hundred MB even on 8GB hosts.
+    if total_gb <= 16.5:
+        args += ["-c", "8192", "-np", "1"]
     else:
-        args += ["-c", "16384", "-np", "4"]
+        args += ["-c", "16384", "-np", "2"]
 
     return args
 

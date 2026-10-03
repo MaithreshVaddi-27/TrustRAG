@@ -313,9 +313,8 @@ class ChatOllamaClient(BaseChatModel):
         options: dict[str, Any] = {
             "temperature": kwargs.get("temperature", self.temperature),
             "top_p": kwargs.get("top_p", self.top_p),
-            # OPT (local-LLM load): 2048 overflowed with 3000-char contexts +
-            # system prompt and produced truncated stubs. 4096 matches
-            # llama-server -c 4096 and fits the reduced context budget.
+            # 8192 matches every llama-server slot (-c/-np on any RAM tier)
+            # and fits the balanced evidence budget with headroom.
             "num_ctx": kwargs.get("num_ctx", default_num_ctx),
             "num_predict": kwargs.get("max_tokens", 1024),
             "repeat_penalty": kwargs.get("repeat_penalty", self.repeat_penalty),

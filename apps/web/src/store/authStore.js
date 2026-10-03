@@ -60,6 +60,22 @@ function readToken() {
 }
 
 // Module-level state + subscribers (lightweight pub/sub without React context re-renders)
+function safeSet(key, value) {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Blocked storage (private browsing, webviews) — keep in-memory state only.
+  }
+}
+
+function safeRemove(key) {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    // Nothing to evict when storage is unreachable.
+  }
+}
+
 let _user  = loadUser()
 let _token = readToken()
 
@@ -67,8 +83,8 @@ let _token = readToken()
 if (isTokenExpired(_token)) {
   _token = null
   _user  = null
-  localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(USER_KEY)
+  safeRemove(TOKEN_KEY)
+  safeRemove(USER_KEY)
 }
 
 const _subscribers = new Set()
@@ -84,8 +100,8 @@ export const authStore = {
     if (isTokenExpired(_token)) {
       _token = null
       _user  = null
-      localStorage.removeItem(TOKEN_KEY)
-      localStorage.removeItem(USER_KEY)
+      safeRemove(TOKEN_KEY)
+      safeRemove(USER_KEY)
     }
     return { user: _user, token: _token, isAuthenticated: !!_token }
   },
@@ -93,16 +109,16 @@ export const authStore = {
   setSession(token, user) {
     _token = token
     _user  = user
-    localStorage.setItem(TOKEN_KEY, token)
-    localStorage.setItem(USER_KEY, JSON.stringify(user))
+    safeSet(TOKEN_KEY, token)
+    safeSet(USER_KEY, JSON.stringify(user))
     notify()
   },
 
   clearSession() {
     _token = null
     _user  = null
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
+    safeRemove(TOKEN_KEY)
+    safeRemove(USER_KEY)
     notify()
   },
 
