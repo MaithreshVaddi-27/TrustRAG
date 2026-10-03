@@ -47,9 +47,9 @@ async def _safe_provider_status(check_fn, base_url: str, provider: str) -> dict[
         }
 
 
-def _safe_hardware_profile() -> dict[str, Any]:
+async def _safe_hardware_profile() -> dict[str, Any]:
     try:
-        return get_cached_hardware_profile()
+        return await asyncio.to_thread(get_cached_hardware_profile)
     except Exception as exc:
         logger.warning("Hardware profile failed; degrading to empty", error=str(exc))
         return {}
@@ -141,7 +141,7 @@ async def get_providers_endpoint(
             },
         },
         "embedding": embedding_info,
-        "hardware": _safe_hardware_profile(),
+        "hardware": await _safe_hardware_profile(),
     }
 
 
@@ -152,7 +152,11 @@ async def get_hardware_endpoint(
     """
     Return host hardware profile, GPU/MPS acceleration status, and system health recommendations.
     """
-    return get_cached_hardware_profile()
+    # Offloaded: on a cache miss this shells out to `nvidia-smi` / `vm_stat`
+    # synchronously (hardware.py), which blocks the whole event loop for up to
+    # ~10s — stalling every in-flight request and SSE heartbeat, not just this
+    # one. main.py's startup warmup already wraps the same call in to_thread.
+    return await asyncio.to_thread(get_cached_hardware_profile)
 
 
 @router.post("/memory/trim", summary="Trigger proactive heap compaction and GC")

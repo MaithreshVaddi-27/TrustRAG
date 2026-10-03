@@ -88,8 +88,12 @@ USER trustrag
 ENV PORT=8000
 EXPOSE 8000
 
+# Probe /health/ready, not /health. /health returns 200 unconditionally (so
+# monitoring always gets a response) and therefore reports "healthy" while
+# Mongo/Qdrant are down. Compose overrode this correctly; every other deploy
+# target (Render/Cloud Run/k8s) uses this line and was silently un-gated.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
-    CMD sh -c 'wget -qO- "http://localhost:${PORT:-8000}/api/v1/health" || exit 1'
+    CMD sh -c 'wget -qO- "http://localhost:${PORT:-8000}/api/v1/health/ready" || exit 1'
 
 # Use exec in shell form so $PORT provided by Render/Cloud Run is dynamically respected
 # Use uvloop + httptools for 10-15% latency improvement (requires uvicorn[standard])

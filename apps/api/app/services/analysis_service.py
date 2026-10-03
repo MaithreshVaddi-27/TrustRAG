@@ -37,9 +37,11 @@ from app.db.mongodb import Collections, get_collection
 from app.llm import local_llm as local_llm_mod
 from app.rag.generation.generator import strip_citation_markers
 from app.rag.verification.verdict import (
+    DiagnosisType,
     ReliabilityStatus,
     Thresholds,
     VerdictResult,
+    is_refusal_answer,
     verdict_from_state,
 )
 from app.services.kb_service import get_kb
@@ -708,11 +710,58 @@ async def run_analysis_pipeline(
 
         verdict = verdict_from_state(final_state, thresholds)
 
-        if verdict.reliability_status == ReliabilityStatus.ABSTAINED:
-            # Never store the bare "ABSTAIN" token as the user-facing answer.
-            stored_abstain = (
-                answer if answer and answer.strip() != "ABSTAIN" else _UNVERIFIED_ANSWER
+        # An empty knowledge base is not an unverified answer. The graph detects
+        # "0 indexed chunks" up front, authors an actionable message, and marks
+        # the run PASS so the recovery loop does not burn budget re-searching an
+        # empty index. `verdict_from_state` only sees claims=[], so it recomputed
+        # FAIL/"No claims extracted" and that authored message was overwritten —
+        # telling the user to "add documents covering this topic" (which they may
+        # already have done) instead of "this KB is empty". Honour the graph's
+        # terminal verdict when it passed for a reason the counts cannot express.
+        graph_verdict = final_state.get("verdict_status")
+        if (
+            graph_verdict == "PASS"
+            and not final_state.get("claims")
+            and not final_state.get("chunks")
+            and answer
+            and answer.strip()
+            and not is_refusal_answer(answer)
+        ):
+            await analyses_coll.update_one(
+                {"_id": analysis_id},
+                {
+                    "$set": {
+                        "status": "completed",
+                        "answer": answer,
+                        "reliability": {
+                            "score": 0.0,
+                            "status": ReliabilityStatus.TRUSTED.value,
+                        },
+                        "diagnosis": {
+                            "type": DiagnosisType.RETRIEVAL_FAILURE.value,
+                            "failures": final_state.get("diagnosis_failures") or [],
+                        },
+                        "updated_at": datetime.now(UTC),
+                    }
+                },
             )
+            await add_trace_event(
+                analysis_id_str,
+                "analysis.empty_knowledge_base",
+                {"message": "Knowledge base has no indexed content; nothing to verify."},
+            )
+            _record_completed("completed")
+            return
+
+        if verdict.reliability_status == ReliabilityStatus.ABSTAINED:
+            # GROUNDING GATE applies here too. This branch used to store any
+            # answer that was not the bare "ABSTAIN" token verbatim, so a
+            # hedged-but-unverified answer ("The limit is 30 days. Note there
+            # is insufficient evidence…") was rendered as the result — the
+            # one path that could contradict the reliability badge beside it.
+            # Route through the same single gate as every other non-TRUSTED
+            # state instead of re-deciding it here.
+            stored_abstain = _presentable_answer(answer, verdict)
             # Update database first, then publish trace event
             await analyses_coll.update_one(
                 {"_id": analysis_id},

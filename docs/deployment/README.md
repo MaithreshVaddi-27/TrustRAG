@@ -298,10 +298,10 @@ three into a single operator re-upload window.
 ## Pre-Production Checklist & Rollback (Phase 13)
 
 Run through this list before every production deploy. All items verified
-2026-09-19 against `ca10bb6` (381 backend tests green, k6 live gate green).
+Re-verify against the current `HEAD` before each deploy (721 backend tests, coverage 79.34%).
 
 ### Pre-deploy
-- [ ] `pytest tests/ -q` green in `apps/api` (381 passed, 8 warnings)
+- [ ] `pytest tests/ -q` green in `apps/api` (721 passed, coverage >= 78% gate)
 - [ ] `ruff check app/ tests/` + `ruff format --check` clean
 - [ ] `uv lock --check` clean (direct deps only: no `hvac`/`orjson` pins)
 - [ ] No DB migration needed (Mongo schemaless + idempotent indexes; Qdrant
@@ -312,12 +312,12 @@ Run through this list before every production deploy. All items verified
   | `FUSED_DECOMPOSE_VERIFY=0` | Classic decompose→batch verification path |
   | `pre_request_budget_enforcement: false` | Over-budget queries run instead of 422 |
   | `retrieval.query_router.enabled: false` | Single hybrid call, no fan-out |
-  | `reranker.enabled: false` (default) | RRF order, no cross-encoder |
+  | `reranker.enabled: false` (ships **true**; flip only to relieve CPU) | RRF order, no cross-encoder |
 - [ ] Rollback plan ready: KB-level `POST /knowledge-bases/{id}/rollback/{snap}`
   for bad ingests; `git revert` + redeploy for bad code (no migrations to unwind)
 
 ### Deploy verification (staging = local stack, then prod)
-- [ ] `GET /api/v1/health` → `{"status":"ok",...}` (public, Docker HEALTHCHECK)
+- [ ] `GET /api/v1/health/ready` → 200 when Mongo+Qdrant are up, 503 when degraded (public; this is what the Dockerfile and compose healthcheck probe)
 - [ ] k6 gate: `API_BASE_URL=<backend> k6 run load-test/smoke.js` → 0% failed,
   p95 < 300ms (measured 2026-09-19: 7282 reqs, 0.00% failed, p95 9.28ms —
   includes `/metrics` + `/analyses` read paths)

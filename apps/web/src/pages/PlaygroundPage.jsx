@@ -79,11 +79,29 @@ export default function PlaygroundPage() {
   // Playground will actually run — not just the server default.
   // One-shot: once set — by the user or here — nothing overrides it.
   const activeProviderDefault = providersData?.providers?.[selectedProvider]?.default_model
+  const activeProviderInfo = providersData?.providers?.[selectedProvider]
+  const availableModels = activeProviderInfo?.models?.length
+    ? [...new Set(activeProviderInfo.models)]
+    : []
+  // Stable identity for the dep array: a fresh array every render would
+  // retrigger the reconcile effect on every poll tick.
+  const availableModelsKey = availableModels.join('|')
+
   useEffect(() => {
-    if (!selectedModel && activeProviderDefault) {
-      setSelectedModel(activeProviderDefault)
-    }
-  }, [activeProviderDefault, selectedModel])
+    // The previous guard was `!selectedModel && …`, but both initialisers are
+    // non-empty, so it could never fire: nothing ever reconciled selectedModel
+    // with the model list the server actually reports. On a fresh install
+    // serving a different GGUF the <select> value matched no <option> (blank
+    // box) while handleSubmit still posted the stale id and the backend
+    // rejected it. Seed once from the server default, then reconcile whenever
+    // the model list changes and the current selection is not in it.
+    if (!availableModels.length) return
+    setSelectedModel((prev) => (
+      availableModels.includes(prev) ? prev : (activeProviderDefault || availableModels[0])
+    ))
+    // availableModelsKey is the identity of availableModels for dep purposes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProviderDefault, availableModelsKey])
 
   // Publish the effective engine to the top telemetry bar (AppLayout reads the
   // same localStorage key + event) so the navbar pills always show what the
@@ -102,12 +120,7 @@ export default function PlaygroundPage() {
     }
   }, [selectedProvider, selectedModel, selectedEmbeddingModel])
 
-const activeProviderInfo = providersData?.providers?.[selectedProvider]
-  const availableModels = activeProviderInfo?.models?.length
-    ? [...new Set(activeProviderInfo.models)]
-    : []
-
-  const handleReset = () => {
+const handleReset = () => {
     setQuery('')
     setAnalysis(null)
     setTraceEvents([])

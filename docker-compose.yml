@@ -76,8 +76,15 @@ services:
       # (torch/sentence-transformers are NOT in the image by design — the
       # single ONNX engine is the only embedding path.)
       - ./apps/api/.model_cache:/app/.model_cache:ro
+    # `required: false` so a clean checkout (CI, first clone) can still run
+    # `docker compose config` — .env is gitignored, and a hard `- .env` made
+    # every compose invocation exit 1 before reading a single key, which left
+    # the compose-smoke CI job permanently red. Real deployments still supply
+    # .env; the `environment:` block below carries the defaults that make a
+    # .env-less boot possible.
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:-trustrag-dev-key-change-me}

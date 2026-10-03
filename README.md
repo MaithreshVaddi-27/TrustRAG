@@ -544,7 +544,7 @@ Lint: `cd apps/api && ruff check app/ tests/ && ruff format --check app/ tests/`
 
 ## Audit Tracker
 
-All bug/error/issue/dead-code findings from the latest engineering audit live in [`docs/AUDIT_2026-10-03.md`](docs/AUDIT_2026-10-03.md) — findings split into CRITICAL / NEEDED / LATER, plus improvements, dead code, and a remove/add list; constraint verification (NVIDIA-except-CUDA, ONNX-only embeddings/reranker, large-vs-small model parity, offline); and a measured test assessment. Earlier point-in-time audit reports were consolidated into it (history preserved in git).
+All bug/error/issue/dead-code findings from the latest engineering audit live in [`docs/AUDIT_2026-10-04.md`](docs/AUDIT_2026-10-04.md) — findings split into CRITICAL / NEEDED / LATER, plus improvements, dead code, and a remove/add list; constraint verification (NVIDIA-except-CUDA, ONNX-only embeddings/reranker, large-vs-small model parity, offline); and a measured test assessment. Earlier point-in-time audit reports were consolidated into it (history preserved in git).
 
 Test-coverage gaps for the analysis service (the lowest-covered core module) are mapped in [`docs/ANALYSIS_SERVICE_TEST_GAPS.md`](docs/ANALYSIS_SERVICE_TEST_GAPS.md) — uncovered regions with risk, and a prioritized 17-test plan to lift it from 54% to ~85%.
 

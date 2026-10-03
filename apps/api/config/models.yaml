@@ -16,10 +16,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 runtime:
+  # 1.28 (2026-10-04 audit pass): removed dead keys model_unload_enabled,
+  #   model_unload_timeout, query_cache_capacity (0 readers in app/ and tests/).
   # 1.27 (2026-10-03 audit pass): sparse_top_k 0->20 (hybrid leg),
   # max_analysis_seconds 120->600 (recovery reachable), ocr.dpi 200->300,
   # retrieval.quantization.enabled added (INT8 gated off), local_llm.num_ctx_by_model.
-  config_version: "1.27"
+  config_version: "1.28"
 
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
@@ -177,10 +179,6 @@ retrieval:
   # RETRIEVAL_HYBRID_TIMEOUT_SECONDS.
   branch_timeout_seconds: 0
   hybrid_timeout_seconds: 0
-  # Query-vector LRU capacity (RAM-bounded; entries are 384-float vectors).
-  # Lower (256) on ≤8GB hosts; raise (2048) on 32GB+ hosts.
-  # Env wins: RETRIEVAL_QUERY_CACHE_CAPACITY.
-  query_cache_capacity: 1024
   # Deterministic query router (no LLM call): simple → 1 call; temporal → 1 call +
   # reference_time; comparison/complex → bounded parallel fan-out merged by RRF.
   query_router:
@@ -342,8 +340,3 @@ local_llm:
   top_k: 0
   # Early stop on EOS token (n_predict streaming with early termination)
   early_exit_eos: true
-  # Model Offloading (Phase 4.1) - Unload inactive models from memory
-  # Ollama: POST /api/generate with keep_alive=0 (never /api/delete: it erases the blob)
-  # llama.cpp: auto-unload on idle (keep_alive) or restart server with new model
-  model_unload_enabled: true
-  model_unload_timeout: "5m"  # Time before considering a model idle for unloading

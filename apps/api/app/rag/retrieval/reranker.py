@@ -26,18 +26,22 @@ EARLY_TERMINATION_MIN_BATCH = 16  # Minimum candidates before early termination 
 
 
 def _is_high_confidence(top_chunk: dict[str, Any]) -> bool:
-    """Single confidence signal for adaptive Top-K, in RRF units first.
+    """Single confidence signal for adaptive Top-K, cross-encoder first.
 
-    Fused rows carry `rrf_score` (with rrf_k=60 the max for a result ranked #1
-    in both legs is 2/61 ≈ 0.033, so >= 0.02 means near-top in both legs).
-    Dense cosine (>= 0.78) and cross-encoder logit (>= 0.80) thresholds are
-    legacy fallbacks for rows that never went through RRF fusion.
+    Precedence is rerank_score → rrf_score → dense_score. The cross-encoder
+    scores query+passage jointly, so its logit is the real relevance signal;
+    reading `rrf_score` first made the reranker score branches below
+    unreachable on every hybrid row (fusion always sets rrf_score), i.e. the
+    function was measuring fusion rank and calling it confidence.
     """
+    rerank = top_chunk.get("rerank_score")
+    if isinstance(rerank, (int, float)):
+        return float(rerank) >= 0.80
     rrf = top_chunk.get("rrf_score")
     if isinstance(rrf, (int, float)):
+        # rrf_k=60: max for a result ranked #1 in both legs is 2/61 ~= 0.033,
+        # so >= 0.02 means near-top in both legs.
         return rrf >= 0.02
-    if "rerank_score" in top_chunk:
-        return float(top_chunk.get("rerank_score", 0.0)) >= 0.80
     return float(top_chunk.get("dense_score", 0.0)) >= 0.78
 
 

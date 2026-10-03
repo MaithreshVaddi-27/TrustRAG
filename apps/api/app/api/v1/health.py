@@ -12,6 +12,7 @@ GET /api/v1/health/detailed
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Response
@@ -120,7 +121,7 @@ async def health_detailed(current_user=Depends(get_current_user)) -> dict:
         "environment": settings.app_env,
         "services": services,
         "models": registry_status(),
-        "hardware": get_cached_hardware_profile(),
+        "hardware": await asyncio.to_thread(get_cached_hardware_profile),
         "supported_formats": cfg.supported_formats,
         "rss_mb": get_memory_usage_mb(),
         "metrics": {"nli": get_nli_metrics()},

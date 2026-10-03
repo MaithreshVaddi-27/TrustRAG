@@ -46,9 +46,22 @@ function loadUser() {
   }
 }
 
+// Module-scope read must be guarded: `getItem` THROWS SecurityError when
+// storage is blocked (Safari Private Browsing, hardened enterprise profiles,
+// some embedded webviews). Unguarded, that escapes module evaluation before
+// main.jsx renders and the whole app becomes a blank white page that no error
+// boundary can catch. Every other access in this file is guarded; this was not.
+function readToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
 // Module-level state + subscribers (lightweight pub/sub without React context re-renders)
 let _user  = loadUser()
-let _token = localStorage.getItem(TOKEN_KEY)
+let _token = readToken()
 
 // Auto-clear expired token on module initialization
 if (isTokenExpired(_token)) {

@@ -102,7 +102,7 @@ export default function SimulationSandbox() {
             <span className="font-mono text-[11px] text-slate-400 hidden sm:inline">Latency: 114ms</span>
             <span className="px-2.5 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-700/60 text-[10px] font-mono text-emerald-300 font-bold flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>{simStep >= 4 ? 'GROUNDED: 96.4%' : simStep === 3 ? 'HEALING IN PROGRESS' : 'AUDITING'}</span>
+              <span>{simStep >= 4 ? `GROUNDED: ${currentScenario.recovery.finalScore}` : simStep === 3 ? 'HEALING IN PROGRESS' : 'AUDITING'}</span>
             </span>
           </div>
         </div>

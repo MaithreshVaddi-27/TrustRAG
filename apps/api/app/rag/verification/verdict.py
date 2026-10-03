@@ -33,14 +33,43 @@ _REFUSAL_REGEXES = (
 )
 
 
+# A refusal is the model opening by saying it cannot answer. The
+# discriminator is the FIRST sentence, not length: a grounded answer states its
+# fact first and hedges afterwards ("30 days. Note there is insufficient
+# evidence…"), whereas a refusal leads with the refusal and the rest is
+# meta-commentary about the answer rather than an assertion about the subject.
+_SENTENCE_SPLIT = re.compile(r"[.;!?\n]")
+
+
 def is_refusal_answer(answer: str | None) -> bool:
-    """True for ABSTAIN and hedged-refusal prose no verifier can use."""
+    """True when the answer IS a refusal, not merely when it hedges.
+
+    Small local models (≤3B) refuse with hedged prose rather than the exact
+    ABSTAIN token, so a substring match is necessary — but not sufficient. A
+    grounded answer routinely carries the same hedge in a trailing clause, and
+    matching the substring alone abstains precisely the better-hedged answer,
+    which surfaces to the user as "model not reliable".
+
+    So the refusal must lead: it appears in the first sentence, or removing
+    every refusal phrase leaves nothing at all to assert.
+    """
     if not answer:
         return False
-    if answer.strip() == "ABSTAIN":
+    text = answer.strip()
+    if text == "ABSTAIN":
         return True
-    lowered = answer.lower()
-    return any(rx.search(lowered) for rx in _REFUSAL_REGEXES)
+
+    lead = _SENTENCE_SPLIT.split(text, maxsplit=1)[0]
+    if any(rx.search(lead.lower()) for rx in _REFUSAL_REGEXES):
+        return True
+
+    # A refusal that does not lead (e.g. it opens with a preamble) still counts
+    # when it left no assertion behind.
+    residual = text
+    for rx in _REFUSAL_REGEXES:
+        residual = rx.sub(" ", residual)
+    residual = re.sub(r"\[(?:Segment\s+)?\d+\]", " ", residual)
+    return not re.sub(r"\W", "", residual)
 
 
 class VerdictStatus(StrEnum):

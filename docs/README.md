@@ -2,7 +2,7 @@
 
 Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench. This directory is organized by domain: product specification, architecture, security, evaluation methodology, and deployment.
 
-> **Note:** Point-in-time audit reports (`docs/audits/`, `PHASE_AUDIT_*.md`, `TRUSTRAG_AUDIT_2026-09-21.md`, `SESSION_SUMMARY_2026-09-21.md`, `TRUSTRAG_OPTIMIZATION_PLAN.md`) and the stale agent work-plan (`docs/superpowers/`) were removed during cleanup. Their history remains in git (e.g. `git log -- docs/TRUSTRAG_AUDIT_2026-09-21.md`).
+> **Note:** Point-in-time audit reports (`docs/audits/`, `PHASE_AUDIT_*.md`, `TRUSTRAG_AUDIT_2026-09-21.md`, `SESSION_SUMMARY_2026-09-21.md`, `TRUSTRAG_OPTIMIZATION_PLAN.md`) the stale agent work-plan (`docs/superpowers/`), and the superseded `AUDIT_2026-10-03.md` / `AUDIT_2026-10-03_STATUS.md` were removed during cleanup. Their history remains in git (e.g. `git log -- docs/AUDIT_2026-10-03_STATUS.md`).
 
 ---
 
@@ -12,7 +12,9 @@ Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench
 docs/
 ├── README.md                        # Master index (this file)
 ├── TRUSTRAG_specs.md                # Full product specification (source of truth)
-├── AUDIT_2026-10-03.md              # Engineering audit (critical/needed/later, improvements, dead code, remove/add)
+├── AUDIT_2026-10-04.md              # Engineering audit (critical/needed/later, improvements, dead code, fixes applied)
+├── TRUSTRAG_PROJECT_GUIDE.md        # Whole-product guide: concepts, architecture, workflow, troubleshooting
+├── TRUSTRAG_RAG_DEEP_DIVE.md        # Mentor-ready walkthrough of the RAG/evidence pipeline
 ├── ANALYSIS_SERVICE_TEST_GAPS.md    # Uncovered regions of analysis_service.py + prioritized test plan
 ├── ONBOARDING-TROUBLESHOOTING.md    # Per-OS setup guide + failure table + live verification backlog
 ├── ROADMAP.md                       # Product vision, milestones, phase tracking
@@ -42,7 +44,9 @@ docs/
 - [**Roadmap (`ROADMAP.md`)**](ROADMAP.md): completed phases, pre-deployment checklist, and prioritized upcoming work.
 - [**Performance Guide (`PERFORMANCE-GUIDE.md`)**](PERFORMANCE-GUIDE.md): free efficiency changes (config-only speed/RAM wins) plus MLX local inference on Apple Silicon.
 - [**Onboarding & Troubleshooting (`ONBOARDING-TROUBLESHOOTING.md`)**](ONBOARDING-TROUBLESHOOTING.md): per-OS setup guide, failure table, live verification backlog.
-- [**Engineering Audit (`AUDIT_2026-10-03.md`)**](AUDIT_2026-10-03.md): findings split into CRITICAL / NEEDED / LATER, plus refine-refactor-small-change improvements, dead code, and a remove/add list gated on measurable benefit; constraint verification (NVIDIA-except-CUDA, ONNX-only embeddings/reranker, large-vs-small model parity, offline); and a measured test assessment with 24 named tests to add. Supersedes the 2026-09-28 production pass (history in git).
+- [**Engineering Audit (`AUDIT_2026-10-04.md`)**](AUDIT_2026-10-04.md): findings split into CRITICAL / NEEDED / LATER, plus refine-refactor-small-change improvements, dead code, testing gaps, and corrections to the 2026-10-03 pass; constraint verification (NVIDIA-except-CUDA, ONNX-only embeddings/reranker, large-vs-small model parity, offline). The 2026-10-03 audit and its fix tracker have been removed — their open items are fixed or restated here, and their history remains in git.
+- [**Project Guide (`TRUSTRAG_PROJECT_GUIDE.md`)**](TRUSTRAG_PROJECT_GUIDE.md): whole-product orientation — problem, architecture, request lifecycle, configuration, and troubleshooting.
+- [**RAG Deep Dive (`TRUSTRAG_RAG_DEEP_DIVE.md`)**](TRUSTRAG_RAG_DEEP_DIVE.md): beginner-to-mentor walkthrough of ingestion → retrieval → reranking → grounded generation → NLI verification → verdict → recovery, with worked examples and limitations to state honestly.
 - [**Analysis Service Test Gaps (`ANALYSIS_SERVICE_TEST_GAPS.md`)**](ANALYSIS_SERVICE_TEST_GAPS.md): line-level map of uncovered regions in `app/services/analysis_service.py` (54% → target 80%+), with concrete test-case recipes.
 
 ### 2. Architecture & Design

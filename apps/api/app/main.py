@@ -28,6 +28,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
 from app.api.router import api_router
@@ -524,8 +525,14 @@ def create_app() -> FastAPI:
     app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     # ── Rate limiting (P1-19) ────────────────────────────────────────────
+    # `default_limits` is ONLY consulted by SlowAPIMiddleware (or by an
+    # explicit @limiter.limit decorator). Storing the Limiter on app.state
+    # without registering the middleware left the global 60/min inert, so the
+    # expensive endpoints — POST /analyses, document upload — were unbounded
+    # while the two decorated auth routes still worked.
     limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
     app.state.limiter = limiter
+    app.add_middleware(SlowAPIMiddleware)
     app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
 
     # ── Request ID ────────────────────────────────────────────────────────

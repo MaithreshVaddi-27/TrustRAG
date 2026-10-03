@@ -422,10 +422,14 @@ def strip_stray_abstain(answer: str) -> str:
     if not answer:
         return answer
     text = answer.strip()
-    if text == "ABSTAIN":
+    # A LEADING bare token means the model refused outright, whatever else it
+    # trailed ("ABSTAIN\nsee above"). Only a *trailing* token is the
+    # instruction-following failure described above.
+    if text == "ABSTAIN" or text.split(None, 1)[0].rstrip(":.") == "ABSTAIN":
         return "ABSTAIN"
     # Drop trailing blank lines, then a final standalone ABSTAIN token,
     # optionally followed by a period (repeated: "ABSTAIN ABSTAIN").
+    peeled = False
     while True:
         stripped = text.rstrip()
         if not stripped:
@@ -434,10 +438,16 @@ def strip_stray_abstain(answer: str) -> str:
         last = parts[-1].rstrip(".") if parts else ""
         if last == "ABSTAIN":
             text = stripped[: len(stripped) - len(parts[-1])].rstrip()
+            peeled = True
             continue
         break
     text = text.strip()
-    if len(text) < 20:
+    # The length floor only judges what is LEFT AFTER peeling a token the model
+    # was told to emit standalone. Without a peel it is judging the model's
+    # answer, and small local models answer correctly and tersely ("30 days.",
+    # "60/min.") — treating that as a refusal is what makes them look
+    # unreliable. Only apply it when there was a stray token to remove.
+    if peeled and len(text) < 20:
         return "ABSTAIN"
     return text
 
@@ -624,10 +634,17 @@ def _chunk_order_key(chunk: dict[str, Any]) -> tuple[float, str]:
     KV. Hybrid providers can return the same chunks in different orders, so
     we canonicalize sorting here — score first (descending), then a stable
     text-based tiebreak. Same content ⇒ same byte prefix in every run.
+
+    Precedence is cross-encoder → RRF → dense. The cross-encoder reads the
+    query and passage together, so it is strictly more informative than the
+    rank-fusion proxy; reading `rrf_score` first made its verdict decorative
+    (rrf_score is present on every fused row), so the model saw its evidence
+    in fusion order and the character budget below cut by fusion rank rather
+    than relevance.
     """
-    score = chunk.get("rrf_score")
+    score = chunk.get("rerank_score")
     if score is None:
-        score = chunk.get("rerank_score")
+        score = chunk.get("rrf_score")
     if score is None:
         score = chunk.get("dense_score")
     text = chunk.get("text", "").strip()

@@ -4,6 +4,7 @@ TRUSTRAG API — dependency injection helpers.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from typing import Any
 
@@ -57,7 +58,18 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> Mappin
         # Static detail: bson's message echoes the malformed input back.
         raise AuthenticationError("Invalid user identity format", detail="malformed id") from exc
 
-    user = await get_collection(Collections.USERS).find_one({"_id": user_id})
+    # Two independent lookups on different collections, awaited one after the
+    # other — on EVERY authenticated request. The UI polls analyses every 5s and
+    # claims/conflicts/KBs/health/providers on top of that, so this was ~10
+    # serialized round-trips per minute of an idle dashboard before any real
+    # work. Gather them; revocation is still evaluated FIRST so a revoked token
+    # never gets to use the fetched user document.
+    revoked_doc, user = await asyncio.gather(
+        get_collection(Collections.REVOKED_TOKENS).find_one({"_id": jti_key(payload)}),
+        get_collection(Collections.USERS).find_one({"_id": user_id}),
+    )
+    if revoked_doc:
+        raise AuthenticationError("Token has been revoked", detail="Please sign in again")
     if not user:
         raise AuthenticationError("User session not found", detail="Subject user does not exist")
 

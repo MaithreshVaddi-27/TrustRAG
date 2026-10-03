@@ -58,7 +58,7 @@ Sparse search represents only terms present in the text, with weights. It behave
 
 ### Hybrid search
 
-Hybrid search runs dense and sparse searches, then combines their ranked lists. It can cover both semantic similarity and exact vocabulary. **The implementation supports this, but current configuration sets `retrieval.sparse_top_k: 0`, which disables the sparse search branch by default.** Therefore, describe the code as hybrid-capable, but describe the default run as dense retrieval followed by reranking unless sparse depth has been enabled in the active configuration.
+Hybrid search runs dense and sparse searches, then combines their ranked lists. It can cover both semantic similarity and exact vocabulary. **Both legs run by default: configuration sets `retrieval.sparse_top_k: 20`, so the sparse branch is active and RRF genuinely fuses two ranked lists.** Therefore the default run is a true hybrid retrieval followed by cross-encoder reranking.
 
 ### Reranking
 
@@ -143,7 +143,7 @@ The page boundary is preserved because evidence needs a page number. The parser 
 
 ### 5.3 Native text versus OCR
 
-For a text-based PDF, PyMuPDF can extract the actual characters. A scanned PDF may instead contain page images with no usable text. TRUSTRAG checks whether a page has enough native text (configured minimum: 50 characters). If not, and OCR is enabled, it renders the page at the configured 200 DPI and runs RapidOCR using ONNX Runtime.
+For a text-based PDF, PyMuPDF can extract the actual characters. A scanned PDF may instead contain page images with no usable text. TRUSTRAG checks whether a page has enough native text (configured minimum: 50 characters). If not, and OCR is enabled, it renders the page at the configured 300 DPI (raised from 200, which sat below the accuracy floor) and runs RapidOCR using ONNX Runtime.
 
 OCR returns text and a confidence estimate. Text below the configured 0.5 confidence threshold is dropped so weak recognition is not silently treated as reliable evidence. When configured, page renders are saved once per page; chunks from that page reference the saved image. This enables the chain:
 
@@ -332,7 +332,7 @@ The default BM25 parameters are `k1=1.2`, `b=0.75`, and average reference length
 
 `retrieve_hybrid_chunks()` runs the dense and sparse legs concurrently. Each branch has a 45-second timeout, with a 60-second outer budget. A branch timeout can degrade to the other branch; both branches timing out is an outage. `top_k_override` can widen retrieval for recovery.
 
-With `sparse_top_k: 0`, `sparse_search()` returns an empty list immediately and the normal path effectively becomes dense search followed by fusion with an empty list. It is still useful to leave the path implemented for experiments and configuration changes, but the active config should be stated accurately.
+With `sparse_top_k: 20` the sparse branch returns real candidates, so RRF fuses two genuine ranked lists and both legs contribute to the fused ordering. Setting it back to `0` collapses the run to dense-only retrieval fused with an empty list, so the active config should be stated accurately when describing a run.
 
 ### 7.7 RRF: combining ranked lists
 
@@ -414,7 +414,7 @@ When evidence is persisted for an analysis, the system carries scores and refere
 <passage text>
 ```
 
-The code keeps a mapping from displayed segment number back to the original chunk/evidence index. This is important because sorting and deduplication change the order. The generator uses a roughly 3,000-character context budget and only includes whole segments. Keeping a segment whole prevents citation numbers from referring to a partially clipped or renumbered passage.
+The code keeps a mapping from displayed segment number back to the original chunk/evidence index. This is important because sorting and deduplication change the order. The generator uses a tiered context budget — lean 3,000 / balanced 6,000 / cloud 12,000 characters, derived from `tier_caps` — and only includes whole segments. Keeping a segment whole prevents citation numbers from referring to a partially clipped or renumbered passage.
 
 ### 10.2 Prompt and model
 
@@ -637,18 +637,21 @@ It keeps HTTP concerns (authentication, schema validation, status codes) apart f
 
 | Mechanism | What it avoids or controls |
 |---|---|
-| Embedding in-memory LRU | Re-embedding recent queries in one process |
-| Embedding SQLite cache | Recomputing embeddings across backend restarts |
-| Reranker LRU | Re-scoring identical question/passage pairs |
-| Semantic answer cache | Repeating generation for highly similar queries |
-| Context sorting/deduplication | Duplicate prompt text and unstable prompt prefixes |
+| Embedding document cache (in-process LRU) | Re-embedding chunk text within one process. Keyed on `mode + text`; NOT persisted across restarts. |
+| ONNX session cache (`model_registry`) | Re-loading/re-exporting the embedding + reranker sessions on every call |
+| mtime-cached config (`get_model_config`, `_load_ports_yaml`) | Re-reading and re-validating config on every access, while preserving live reload |
+| Context sorting/deduplication | Duplicate prompt text and unstable prompt prefixes (this is also what makes Ollama's KV prefix cache hit) |
 | Adaptive retrieval/context width | Excess candidate scoring and LLM input tokens |
 | Tier-aware caps | Overloading smaller local models with too many chunks/claims |
 | LLM call ledger | Unbounded cloud calls in recovery loops |
 | Recovery token/time budgets | Repeating expensive recovery indefinitely |
 | Timeouts and branch degradation | One slow search branch blocking all retrieval |
 
-Semantic answer-cache reuse is in a safe mode: the answer text may be reused only after fresh retrieval, and claims/evidence/NLI are recomputed against current KB evidence. Web-search-enabled requests bypass that cache. KB mutations invalidate matching cache entries.
+**Not implemented** (do not claim these): there is no semantic answer cache, no
+reranker result cache, and no persisted/ cross-process embedding store. Query
+embeddings are computed fresh on every retrieval. An earlier version of this
+table listed all three; they were removed with the LLM/embedding cache sweep and
+the table now reflects the code.
 
 The RAG defaults include dense top-k 20, fusion top-k 20, max evidence context 8, maximum verified claims 8, targeted claim retrieval budget 3, and 2 recovery attempts. Hardware tier caps can reduce those for lean local environments.
 
@@ -729,7 +732,7 @@ Large documents may exceed the model’s context window, cost more, and distract
 
 ### “Why use both embeddings and keywords?”
 
-Embeddings are good at paraphrases and conceptual similarity. Sparse lexical search is good at exact names, codes, and terms. Combining rankings can capture cases either method misses. In this repository the sparse path exists, but configuration currently turns it off by setting `sparse_top_k` to zero.
+Embeddings are good at paraphrases and conceptual similarity. Sparse lexical search is good at exact names, codes, and terms. Combining rankings can capture cases either method misses. In this repository both paths run: configuration sets `sparse_top_k: 20`, so the sparse leg contributes to fusion.
 
 ### “Why RRF instead of adding dense and sparse scores?”
 
@@ -775,7 +778,7 @@ MongoDB stores canonical application and audit records; Qdrant is built for vect
 
 ## 20. Limitations to state clearly
 
-1. **The default configuration is not fully hybrid at query time.** Sparse retrieval is disabled (`sparse_top_k: 0`).
+1. **The default run IS hybrid.** Both legs are active (`sparse_top_k: 20`). The caveat that used to apply here — sparse retrieval disabled by default — was fixed; see the audit's P1-4.
 2. **NLI is probabilistic model behavior.** It can misunderstand nuanced negation, dates, tables, or multi-hop claims.
 3. **The score is not calibrated.** Thresholds are engineering choices in YAML.
 4. **Source quality still matters.** A retrieval system can faithfully surface an inaccurate or outdated source.

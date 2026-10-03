@@ -80,43 +80,55 @@ def _get_failed_logins_coll():
 
 
 async def _is_locked_out(email: str, client_ip: str | None = None) -> bool:
+    """Locked if EITHER the (email, ip) pair or the email overall is over.
+
+    The per-IP key alone is defeated by spraying one known victim email from N
+    source addresses: each pair gets its own counter, so the victim never locks
+    and throughput becomes N times the per-IP rate limit. The email-only aggregate is
+    what actually protects the account, and it has to be checked first.
+    """
     settings = get_settings()
     now_dt = datetime.now(UTC)
     coll = _get_failed_logins_coll()
-    key = f"{email}|{client_ip}" if client_ip else email
-    doc = await coll.find_one({"_id": key})
-    if not doc and client_ip:
-        doc = await coll.find_one({"_id": email})
-    if not doc:
-        return False
-    # If window expired, TTL will clean it; but double-check
-    if doc.get("window_expires") and doc["window_expires"] < now_dt:
-        await coll.delete_one({"_id": doc["_id"]})
-        return False
-    return doc.get("count", 0) >= settings.login_max_attempts
+    keys = [f"{email}|{client_ip}"] if client_ip else []
+    keys.append(email)
+    for key in keys:
+        doc = await coll.find_one({"_id": key})
+        if not doc:
+            continue
+        # If window expired, TTL will clean it; but double-check
+        if doc.get("window_expires") and doc["window_expires"] < now_dt:
+            await coll.delete_one({"_id": doc["_id"]})
+            continue
+        if doc.get("count", 0) >= settings.login_max_attempts:
+            return True
+    return False
 
 
 async def _record_failed_login(email: str, client_ip: str | None = None) -> None:
+    """Count the failure against both the (email, ip) pair and the email."""
     settings = get_settings()
     now_dt = datetime.now(UTC)
     base_window = settings.login_lockout_seconds
-    key = f"{email}|{client_ip}" if client_ip else email
     coll = _get_failed_logins_coll()
-    existing = await coll.find_one({"_id": key})
-    prior = int((existing or {}).get("count", 0))
-    # Exponential escalation: each full window of failures doubles the lockout.
-    multiplier = 2 ** (prior // max(1, settings.login_max_attempts))
-    window = base_window * multiplier
-    window_expires = datetime.fromtimestamp(now_dt.timestamp() + window, tz=UTC)
-    await coll.update_one(
-        {"_id": key},
-        {
-            "$inc": {"count": 1},
-            "$push": {"attempts": now_dt},
-            "$set": {"window_expires": window_expires, "client_ip": client_ip},
-        },
-        upsert=True,
-    )
+    targets = [(f"{email}|{client_ip}", client_ip)] if client_ip else []
+    targets.append((email, None))
+    for key, ip in targets:
+        existing = await coll.find_one({"_id": key})
+        prior = int((existing or {}).get("count", 0))
+        # Exponential escalation: each full window of failures doubles the lockout.
+        multiplier = 2 ** (prior // max(1, settings.login_max_attempts))
+        window = base_window * multiplier
+        window_expires = datetime.fromtimestamp(now_dt.timestamp() + window, tz=UTC)
+        await coll.update_one(
+            {"_id": key},
+            {
+                "$inc": {"count": 1},
+                "$push": {"attempts": now_dt},
+                "$set": {"window_expires": window_expires, "client_ip": ip},
+            },
+            upsert=True,
+        )
 
 
 async def _clear_failed_logins(email: str, client_ip: str | None = None) -> None:

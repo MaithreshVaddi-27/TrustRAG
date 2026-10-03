@@ -190,9 +190,16 @@ export default function DashboardPage() {
     const chronologicalSlice = [...analyses].slice(0, limit).reverse()
 
     return chronologicalSlice.map((a, idx) => {
-      const scoreValue = a.reliability?.score != null
-        ? Math.round(a.reliability.score * 100)
-        : (a.status === 'completed' ? 100 : 0)
+      // An absent score is UNKNOWN, not 100. ReliabilityBadge renders `—` and the
+// `unknown` band for exactly this input, so substituting 100 here plotted a
+// point on the top gridline labelled TRUSTED while the badge beside it read
+// `—`. Same fallback also relabelled `abstained` as FAILED. Pass null through so
+// the chart leaves a gap instead of inventing a perfect score.
+const reliabilityStatus = a.reliability?.status
+  || (a.reliability?.score == null ? 'unknown' : null)
+const scoreValue = a.reliability?.score != null
+  ? Math.round(a.reliability.score * 100)
+  : null
 
       const createdDate = a.created_at ? new Date(a.created_at) : new Date()
 
@@ -203,7 +210,8 @@ export default function DashboardPage() {
         fullTime: format(createdDate, 'MMM dd, HH:mm:ss'),
         score: scoreValue,
         threshold: 75,
-        status: a.reliability?.status || (scoreValue >= 75 ? 'TRUSTED' : (scoreValue > 0 ? 'UNCERTAIN' : 'FAILED')),
+        status: reliabilityStatus
+  || (scoreValue != null && scoreValue >= 75 ? 'TRUSTED' : (scoreValue > 0 ? 'UNCERTAIN' : 'FAILED')),
         query: a.query || 'Untitled Analysis',
         shortQuery: (a.query || '').length > 30 ? (a.query || '').slice(0, 30) + '…' : (a.query || 'Untitled Analysis'),
         statusRaw: a.status,
