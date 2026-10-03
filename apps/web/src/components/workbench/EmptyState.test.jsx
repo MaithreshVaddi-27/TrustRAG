@@ -1,21 +1,27 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { EmptyState } from './EmptyState'
 
 describe('EmptyState', () => {
   it('renders the idle workbench prompt', () => {
-    render(<EmptyState onLoadSample={() => {}} />)
+    render(<EmptyState />)
 
     expect(screen.getByRole('heading', { name: 'Awaiting Pipeline Query' })).toBeInTheDocument()
     expect(screen.getByText('Interactive Verification Workbench')).toBeInTheDocument()
   })
 
-  it('invokes onLoadSample when the sample query button is clicked', () => {
-    const onLoadSample = vi.fn()
-    render(<EmptyState onLoadSample={onLoadSample} />)
+  it('renders the feature cards', () => {
+    render(<EmptyState />)
 
-    screen.getByRole('button', { name: /Load Sample Query/ }).click()
+    expect(screen.getByText('Closed-Loop NLI')).toBeInTheDocument()
+    expect(screen.getByText('Self-Healing Loop')).toBeInTheDocument()
+  })
 
-    expect(onLoadSample).toHaveBeenCalledTimes(1)
+  it('renders the web grounding card only when enabled', () => {
+    const { rerender } = render(<EmptyState />)
+    expect(screen.queryByText('Web Grounding')).not.toBeInTheDocument()
+
+    rerender(<EmptyState enableWebSearch />)
+    expect(screen.getByText('Web Grounding')).toBeInTheDocument()
   })
 })
