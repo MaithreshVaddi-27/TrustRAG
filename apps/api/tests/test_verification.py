@@ -917,3 +917,66 @@ def test_structured_verifier_local_path_unchanged():
     result = _structured_verifier(model, "ollama", _Schema, {"max_tokens": 384})
     assert result == "local-runnable"
     model.with_structured_output.assert_called_once_with(_Schema, max_tokens=384)
+
+
+# ─── Verdict must use the same refusal gate as the graph ─────────────────────
+# Regression: verdict.py compared `answer == "ABSTAIN"` literally while the
+# graph used is_refusal_answer(). A model that refuses in prose (common on
+# ≤3B local models) therefore produced 0 claims AND was classified FAILED —
+# the UI showed a failed run whose text was an abstention. One definition,
+# one behaviour.
+
+
+def _thresholds():
+    from app.rag.verification.verdict import Thresholds
+
+    return Thresholds(
+        minimum_evidence_coverage=0.6,
+        maximum_contradiction_rate=0.1,
+        abstain_below=0.3,
+    )
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "ABSTAIN",
+        "I couldn't verify an answer from this knowledge base: the retrieved evidence "
+        "did not support a grounded response, so I am abstaining rather than guessing.",
+        "There is insufficient evidence to answer this.",
+        "I cannot provide a grounded answer.",
+    ],
+)
+def test_zero_claim_refusal_is_abstained_not_failed(answer):
+    """0 claims from a refusal is CORRECT behaviour (ABSTAINED), not a failure."""
+    from app.rag.verification.verdict import ReliabilityStatus, VerdictStatus, compute_verdict
+
+    verdict = compute_verdict(
+        supported=0, contradicted=0, neutral=0, total=0, thresholds=_thresholds(), answer=answer
+    )
+    assert verdict.verdict_status is VerdictStatus.PASS
+    assert verdict.reliability_status is ReliabilityStatus.ABSTAINED
+
+
+def test_zero_claim_real_answer_still_fails():
+    """The gate must not become a blanket pass for any zero-claim run."""
+    from app.rag.verification.verdict import ReliabilityStatus, VerdictStatus, compute_verdict
+
+    verdict = compute_verdict(
+        supported=0,
+        contradicted=0,
+        neutral=0,
+        total=0,
+        thresholds=_thresholds(),
+        answer="Tokens expire after 30 days. [Segment 2]",
+    )
+    assert verdict.verdict_status is VerdictStatus.FAIL
+    assert verdict.reliability_status is ReliabilityStatus.FAILED
+
+
+def test_verdict_module_is_the_canonical_refusal_gate():
+    """verifier re-exports verdict's gate — two copies would drift again."""
+    from app.rag.verification import verdict as verdict_mod
+    from app.rag.verification import verifier as verifier_mod
+
+    assert verifier_mod.is_refusal_answer is verdict_mod.is_refusal_answer

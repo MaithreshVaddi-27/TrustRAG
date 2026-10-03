@@ -7,8 +7,40 @@ Eliminates split-brain between graph.py and analysis_service.py.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
+
+# ─── Refusal gate (deterministic, zero LLM calls) ────────────────────────────
+# Small local models (≤3B) usually refuse with hedged prose ("I couldn't
+# verify…", "insufficient evidence…") rather than the exact ABSTAIN token.
+# Comparing against the bare string therefore misclassifies a correct refusal
+# as an unverifiable answer, which FAILs the run and blames retrieval for a
+# non-retrieval problem. Lives here so verdict computation and the verifier
+# share one definition.
+_REFUSAL_REGEXES = (
+    re.compile(r"couldn.?t verify"),
+    re.compile(r"could not verify"),
+    re.compile(r"cann?ot (provide|give|answer|verify|ground)"),
+    re.compile(r"can.?t answer"),
+    re.compile(r"unable to (answer|verify|provide|ground)"),
+    re.compile(r"do n[o']t have (enough|sufficient)"),
+    re.compile(r"insufficient (evidence|information|context|grounding|support)"),
+    re.compile(
+        r"no (verifiable|sufficient|relevant) (claims|evidence|information|context|support)"
+    ),
+    re.compile(r"cannot be (verified|grounded|supported)"),
+)
+
+
+def is_refusal_answer(answer: str | None) -> bool:
+    """True for ABSTAIN and hedged-refusal prose no verifier can use."""
+    if not answer:
+        return False
+    if answer.strip() == "ABSTAIN":
+        return True
+    lowered = answer.lower()
+    return any(rx.search(lowered) for rx in _REFUSAL_REGEXES)
 
 
 class VerdictStatus(StrEnum):
@@ -82,7 +114,7 @@ def compute_verdict(
     if total == 0:
         # No claims verified. An explicit model ABSTAIN is correct behavior
         # (abstained), not a failure — only a non-empty unverifiable answer fails.
-        if answer == "ABSTAIN":
+        if is_refusal_answer(answer):
             return VerdictResult(
                 verdict_status=VerdictStatus.PASS,
                 reliability_status=ReliabilityStatus.ABSTAINED,
@@ -129,7 +161,7 @@ def compute_verdict(
         diagnosis_type = DiagnosisType.LOW_COVERAGE
 
     # Map to user-facing reliability status
-    if answer == "ABSTAIN":
+    if is_refusal_answer(answer):
         reliability_status = ReliabilityStatus.ABSTAINED
     elif verdict_status == VerdictStatus.PASS:
         reliability_status = ReliabilityStatus.TRUSTED

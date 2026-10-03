@@ -32,6 +32,7 @@ from app.rag.generation.generator import (
 )
 from app.rag.retrieval import retriever as retriever_mod
 from app.rag.verification import integrity as integrity_mod
+from app.rag.verification.verdict import is_refusal_answer
 
 logger = get_logger(__name__)
 
@@ -205,41 +206,6 @@ def _is_meta_claim(text: str) -> bool:
     if any(p in lowered for p in _META_CLAIM_PATTERNS):
         return True
     return any(rx.search(lowered) for rx in _META_CLAIM_REGEXES)
-
-
-# ─── Refusal gate (deterministic pre-filter, zero LLM calls) ──────────────────
-# Small local models often refuse with hedged prose ("I cannot verify…",
-# "insufficient evidence…") instead of the exact ABSTAIN token. Decomposition +
-# batch NLI + fallbacks cannot extract claims from a refusal — running them
-# burns minutes of throttled inference for a guaranteed claims.empty. Detect
-# the refusal deterministically and skip straight to the FAIL/recovery path
-# (industry "cascade" practice: the LLM is the escalation path, not the filter).
-# False-positive cost is bounded: a misread answer FAILs into recovery, which
-# can still regenerate and pass — the system never asserts from this gate.
-
-_REFUSAL_REGEXES = (
-    re.compile(r"couldn.?t verify"),
-    re.compile(r"could not verify"),
-    re.compile(r"cann?ot (provide|give|answer|verify|ground)"),
-    re.compile(r"can.?t answer"),
-    re.compile(r"unable to (answer|verify|provide|ground)"),
-    re.compile(r"do n[o']t have (enough|sufficient)"),
-    re.compile(r"insufficient (evidence|information|context|grounding|support)"),
-    re.compile(
-        r"no (verifiable|sufficient|relevant) (claims|evidence|information|context|support)"
-    ),
-    re.compile(r"cannot be (verified|grounded|supported)"),
-)
-
-
-def is_refusal_answer(answer: str | None) -> bool:
-    """True for ABSTAIN and hedged-refusal prose no verifier can use."""
-    if not answer:
-        return False
-    if answer.strip() == "ABSTAIN":
-        return True
-    lowered = answer.lower()
-    return any(rx.search(lowered) for rx in _REFUSAL_REGEXES)
 
 
 # ─── Pydantic Schemas for Structured LLM Mappings ─────────────────────────────
