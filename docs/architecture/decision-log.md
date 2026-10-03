@@ -452,6 +452,7 @@ dead `reranker.top_k` wired as the scoring-depth cap (default 8 → 20, floored 
 `fusion_top_k` so candidates are never discarded pre-score), no-in-place-sort fix, and
 full enabled-path tests behind mocks. Thresholds remain uncalibrated pending the live
 Hybrid-vs-Hybrid+Rerank ablation. Enable only where the `local-models` extra is installed.
+(Superseded 2026-10-04: reranker enabled by default / caps now tier-aware lean 2, else 3.)
 
 ## D-25: RapidOCR-ONNX Per-Page Fallback, Default On (OCR)
 
@@ -506,6 +507,7 @@ claim text as query, top-5, max 3 per analysis — with fresh mini-context re-ve
 and persisted evidence linkage. CONTRADICTED claims are never re-searched (existing
 evidence refutes them; re-searching would cherry-pick). Deleted the unread
 `citation/evidence-coverage/source-integrity_weight` trio (tuning trap, zero readers).
+(Superseded 2026-10-04: reranker enabled by default / caps now tier-aware lean 2, else 3.)
 
 ## D-29: Deterministic Query Router + Bounded Fan-Out (Phase 6)
 
@@ -598,3 +600,43 @@ claim→evidence linking, the Evidence tab, and the provenance metric intact.
 `generator.strip_citation_markers` and its regression tests. The D-27
 "answers carry inline citations" wording is superseded for the reader-facing
 field only; the mechanism is unchanged.
+
+---
+
+## D-35: Unified local context 8192
+
+**Date:** 2026-10-04
+**Status:** Accepted & Implemented
+
+**Decision:** Local LLM client cap is unified at 8192 tokens, with slot sizing
+`-c 8192 -np 1` at or below 16.5GB host RAM and `-c 16384 -np 2` above.
+KV rationale holds at ≤3B. `LOCAL_LLM_NUM_CTX` remains as the escape hatch.
+
+**Rationale:** One client cap plus RAM-tiered slot sizing keeps small hosts
+safe without penalizing larger ones.
+
+---
+
+## D-36: Tier caps by actual host RAM
+
+**Date:** 2026-10-04
+**Status:** Accepted & Implemented
+
+**Decision:** Tier caps are derived from actual host RAM. The `num_ctx` proxy
+is removed; it survives as fallback only.
+
+**Rationale:** Host RAM is the ground truth for slot sizing; a proxy
+misclassifies edge hosts.
+
+---
+
+## D-37: Fused skip extended to reasoning models
+
+**Date:** 2026-10-04
+**Status:** Accepted & Implemented
+
+**Decision:** The fused decompose+verify skip is extended to reasoning models
+of any size.
+
+**Rationale:** Reasoning models pay the fused-path cost without the benefit,
+regardless of parameter count.

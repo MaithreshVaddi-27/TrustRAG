@@ -29,7 +29,7 @@ TRUSTRAG addresses these gaps with a pipeline of **ingestion → retrieval → g
 | Embedding | A fixed-length numeric vector representing the meaning of text. Semantically similar text should have nearby vectors. |
 | Dense retrieval | Search by embedding similarity. It is useful when wording differs but meaning is similar. |
 | Sparse retrieval | Keyword-style search represented as sparse weighted token vectors. It is useful for exact terms, names, codes, and numbers. |
-| Hybrid retrieval | Dense and sparse search together, combined with a rank-fusion method. The implementation supports it, although the checked-in configuration currently sets `sparse_top_k: 0`, so the default run is dense-only unless configuration changes. |
+| Hybrid retrieval | Dense and sparse search together, combined with a rank-fusion method. Both legs run by default (`sparse_top_k: 20`), so the default run is true hybrid retrieval. |
 | RRF | Reciprocal Rank Fusion. It combines rank positions rather than trying to compare raw scores from unrelated search methods. |
 | Reranker | A slower but more accurate second-stage model that scores a `(question, candidate passage)` pair and reorders candidates. |
 | NLI | Natural Language Inference: classify a claim as supported, contradicted, or neutral with respect to supplied evidence. |
@@ -90,7 +90,6 @@ They have different responsibilities; one does not replace the other.
 | MongoDB | users, KBs, document metadata, canonical chunk text, evidence records, claims, analysis results, trace events, recovery runs, revoked tokens, experiments, feature flags | flexible application records, ownership checks, audit history, and relationships |
 | Qdrant | one `kb_<id>` collection per knowledge base containing dense vector, sparse vector, and retrieval payload | fast nearest-neighbour and sparse-vector search |
 | SQLite files | persistent embedding cache | avoids recomputing local ONNX embeddings across process restarts |
-| JSON semantic cache | similar-query cached answer payloads | saves repeat answer generation, while retrieval and verification still rerun for auditability |
 | local disk | OCR page images | lets the evidence UI show the image actually used to read a scanned page |
 
 ## 6. End-to-end user journey
@@ -105,7 +104,7 @@ Creating a KB creates a MongoDB record owned by the current user. The KB is late
 
 The backend accepts PDF, TXT, Markdown, DOCX, CSV, JSON, HTML, and HTM (up to the configured 20 MB). It checks filename/format, magic bytes, suspicious compression ratios, and a basic EICAR malware signature before parsing. URL ingestion performs URL sanitisation and SSRF defences: allowlisting, blocked private/local addresses, DNS resolution checks, pinned network transport, redirect limits, timeout, and content-size controls.
 
-The parser returns page objects, not merely one long string. It extracts `effective from:` and `effective until:` dates when present. For PDFs it extracts native text page by page. Pages with too little native text can be rendered at 200 DPI and read using RapidOCR powered by ONNX Runtime. OCR text below the configured confidence threshold is discarded rather than becoming evidence.
+The parser returns page objects, not merely one long string. It extracts `effective from:` and `effective until:` dates when present. For PDFs it extracts native text page by page. Pages with too little native text can be rendered at 300 DPI and read using RapidOCR powered by ONNX Runtime. OCR text below the configured confidence threshold is discarded rather than becoming evidence.
 
 ### C. Create chunks and indexes
 
@@ -185,7 +184,7 @@ The query embedding has a BGE instruction prefix: `Represent this sentence for s
 
 Sparse retrieval represents lexical tokens with hashed indices and BM25-style weights. The client applies term-frequency saturation and document-length normalisation. Qdrant applies inverse document frequency (IDF) via the `sparse-text` vector configuration. The token pipeline removes noise and stems words, so, for example, grammatical variants can align.
 
-**Important current configuration fact:** `retrieval.sparse_top_k` is `0` in `apps/api/config/models.yaml`. A zero depth intentionally disables the sparse leg. Thus, the repository implements hybrid dense+sparse RAG, but its default checked-in runtime is dense retrieval plus reranking. To demonstrate true hybrid RAG, set `sparse_top_k` to a positive value (for example 20), re-index if required, and restart/reload configuration.
+**Important current configuration fact:** `retrieval.sparse_top_k` is `20` in `apps/api/config/models.yaml`, so the sparse leg is active and the default checked-in runtime is true hybrid retrieval (dense + sparse, fused with RRF).
 
 ### 8.3 Reciprocal Rank Fusion (RRF)
 
@@ -207,7 +206,7 @@ After fusion, the retrieval layer reads current document metadata from MongoDB a
 
 `app/rag/retrieval/reranker.py` takes the fused candidates and evaluates the actual pair `(question, chunk text)` with the configured cross-encoder. This is more precise than independent embeddings because the model can attend to question and passage together.
 
-The reranker has a bounded candidate depth, batched inference, an LRU score cache, optional early termination for a very confident and separated top result, and adaptive top-k slicing. If the ONNX reranker cannot load, the code fails safely back to RRF order rather than silently loading a different unconfigured model.
+The reranker has a bounded candidate depth, batched inference, optional early termination for a very confident and separated top result, and adaptive top-k slicing. If the ONNX reranker cannot load, the code fails safely back to RRF order rather than silently loading a different unconfigured model.
 
 ## 9. Why ONNX is used in this project
 
@@ -339,8 +338,6 @@ The pipeline also has a self-healing path: when Qdrant has no points but MongoDB
 | Mechanism | Implementation purpose |
 |---|---|
 | embedding LRU + SQLite cache | prevents repeated ONNX computation; query/document namespaces avoid the BGE-prefix mix-up |
-| reranker LRU cache | avoids rescoring an identical query/chunk pair |
-| semantic cache | can reuse an answer for a similar query, but still retrieves and verifies fresh evidence before trusting it |
 | deterministic evidence ordering | produces stable prompts and helps local LLM KV/prompt caching |
 | global concurrency semaphore | adjusts local model load to available memory |
 | ingestion semaphore | prevents several embedding-heavy uploads from exhausting local resources |
@@ -360,7 +357,7 @@ All normal routes begin with `/api/v1`.
 | Health | `GET /health`, `/health/detailed`, `/metrics` | public liveness, authenticated dependency/model details, Prometheus metrics |
 | Auth | `POST /auth/register`, `/auth/login`, `/auth/logout`; `GET /auth/me` | user accounts and JWT sessions |
 | Knowledge bases | `POST/GET /knowledge-bases`; `GET/DELETE /knowledge-bases/{id}` | KB management |
-| Documents | `POST /knowledge-bases/{id}/documents`; `POST .../from-url`; `GET .../documents`; `GET/DELETE /documents/{id}` | ingest and manage documents |
+| Documents | `POST /knowledge-bases/{id}/documents`; `GET .../documents`; `GET/DELETE /documents/{id}` | ingest and manage documents |
 | Snapshots | `POST /knowledge-bases/{id}/snapshots`; `POST /{id}/rollback/{snapshot}` | copy KB state/version and restore it |
 | Analyses | `POST/GET /analyses`; `GET /analyses/{id}`, `/detail`, `/claims`, `/evidence`, `/trace`, `/export` | run and inspect audit workflow |
 | Live trace | `POST /analyses/{id}/stream-ticket`, `GET /analyses/{id}/stream?ticket=...` | short-lived ticket then SSE events |
@@ -457,7 +454,7 @@ The repository also includes two local-LLM launchers and a setup flow:
 
 | Script | Serves | Port | Notes |
 |---|---|---|---|
-| `scripts/start_local_llm.sh` | llama.cpp `llama-server` (router mode) | **:8080** | Hardware-aware flags (Metal/CUDA, KV q8_0, flash-attn, RAM-tiered `--max`) |
+| `scripts/start_local_llm.sh` | llama.cpp `llama-server` (router mode) | **:8080** | Hardware-aware flags (Metal/CUDA, KV q8_0, flash-attn, RAM-tiered `--max`; server slots tiered by RAM: ≤16.5GB → `-c 8192 -np 1`, above → `-c 16384 -np 2`) |
 | `scripts/start_mlx_server.sh` | MLX `mlx_lm.server` | **:8090** | Apple Silicon only; one model per process — use `--port 8091` for more. `--check` scans the range |
 | `scripts/setup.sh` | — | — | Verifier: prints copy-paste fixes for a misconfigured host |
 
@@ -483,11 +480,10 @@ Use a small set of source documents containing a fact that can be checked. Inclu
 An effective project explanation includes boundaries.
 
 - **Verification is LLM-based.** NLI improves accountability but is not a formal proof system; a weak local verification model can still misclassify a claim.
-- **Default sparse search is disabled.** The code supports hybrid retrieval but the current `sparse_top_k: 0` setting means a default demo should not claim both dense and sparse search are actively contributing unless it is changed.
+- **Hybrid retrieval is the default.** `sparse_top_k: 20` means both dense and sparse search actively contribute to a default run (fused with RRF).
 - **The reliability score is uncalibrated.** It should be framed as a rule-based audit score, not probability/confidence truth.
 - **Chunking governs evidence quality.** Poor OCR, poorly structured source documents, or a chunk boundary that separates required context can reduce performance.
 - **Small local LLMs are economical, not necessarily strongest.** The default 1.2B llama.cpp model enables low-resource operation; larger/local/cloud models may improve generation and verification at a cost.
-- **Semantic cache is carefully reverified but is still an optimisation.** Operationally, cache invalidation and KB versioning deserve monitoring in any production use.
 - **MongoDB is external to the compose stack.** A one-command production-like deployment would need MongoDB/backup/authentication orchestration too.
 - **Snapshots copy data and vectors.** They are useful for rollback but consume storage and should be managed with retention policy.
 - **UI token storage can be hardened.** HTTP-only cookies and CSP/XSS controls would strengthen production authentication.
@@ -500,7 +496,7 @@ This map lets a presenter answer “where is that implemented?” without relyin
 |---|---|
 | app startup, middleware, error mapping | `apps/api/app/main.py`, `app/api/router.py` |
 | central settings/model policy | `app/core/config/`, `apps/api/config/models.yaml`, `.env.example` |
-| model selection/local LLM clients | `app/core/model_registry.py`, `app/core/local_llm.py`, `app/core/llm_utils.py`, `app/core/llm_ledger.py` |
+| model selection/local LLM clients | `app/llm/model_registry.py`, `app/llm/local_llm.py`, `app/llm/llm_utils.py`, `app/llm/llm_ledger.py` |
 | ONNX embedding/reranking | `app/llm/onnx_embeddings.py`, `app/llm/onnx_reranker.py`, `scripts/ensure_onnx_models.py`, `scripts/export_bge_onnx.py` |
 | document parsing/OCR/chunking | `app/rag/ingestion/parser.py`, `ocr.py`, `preprocessor.py`, `chunker.py`, `chunking_strategies.py`, `page_images.py` |
 | indexing/vector DB | `app/rag/ingestion/pipeline.py`, `sparse_vector.py`, `app/db/qdrant.py`, `app/db/mongodb.py` |

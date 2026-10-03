@@ -68,9 +68,7 @@ Measured baseline (see git history for the 2026-10-03 pass; current status in do
 - **Reranker restored** (reversing a3897b2): batching, early termination, adaptive
   Top-4, result cache, RRF fallback all test-pinned but deleted. Restored verbatim from
   git; the 8 reranker tests pass unmodified.
-- **Query-vector LRU restored** (`retriever._query_cache`, bounded, capacity from
-  `retrieval.query_cache_capacity`): feeds both `dense_search` and the graph's semantic
-  prefetch — one ONNX embed per distinct query instead of per leg × round.
+> Correction (2026-10-04): the query-vector LRU was removed; do not re-add on this section's word.
 - **Strict bounded retrieval**: per-branch + hybrid timeouts restored
   (`RETRIEVAL_*_TIMEOUT` globals, env > yaml > 45s/60s fallbacks) with fail-loud
   `RetrievalOutageError` (partial evidence is never served silently); empty sparse

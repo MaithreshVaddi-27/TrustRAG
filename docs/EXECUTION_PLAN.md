@@ -36,3 +36,5 @@ Status legend: ✅ done · 🔶 open · ⏳ scheduled.
 `READ → PLAN → BUILD → VERIFY → FIX → DOCUMENT → NEXT` · never continue with known failures ·
 `models.yaml` for IDs/params · `.env` for secrets · record `config_version` per analysis ·
 bump `runtime.config_version` on any `models.yaml` value change.
+
+> Note (2026-10-04): counts refer to the Phase-1 tree; current suite is 721 tests, config v1.28.

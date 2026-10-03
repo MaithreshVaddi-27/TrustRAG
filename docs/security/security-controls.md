@@ -16,7 +16,7 @@
 | IDOR prevention | Every DB query includes `user_id` ownership filter | Phase 4 |
 | Cross-user KB isolation | Authorization in knowledge base service | Phase 4 |
 | Service-token tenant binding | Optional `bound_kb_id`/`bound_user_id` claims enforced (403) on internal ingest (M-2) | RAG Phase 9 ✓ |
-| Login lockout | In-memory per-email window: 5 attempts / 900s, cleared on success | RAG Phase 9 ✓ |
+| Login lockout | Mongo TTL `failed_logins`, dual-key (`email\|ip` + email aggregate): 5 attempts / 900s, cleared on success | RAG Phase 9 ✓ |
 
 ## Input & MCP Search Security
 
@@ -39,7 +39,7 @@
 | Control | Implementation | Status |
 |---------|---------------|--------|
 | CORS restriction | Locked to configured origins only | Phase 1 ✓ |
-| Rate limiting | SlowAPI per-client ceilings (analyses/auth/upload/url-ingest) | Phase 1 ✓ |
+| Rate limiting | SlowAPI per-client ceilings (analyses/auth/upload) | Phase 1 ✓ |
 | Exception sanitization | Domain exceptions → clean HTTP response | Phase 1 ✓ |
 | Secret management | `.env` only; never in code or `models.yaml` | Phase 1 ✓ |
 | Sensitive log scrubbing | structlog processor removes sensitive keys | Phase 1 ✓ |

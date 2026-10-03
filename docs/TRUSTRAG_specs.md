@@ -96,7 +96,7 @@ The portfolio differentiator is the **reliability → diagnosis → recovery loo
 - Dense retrieval (BGE 384d, KB-pinned)
 - Sparse/BM25 retrieval (client TF-saturation + server IDF)
 - Hybrid fusion / RRF (`fusion_top_k` enforced) + deterministic query router (fan-out ≤3)
-- Optional reranking (off by default; depth-capped)
+- Optional reranking (on by default; depth-capped)
 
 ### Persistence
 
@@ -347,7 +347,7 @@ verification:
   max_output_tokens: 512
 
 reranker:
-  enabled: false                  # off by default; needs the local-models extra
+  enabled: true                  # on by default (ONNX int8; needs bootstrap weights)
   provider: cross_encoder
   model: cross-encoder/ms-marco-MiniLM-L-6-v2
   top_k: 20                       # scoring-depth cap, floored at fusion_top_k
@@ -382,7 +382,7 @@ observability:
   pre_request_budget_enforcement: true  # reject over-budget queries with 422
 
 runtime:
-  config_version: "1.15"
+  config_version: "1.28"
 ```
 
 These are engineering defaults, not calibrated truth.
@@ -546,7 +546,7 @@ Query
        ↓
      Fusion/RRF (fusion_top_k enforced)
        ↓
-   Optional Reranking (off by default; depth-capped)
+   Optional Reranking (on by default; depth-capped)
        ↓
    Evidence Selection
 ```

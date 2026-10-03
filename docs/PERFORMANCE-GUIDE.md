@@ -64,6 +64,10 @@ Files: `scripts/bootstrap.py` (+ `ensure_onnx_models.py`), `apps/api/app/llm/onn
 
 | Cache | Where | Effect |
 |---|---|---|
+| Embedding vectors | LRU Tier-1 + SQLite Tier-2 (`onnx_embeddings.py`) | Persistent across restarts — no recompute |
+| ONNX sessions | Singleton (`model_registry.py`) | Embedding + reranker sessions loaded once |
+| Reranker results | — | No result cache — every call scores fresh |
+| Answers | — | No persisted answer cache |
 
 Warm them once by ingesting your docs and asking your top questions — every repeat after that is nearly free.
 
@@ -106,7 +110,7 @@ LOG_LEVEL=WARNING
 Rules that apply to **every** server:
 
 - **Separate ports for local servers:** `llama-server` on **:8080**, MLX on **:8090** — they can run simultaneously. Ollama on :11434 coexists with both. Ports live in `config/ports.yaml`; both launchers read them, so `python3 scripts/apply_ports.py` keeps everything in sync.
-- **Keep `LOCAL_LLM_MAX_CONCURRENCY=1`.** Local servers are serial (llama-server `-np 2`, Ollama queue, MLX single model). The backend serializes generations with a semaphore (`app/core/local_llm.py`); raising this without a parallel-capable server buys timeout cascades, not throughput.
+- **Keep `LOCAL_LLM_MAX_CONCURRENCY=1`.** Local servers are serial (llama-server `-np 2`, Ollama queue, MLX single model). The backend serializes generations with a semaphore (`app/llm/local_llm.py`); raising this without a parallel-capable server buys timeout cascades, not throughput.
 - **Ollama on ≤8 GB** (shell env, before `ollama serve`):
   ```bash
   export OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1
@@ -235,14 +239,14 @@ All live in `apps/api/config/models.yaml` (`retrieval:`, `verification:`, `relia
 
 | Knob | Current | Faster direction | Cost of going faster |
 |---|---|---|---|
-| `sparse_top_k` | `0` (dense-only) | keep `0` | Lower recall on keyword/rare-term queries; set `20` for full hybrid (+~1–5 ms/query, needs re-index expectations) |
+| `sparse_top_k` | `20` (hybrid default) | do NOT set `0` (disables shipped hybrid) | Setting `0` drops to dense-only with lower recall on keyword/rare-term queries; `20` costs only +~1–5 ms/query |
 | `dense_top_k` / `fusion_top_k` | `20` / `20` | lower (e.g. 10) | Fewer candidates → faster rerank/context, but recall drops |
 | `max_context_chunks` | `8` | lower (e.g. 5) | Shorter prompts → faster + cheaper generation, thinner evidence |
-| `reranker.enabled` | `false` | keep `false` until calibrated | Enabling costs +40–400 ms/query AND needs torch (`local-models` extra); calibrate thresholds from the Hybrid-vs-Hybrid+Rerank ablation first |
+| `reranker.enabled` | `true` | keep `true` (ONNX int8, on by default) | Disabling saves +40–400 ms/query but drops ranking quality; calibrate thresholds from the Hybrid-vs-Hybrid+Rerank ablation first |
 | `query_router.enabled` | `true` | keep `true` | The router is regex (zero LLM cost) and *saves* calls on simple queries |
 | `max_sub_queries` | `3` | lower (e.g. 2) | Cheaper fan-out, weaker comparison/complex coverage |
 | `max_recovery_attempts` | `2` | `1` | Bounded worst-case latency; more abstentions on hard queries |
-| `cost_controls.max_analysis_seconds` | `120` | lower (e.g. 60) | Hard wall-clock ceiling for the whole run. Once spent, no new recovery round starts and the run abstains. This is the guard against multi-minute answers — the recovery budgets below only count time *inside* the recovery node, so they cannot bound a 3-round run. `0` disables the bound. |
+| `cost_controls.max_analysis_seconds` | `600` | lower (e.g. 60) | Hard wall-clock ceiling for the whole run. Once spent, no new recovery round starts and the run abstains. This is the guard against multi-minute answers — the recovery budgets below only count time *inside* the recovery node, so they cannot bound a 3-round run. `0` disables the bound. |
 | `claim_retrieval` budget | `≤3` | lower | Fewer NEUTRAL→SUPPORTED flips |
 | `chunk_size` / `chunk_overlap` | `512` / `64` | larger chunks, smaller overlap | Fewer vectors to search, coarser evidence spans |
 
@@ -255,7 +259,7 @@ Ingest cost is offline — spend it wisely once instead of per query forever:
 - **Chunking strategy matters once:** `sliding_window` (default) is cheapest and byte-stable. `semantic`/`layout_aware` cost more at ingest for better spans — pick per corpus, then **re-index once** and stop switching (every switch = full re-upload).
 - **OCR:** RapidOCR fires only on pages with <50 native chars and fails open. If your corpus has no scans, disable it (`ingestion.ocr.enabled: false` in `models.yaml`) to skip the `~/.onnx` first-use download stall. If it has scans, **pre-warm**: ingest one scanned PDF right after deploy.
 - **Upload size cap** (`max_file_size_mb: 20`, `max_total_tokens_per_doc: 200000`) is a free DoS guard — leave it.
-- **Embedding cost:** embeddings are computed fresh every ingest. There is no persistent embedding or answer cache; only a bounded in-process LRU avoids recompute within a single run.
+- **Embedding cost:** embeddings use a persistent two-tier cache (in-process LRU Tier-1 + SQLite Tier-2), so repeat texts avoid recompute across restarts. There is no persisted answer cache.
 
 ---
 
@@ -276,9 +280,9 @@ In order of MB saved:
 
 Already correct in code — these are "verify, don't change" items:
 
-- `LOCAL_LLM_MAX_CONCURRENCY=1` serializes the ~9-calls-per-analysis pipeline against serial servers (Ollama queue, llama-server `-np 2`, MLX). Raise **only** with a parallel-capable server.
-- Per-branch retrieval timeouts (45 s each, 60 s total in `app/retrieval/retriever.py`) degrade one hung branch to the other instead of failing the query.
-- Pooled `httpx.AsyncClient` per endpoint (`app/core/local_llm.py`) reuses keep-alive across the call fan-out — already done, don't regress to per-call clients.
+- `LOCAL_LLM_MAX_CONCURRENCY=1` serializes the ~9-calls-per-analysis pipeline against serial servers (Ollama queue, llama-server `-np 1` on ≤16.5GB hosts / `-np 2` above, MLX). Raise **only** with a parallel-capable server.
+- Per-branch retrieval timeouts (45 s each, 60 s total in `app/rag/retrieval/retriever.py`) degrade one hung branch to the other instead of failing the query.
+- Pooled `httpx.AsyncClient` per endpoint (`app/llm/local_llm.py`) reuses keep-alive across the call fan-out — already done, don't regress to per-call clients.
 - Rate limits (`RATE_LIMIT_*_PER_MINUTE`) are local-friendly; raise them only behind single-NAT production proxies, never to "go faster" locally.
 
 ---
@@ -295,7 +299,6 @@ Already correct in code — these are "verify, don't change" items:
 ## 10. What NOT to do (costs money or hurts)
 
 - ❌ Bigger cloud LLM for "speed" — per-token cost on a ~9-call pipeline, and Gemini adds network latency per call. Local small models win on both.
-- ❌ Enabling the reranker without the `local-models` extra — silent no-op in Docker that still costs code-path complexity; calibrate first.
 - ❌ Raising `LOCAL_LLM_MAX_CONCURRENCY` on Ollama/llama-server/MLX — serial servers + parallel clients = timeout cascades.
 - ❌ Cloud embeddings — removed for a reason (D-19): per-token cost inside the hot path plus cross-space contamination risk.
 - ❌ Redis/Celery/K8s "for performance" — explicitly deferred (D-08) until *measured* queue/SSE pain. The in-process path is faster at this scale.
@@ -329,4 +332,4 @@ python scripts/run_baseline_eval.py --email ... --password ... \
 # 4. Copy the aggregate row into docs/evaluation/methodology.md. Never hand-edit JSON.
 ```
 
-> History note: superseded tuning advice lives in git (`git log -- docs/`). This guide reflects `models.yaml` v1.15 and the code at HEAD.
+> History note: superseded tuning advice lives in git (`git log -- docs/`). This guide reflects `models.yaml` v1.28 and the code at HEAD.

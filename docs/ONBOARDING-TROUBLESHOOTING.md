@@ -123,14 +123,14 @@ net start MongoDB
 | 15 | `setup.sh` warns `:8080/:8090 already in use` while LLM checks above say healthy | False alarm: occupied LLM ports **are** the healthy state | Ignore if the LLM lines above report the servers |
 | 16 | Small local model abstains on questions a cloud model answers | ≤3B gets a compact prompt + the two-step verify path automatically, but it is still much weaker | Compare objectively: `./scripts/eval_provider.sh llama_cpp …` vs `./scripts/eval_provider.sh gemini …` |
 | 17 | A strong model behaves like a small one | `is_small_model()` matched its id (e.g. a size marker in the name) | Check `python -c "from app.llm.local_llm import is_small_model; print(is_small_model('<id>'))"`; the classifier is conservative by design |
-| 16 | `python3.11: command not found` on Ubuntu | Stock Ubuntu ships 3.10 | deadsnakes PPA (see Linux section) |
-| 17 | MongoDB apt 404 on Ubuntu 24.04 | README repo line hardcodes `jammy` | Use the `noble` repo path or Docker MongoDB |
-| 18 | `pip install mlx-lm` fails on Intel Mac / Linux | MLX is Apple-Silicon-only | Skip MLX; use Ollama or llama.cpp |
-| 19 | First query slow (~minutes), then fast | Cold ONNX load + hardware probe + disk cache warmup (by design, non-blocking) | Wait for `Embedding model pre-warmed` in logs |
-| 20 | `Large diff` / OOM during export on 8 GB hosts | torch export + `/tmp` spikes on top of the ~8 GB note | Close browsers/IDEs, ensure ~4 GB free beyond the README figure |
-| 21 | `Invalid QDRANT_URL` at first KB op | URL without scheme (e.g. `localhost:6333`) — rejected instead of being mkdir'd | Use `http://localhost:6333`, `local`, `:memory:`, or a path |
-| 22 | `pip install -e .` fails on Python 3.13+ | `requires-python` now caps at `<3.13` (torch/onnxscript export incompatible) | Use Python 3.11 or 3.12 |
-| 23 | `mlx_lm.server not applicable here` from `setup.sh` | Host is not Apple Silicon (check is now platform-gated) | Expected — use Ollama or llama.cpp instead |
+| 18 | `python3.11: command not found` on Ubuntu | Stock Ubuntu ships 3.10 | deadsnakes PPA (see Linux section) |
+| 19 | MongoDB apt 404 on Ubuntu 24.04 | README repo line hardcodes `jammy` | Use the `noble` repo path or Docker MongoDB |
+| 20 | `pip install mlx-lm` fails on Intel Mac / Linux | MLX is Apple-Silicon-only | Skip MLX; use Ollama or llama.cpp |
+| 21 | First query slow (~minutes), then fast | Cold ONNX load + hardware probe + disk cache warmup (by design, non-blocking) | Wait for `Embedding model pre-warmed` in logs |
+| 22 | `Large diff` / OOM during export on 8 GB hosts | torch export + `/tmp` spikes on top of the ~8 GB note | Close browsers/IDEs, ensure ~4 GB free beyond the README figure |
+| 23 | `Invalid QDRANT_URL` at first KB op | URL without scheme (e.g. `localhost:6333`) — rejected instead of being mkdir'd | Use `http://localhost:6333`, `local`, `:memory:`, or a path |
+| 24 | `pip install -e .` fails on Python 3.13+ | `requires-python` now caps at `<3.13` (torch/onnxscript export incompatible) | Use Python 3.11 or 3.12 |
+| 25 | `mlx_lm.server not applicable here` from `setup.sh` | Host is not Apple Silicon (check is now platform-gated) | Expected — use Ollama or llama.cpp instead |
 
 ---
 

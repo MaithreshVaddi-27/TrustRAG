@@ -38,12 +38,12 @@ cp .env.example .env
 |----------|----------|-------------|
 | `MONGODB_URI` | Yes | MongoDB Atlas or local connection string |
 | `MONGODB_DATABASE` | Yes | Database name (default: `trustrag_db`) |
-| `QDRANT_URL` | Yes | Qdrant URL: `local` (embedded) or `http://localhost:6333` |
+| `QDRANT_URL` | Yes | Qdrant URL: `local` (embedded) or `http://localhost:6335` (compose maps host 6335→6333) |
 | `QDRANT_API_KEY` | Prod only | Qdrant Cloud API key |
 | `JWT_SECRET` | Yes | Min 32-char random secret |
 | `CORS_ORIGINS` | Yes | Comma-separated allowed origins |
 | `GEMINI_API_KEY` | Conditional | Only if models.yaml uses gemini AND the `cloud` extra is installed |
-| `TAVILY_API_KEY` | No | Web search grounding (else free DuckDuckGo) |
+| `TAVILY_API_KEY` | No | Web search grounding (empty = no web grounding, no DDG fallback) |
 | `HF_TOKEN` | No | Read-only token to avoid Hub rate-limits on embedding download |
 | `APP_ENV` | No | `development` (default) + `staging`/`production` |
 | `LOG_LEVEL` | No | `INFO` (default) |
@@ -136,7 +136,7 @@ For production, use Qdrant Cloud free tier:
 
 For local development, use the Docker Compose Qdrant service:
 ```
-QDRANT_URL=http://localhost:6333
+QDRANT_URL=http://localhost:6335
 QDRANT_API_KEY=   # empty = no auth
 ```
 
@@ -260,8 +260,11 @@ CORS_ORIGINS=https://trustrag.netlify.app,https://trustrag.vercel.app
 ## Health Checks
 
 ```bash
-# Public health (load balancers, Docker HEALTHCHECK) — minimal, no auth
+# Liveness (minimal, no auth)
 GET /api/v1/health
+
+# Readiness gate (Docker HEALTHCHECK, load balancers) — 200 when Mongo+Qdrant up, 503 when degraded
+GET /api/v1/health/ready
 
 # Expected response
 {

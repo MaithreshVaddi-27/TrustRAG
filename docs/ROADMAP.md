@@ -1,7 +1,7 @@
 # TRUSTRAG — Project Roadmap & Remaining Steps
 
 > Last updated: 2026-09-19  
-> Current status: All 12 core phases complete + Post-Launch Quality & Audit Cycle complete (v1 → v4) + ultra-low RAM + ONNX + claims-hardening + fusion passes + RAG quality phases 0–8 (eval harness, BM25+IDF, reranker cap, OCR, chunking, citations, claim retrieval, router, lifecycle) + adaptive recovery + security residuals/red-team + production observability. **383 backend tests collected, 22 frontend Vitest, 2 Playwright E2E, k6 load smoke.** Active and upcoming work below.
+> Current status: All 12 core phases complete + Post-Launch Quality & Audit Cycle complete (v1 → v4) + ultra-low RAM + ONNX + claims-hardening + fusion passes + RAG quality phases 0–8 (eval harness, BM25+IDF, reranker cap, OCR, chunking, citations, claim retrieval, router, lifecycle) + adaptive recovery + security residuals/red-team + production observability. **721 backend tests collected, 22 frontend Vitest, 2 Playwright E2E, k6 load smoke.** Active and upcoming work below.
 
 ---
 
@@ -33,7 +33,7 @@
 | **17** | **Claims Verification Hardening (2026-09-12)** | Tolerant NLI parsing (VERIFIED→SUPPORTED aliasing, segment coercion, batch bare-int drop) fixing 0/x-supported on good answers; 6 new regression tests; 38-error lint sweep | ✅ COMPLETE |
 | **18** | **Fused Decompose+Verify + CI Repairs (2026-09-12)** | Single-call fused NLI path with two-step fallback (live-evaled 2.0s vs 3.4s); fixed frontend-build (missing install), Docker context + empty-venv boot bug, stale k6 health contract; onnxruntime shipped in image; Bandit B615 revision pin; Trivy SARIF advisory | ✅ COMPLETE |
 | **19** | **Offline-Warning + Probe Hardening (2026-09-12)** | `/models/providers` degrades instead of 500ing; UI warns on failed providers query too; probe retries once and splits refused (down) vs timeout (slow); concurrent provider checks; hermetic verification suite | ✅ COMPLETE |
-| **20** | **RAG Quality Phases 0–8 (2026-09-16)** | Frozen 25-query baseline + metrics harness + live runner (`tests/eval/`, `scripts/run_baseline_eval.py`); BM25-TF + server IDF with collection migration; reranker depth cap, stays default-off; RapidOCR-ONNX per-page fallback with provenance; newline-preserving normalization + wired chunking strategies; inline `[Segment N]` citations + strip post-check; NEUTRAL-only targeted claim retrieval; deterministic router + fan-out; snapshot/rollback routes + empty-snapshot guard — 322 backend tests | ✅ COMPLETE |
+| **20** | **RAG Quality Phases 0–8 (2026-09-16)** | Frozen 25-query baseline + metrics harness + live runner (`tests/eval/`, `scripts/run_baseline_eval.py`); BM25-TF + server IDF with collection migration; reranker depth cap, enabled by default; RapidOCR-ONNX per-page fallback with provenance; newline-preserving normalization + wired chunking strategies; inline `[Segment N]` citations + strip post-check; NEUTRAL-only targeted claim retrieval; deterministic router + fan-out; snapshot/rollback routes + empty-snapshot guard — 322 backend tests | ✅ COMPLETE |
 | **21** | **Adaptive Recovery + Security + Observability (2026-09-19)** | Diagnose-then-act recovery (≤2 attempts, token/latency budgets, abstain on exhaustion); JWT `iss`/`aud` + service-token KB/user binding + login lockout + upload AV + 24-test red-team suite; dependency-free `/metrics` exposition + pre-request budget enforcement + per-analysis accounting + k6 read-path coverage; full phase-by-phase re-verification audit (removed during cleanup, history in git) — **381 backend tests** (superseded; 721 as of the 2026-10-04 audit) | ✅ COMPLETE |
 
 ---
@@ -84,7 +84,7 @@
 
 ### Advanced Security
 - [x] **Refresh Token Rotation** — superseded: JTI-based revocation (`revoked_tokens` + logout endpoint) with short-lived access tokens instead of rotating refresh tokens
-- [x] **Account Lockout Policy** — in-memory per-email lockout (5 attempts / 900s, cleared on success)
+- [x] **Account Lockout Policy** — Mongo TTL `failed_logins` lockout, dual-key (`email|ip` + email aggregate; 5 attempts / 900s, cleared on success)
 - [x] **File Content Antivirus Scanning** — EICAR-signature block + best-effort `pyclamd` (fail-open, no new dependency)
 
 ---

@@ -1,7 +1,7 @@
 # TrustRAG — Project Deep Dive (Mentor-Ready)
 
 > Labels: **VERIFIED** = read directly from code · **INFERRED** = strongly implied by code/comments · **UNKNOWN** = cannot confirm from repo.
-> Verified against HEAD `81e4890` (Oct 2026); full re-verification pass with 4 parallel repo probes (routes/auth/config, RAG/LLM, DB/frontend/compose, weaknesses/security) + skills `code-review-and-quality`, `codebase-design`, `api-and-interface-design`, `security-and-hardening`.
+> Verified against HEAD `81e4890` (Oct 2026); refreshed 2026-10-04 for listed items only (config v1.28; hybrid sparse_top_k 20; RAM-tiered tier_caps; num_ctx 8192; 600 s wall clock; guarded authStore; probe-on-mount; MLX id). Full re-verification pass with 4 parallel repo probes (routes/auth/config, RAG/LLM, DB/frontend/compose, weaknesses/security) + skills `code-review-and-quality`, `codebase-design`, `api-and-interface-design`, `security-and-hardening`.
 > No source code modified — only this doc.
 > Path convention: all backend paths relative to `apps/api/app/`. Correct layout is `rag/agent|retrieval|ingestion|generation|verification`, `llm/`, `core/config|security|system|observability`, `services/`, `db/`, `api/v1/`.
 
@@ -95,7 +95,7 @@ TrustRAG/
 │   ├── rag/verification/       # verifier.py, verdict.py, integrity.py
 │   ├── services/               # analysis_service.py, kb_service.py, auth_service.py, search_service.py
 │   └── mcp/                    # server.py (stdio), client.py (in-process dispatcher)
-│   ├── config/models.yaml      # single source of truth, config_version 1.26
+│   ├── config/models.yaml      # single source of truth, config_version 1.28
 ├── apps/web/src/               # pages, components/workbench, services/api.js, lib/api.js, store/authStore.js
 ├── config/ports.yaml           # canonical ports (CI drift gate via scripts/apply_ports.py)
 └── docs/                       # specs, architecture/, ADRs, evaluation/, deployment/, security/
@@ -273,7 +273,7 @@ Schemas **VERIFIED** (`api/v1/schemas/`): `UserRegister` (12+ chars, upper/lower
 ### 3.5 DB interaction, concurrency, budgets
 
 - Mongo via `db/mongodb.py` singleton (`_client/_database`), 12-attempt exp backoff (Atlas M0 resume), URI validated before retry, `maxPoolSize=50/minPoolSize=2/tz_aware`. Qdrant via `db/qdrant.py` async client, embedded-vs-server mode detection (Windows paths recognised).
-- Concurrency **VERIFIED** `core/system/concurrency.py`: loop-keyed `WeakKeyDictionary` LLM semaphore (2/4/8 by RAM); ingestion serialised per-process at 1 (`rag/ingestion/pipeline.py`) to avoid starving local embedder. Cost ledger **VERIFIED** `llm/llm_ledger.py`: `ContextVar`-scoped per-analysis call count, cloud cap 24, plus 120 s whole-run wall clock (`cost_controls.max_analysis_seconds`) and recovery token/latency budgets.
+- Concurrency **VERIFIED** `core/system/concurrency.py`: loop-keyed `WeakKeyDictionary` LLM semaphore (2/4/8 by RAM); ingestion serialised per-process at 1 (`rag/ingestion/pipeline.py`) to avoid starving local embedder. Cost ledger **VERIFIED** `llm/llm_ledger.py`: `ContextVar`-scoped per-analysis call count, cloud cap 24, plus 600 s whole-run wall clock (`cost_controls.max_analysis_seconds`) and recovery token/latency budgets.
 
 ---
 
@@ -305,7 +305,7 @@ Why Qdrant over Pinecone/Milvus **INFERRED**: embedded zero-infra local-first + 
 
 1. Dense: embed query (`asyncio.to_thread`), dim check, `query_points` cosine. 2. Sparse: BM25 hashed vector, `using="sparse-text"`. Concurrent via `asyncio.gather` — docstring *"Both branches required. Failure of either fails entire retrieval"* (deliberate: partial set worse than honest failure). 3. **RRF** `1/(rank+60)+…` — merges *rankings* not scores (cosine vs BM25 incomparable; no tuning). 4. **Temporal filter**: join `documents` metadata, drop outside `effective_from/until`; orphans fail closed (deleted doc's vectors never served). 5. Slice `fusion_top_k=20`.
 
-> Shipped default is **dense-only**: `sparse_top_k: 0` makes `sparse_search` return `[]` immediately **VERIFIED** (`models.yaml:166`, `retriever.py`). README advertises hybrid — documentation defect, sparse path fully implemented (set >0 to enable).
+> Shipped default is **hybrid**: `sparse_top_k: 20` **VERIFIED** (`models.yaml:166`, `retriever.py`). (Refreshed 2026-10-04 — was dense-only at 0.)
 
 ### 4.5 Rerank — `rag/retrieval/reranker.py`
 
@@ -388,7 +388,7 @@ Query: `"What is the rate limit for the free tier?"` vs KB with API spec.
 
 ### 7.2 Five-minute technical
 
-Add: hybrid dense BGE-384 + BM25 (server IDF) fused by RRF (ranks not scores — cosine vs BM25 incomparable), cross-encoder 20→8; one Qdrant collection per KB (physical isolation); text in both stores (Mongo truth + hash vs Qdrant index = audit possible); embed-pin guard (422 not garbage); fused decompose+verify with two-step fallback; NEUTRAL-only targeted re-retrieve (CONTRADICTED excluded anti-cherry-pick); ContextVar LLM ledger + 120 s wall clock.
+Add: hybrid dense BGE-384 + BM25 (server IDF) fused by RRF (ranks not scores — cosine vs BM25 incomparable), cross-encoder 20→8; one Qdrant collection per KB (physical isolation); text in both stores (Mongo truth + hash vs Qdrant index = audit possible); embed-pin guard (422 not garbage); fused decompose+verify with two-step fallback; NEUTRAL-only targeted re-retrieve (CONTRADICTED excluded anti-cherry-pick); ContextVar LLM ledger + 600 s wall clock.
 
 ### 7.3 Ten-minute deep
 
@@ -407,7 +407,7 @@ Add: 3-layer injection defence (fence + neutralise + NLI/gate; fencing explicitl
 **Why X vs Y**
 20. *ONNX vs torch?* 8 GB RAM, 500–1000 MB + 3–4× rerank; export cost on host. 21. *Qdrant vs Pinecone?* Embedded vs cloud contradicts local-first. 22. *FastAPI vs Flask/Django?* Async I/O + Pydantic boundary enforcement. 23. *Deterministic router vs LLM?* Zero cost/latency, reproducible, un-prompt-hackable; fallback SIMPLE. 24. *Text in Mongo too?* Independent reference or audit vacuous. 25. *Native vector search?* Filter-bug leak vs physical isolation.
 **Hard (understanding test)**
-26. *`sparse_top_k: 0` vs "hybrid" README?* Config wins — dense-only shipped; docs defect, path implemented. 27. *`gather` without `return_exceptions` bug?* Deliberate — partial set worse than honest fail. 28. *Attacker writes both DBs?* Audit defeated; single-store/accident model — need external signatures for stronger. 29. *0.80/0.20 calibrated?* No — engineering defaults, warn never quote as probability; calibrate on labelled set. 30. *`graph.py` 1474 lines — split?* Extract self-heal re-index, per-node modules, rewrite-sanitise helper; keep assembly. 31. *Why pin KB to one embed model?* Mixed spaces → garbage cosine; 422 forces new KB. 32. *Why CONTRADICTED excluded from re-retrieve?* Anti-cherry-pick. 33. *Why preflight LLM probe?* Avoid 9×120 s cascade when server down.
+26. *`sparse_top_k` default?* Hybrid at 20 (refreshed 2026-10-04 — was dense-only at 0). 27. *`gather` without `return_exceptions` bug?* Deliberate — partial set worse than honest fail. 28. *Attacker writes both DBs?* Audit defeated; single-store/accident model — need external signatures for stronger. 29. *0.80/0.20 calibrated?* No — engineering defaults, warn never quote as probability; calibrate on labelled set. 30. *`graph.py` 1474 lines — split?* Extract self-heal re-index, per-node modules, rewrite-sanitise helper; keep assembly. 31. *Why pin KB to one embed model?* Mixed spaces → garbage cosine; 422 forces new KB. 32. *Why CONTRADICTED excluded from re-retrieve?* Anti-cherry-pick. 33. *Why preflight LLM probe?* Avoid 9×120 s cascade when server down.
 
 ---
 
@@ -420,13 +420,13 @@ Add: 3-layer injection defence (fence + neutralise + NLI/gate; fencing explicitl
 | W1 | ~~MCP + tests reference deleted `duckduckgo_search`~~ — FIXED upstream. `mcp/server.py` now exposes only `tavily_search` (+`trustrag_*`/`local_llm_*`); `tests/test_search_mcp.py` asserts `duckduckgo_search` → `Unknown MCP tool`. Live residue: dead compat field `web_search_provider="both"` (default in `schemas/analysis.py:38`, `graph.py:82/1534`, `analysis_service.py:573`) — retrieval always calls `tavily_search` (`graph.py:645`) and never reads the provider. Remove or honour the field. | `mcp/server.py:115/219-223`, `graph.py:82,636-685` | was-CRITICAL → now cleanup |
 | W2 | ~~`uv.lock` out of sync (`ddgs`)~~ — REFUTED. 0 hits for `ddgs/duckduckgo-search/slowapi` in `uv.lock`; `pyproject.toml:33-35` lists only `mcp, tavily-python`. Old line refs were stale. | `uv.lock` grep | refuted |
 | W3 | Phantom `slowapi`: zero code, docs claim rate-limiting | grep `app/` = 0 hits (only a `main.py:6` comment + unrelated "rate-limited" words); `README:606`, `SECURITY.md:40`, `security-controls.md:42` claim it; only live control = login lockout → `/analyses` DoS unbounded | VERIFIED, high |
-| W4 | Docs claim hybrid default; config dense-only | `models.yaml:166 sparse_top_k: 0` vs README/architecture | VERIFIED |
+| W4 | ~~Docs claim hybrid default; config dense-only~~ — FIXED (2026-10-04): hybrid default `sparse_top_k: 20` | `models.yaml:166` | fixed |
 | W5 | Cross-tenant `POST /internal/ingest/document` with unbound service token (`user_id` from body, binding only if `bound_user_id`) | `internal.py:32-38,91-118`; `kb_service.get_kb` checks supplied id = bypass; tracked as M-2 | VERIFIED, high |
 | W6 | `POST /internal/tokens` cannot mint bound tokens: takes only `service_name + permissions`, never passes `bound_kb_id/bound_user_id` although `security.py:153-193` supports them — least-privilege scoped tokens are unmintable, so every token is effectively unbound (what makes W5 exploitable) | `internal.py:65-75` | VERIFIED |
 | W7 | ~~Silent loss past 1000 analyses~~ — REFUTED as stated. No `[:1000]` answer fallback. Actual: legacy list paths use `.to_list(1000)` pagination caps (`analysis_service.py:873/898/918`) — bounded, not silent-loss. Call it a pagination limit. | `analysis_service.py` grep | refuted |
 | W8 | `GET /metrics` public | `health.py:34-42` (counters only, `include_in_schema=False`) | VERIFIED, low |
 | W9 | Non-prod CORS wildcard `*.vercel/netlify/pages` + credentials | `main.py:445-462` | VERIFIED |
-| W10 | No CSP + localStorage JWT | `main.py:473-483` headers; `store/authStore.js:9-10` | VERIFIED |
+| W10 | No CSP + localStorage JWT | `main.py:473-483` headers; `store/authStore.js` guards all localStorage access (refreshed 2026-10-04) | VERIFIED |
 | W11 | Self-heal `.to_list(10_000)` partial + reports 100% | `rag/agent/graph.py` |
 | W12 | `locals()` for control flow | `graph.py` recovery node |
 | W13 | Frontend poll no `AbortSignal` + SSE+poll double load | `PlaygroundPage.jsx` |
@@ -438,7 +438,7 @@ Add: 3-layer injection defence (fence + neutralise + NLI/gate; fencing explicitl
 | W19 | Single-node caps (LLM 2/4/8, ingest 1); SSE in-process only | `concurrency.py`, `pipeline.py`, `analysis_service._publish` |
 | W20-23 | CI: security job not gating, no coverage gate, E2E no Ollama service (core loop untested), `npm audit` uses `install` not `ci` | `.github/workflows/` |
 | W27 **(new)** | `DiagnosisType` enum drift: `verdict.py:62-70` defines 5 values, but `graph.py` sets `VERIFICATION_TIMEOUT/VERIFICATION_ERROR/RETRIEVAL_ERROR/GENERATION_ERROR/RECOVERY_BUDGET_EXHAUSTED/LLM_UNAVAILABLE`. Works only because `AgentState.diagnosis_type: str\|None` — `compute_verdict` can never emit the wider set. | `verdict.py` vs `graph.py:197/337/599/815/888/987/998/1173/1479` | VERIFIED |
-| W28 **(new)** | `tier_caps` substring bug: `model_config.py:761` `prov in "gemini"` is substring-in-string, not tuple membership (`prov="gem"` misclassifies). Next line uses the correct tuple form. One-char fix. | `model_config.py:751-766` | VERIFIED, low |
+| W28 **(new)** | ~~`tier_caps` substring bug~~ — FIXED (2026-10-04): tiers by host RAM now (≤8.5 GB lean 5/5/2; else balanced 8/8/3; gemini cloud 8/8/3) | `model_config.py` | fixed |
 | W29 **(new)** | Rerank "fails closed" comment is wrong: `models.yaml:116` wording vs actual fail-open fallback (`reranker.py:88-90/164-166` return RRF order on missing model/exception). Behaviour is right (degrade, don't 500); wording misleads. | `models.yaml:116`, `reranker.py` | VERIFIED, docs |
 | W24-26 | Docker: `web` as root, Qdrant unauth on LAN, no `read_only/cap_drop/limits` | `docker-compose.yml` | VERIFIED |
 
@@ -495,7 +495,7 @@ The pipeline waits on ONNX, Qdrant, Mongo, LLM — all I/O, not CPU. `async/awai
 
 ### B5. Config — the 3-layer rule (exam favourite)
 
-`apps/api/config/models.yaml` (model IDs, thresholds, tuning; `config_version: 1.26` stamped per run) → `config/ports.yaml` (ports; `scripts/apply_ports.py` propagates + CI drift gate) → `.env` (secrets + overrides win). Code must read via `get_model_config()`/`get_settings()`, never hardcode — `models.yaml:10` says so explicitly.
+`apps/api/config/models.yaml` (model IDs, thresholds, tuning; `config_version: 1.28` stamped per run) → `config/ports.yaml` (ports; `scripts/apply_ports.py` propagates + CI drift gate) → `.env` (secrets + overrides win). Code must read via `get_model_config()`/`get_settings()`, never hardcode — `models.yaml:10` says so explicitly.
 
 ---
 
@@ -543,7 +543,7 @@ query "how long for refund?" → [0.88, 0.12] → nearest = card 1, then 2
 
 Pipeline order **VERIFIED**: `gather(dense, sparse)` (both required — partial worse than honest fail) → RRF → temporal join-filter (`effective_from/until` from `parser.extract_dates`; orphans fail closed) → top-20 → rerank → top-8 (`max_context_chunks`) → SHA-256 audit → persist `evidence`.
 
-> Shipped default `sparse_top_k: 0` = dense-only (sparse returns `[]`). Path fully works — set >0 to enable. Admit the README overstates "hybrid by default" (docs defect W4).
+> Shipped default `sparse_top_k: 20` = hybrid (refreshed 2026-10-04 — was dense-only at 0).
 
 ### R4. NLI verification in plain English
 
@@ -565,7 +565,7 @@ Verdict math **VERIFIED** `verdict.py`: `coverage = supp/total`, `contra = contr
 
 ### L0. Tokens & context window (the money and the wall)
 
-A token ≈ ¾ English word; `"What is the rate limit?"` ≈ 6 tokens. `num_ctx: 4096` **VERIFIED** (`models.yaml: local_llm`) = max tokens per LLM call (prompt + output). Tiktoken-based `calculate_dynamic_num_ctx` sizes each call so 8 chunks + prompt fit; overflow would truncate evidence silently — hence `max_context_chunks: 8` + `max_verification_claims: 8` caps. Ledger `llm/llm_ledger.py` counts every provider call per analysis (ContextVar-scoped), cloud cap 24, whole-run 120 s wall clock, recovery token/latency budgets — runaway loops can't bill forever.
+A token ≈ ¾ English word; `"What is the rate limit?"` ≈ 6 tokens. `num_ctx: 8192` **VERIFIED** (`models.yaml: local_llm`) = max tokens per LLM call (prompt + output). Tiktoken-based `calculate_dynamic_num_ctx` sizes each call so 8 chunks + prompt fit; overflow would truncate evidence silently — hence `max_context_chunks: 8` + `max_verification_claims: 8` caps. Ledger `llm/llm_ledger.py` counts every provider call per analysis (ContextVar-scoped), cloud cap 24, whole-run 600 s wall clock, recovery token/latency budgets — runaway loops can't bill forever.
 
 ### L1. Temperature (one sentence each)
 
@@ -591,14 +591,14 @@ messages = [
 |---|---|---|
 | llama_cpp :8080 (default) | `LiquidAI/LFM2.5-1.2B-GGUF:Q4_K_M` | 8 GB-safe, `start_local_llm.sh` sets q8_0 KV + flash-attn |
 | ollama :11434 | `gemma3:1b` | Same class, `OLLAMA_KV_CACHE_TYPE=q8_0` on 8 GB |
-| mlx :8090 | `Llama-3.2-1B-4bit` | Apple Silicon only, runs alongside llama.cpp |
+| mlx :8090 | `mlx-community/Llama-3.2-1B-Instruct-4bit` | Apple Silicon only, runs alongside llama.cpp |
 | gemini (cloud) | `gemini-3.5-flash-lite` (+ allowlist) | Needs `GEMINI_API_KEY`; native structured output |
 
 1.2B models echo scaffolding, loop sentences, say `VERIFIED` not `SUPPORTED`, refuse hedgedly — the verifier's alias map / strip / loop-detector / refusal-gate exist precisely for this. Verification uses the *same* small model (not a dedicated DeBERTa-MNLI) → less circular than self-grading but not independent (honest limitation W16).
 
 ### L4. What happens per LLM call (count them — mentors ask "how many calls per query?")
 
-Happy path ≈ 1 (generate) + 1 (fused decompose+verify) + ≤3 targeted re-verifies ≈ 3–5 calls; worst case ×3 rounds (initial + 2 recoveries) ≈ 9–15, hard-capped by ledger 24 + 120 s. Preflight `probe_local_llm_server(timeout 3 s)` avoids 9×180 s cascades when the server is down.
+Happy path ≈ 1 (generate) + 1 (fused decompose+verify) + ≤3 targeted re-verifies ≈ 3–5 calls; worst case ×3 rounds (initial + 2 recoveries) ≈ 9–15, hard-capped by ledger 24 + 600 s. Preflight `probe_local_llm_server(timeout 3 s)` avoids 9×180 s cascades when the server is down.
 
 ---
 
@@ -608,7 +608,7 @@ Happy path ≈ 1 (generate) + 1 (fused decompose+verify) + ≤3 targeted re-veri
 **Phase 2 — DB (3–4 d):** Document modelling (`Collections`), indexes (`create_indexes`), aggregation (KB counts), pools/retries (`connect_db`), TTL. *Prove: unique `(kb_id,content_hash)` without = dup vectors.*
 **Phase 3 — Embeddings/vectors (4–6 d, most important):** vectors≈meaning, BGE 384, cosine vs Euclidean, top-K, BM25/sparse, RRF, HNSW/ANN, INT8 `0.99`, embed-space pin. *Prove: failure pin-check prevents.*
 **Phase 4 — RAG (3–4 d):** parse→chunk→embed→store (`rag/ingestion/pipeline.py`), 512/64 trade-offs, rerank, grounding prompts (`generator.py`), injection, citations. *Prove: 4 retrieval failure modes.*
-**Phase 5 — LLM (4–5 d):** tokens/`num_ctx` 4096, temp 0.2 vs 0.0, structured output, local vs cloud, small-model pathologies, ledger budgets, KV/flash/prompt-cache. *Prove: 0.0 verification vs 0.2 generation.*
+**Phase 5 — LLM (4–5 d):** tokens/`num_ctx` 8192, temp 0.2 vs 0.0, structured output, local vs cloud, small-model pathologies, ledger budgets, KV/flash/prompt-cache. *Prove: 0.0 verification vs 0.2 generation.*
 **Phase 6 — Reliability (2–3 d):** hallucination taxonomy, NLI, atomic claims, abstention gate, recovery loop, outage vs empty. *Prove: different messages for Qdrant-down vs no-hits.*
 **Phase 7 — Security (3–4 d):** JWT/revocation, bcrypt-72 B, timing dummy-hash, ownership pattern (A01), SSRF pinning, `defusedxml`/magic bytes, missing rate-limit gap. *Prove: rebind window + pinned backend fix.*
 **Phase 8 — Architecture (ongoing):** layering, deep vs shallow modules, `db/` seam, BackgroundTasks+semaphores, structlog/traces/Prometheus, order-asserting tests. *Prove: one module to split + why.*

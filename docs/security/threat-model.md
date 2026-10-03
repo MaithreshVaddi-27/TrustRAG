@@ -70,7 +70,7 @@
 | **Attack Vector** | High-frequency requests, oversized documents, adversarial queries (multi-`?` fans out ≤3 retrievals; crafted NEUTRAL-heavy answers trigger +3 claim retrievals; scanned PDFs burn OCR compute) |
 | **Impact** | Unexpected API costs; local CPU saturation |
 | **Likelihood** | Medium |
-| **Mitigation** | Per-client rate limits (analyses/auth/upload/url-ingest). Max input token limit enforced before LLM calls. Max recovery attempts bounded. Max context chunks limited. File size limit on uploads. Router fan-out ceiling (`max_sub_queries: 3`), claim-retrieval budget (`max_claim_retrievals: 3`), OCR density gate + fail-open. Gemini costs apply only when a Gemini provider is selected (default stack is local, zero marginal cost). |
+| **Mitigation** | Per-client rate limits (analyses/auth/upload). Max input token limit enforced before LLM calls. Max recovery attempts bounded. Max context chunks limited. File size limit on uploads. Router fan-out ceiling (`max_sub_queries: 3`), claim-retrieval budget (`max_claim_retrievals: 3`), OCR density gate + fail-open. Gemini costs apply only when a Gemini provider is selected (default stack is local, zero marginal cost). |
 | **Residual Risk** | Low-Medium. Free-tier Gemini has built-in rate limits as an additional safety net. |
 
 ### T-05: Credential / Secret Leakage

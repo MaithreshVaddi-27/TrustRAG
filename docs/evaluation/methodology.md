@@ -19,7 +19,7 @@
 |--------------|-------------|
 | `baseline_rag` | Dense retrieval only + selected-LLM generation. No verification, no recovery. |
 | `hybrid_rag` | Dense + BM25 hybrid/RRF + selected-LLM generation. No verification. |
-| `hybrid_rerank` | Hybrid + cross-encoder reranking + selected-LLM generation. No verification. Reranker stays off by default (Docker lacks torch — enable only with the `local-models` extra); thresholds uncalibrated pending this ablation. |
+| `hybrid_rerank` | Hybrid + cross-encoder reranking + selected-LLM generation. No verification. Reranker enabled by default (ONNX int8, fails closed to RRF); thresholds uncalibrated pending this ablation. |
 | `verified_rag` | Hybrid + reranking + claim verification. No adaptive recovery. |
 | `trustrag_full` | Full TRUSTRAG: hybrid + reranking + verification + diagnosis + recovery + abstention. |
 

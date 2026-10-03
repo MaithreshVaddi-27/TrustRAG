@@ -40,7 +40,7 @@ TrustRAG adds a verification layer between your LLM and your data: answers are s
 - [Security](#security)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
-- [Note](#note)
+- [Platform Notes](#platform-notes)
 
 ---
 
@@ -104,17 +104,16 @@ TrustRAG/
 ├── apps/
 │   ├── api/                    # FastAPI backend (Python 3.11+)
 │   │   ├── app/
-│   │   │   ├── agent/          # LangGraph self-heal loop + query router
 │   │   │   ├── api/v1/         # REST routes (auth, KBs, analyses, claims, …)
-│   │   │   ├── core/           # config, security, LLM, embeddings, metrics
+│   │   │   ├── core/           # config, security, system, observability
 │   │   │   ├── db/             # MongoDB + Qdrant clients
-│   │   │   ├── generation/     # grounded answer generator
-│   │   │   ├── ingestion/      # parsers, chunkers, OCR fallback
-│   │   │   ├── mcp/            # MCP tool server (JSON-RPC 2.0)
-│   │   │   ├── retrieval/      # hybrid retriever + reranker
-│   │   │   ├── services/       # analysis, KB, auth, experiment services
-│   │   │   └── verification/   # NLI verifier + SHA-256 integrity audit
-│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.23)
+│   │   │   ├── llm/            # provider clients, registry, ONNX embeddings/reranker
+│   │   │   ├── rag/            # agent/ (LangGraph loop + router) · retrieval/ (hybrid + rerank)
+│   │   │   │                   # ingestion/ (parsers, chunkers, OCR) · generation/ (grounded answers)
+│   │   │   │                   # verification/ (NLI verifier + SHA-256 integrity audit)
+│   │   │   ├── services/       # analysis, KB, auth, search services
+│   │   │   └── mcp/            # MCP tool server (JSON-RPC 2.0)
+│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.28)
 │   │   ├── tests/              # backend suite (mocked, no live services)
 │   │   └── pyproject.toml
 │   └── web/                    # React frontend (Node 22+)
@@ -366,7 +365,7 @@ MLX_MODEL=mlx-community/Llama-3.2-1B-Instruct-4bit   # Apple Silicon only
 # Embeddings: single ONNX engine (BAAI/bge-small-en-v1.5, 384d) from
 # apps/api/config/models.yaml `embedding.model` — no provider choice, no env flag.
 QDRANT_URL=local                  # local (embedded) | http://localhost:6335 (Docker) | cloud URL
-TAVILY_API_KEY=                   # empty → DuckDuckGo fallback for web grounding
+TAVILY_API_KEY=                   # empty → no web grounding (no fallback search exists)
 VITE_API_URL=http://localhost:8000
 APP_ENV=production                # production requires QDRANT_API_KEY
 CORS_ORIGINS=https://your-domain.com
@@ -462,6 +461,7 @@ TrustRAG supports multiple LLM providers interchangeably. Switch via `LLM_PROVID
 | **llama_cpp** | LFM2.5-1.2B, Granite-4.2-3B, SmolLM3-3B, EXAONE-2.4B, SmolLM2-1.7B | 2–4 GB | Default. Hardware-aware `scripts/start_local_llm.sh` auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 concurrent model on 8 GB |
 | **ollama** | gemma3:1b, qwen3:1.7b, llama3 | 1–3 GB | `ollama serve` + `ollama pull <model>`. Set `OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1` for 8 GB RAM |
 | **mlx** | Llama-3.2-1B-4bit, Llama-3.2-3B-4bit, LFM2.5-1.2B-4bit | 1–3 GB | Apple Silicon only. `./scripts/start_mlx_server.sh [id]` on :8090. Runs alongside llama.cpp on :8080 |
+| **gemini** | gemini-3.5-flash-lite | Cloud | Requires `GEMINI_API_KEY`. Fast, cheap, supports structured output natively |
 
 #### Small vs large models
 
@@ -483,7 +483,6 @@ Measured prompt sizes — the win is mostly *rule count*, not characters: genera
 ```
 
 Each provider writes to its own `docs/evaluation/results/<provider>/` and records a separate experiment.
-| **gemini** | gemini-3.5-flash-lite | Cloud | Requires `GEMINI_API_KEY`. Fast, cheap, supports structured output natively |
 
 ### Per-tier caps (auto-selected by provider + RAM)
 
@@ -495,7 +494,7 @@ Each provider writes to its own `docs/evaluation/results/<provider>/` and record
 
 ### Provider-aware temperature
 
-For factual/verification queries with local models, temperature is automatically set to **0.0** to minimize hallucination. Generation uses 0.2 by default.
+Verification runs at temperature **0.0** (deterministic verdicts); generation uses **0.2** by default.
 
 ---
 
@@ -506,11 +505,11 @@ Interactive docs: <http://localhost:8000/docs> (Swagger) · `/redoc`. Base URL `
 | Group | Endpoints |
 |-------|-----------|
 | **Auth** | `POST /api/v1/auth/register` · `POST /api/v1/auth/login` · `GET /api/v1/auth/me` · `POST /api/v1/auth/logout` |
-| **Knowledge bases** | `POST/GET /api/v1/knowledge-bases` · `GET/DELETE /api/v1/knowledge-bases/{id}` · `POST …/{id}/documents` · `POST …/{id}/documents/from-url` · `POST …/{id}/snapshots` · `POST …/{id}/rollback/{snapshot_id}` |
+| **Knowledge bases** | `POST/GET /api/v1/knowledge-bases` · `GET/DELETE /api/v1/knowledge-bases/{id}` · `POST …/{id}/documents` · `POST …/{id}/snapshots` · `POST …/{id}/rollback/{snapshot_id}` |
 | **Analyses** | `POST/GET /api/v1/analyses` · `GET /api/v1/analyses/{id}` · `…/{id}/claims` · `…/{id}/evidence` · `…/{id}/trace` · `…/{id}/detail` · `…/{id}/export` · `POST …/{id}/stream-ticket` · `GET …/{id}/stream` (SSE) |
 | **Evidence & claims** | `GET /api/v1/evidence` · `GET /api/v1/claims` · `GET /api/v1/conflicts` |
 | **Documents** | `GET/DELETE /api/v1/documents/{id}` |
-| **Ops** | `GET /api/v1/health` · `GET /api/v1/health/detailed` · `GET /api/v1/metrics` · `GET /api/v1/models/providers` · `GET /api/v1/models/hardware` · `POST /api/v1/internal/ingest/document` · `POST /api/v1/internal/ingest/url` · `POST /api/v1/internal/search` · `POST /api/v1/internal/verify/claims` (service-token auth) |
+| **Ops** | `GET /api/v1/health` · `GET /api/v1/health/detailed` · `GET /api/v1/metrics` · `GET /api/v1/models/providers` · `GET /api/v1/models/hardware` · `POST /api/v1/internal/ingest/document` · `POST /api/v1/internal/search` · `POST /api/v1/internal/verify/claims` (service-token auth) |
 
 ---
 
@@ -567,7 +566,7 @@ Production checklist: `APP_ENV=production` (+ `QDRANT_API_KEY`), `CORS_ORIGINS` 
 
 ## Optimization
 
-TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.23**) with environment variable overrides.
+TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.28**) with environment variable overrides.
 
 ### Inference Acceleration
 
@@ -593,7 +592,7 @@ TrustRAG implements extensive inference acceleration and memory optimization tec
 | **Qdrant Upsert Batch** | Points per upsert call (no network timeouts on big docs) | `ingestion.qdrant_upsert_batch` | `100` |
 | **ONNX Embeddings** | Single torch-free embedding engine, ~500-1000 MB RAM saved | `embedding.model` | `BAAI/bge-small-en-v1.5` |
 | **Context Compression** | Hierarchical summarization before LLM call | `optimization.context_compression_enabled` | `false` |
-| **Adaptive Top-K** | Reduces retrieval when confidence high (RRF > 0.02) | `optimization.adaptive_top_k` | `true` |
+| **Adaptive Top-K** | Retrieval narrowing when confidence is high (internal helper only — no config knob) | Internal | n/a |
 
 ### Environment Variable Overrides
 
@@ -604,8 +603,6 @@ All config options support env overrides:
 | KV Cache Quantization | `KV_CACHE_QUANTIZATION` |
 | Flash Attention | `FLASH_ATTENTION` |
 | Prompt Caching | `PROMPT_CACHING` |
-| Adaptive Top-K | `ADAPTIVE_TOP_K` |
-| Adaptive Threshold/Cap | `ADAPTIVE_TOP_K_THRESHOLD`, `ADAPTIVE_TOP_K_CAP` |
 | Retrieval Budgets | `RETRIEVAL_BRANCH_TIMEOUT_SECONDS`, `RETRIEVAL_HYBRID_TIMEOUT_SECONDS` |
 | Qdrant Upsert Batch | `QDRANT_UPSERT_BATCH` |
 | Context Compression | `CONTEXT_COMPRESSION_ENABLED`, `MAX_CONTEXT_TOKENS` |
@@ -622,8 +619,8 @@ All config options support env overrides:
 - **JWT** — HS256, `iss`/`aud` validation, JTI revocation denylist, 60 min expiry
 - **Passwords** — bcrypt cost 12, timing-safe comparison
 - **Login lockout** — MongoDB TTL collection (`failed_logins`), configurable attempts/window
-- **Rate limiting** — SlowAPI with Redis backend (prod) or in-memory (dev), per-endpoint caps
-- **SSRF protection** — URL validation with DNS allowlist, IP pinning, host-header guard
+- **Rate limiting** — SlowAPI in-memory ceilings (global + stricter auth limits), per-endpoint caps
+- **SSRF protection** — URL validation blocks private/loopback/reserved IP literals and metadata hostnames (no DNS on the hot path)
 - **MCP auth** — Service token required for all tools, prompt/model caps
 - **CORS** — Origins from `CORS_ORIGINS`, credentials allowed
 - **Input validation** — Pydantic v2, filename sanitization, size limits, charset detection on sample
@@ -660,7 +657,7 @@ cd apps/web && npm run lint && npm test
 
 ---
 
-## Note
+## Platform Notes
 
 - For **macOS**, use the provided brew commands and remember to set environment variables for JVM/Ollama tuning on low-memory machines.
 - For **Linux**, ensure MongoDB service is enabled and started; Ollama service can be managed via systemd if preferred.

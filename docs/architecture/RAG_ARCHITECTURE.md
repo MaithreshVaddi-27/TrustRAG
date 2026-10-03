@@ -38,7 +38,7 @@ TrustRAG is a trustworthy Retrieval-Augmented Generation system. It goes beyond 
 | Vector database | Qdrant (dense + sparse vectors, 384d) |
 | Document store | MongoDB (async `motor`) |
 | Embeddings | Local-only `BAAI/bge-small-en-v1.5` — PyTorch (`huggingface`) or ONNX Runtime (`onnx`, torch-free) |
-| Reranking | CrossEncoder (sentence-transformers, off by default) |
+| Reranking | CrossEncoder (ONNX int8, enabled by default) |
 | Generation | llama.cpp / Ollama / MLX (local, default) · Gemini (cloud, optional `cloud` extra) |
 | Frontend | React 18, Vite 6, Tailwind CSS 3, `motion` |
 | Container runtime | Docker Compose |
@@ -59,7 +59,7 @@ TrustRAG/
 │   │   │   ├── api/v1/               # REST route handlers (auth, KBs, analyses, …)
 │   │   │   ├── retrieval/
 │   │   │   │   ├── retriever.py      # Hybrid dense+sparse search with RRF
-│   │   │   │   └── reranker.py       # CrossEncoder reranking (off by default)
+│   │   │   │   └── reranker.py       # CrossEncoder reranking (enabled by default, ONNX int8)
 │   │   │   ├── generation/
 │   │   │   │   └── generator.py      # Grounded answer generation + citations
 │   │   │   ├── verification/
@@ -95,7 +95,7 @@ TrustRAG/
 │   │   │   │   └── search_service.py # Web-search orchestration (SSRF-guarded)
 │   │   │   └── mcp/                  # MCP server (`trustrag_*` tools) + client
 │   │   ├── config/
-│   │   │   └── models.yaml           # Model IDs, thresholds, tuning params (v1.26)
+│   │   │   └── models.yaml           # Model IDs, thresholds, tuning params (v1.28)
 │   │   ├── tests/                    # Backend suite incl. `tests/eval/` harness
 │   │   └── pyproject.toml
 │   └── web/                          # React frontend
@@ -219,9 +219,9 @@ serving partial evidence silently.
 Retriever (`app/rag/retrieval/retriever.py`):
 
 1. **Dense path** — embed query via local ONNX BGE (bounded query-vector LRU), Qdrant `search` with cosine similarity
-2. **Sparse path** — BM25-style client TF saturation + Qdrant server-side IDF (`Modifier.IDF`); `sparse_top_k: 0` disables this leg (current default — set `20` for full hybrid)
+2. **Sparse path** — BM25-style client TF saturation + Qdrant server-side IDF (`Modifier.IDF`); `sparse_top_k: 20` (default — hybrid leg on)
 3. **Reciprocal Rank Fusion** — merge ranked lists: `score = Σ 1/(k + rank_i)` with `rrf_k: 60`, `fusion_top_k: 20` enforced
-4. **CrossEncoder reranking** — ONNX int8 CrossEncoder on fused candidates (batched, early termination on confident heads, result cache, RRF fallback); depth cap `top_k: 20`
+4. **CrossEncoder reranking** — ONNX int8 CrossEncoder on fused candidates (batched, early termination on confident heads, RRF fallback); depth cap `top_k: 20`
 
 Per-branch (45 s) + hybrid (60 s) timeouts bound hung branches; either branch failing
 is a hard `RetrievalOutageError`, never silent partial evidence.
@@ -322,7 +322,6 @@ Motion system: `motion` package with shared config (`lib/motionConfig.js`), entr
 - LLM model IDs, timeouts, context window sizes
 - Retrieval parameters (top_k, chunk_size, overlap, RRF k)
 - Recovery strategy priority order and max attempts
-- Semantic cache similarity threshold
 
 **`.env`** — secrets and deployment-specific values:
 - `JWT_SECRET`, `MONGODB_URI`, `QDRANT_URL` (+ `QDRANT_API_KEY` for cloud)
@@ -353,7 +352,8 @@ container reaches them via `host.docker.internal`.
 **Model-size adaptation** (`is_small_model()` in `app/llm/local_llm.py`): a
 conservative id-size classifier picks a compact CRAFT prompt and the two-step
 verification path for ≤3B models, and the full prompt plus the fused
-decompose+verify call for larger ones. Cloud providers are never downgraded.
+decompose+verify call for larger ones (reasoning models of any size also
+take the two-step path). Cloud providers are never downgraded.
 
 Consumed by `scripts/start_local_llm.sh` (llama.cpp on :8080) and
 `scripts/start_mlx_server.sh` (MLX on :8090, Apple Silicon). Both read the
@@ -371,6 +371,5 @@ any change to every consumer, so the registry cannot drift.
 3. **Early termination in reranking** — stops scoring candidates once top result is confident enough, cutting latency 30-50% on easy queries
 4. **NLI-based verification, not faithfulness scoring** — decomposes into atomic claims and uses a trained NLI model for objective support/contradiction classification
 5. **Adaptive recovery loop** — retries with targeted query rewriting instead of blind regeneration; knows when to stop (max attempts, evidence already sufficient)
-6. **Semantic cache with verification revalidation** — cached answers skip generation but still run retrieval + NLI to ensure claims and evidence are current
-7. **Evidence integrity audit** — post-ingestion sha256 hash comparison detects vector drift or storage corruption
-8. **Per-branch retrieval timeouts** — one slow retrieval path degrades to the other instead of failing the whole query
+6. **Evidence integrity audit** — post-ingestion sha256 hash comparison detects vector drift or storage corruption
+7. **Per-branch retrieval timeouts** — one slow retrieval path degrades to the other instead of failing the whole query

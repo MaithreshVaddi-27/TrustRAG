@@ -1,5 +1,7 @@
 # Analysis Service Test Gaps
 
+> Note (2026-10-04): line numbers refer to the 2026-09-28 tree; re-baseline before using. Direction and 17-test plan still valid.
+
 > Generated 2026-09-28 from `pytest --cov=app.services.analysis_service --cov-report=term-missing`
 > over the full suite (734 tests, 3 s run). **Coverage: 54% (327 stmts, 151 missed).**
 >

@@ -130,7 +130,7 @@ If you prefer not linking your GitHub account to Render:
    - `QDRANT_URL` = *(your Qdrant cloud URL)*
    - `QDRANT_API_KEY` = *(your Qdrant API key)*
     - `CORS_ORIGINS` = `https://trustrag.pages.dev` *(your live frontend URL from Step 3; comma-separate to allow more)*
-7. Under **Health Check Path**, enter: `/api/v1/health`.
+7. Under **Health Check Path**, enter: `/api/v1/health/ready`.
 8. Click **Create Web Service**.
 
 ---
@@ -156,7 +156,7 @@ Railway provides frictionless GitHub deployments with automatic Dockerfile detec
 2. Click **Create App** → **GitHub** → select `TrustRAG` (branch: `ui-redesign`).
 3. Set **Builder** to **Dockerfile** (path: `apps/api/Dockerfile`).
 4. Set **Environment Variables** (same as above).
-5. Set Health Check: HTTP on path `/api/v1/health` and port `8000`.
+5. Set Health Check: HTTP on path `/api/v1/health/ready` and port `8000`.
 6. Click **Deploy**. Koyeb provisions `https://trustrag-api-<username>.koyeb.app`.
 
 ---
