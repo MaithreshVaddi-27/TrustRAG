@@ -267,6 +267,9 @@ test_*.txt
 
 # ─── Evaluation run artifacts (runner JSON output; methodology stays tracked) ──
 docs/evaluation/results/
+# Generated doc exports (e.g. docs/PROJECT_DEEP_DIVE.pdf) — the .md source is
+# tracked, the export is regenerable. No PDFs are tracked (verified 2026-10-04).
+docs/*.pdf
 
 # ─── k6 / load-test raw output ────────────────────────────────────────────────
 load-test/*.har

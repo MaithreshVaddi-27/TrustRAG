@@ -584,7 +584,7 @@ TrustRAG implements extensive inference acceleration and memory optimization tec
 
 | Feature | Description | Config Key | Default |
 |---------|-------------|------------|---------|
-| **Dynamic Context Sizing** | Token-aware `num_ctx` per request using tiktoken | `local_llm.num_ctx` (base) | `4096` |
+| **Dynamic Context Sizing** | Token-aware `num_ctx` per request using tiktoken | `local_llm.num_ctx` (base) | `8192` (capped so the request always fits one llama-server `-c`/`-np` slot; `LOCAL_LLM_NUM_CTX` env overrides for larger weights) |
 | **Aggressive Model Eviction** | Registry limits instances by RAM: 1 (≤8GB) / 2 (≤16GB) / 4 (32GB+) | Internal | Dynamic |
 | **ONNX Reranker (int8)** | 3-4x CPU speedup, torch-free inference | `reranker.use_onnx` | `true` |
 | **ONNX Runtime (shared)** | One tuned session factory for embeddings + reranker: capped threads, full graph fusion, sequential exec | `onnx.intra_op_threads`, `onnx.graph_optimization`, `onnx.cpu_mem_arena` | `0` (auto ≤4), `all`, `true` |
