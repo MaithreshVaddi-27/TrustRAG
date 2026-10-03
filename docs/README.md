@@ -29,6 +29,7 @@ docs/
 │   └── threat-model.md              # STRIDE threat model and mitigations
 ├── evaluation/
 │   ├── methodology.md               # Benchmark dataset, metrics, measured snapshot
+│   ├── MANUAL_EVAL_2026-10-04.md     # Live 27-query baseline (MLX Llama-3.2-1B): retrieval 0.889, verifier-bound coverage
 │   └── results/                     # Live eval-run JSON (gitignored, local only)
 ├── deployment/
 │   ├── DEPLOYMENT_GUIDE.md          # Cloud production runbook (Pages + GCR + Atlas)
@@ -65,6 +66,7 @@ docs/
 ### 4. Evaluation
 
 - [**Methodology (`evaluation/methodology.md`)**](evaluation/methodology.md): experiment configs, metrics, ablation plan, frozen `baseline_v1` dataset, live run procedure, measured snapshot table.
+- [**Manual live eval (`evaluation/MANUAL_EVAL_2026-10-04.md`)**](evaluation/MANUAL_EVAL_2026-10-04.md): measured 27-query baseline on MLX Llama-3.2-1B — retrieval 0.889, verifier-bound coverage 0.111, zero false supports.
 
 ### 5. Deployment
 
