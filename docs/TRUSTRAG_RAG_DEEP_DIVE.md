@@ -91,7 +91,7 @@ Natural Language Inference asks whether a premise supports, contradicts, or says
 | Decompose/verify answer claims | `apps/api/app/rag/verification/verifier.py` |
 | Check retrieved text against canonical hash | `apps/api/app/rag/verification/integrity.py` |
 | Calculate trust result | `apps/api/app/rag/verification/verdict.py` |
-| Model configuration/runtime registry | `apps/api/app/core/config.py`, `model_registry.py` |
+| Model configuration/runtime registry | `apps/api/app/core/config/`, `apps/api/app/llm/model_registry.py` |
 | ONNX runtime wrappers | `apps/api/app/llm/onnx_embeddings.py`, `onnx_reranker.py` |
 | MCP tools and web search | `apps/api/app/mcp/server.py`, `client.py`, `services/search_service.py` |
 

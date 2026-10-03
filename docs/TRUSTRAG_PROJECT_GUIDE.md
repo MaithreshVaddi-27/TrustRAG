@@ -453,7 +453,17 @@ MongoDB and optional local LLM servers are expected on the host and reached from
 5. Start a local LLM server matching the selected provider/model, or configure a permitted cloud provider key.
 6. Start FastAPI and the Vite web app, then open the frontend on port 5173.
 
-The repository also includes `scripts/start_local_llm.sh` for a llama.cpp server and `scripts/setup.sh` for an automated setup flow.
+The repository also includes two local-LLM launchers and a setup flow:
+
+| Script | Serves | Port | Notes |
+|---|---|---|---|
+| `scripts/start_local_llm.sh` | llama.cpp `llama-server` (router mode) | **:8080** | Hardware-aware flags (Metal/CUDA, KV q8_0, flash-attn, RAM-tiered `--max`) |
+| `scripts/start_mlx_server.sh` | MLX `mlx_lm.server` | **:8090** | Apple Silicon only; one model per process — use `--port 8091` for more. `--check` scans the range |
+| `scripts/setup.sh` | — | — | Verifier: prints copy-paste fixes for a misconfigured host |
+
+Both launchers read their port from `config/ports.yaml` and their model id from
+`config/models.yaml`, so they cannot drift from what the backend expects. Run
+`python3 scripts/apply_ports.py` after editing ports.
 
 ## 19. What to say in a faculty demo
 
@@ -489,7 +499,7 @@ This map lets a presenter answer “where is that implemented?” without relyin
 | Concern | Main implementation files |
 |---|---|
 | app startup, middleware, error mapping | `apps/api/app/main.py`, `app/api/router.py` |
-| central settings/model policy | `app/core/config.py`, `apps/api/config/models.yaml`, `.env.example` |
+| central settings/model policy | `app/core/config/`, `apps/api/config/models.yaml`, `.env.example` |
 | model selection/local LLM clients | `app/core/model_registry.py`, `app/core/local_llm.py`, `app/core/llm_utils.py`, `app/core/llm_ledger.py` |
 | ONNX embedding/reranking | `app/llm/onnx_embeddings.py`, `app/llm/onnx_reranker.py`, `scripts/ensure_onnx_models.py`, `scripts/export_bge_onnx.py` |
 | document parsing/OCR/chunking | `app/rag/ingestion/parser.py`, `ocr.py`, `preprocessor.py`, `chunker.py`, `chunking_strategies.py`, `page_images.py` |

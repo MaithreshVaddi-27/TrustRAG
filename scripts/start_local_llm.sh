@@ -8,7 +8,7 @@
 #   ./scripts/start_local_llm.sh [--max N] [--port PORT]
 #   --max N : maximum concurrent loaded models (default: RAM-aware — 1 on
 #             ≤8 GB hosts, 2 on ≤16 GB, 4 above; an explicit --max always wins)
-#   --port PORT : port to serve on (default: 8080)
+#   --port PORT : port to serve on (default: ports.yaml `llamacpp`, currently 8080)
 #   Default: serves all cached GGUF models from HuggingFace cache.
 set -euo pipefail
 
@@ -21,21 +21,26 @@ if [ ! -x "$PY" ]; then
 fi
 
 # Resolve hardware-specific launch flags.
-# NOTE: app logging (structlog) writes to stdout (see app/core/logging.py),
+# NOTE: app logging (structlog) writes to stdout (see app/core/observability/logging.py),
 # so these one-liners can emit log lines before the value line — e.g.
 # "2026-09-27 ... vm_stat failed ...". `tail -n 1` keeps only the value line;
 # without it, log words leak into llama-server argv and it dies with
 # "error: invalid argument: 2026-09-27". pipefail + set -e still abort when
 # the Python itself fails (tail never masks a non-zero python exit).
 _LAUNCH_FLAGS_LINE=$(cd "$API_DIR" && "$PY" -c "
-from app.core.hardware import get_llamacpp_launch_args
+from app.core.system.hardware import get_llamacpp_launch_args
 print(' '.join(get_llamacpp_launch_args()))
 " | tail -n 1)
 read -ra LAUNCH_FLAGS <<< "$_LAUNCH_FLAGS_LINE"
 
 # Parse args.
 MAX_MODELS=""
-PORT=8080
+# Port comes from config/ports.yaml (single source of truth) so
+# `python3 scripts/apply_ports.py` propagates it everywhere. Overridable.
+PORT=$(cd "$API_DIR" && "$PY" -c "
+from app.core.config.settings import get_ports
+print(get_ports().get('llamacpp', 8080))
+" | tail -n 1)
 while [ $# -gt 0 ]; do
   case "$1" in
     --max) MAX_MODELS="${2:-4}"; shift 2 ;;
@@ -46,11 +51,11 @@ done
 
 # Default --max follows host RAM (each resident GGUF + its KV cache is GBs;
 # on 8 GB hosts a second model means swap). Matches the -c/-np tiers in
-# app/core/hardware.py:get_llamacpp_launch_args.
+# app/core/system/hardware.py:get_llamacpp_launch_args.
 if [ -z "$MAX_MODELS" ]; then
   # Same stdout-log caveat as LAUNCH_FLAGS above: keep the value line only.
   MAX_MODELS=$(cd "$API_DIR" && "$PY" -c "
-from app.core.hardware import get_system_memory_info
+from app.core.system.hardware import get_system_memory_info
 total = get_system_memory_info()['total_gb']
 print(1 if total <= 8.5 else (2 if total <= 16.5 else 4))
 " | tail -n 1)

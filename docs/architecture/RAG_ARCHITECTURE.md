@@ -331,7 +331,7 @@ Motion system: `motion` package with shared config (`lib/motionConfig.js`), entr
 
 **`config/ports.yaml`** — canonical port registry for all services (Qdrant, MongoDB, Ollama, llama.cpp, frontend dev server).
 
-Settings class (`app/core/config.py`) merges `.env` → `models.yaml` into a typed `Settings` object via pydantic-settings. Business code never reads `os.environ` directly.
+Settings class (`app/core/config/settings.py`) merges `.env` → `models.yaml` into a typed `Settings` object via pydantic-settings. Business code never reads `os.environ` directly.
 
 ---
 
@@ -345,10 +345,15 @@ Settings class (`app/core/config.py`) merges `.env` → `models.yaml` into a typ
 MongoDB and the LLM server (Ollama / llama-server) run on the **host**; the `api`
 container reaches them via `host.docker.internal`.
 
-**Hardware detection** (`app/core/hardware.py`):
+**Hardware detection** (`app/core/system/hardware.py`):
 - Auto-detects Apple Silicon Metal, NVIDIA CUDA, or CPU-only
 - Generates optimal `llama-server` launch flags (GPU offload, flash attention, KV-cache quantization)
 - Monitors system memory and adjusts context budgets to prevent OOM
+
+Consumed by `scripts/start_local_llm.sh` (llama.cpp on :8080) and
+`scripts/start_mlx_server.sh` (MLX on :8090, Apple Silicon). Both read the
+canonical ports from `config/ports.yaml` — `scripts/apply_ports.py` propagates
+any change to every consumer, so the registry cannot drift.
 
 **Local development** — all services run natively; `ports.yaml` ensures consistent port assignments across team members.
 

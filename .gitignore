@@ -197,6 +197,14 @@ models/
 llama-server.log
 .huggingface/
 
+# Local-LLM launcher output (scripts/start_local_llm.sh, start_mlx_server.sh)
+*.mlx.server.log
+mlx-server.log
+mlx_lm.server.log
+# Legacy SQLite cache dir — the embedding/answer cache was removed; kept so a
+# stale dev DB on someone's machine is never committed.
+apps/api/data/cache/
+
 # ─── Security scan output ─────────────────────────────────────────────────────
 bandit-report.json
 safety-report.json

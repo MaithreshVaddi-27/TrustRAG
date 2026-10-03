@@ -13,9 +13,10 @@
 2. backend venv:  cd apps/api && python3 -m venv .venv && pip install -e ".[dev,local-models]"
 3. python scripts/bootstrap.py        # ONNX weights + LLM discovery snapshot
 4. ./scripts/start_local_llm.sh       # llama-server router on :8080 (bash/WSL only)
-5. ./scripts/setup.sh                 # verifier: prints copy-paste fixes (bash/WSL only)
-6. backend:  cd apps/api && .venv/bin/uvicorn app.main:app --port 8000
-7. frontend: cd apps/web && npm install && npm run dev   # :5173
+5. ./scripts/start_mlx_server.sh      # MLX on :8090 (Apple Silicon only, optional)
+6. ./scripts/setup.sh                 # verifier: prints copy-paste fixes (bash/WSL only)
+7. backend:  cd apps/api && .venv/bin/uvicorn app.main:app --port 8000
+8. frontend: cd apps/web && npm install && npm run dev   # :5173
 ```
 
 `bootstrap.py` delegates to `scripts/ensure_onnx_models.py`, which guarantees
@@ -113,7 +114,9 @@ net start MongoDB
 | 8 | `./scripts/setup.sh: /dev/tcp: No such file` / syntax errors | Ran under `sh`/`dash`/PowerShell instead of bash | `bash scripts/setup.sh` (or WSL on Windows) |
 | 9 | `llama-server: command not found` | llama.cpp never installed (README had no step) | macOS: `brew install llama.cpp`; Linux: GitHub release binary; Windows: WSL |
 | 10 | `ERROR: Models directory not found: ~/.cache/huggingface/hub` (old builds) | Hard fail on first run | Upgrade; script creates the dir and prints fetch commands |
-| 11 | Backend 404s from MLX / model mismatch | Started `mlx_lm.server` with a different `--model` than `model_mlx` | Match the exact id; port must be `:8090` (`apply_ports.py` now syncs it) |
+| 11 | Backend 404s from MLX / model mismatch | Server started with a different model id than `llm.model_mlx` | `./scripts/start_mlx_server.sh [id]` with the exact id; port must be `:8090` (`apply_ports.py` syncs it) |
+| 11a | `ModuleNotFoundError: No module named 'app.core.hardware'` from `start_local_llm.sh` | Script predates the `app/core/` → `app/core/system/` move | Update the script; `ruff check scripts/` does not catch this — run `bash scripts/start_local_llm.sh` once to prove it starts |
+| 11b | `mlx_lm.server: command not found` when launching MLX | `mlx-lm` not installed (often only in a pipx/user env, not the API venv) | `pipx install mlx-lm` — it runs as a separate process, so it does NOT need to be in `apps/api/.venv` |
 | 12 | `ollama pull` model 404 / backend talks to a model that isn't served | Requested id not in `ollama list` / router cache | `ollama pull gemma3:1b`; llama.cpp: `hf download … --include '*Q4_K_M*'` into the hub dir |
 | 13 | MongoDB unreachable (`DatabaseError`, boot blocks ~minutes of retries) | `mongod` not running / wrong `MONGODB_URI` | Start per OS table above; boot is fail-hard by design (no degraded mode) |
 | 14 | Qdrant errors only on first KB op, never at boot | Qdrant client is lazy (good for boot, confusing in logs) | Start Qdrant (compose includes it) or use `:memory:`/path `QDRANT_URL` for dev |
@@ -150,7 +153,7 @@ net start MongoDB
 
 Mocked tests are green, but these need a running stack + human judgment:
 
-- **Providers never live-tested:** Gemini, NVIDIA NIM, MLX (`mlx_lm.server --port 8090`).
+- **Providers never live-tested:** Gemini, NVIDIA NIM, MLX (`./scripts/start_mlx_server.sh` on :8090).
 - **qwen3:1.7b** hallucinated unrelated claims in manual testing — retry with
   `temperature=0` before trusting it for verification.
 - **LFM2.5-1.2B** verification fixated on SHA-256 and missed NLI context —
