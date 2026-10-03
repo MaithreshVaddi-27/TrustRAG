@@ -29,6 +29,7 @@ from app.rag.generation.generator import (
     format_context,
     format_context_with_chunk_indices,
     neutralize_prompt_fences,
+    prune_context_tokens,
 )
 from app.rag.retrieval import retriever as retriever_mod
 from app.rag.verification import integrity as integrity_mod
@@ -206,6 +207,63 @@ def _is_meta_claim(text: str) -> bool:
     if any(p in lowered for p in _META_CLAIM_PATTERNS):
         return True
     return any(rx.search(lowered) for rx in _META_CLAIM_REGEXES)
+
+
+# ─── Lexical entailment backstop ──────────────────────────────────────────────
+# Small (≤3B) judges routinely fail structured NLI entirely: truncated JSON,
+# prompt-echo explanations, verdicts for non-existent claim ids. Everything
+# then degrades to NEUTRAL and good answers abstain. This deterministic check
+# recovers the clear-cut cases with zero LLM calls: a claim whose content is
+# lexically contained in a displayed evidence segment is SUPPORTED by it.
+#
+# Safety: upgrades NEUTRAL only — CONTRADICTED verdicts are never touched, so
+# this cannot inflate trust, only repair false neutrals. Applied uniformly
+# (not just small models): verbatim containment is model-independent truth.
+
+_LEXICAL_STOPWORDS = frozenset(
+    "a an the and or but of to in on at for with from by as is are was were be "
+    "been being it its this that these those there their he she they them his "
+    "her we you your our us of s t d ll m re ve don can will just also such "
+    "into over under than then than so no not only own same too very can will".split()
+)
+
+
+def _lexical_support_segments(
+    claim_text: str,
+    chunks: list[dict[str, Any]],
+    context_chunk_indices: list[int],
+) -> list[int]:
+    """Return 1-based display segment numbers whose text entails the claim.
+
+    Segments mirror the NLI display order (``context_chunk_indices`` maps each
+    display position to its chunk; bodies are pruned exactly as displayed so a
+    match means the judge literally saw the supporting text). A claim matches
+    when its normalized form is a substring of the segment, or when ≥85% of
+    its content words (≥4 required) appear in the segment. Empty/short claims
+    never match.
+    """
+    claim_norm = re.sub(r"[^a-z0-9\s]", "", (claim_text or "").lower())
+    claim_norm = " ".join(claim_norm.split())
+    claim_words = [w for w in claim_norm.split() if w not in _LEXICAL_STOPWORDS]
+    if len(claim_words) < 4:
+        return []
+    matched: list[int] = []
+    for display_pos, chunk_idx in enumerate(context_chunk_indices, start=1):
+        if not (0 <= chunk_idx < len(chunks)):
+            continue
+        body = prune_context_tokens((chunks[chunk_idx].get("text") or "").strip())
+        seg_norm = re.sub(r"[^a-z0-9\s]", "", body.lower())
+        seg_norm = " ".join(seg_norm.split())
+        if not seg_norm:
+            continue
+        if claim_norm in seg_norm:
+            matched.append(display_pos)
+            continue
+        seg_words = set(seg_norm.split())
+        recall = sum(1 for w in claim_words if w in seg_words) / len(claim_words)
+        if recall >= 0.85:
+            matched.append(display_pos)
+    return matched
 
 
 # ─── Pydantic Schemas for Structured LLM Mappings ─────────────────────────────
@@ -927,6 +985,17 @@ async def batch_verify_claims_nli(
 
         results: dict[int, dict[str, Any]] = {}
         for item in response.verdicts:
+            # Drop phantom rows: weak judges hallucinate verdicts for claim ids
+            # outside the request (observed live: 1 claim in → ids 1,2,3 out,
+            # including a CONTRADICTED for a non-existent claim that inflated
+            # the contradiction rate). Unmapped claims fall back per-claim.
+            if not isinstance(item.claim_id, int) or not 1 <= item.claim_id <= len(claims):
+                logger.debug(
+                    "Dropping batch NLI verdict for unknown claim id",
+                    claim_id=item.claim_id,
+                    claim_count=len(claims),
+                )
+                continue
             results[item.claim_id] = {
                 "verdict": item.verdict,
                 "supporting_segments": item.supporting_segments,
@@ -1442,6 +1511,27 @@ async def execute_claim_verification(
                     "per-claim fallback budget is exhausted."
                 ),
             }
+
+        # Lexical entailment backstop: a NEUTRAL claim lexically contained in
+        # displayed evidence is SUPPORTED by it (zero LLM calls; CONTRADICTED
+        # verdicts are never touched). Repairs false neutrals from weak judges
+        # without inflating trust.
+        if str(nli_res.get("verdict", "")).upper() == "NEUTRAL":
+            lex_segments = _lexical_support_segments(text, chunks, context_chunk_indices)
+            if lex_segments:
+                logger.info(
+                    "Lexical backstop flipped NEUTRAL claim to SUPPORTED",
+                    claim_index=i,
+                    segments=lex_segments,
+                )
+                nli_res = {
+                    "verdict": "SUPPORTED",
+                    "supporting_segments": lex_segments,
+                    "explanation": (
+                        f"{nli_res.get('explanation', '')} "
+                        "[lexical entailment: claim contained in cited segment]"
+                    ).strip(),
+                }
 
         # Resolve 1-based NLI segment numbers through the exact sorted/deduped
         # context order back to the persisted evidence IDs. Raw rerank order is

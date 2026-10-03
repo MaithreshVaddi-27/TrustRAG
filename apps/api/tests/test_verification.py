@@ -1118,3 +1118,34 @@ def test_every_verification_prompt_has_a_small_model_route():
     assert "BATCH_NLI_PROMPT_TEMPLATE_SMALL if _is_small" in body
     assert "DECOMPOSITION_PROMPT_SMALL if _is_small" in body
     assert "NLI_PROMPT_TEMPLATE_SMALL if _is_small" in body
+
+
+def test_lexical_backstop_supports_verbatim_claim():
+    """A claim copied word-for-word from evidence is SUPPORTED without an LLM."""
+    from app.rag.verification.verifier import _lexical_support_segments
+
+    chunks = [
+        {
+            "text": "Annual leave must be requested at least 10 working days in advance.",
+            "chunk_index": 0,
+        },
+        {"text": "Parental leave is granted for 6 months at full pay.", "chunk_index": 1},
+    ]
+    segs = _lexical_support_segments(
+        "Annual leave must be requested at least 10 working days in advance.",
+        chunks,
+        [0, 1],
+    )
+    assert segs == [1]
+
+
+def test_lexical_backstop_rejects_unrelated_and_short_claims():
+    """Unrelated, short, and out-of-range claims never match."""
+    from app.rag.verification.verifier import _lexical_support_segments
+
+    chunks = [{"text": "Annual leave must be requested in advance.", "chunk_index": 0}]
+    assert _lexical_support_segments("The company was founded in 1998.", chunks, [0]) == []
+    assert _lexical_support_segments("Leave policy.", chunks, [0]) == []
+    assert (
+        _lexical_support_segments("Annual leave must be requested in advance.", chunks, [99]) == []
+    )
