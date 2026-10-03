@@ -980,3 +980,77 @@ def test_verdict_module_is_the_canonical_refusal_gate():
     from app.rag.verification import verifier as verifier_mod
 
     assert verifier_mod.is_refusal_answer is verdict_mod.is_refusal_answer
+
+
+# ─── Model-size capability routing ────────────────────────────────────────────
+# Small (≤3B) and large (Gemini, 16B+) models must get different prompts and
+# different verification paths. The dangerous direction is silently downgrading
+# a capable model, so the classifier is deliberately conservative.
+
+
+@pytest.mark.parametrize(
+    ("model", "provider", "expected"),
+    [
+        ("LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M", None, True),
+        ("mlx-community/Llama-3.2-1B-Instruct-4bit", "mlx", True),
+        ("qwen3:1.7b", "ollama", True),
+        ("LiquidAI/LFM2.5-3B-Instruct-GGUF", "llama_cpp", True),
+        ("SmolLM2-1.7B-Instruct", "ollama", True),
+        # Boundaries: an 11B/70B/27B id must NOT match the 1b/2b/3b fragments.
+        ("llama-3.1-70b", "ollama", False),
+        ("gemma-2-27b", "ollama", False),
+        ("qwen2.5-7b", "ollama", False),
+        # "gemini" CONTAINS "mini" — a loose family list would downgrade Gemini.
+        ("gemini-3.5-flash-lite", "gemini", False),
+        ("gemini-3.5-flash-lite", None, False),
+        ("granite-4.0-h-16-gguf", "llama_cpp", False),
+        ("", None, False),
+        (None, None, False),
+    ],
+)
+def test_is_small_model_classifier(model, provider, expected):
+    from app.llm.local_llm import is_small_model
+
+    assert is_small_model(model, provider) is expected
+
+
+def test_small_models_get_compact_generation_prompt():
+    from app.rag.generation.generator import (
+        GROUNDING_SYSTEM_PROMPT,
+        GROUNDING_SYSTEM_PROMPT_SMALL,
+        _grounding_prompt,
+    )
+
+    small = _grounding_prompt("llama_cpp", "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M")
+    large = _grounding_prompt("gemini", "gemini-3.5-flash-lite")
+    assert small == GROUNDING_SYSTEM_PROMPT_SMALL
+    assert large == GROUNDING_SYSTEM_PROMPT
+    # The compact variant must actually be materially shorter — that is the
+    # whole point of the split for a model with a short effective context.
+    assert len(small) < len(large) * 0.6
+    # Both keep the CRAFT skeleton the project standard requires.
+    for prompt in (small, large):
+        for tag in ("<role>", "<action>", "<format>", "<tone>"):
+            assert tag in prompt
+
+
+def test_small_models_skip_fused_decompose_verify():
+    """The fused call must both generate and judge in one JSON — too hard at ≤3B."""
+    from app.rag.verification.verifier import _is_small
+
+    assert _is_small("llama_cpp", "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M") is True
+    assert _is_small("gemini", "gemini-3.5-flash-lite") is False
+
+
+def test_compact_verification_prompts_keep_verdict_vocabulary():
+    """The compact prompts must state the exact enum or the tolerant parser
+    has nothing to coerce toward."""
+    from app.rag.verification.verifier import (
+        DECOMPOSITION_PROMPT_SMALL,
+        NLI_PROMPT_TEMPLATE_SMALL,
+    )
+
+    assert "SUPPORTED" in NLI_PROMPT_TEMPLATE_SMALL
+    assert "CONTRADICTED" in NLI_PROMPT_TEMPLATE_SMALL
+    assert "NEUTRAL" in NLI_PROMPT_TEMPLATE_SMALL
+    assert '"claims"' in DECOMPOSITION_PROMPT_SMALL

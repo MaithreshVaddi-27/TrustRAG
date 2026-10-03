@@ -121,6 +121,8 @@ net start MongoDB
 | 13 | MongoDB unreachable (`DatabaseError`, boot blocks ~minutes of retries) | `mongod` not running / wrong `MONGODB_URI` | Start per OS table above; boot is fail-hard by design (no degraded mode) |
 | 14 | Qdrant errors only on first KB op, never at boot | Qdrant client is lazy (good for boot, confusing in logs) | Start Qdrant (compose includes it) or use `:memory:`/path `QDRANT_URL` for dev |
 | 15 | `setup.sh` warns `:8080/:8090 already in use` while LLM checks above say healthy | False alarm: occupied LLM ports **are** the healthy state | Ignore if the LLM lines above report the servers |
+| 16 | Small local model abstains on questions a cloud model answers | ≤3B gets a compact prompt + the two-step verify path automatically, but it is still much weaker | Compare objectively: `./scripts/eval_provider.sh llama_cpp …` vs `./scripts/eval_provider.sh gemini …` |
+| 17 | A strong model behaves like a small one | `is_small_model()` matched its id (e.g. a size marker in the name) | Check `python -c "from app.llm.local_llm import is_small_model; print(is_small_model('<id>'))"`; the classifier is conservative by design |
 | 16 | `python3.11: command not found` on Ubuntu | Stock Ubuntu ships 3.10 | deadsnakes PPA (see Linux section) |
 | 17 | MongoDB apt 404 on Ubuntu 24.04 | README repo line hardcodes `jammy` | Use the `noble` repo path or Docker MongoDB |
 | 18 | `pip install mlx-lm` fails on Intel Mac / Linux | MLX is Apple-Silicon-only | Skip MLX; use Ollama or llama.cpp |

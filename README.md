@@ -121,7 +121,7 @@ TrustRAG/
 │       ├── src/{pages,components,services,lib,store,hooks,layouts,styles}/
 │       └── e2e/                # Playwright specs
 ├── config/ports.yaml           # canonical port registry
-├── scripts/                    # bootstrap.py, setup.sh, start_local_llm.sh, start_mlx_server.sh, apply_ports.py, …
+├── scripts/                    # bootstrap.py, setup.sh, start_local_llm.sh, start_mlx_server.sh, eval_provider.sh, apply_ports.py, …
 ├── docs/                       # specs, architecture, ADRs, evaluation, deployment
 ├── load-test/smoke.js          # k6 smoke test
 ├── docker-compose.yml          # api + web + qdrant
@@ -443,6 +443,25 @@ TrustRAG supports multiple LLM providers interchangeably. Switch via `LLM_PROVID
 | **llama_cpp** | LFM2.5-1.2B, Granite-4.2-3B, SmolLM3-3B, EXAONE-2.4B, SmolLM2-1.7B | 2–4 GB | Default. Hardware-aware `scripts/start_local_llm.sh` auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 concurrent model on 8 GB |
 | **ollama** | gemma3:1b, qwen3:1.7b, llama3 | 1–3 GB | `ollama serve` + `ollama pull <model>`. Set `OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1` for 8 GB RAM |
 | **mlx** | Llama-3.2-1B-4bit, Llama-3.2-3B-4bit, LFM2.5-1.2B-4bit | 1–3 GB | Apple Silicon only. `./scripts/start_mlx_server.sh [id]` on :8090. Runs alongside llama.cpp on :8080 |
+
+#### Small vs large models
+
+The pipeline adapts to model size automatically — no env var, no separate mode:
+
+| | ≤3B (LFM2.5-1.2B, Llama-3.2-1B, Qwen3-1.7B) | larger (Granite-16B, Gemini, …) |
+|---|---|---|
+| Generation prompt | compact CRAFT — 4 rules + 1 worked example (~770 chars) | full CRAFT — 6 rules, scope/loop guidance (~2350 chars) |
+| Verification | two-step decompose → NLI | fused decompose+verify in one call |
+| Claim/context caps | `lean_tier` (5 / 5) | `balanced_tier` / `cloud_tier` (8 / 8) |
+
+Detection is by model-id size marker (`is_small_model()` in `app/llm/local_llm.py`), deliberately conservative: an unrecognised id keeps the full-strength path, and cloud providers are never downgraded. To compare providers on the frozen dataset:
+
+```bash
+./scripts/eval_provider.sh llama_cpp --email you@example.com --password '…' --kb-id $ID
+./scripts/eval_provider.sh gemini    --email you@example.com --password '…' --kb-id $ID
+```
+
+Each provider writes to its own `docs/evaluation/results/<provider>/` and records a separate experiment.
 | **gemini** | gemini-3.5-flash-lite | Cloud | Requires `GEMINI_API_KEY`. Fast, cheap, supports structured output natively |
 
 ### Per-tier caps (auto-selected by provider + RAM)

@@ -350,6 +350,11 @@ container reaches them via `host.docker.internal`.
 - Generates optimal `llama-server` launch flags (GPU offload, flash attention, KV-cache quantization)
 - Monitors system memory and adjusts context budgets to prevent OOM
 
+**Model-size adaptation** (`is_small_model()` in `app/llm/local_llm.py`): a
+conservative id-size classifier picks a compact CRAFT prompt and the two-step
+verification path for ≤3B models, and the full prompt plus the fused
+decompose+verify call for larger ones. Cloud providers are never downgraded.
+
 Consumed by `scripts/start_local_llm.sh` (llama.cpp on :8080) and
 `scripts/start_mlx_server.sh` (MLX on :8090, Apple Silicon). Both read the
 canonical ports from `config/ports.yaml` — `scripts/apply_ports.py` propagates

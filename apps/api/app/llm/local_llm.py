@@ -131,6 +131,46 @@ def is_reasoning_model(model: str | None) -> bool:
     return any(kw in name for kw in REASONING_MODEL_KEYWORDS)
 
 
+# Models small enough that the full prompt stack measurably hurts them.
+# Two independent failure modes drive this, both observed live:
+#   1. Long multi-rule prompts (the CRAFT/TOON stack) get partially obeyed
+#      at ≤3B — the model honours <format> but drops <tone>/<loop>, or stops
+#      mid-rule. Compact variants keep the same skeleton with fewer rules.
+#   2. The fused decompose+verify call must both GENERATE claims and JUDGE
+#      them in one JSON object. That is the single hardest task in the
+#      pipeline and small models return {} or a truncated object, so the call
+#      is skipped for them in favour of the two-step path.
+# Matched on id size markers only (not on provider): a 1.2B served over Ollama
+# and the same weights over llama.cpp behave identically here. Cloud ids are
+# excluded outright — "gemini" CONTAINS the substring "mini", so a naive
+# family-name list would silently downgrade Gemini to the weak path.
+#
+# Numeric markers are matched with a boundary so an 11B/21B/70B id cannot match
+# the "1b"/"2b"/"3b" fragments.
+_SMALL_MODEL_SIZE_RE = re.compile(
+    r"(?<![0-9.])0\.5b|(?<![0-9.])[123](\.[0-9])?b(?![0-9])", re.IGNORECASE
+)
+_SMALL_MODEL_FAMILIES = ("tiny", "smol", "micro", "minicpm", "lapce")
+_NEVER_SMALL_PROVIDERS = ("gemini", "google_genai", "google", "nvidia", "nim")
+
+
+def is_small_model(model: str | None, provider: str | None = None) -> bool:
+    """True for ≤3B-class models that need the compact prompt + two-step path.
+
+    Conservative by design: an unrecognised id returns False and keeps the
+    full-strength path, because wrongly downgrading a capable model costs
+    accuracy while wrongly upgrading a weak one costs reliability.
+    """
+    if (provider or "").strip().lower() in _NEVER_SMALL_PROVIDERS:
+        return False
+    name = (model or "").lower()
+    if not name:
+        return False
+    if _SMALL_MODEL_SIZE_RE.search(name):
+        return True
+    return any(fam in name for fam in _SMALL_MODEL_FAMILIES)
+
+
 def verification_cap_kwargs(
     provider: str | None, model: str | None, max_tokens: int
 ) -> dict[str, int]:
