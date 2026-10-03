@@ -46,7 +46,7 @@ jobs:
         # a DIFFERENT graph than the one the image ships (`uv sync --locked`).
         # Export the committed lockfile instead so the audit covers what runs.
         run: |
-          uv export --frozen --no-dev --no-hashes --format requirements-txt             --output-file /tmp/requirements-locked.txt
+          uv export --frozen --no-dev --no-emit-project --no-hashes --format requirements-txt             --output-file /tmp/requirements-locked.txt
           pip-audit --requirement /tmp/requirements-locked.txt \
             --ignore-vuln PYSEC-2026-1325 --strict --format json --output pip-audit-report.json || true
           pip-audit --requirement /tmp/requirements-locked.txt \
