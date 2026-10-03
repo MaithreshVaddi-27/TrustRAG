@@ -1054,3 +1054,38 @@ def test_compact_verification_prompts_keep_verdict_vocabulary():
     assert "CONTRADICTED" in NLI_PROMPT_TEMPLATE_SMALL
     assert "NEUTRAL" in NLI_PROMPT_TEMPLATE_SMALL
     assert '"claims"' in DECOMPOSITION_PROMPT_SMALL
+
+
+def test_every_verification_prompt_has_a_small_model_route():
+    """Guard the routing table itself.
+
+    Regression: compact prompts were added for decompose and single-claim NLI,
+    but batch NLI — the MAIN verification path for every model — was left on
+    the long prompt, so ≤3B kept the regression on the hottest call. This
+    asserts the mapping by name so a future prompt cannot be added without a
+    small-model counterpart (or an explicit reason it needs none).
+    """
+    import inspect
+
+    from app.rag.verification import verifier as v
+
+    # Prompts a ≤3B model can actually reach. FUSED is absent by design:
+    # small models skip the fused call entirely (see the fused-skip test).
+    must_have_variant = {
+        "DECOMPOSITION_PROMPT",
+        "NLI_PROMPT_TEMPLATE",
+        "BATCH_NLI_PROMPT_TEMPLATE",
+    }
+    for name in must_have_variant:
+        assert hasattr(v, name), f"{name} missing"
+        assert hasattr(v, f"{name}_SMALL"), f"{name} has no _SMALL variant"
+
+    # Fused must exist (large models use it) but must never be selected for small.
+    assert hasattr(v, "FUSED_DECOMPOSE_VERIFY_PROMPT_TEMPLATE")
+
+    # And the selection helper must be the one the call sites use.
+    src = inspect.getsource(v)
+    body = src[src.index("def _is_small") :]
+    assert "BATCH_NLI_PROMPT_TEMPLATE_SMALL if _is_small" in body
+    assert "DECOMPOSITION_PROMPT_SMALL if _is_small" in body
+    assert "NLI_PROMPT_TEMPLATE_SMALL if _is_small" in body

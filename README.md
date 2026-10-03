@@ -451,10 +451,12 @@ The pipeline adapts to model size automatically — no env var, no separate mode
 | | ≤3B (LFM2.5-1.2B, Llama-3.2-1B, Qwen3-1.7B) | larger (Granite-16B, Gemini, …) |
 |---|---|---|
 | Generation prompt | compact CRAFT — 4 rules + 1 worked example (~770 chars) | full CRAFT — 6 rules, scope/loop guidance (~2350 chars) |
-| Verification | two-step decompose → NLI | fused decompose+verify in one call |
+| Verification | two-step decompose → NLI (compact decompose + NLI prompts) | fused decompose+verify in one call (full prompts) |
 | Claim/context caps | `lean_tier` (5 / 5) | `balanced_tier` / `cloud_tier` (8 / 8) |
 
-Detection is by model-id size marker (`is_small_model()` in `app/llm/local_llm.py`), deliberately conservative: an unrecognised id keeps the full-strength path, and cloud providers are never downgraded. To compare providers on the frozen dataset:
+Detection is by model-id size marker (`is_small_model()` in `app/llm/local_llm.py`), deliberately conservative: an unrecognised id keeps the full-strength path, and cloud providers are never downgraded.
+
+Measured prompt sizes — the win is mostly *rule count*, not characters: generation 2356→773 (33%), decompose 1037→494 (48%), single-claim NLI 969→626 (65%), batch NLI 977→715 (73%). To compare providers on the frozen dataset:
 
 ```bash
 ./scripts/eval_provider.sh llama_cpp --email you@example.com --password '…' --kb-id $ID
