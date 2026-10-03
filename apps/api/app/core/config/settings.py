@@ -149,6 +149,18 @@ class Settings(BaseSettings):
             "pin). Only change alongside a fresh `scripts/export_bge_onnx.py` run."
         ),
     )
+    hf_reranker_tokenizer_revision: str = Field(
+        default="233902d25c440f23af6f7d6e94d2946bac0bee0a",
+        validation_alias=AliasChoices("HF_RERANKER_TOKENIZER_REVISION"),
+        description=(
+            "Pinned tokenizer revision for the ONNX cross-encoder reranker. MUST be a "
+            "commit of `reranker.model` (default cross-encoder/ms-marco-MiniLM-L-6-v2), "
+            "NOT the embedding model's revision — that pin does not exist in the "
+            "cross-encoder repo, so AutoTokenizer resolves to a foreign config.json and "
+            "raises 'Unrecognized model', which silently disables reranking and drops "
+            "retrieval back to unfused-quality RRF order. Bandit B615 supply-chain pin."
+        ),
+    )
 
     # ── Google Gemini (Optional if using local LLMs) ───────────────────────────
     gemini_api_key: str = ""

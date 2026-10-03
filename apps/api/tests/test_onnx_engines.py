@@ -327,3 +327,68 @@ def test_reranker_handles_one_dimensional_logits():
     rr = _make_reranker(session)
     scores = rr.predict([("q", f"d{i}") for i in range(4)], batch_size=2)
     assert np.asarray(scores).shape == (4,)
+
+
+def test_reranker_uses_its_own_tokenizer_revision():
+    """The cross-encoder needs the cross-encoder's revision, not the embedder's.
+
+    Regression: `settings.hf_tokenizer_revision` is pinned to a commit of the
+    *embedding* model (BAAI/bge-small-en-v1.5). Passing it to
+    `AutoTokenizer.from_pretrained("cross-encoder/ms-marco-MiniLM-L-6-v2", ...)`
+    raised "Unrecognized model", which the loader swallowed into a warning and
+    then disabled reranking entirely — retrieval silently fell back to unfused
+    RRF order, so every downstream small-model symptom looked like a model
+    problem instead. The two models need two pins.
+    """
+    from app.core.config.settings import get_settings
+    from app.llm import onnx_reranker as mod
+
+    settings = get_settings()
+    assert settings.hf_reranker_tokenizer_revision
+    assert settings.hf_reranker_tokenizer_revision != settings.hf_tokenizer_revision
+
+    seen = {}
+
+    def _capture(name, **kwargs):
+        seen.update(kwargs)
+        return _fake_tokenizer()
+
+    import onnxruntime as ort
+
+    with (
+        patch("transformers.AutoTokenizer.from_pretrained", side_effect=_capture),
+        patch.object(ort, "InferenceSession", return_value=MagicMock()),
+        patch.object(ort, "SessionOptions", MagicMock()),
+        patch.object(ort, "GraphOptimizationLevel", MagicMock()),
+    ):
+        try:
+            mod.ONNXCrossEncoder(model_path="/fake/rerank.onnx")
+        except Exception:
+            pass  # session construction may fail on a fake path; the call is what matters
+
+    assert seen.get("revision") == settings.hf_reranker_tokenizer_revision
+
+
+def test_small_grounding_prompt_has_no_parrotable_example():
+    """≤3B models copy a concrete few-shot example verbatim into the answer.
+
+    Observed live: the 1.2B emitted "Tokens are kept for 30 days. [Segment 2]"
+    for an unrelated query — the example's fact, not the evidence's. The example
+    must therefore be a placeholder template, never a real fact. It must also
+    not hand the model a "Premise says ... Question: ... Answer:" frame to fill
+    in, which small models satisfy with a critique of the context instead of an
+    answer ("the premise does not define what data mining is").
+    """
+    from app.rag.generation.generator import GROUNDING_SYSTEM_PROMPT_SMALL
+
+    low = GROUNDING_SYSTEM_PROMPT_SMALL.lower()
+    # Placeholder template, not a copyable worked example.
+    assert "<the question" in low
+    assert "<a fact" in low
+    assert "<n>" in low
+    # No meta-frame that invites context critique instead of answering.
+    assert "premise says" not in low
+    assert "question:" in low and "answer:" not in low
+    # The fail-safe and the injection guard must survive the trim.
+    assert "ABSTAIN" in GROUNDING_SYSTEM_PROMPT_SMALL
+    assert "untrusted" in low

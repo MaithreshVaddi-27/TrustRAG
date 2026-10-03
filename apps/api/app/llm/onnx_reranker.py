@@ -110,7 +110,7 @@ class ONNXCrossEncoder:
             _offline = os.environ.get("HF_HUB_OFFLINE", "").strip() == "1"
             self._tokenizer = AutoTokenizer.from_pretrained(
                 self.tokenizer_name,
-                revision=settings.hf_tokenizer_revision,
+                revision=settings.hf_reranker_tokenizer_revision,
                 use_fast=True,
                 local_files_only=_offline,
             )
@@ -239,10 +239,14 @@ def export_crossencoder_to_onnx(
     inner.eval()
     inner.to("cpu")
 
-    # Get tokenizer for dummy input (revision pinned for supply-chain security, Bandit B615)
+    # Get tokenizer for dummy input (revision pinned for supply-chain security, Bandit B615).
+    # Must use the reranker's own pin: the embedding model's revision does not exist in
+    # the cross-encoder repo and makes this export fail outright.
     settings = get_settings()
     tokenizer = AutoTokenizer.from_pretrained(
-        tokenizer_name, use_fast=True, revision=settings.hf_tokenizer_revision
+        tokenizer_name,
+        use_fast=True,
+        revision=settings.hf_reranker_tokenizer_revision,
     )
 
     # Create dummy inputs
