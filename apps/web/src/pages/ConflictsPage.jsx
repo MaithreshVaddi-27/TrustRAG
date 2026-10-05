@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { conflictService } from '@/services/api'
-import { AlertTriangle, Loader2, ShieldAlert, CheckCircle } from 'lucide-react'
+import { AlertTriangle, ShieldAlert, CheckCircle } from 'lucide-react'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 export default function ConflictsPage() {
   const { data: conflicts = [], isLoading, error } = useQuery({
@@ -45,8 +46,8 @@ export default function ConflictsPage() {
 
         {/* Content */}
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center p-16 space-y-3">
-            <Loader2 size={24} className="animate-spin text-primary-400" />
+          <div className="flex flex-col items-center justify-center p-16 space-y-4">
+            <ThinkingOrbs size="md" />
             <span className="text-sm text-slate-400">Auditing source conflicts...</span>
           </div>
         ) : error ? (

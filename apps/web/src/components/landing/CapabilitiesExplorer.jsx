@@ -34,7 +34,7 @@ export default function CapabilitiesExplorer() {
                 className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 border ${
                   isSelected
                     ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400 shadow-lg shadow-cyan-950/50 scale-105'
-                    : 'bg-surface-900 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700 hover:scale-102'
+                    : 'bg-surface-900 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700 hover:scale-[1.02]'
                 }`}
               >
                 <Icon size={14} className={isSelected ? 'text-cyan-400 animate-spin-slow' : 'text-slate-500'} />

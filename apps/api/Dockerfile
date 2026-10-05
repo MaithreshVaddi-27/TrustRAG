@@ -35,7 +35,7 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy dependency spec and lockfile, then install with uv for reproducibility
-COPY pyproject.toml uv.lock .
+COPY pyproject.toml uv.lock 
 RUN uv sync --locked --no-dev --python /opt/venv/bin/python
 
 # ─── Runtime ───────────────────────────────────────────────────────────────────

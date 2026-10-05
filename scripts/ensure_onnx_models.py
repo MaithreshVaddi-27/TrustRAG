@@ -11,8 +11,7 @@ Usage:
   python scripts/ensure_onnx_models.py --docker     # Docker mode (bakes into image)
 
 Env vars:
-  MODEL_CACHE_DIR           # preferred override (default: apps/api/.model_cache)
-  CACHE_DIR                 # legacy fallback (MODEL_CACHE_DIR wins)
+  MODEL_CACHE_DIR           # override weights dir (default: apps/api/.model_cache)
   RERANKER_MODEL            # override reranker model (default: cross-encoder/...MiniLM-L-6-v2)
   HF_TOKEN                  # Hugging Face token for private models
   HF_HUB_OFFLINE=1          # force offline mode (use local cache only)
@@ -51,10 +50,7 @@ except ImportError:
 
 def _cache_dir() -> Path:
     """Resolve cache directory (works in Docker and host)."""
-    # MODEL_CACHE_DIR is preferred; CACHE_DIR kept as legacy fallback.
-    # (CACHE_DIR is also the runtime SQLite disk-cache var — for model
-    # weights prefer MODEL_CACHE_DIR to avoid collisions.)
-    env_dir = os.getenv("MODEL_CACHE_DIR") or os.getenv("CACHE_DIR")
+    env_dir = os.getenv("MODEL_CACHE_DIR")
     if env_dir:
         return Path(env_dir)
     # Default: apps/api/.model_cache (relative to repo root)
@@ -159,7 +155,7 @@ def _export_reranker_onnx(cfg, rnk_path: Path) -> bool:
     try:
         from sentence_transformers import CrossEncoder
 
-        from app.core.onnx_reranker import export_crossencoder_to_onnx
+        from app.llm.onnx_reranker import export_crossencoder_to_onnx
 
         model = CrossEncoder(cfg.reranker_model)
         export_crossencoder_to_onnx(model, str(rnk_path), tokenizer_name=cfg.reranker_model)

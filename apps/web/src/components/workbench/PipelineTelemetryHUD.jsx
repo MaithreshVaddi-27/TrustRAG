@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
-import { Activity, CheckCircle2, Cpu, Database, Globe, Layers, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
+import { Activity, CheckCircle2, Cpu, Database, Globe, Layers, ShieldCheck, Sparkles } from 'lucide-react'
 import { compactTraceEvents, displayMessage } from './traceEvents'
 import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
+import { ThinkingOrbs } from './ThinkingOrbs'
 
 /**
  * PipelineTelemetryHUD — Ultra-premium, executive live telemetry HUD.
@@ -12,7 +13,6 @@ export function PipelineTelemetryHUD({
   events = [],
   query = '',
   enableWebSearch = false,
-  webSearchProvider = 'both',
   provider = 'ollama',
   model = 'granite4.2:3b-q4_K_M',
   embeddingModel = 'BAAI/bge-small-en-v1.5',
@@ -103,7 +103,7 @@ export function PipelineTelemetryHUD({
           {enableWebSearch && (
             <span className="px-2 py-0.5 rounded-md bg-cyan-950/80 border border-cyan-800/50 text-cyan-300 flex items-center gap-1">
               <Globe size={11} className="text-cyan-400" />
-              MCP {webSearchProvider.toUpperCase()}
+              MCP TAVILY
             </span>
           )}
           {status.isRecovering && (
@@ -176,7 +176,7 @@ function StageCard({ title, subtitle, subtitleTitle, icon: Icon, done, active })
         {done ? (
           <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
         ) : active ? (
-          <Loader2 size={13} className="text-cyan-400 animate-spin shrink-0" />
+          <ThinkingOrbs size="sm" className="shrink-0" />
         ) : (
           <span className="w-2 h-2 rounded-full bg-slate-700 shrink-0" />
         )}

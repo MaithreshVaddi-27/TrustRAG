@@ -87,7 +87,7 @@ The portfolio differentiator is the **reliability → diagnosis → recovery loo
 
 - LangChain
 - LangGraph
-- Multi-provider LLMs: llama.cpp / Ollama (local, default) + `langchain-google-genai` / NVIDIA NIM (cloud, selectable)
+- Multi-provider LLMs: llama.cpp / Ollama (local, default) + `langchain-google-genai` (cloud, selectable)
 - Local embeddings (BGE-small-en-v1.5 via HuggingFace or torch-free ONNX Runtime) + RapidOCR-ONNX fallback
 
 ### Retrieval
@@ -161,7 +161,7 @@ Provider choice must be documented and verified at deployment time because free-
 
 **Gemini / cloud LLMs (selectable, not default)**
 
-- LLM generation / verification when the Gemini (or NVIDIA) provider is selected
+- LLM generation / verification when the Gemini provider is selected
 - Embeddings are local-only (HuggingFace/ONNX, 384d) — no cloud embedding model
 
 **Qdrant**
@@ -221,14 +221,16 @@ TRUSTRAG/
 │   └── api/
 │       ├── app/
 │       │   ├── api/v1/         # REST route handlers
-│       │   ├── core/           # config, security, LLM, embeddings, metrics
+│       │   ├── core/           # config, security, logging, metrics, hardware, caches
 │       │   ├── db/             # MongoDB + Qdrant clients
-│       │   ├── agent/          # LangGraph loop + deterministic router
-│       │   ├── ingestion/      # parsers, chunkers, OCR fallback, pipeline
-│       │   ├── retrieval/      # hybrid retriever + reranker
-│       │   ├── generation/     # grounded answer generator
-│       │   ├── verification/   # decomposition + NLI + integrity audit
-│       │   ├── services/       # analysis, KB, auth, experiment, search
+│       │   ├── llm/            # LLM clients, registry, ledger, ONNX engines
+│       │   ├── rag/            # RAG pipeline stages (each with sub-folders)
+│       │   │   ├── agent/          # LangGraph loop + deterministic router
+│       │   │   ├── generation/     # grounded answer generator
+│       │   │   ├── ingestion/      # parsers, chunkers, OCR fallback, pipeline
+│       │   │   ├── retrieval/      # hybrid retriever + reranker
+│       │   │   └── verification/   # decomposition + NLI + integrity audit
+│       │   ├── services/       # analysis, KB, auth, search
 │       │   ├── mcp/            # MCP server + client
 │       │   └── main.py
 │       ├── config/
@@ -339,7 +341,7 @@ embedding:
 
 verification:
   framework: langchain
-  provider: llama_cpp             # selectable per request (ollama/gemini/nvidia)
+  provider: llama_cpp             # selectable per request (ollama/gemini)
   model: <configured-verification-model>
   temperature: 0.0
   max_output_tokens: 512
@@ -575,8 +577,8 @@ Analyze:
 Conflict example:
 
 ```text
-Policy v3 → 30 days
-Policy v4 → 45 days
+Spec v3 → 30 days
+Spec v4 → 45 days
 ```
 
 If precedence is established, use the applicable source.
@@ -631,10 +633,10 @@ Example:
 
 ```text
 Answer:
-"Refunds are available for 45 days and processing takes 7 days."
+"Tokens are valid for 45 days and revocation takes 7 seconds."
 
 Claim 1:
-Refunds are available for 45 days.
+Tokens are valid for 45 days.
 
 Claim 2:
 Processing takes 7 days.

@@ -104,7 +104,7 @@ if (echo > /dev/tcp/127.0.0.1/8090) 2>/dev/null; then
   fi
 else
   echo "  • No MLX server on :8090 — start it with:"
-  echo "      mlx_lm.server --model mlx-community/Llama-3.2-1B-Instruct-4bit --port 8090"
+  echo "      ./scripts/start_mlx_server.sh   # reads the model + port from config"
 fi
 if command -v mlx_lm.server >/dev/null 2>&1; then
   ok "mlx_lm.server installed (Apple Silicon local inference)"
@@ -115,7 +115,15 @@ else
 fi
 
 echo "─ Ports ─"
-for port in 8000 5173 8080 8090; do
+# Read from config/ports.yaml (single source of truth) so this script cannot
+# drift from `python3 scripts/apply_ports.py`.
+_PORTS=$(python3 - "$ROOT_DIR/config/ports.yaml" <<'PYEOF' 2>/dev/null || echo "8000 5173 8080 8090"
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1]))["ports"]
+print(d["backend"], d["frontend"], d["llamacpp"], d["mlx"])
+PYEOF
+)
+for port in $_PORTS; do
   if (echo > /dev/tcp/localhost/$port) 2>/dev/null; then
     echo "  • :$port already in use (stop the other service or adjust config/ports.yaml)"
   else

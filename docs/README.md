@@ -12,7 +12,8 @@ Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench
 docs/
 ├── README.md                        # Master index (this file)
 ├── TRUSTRAG_specs.md                # Full product specification (source of truth)
-├── audit-2026-09-28-ui-redesign-full.md  # LIVE audit tracker (all findings fixed; supersedes removed point-in-time reports)
+├── AUDIT_2026-10-03.md              # Engineering audit (critical/needed/later, improvements, dead code, remove/add)
+├── ANALYSIS_SERVICE_TEST_GAPS.md    # Uncovered regions of analysis_service.py + prioritized test plan
 ├── ONBOARDING-TROUBLESHOOTING.md    # Per-OS setup guide + failure table + live verification backlog
 ├── ROADMAP.md                       # Product vision, milestones, phase tracking
 ├── PERFORMANCE-GUIDE.md             # Free speed/RAM tuning + MLX on Mac
@@ -41,7 +42,8 @@ docs/
 - [**Roadmap (`ROADMAP.md`)**](ROADMAP.md): completed phases, pre-deployment checklist, and prioritized upcoming work.
 - [**Performance Guide (`PERFORMANCE-GUIDE.md`)**](PERFORMANCE-GUIDE.md): free efficiency changes (config-only speed/RAM wins) plus MLX local inference on Apple Silicon.
 - [**Onboarding & Troubleshooting (`ONBOARDING-TROUBLESHOOTING.md`)**](ONBOARDING-TROUBLESHOOTING.md): per-OS setup guide, failure table, live verification backlog.
-- [**Live Audit Tracker (`audit-2026-09-28-ui-redesign-full.md`)**](audit-2026-09-28-ui-redesign-full.md): every bug/error/issue/dead-code finding with severity, fix, and verification evidence. Supersedes the removed point-in-time reports (history in git).
+- [**Engineering Audit (`AUDIT_2026-10-03.md`)**](AUDIT_2026-10-03.md): findings split into CRITICAL / NEEDED / LATER, plus refine-refactor-small-change improvements, dead code, and a remove/add list gated on measurable benefit; constraint verification (NVIDIA-except-CUDA, ONNX-only embeddings/reranker, large-vs-small model parity, offline); and a measured test assessment with 24 named tests to add. Supersedes the 2026-09-28 production pass (history in git).
+- [**Analysis Service Test Gaps (`ANALYSIS_SERVICE_TEST_GAPS.md`)**](ANALYSIS_SERVICE_TEST_GAPS.md): line-level map of uncovered regions in `app/services/analysis_service.py` (54% → target 80%+), with concrete test-case recipes.
 
 ### 2. Architecture & Design
 
@@ -71,4 +73,4 @@ docs/
 - **CI**: Ubuntu jobs + `cross-platform` smoke (Windows + macOS: backend import/config smoke, frontend lint/test/build), all gated in `ci-gate`.
 - **Runtimes**: models run ONNX-only (`onnxruntime` + `transformers` tokenizer; reranker fails closed to RRF when `use_onnx=true`); torch lives in the `local-models` extra for one-time export only.
 - **Stack**: Python 3.11–3.12 (`requires-python >=3.11,<3.13`), Node 22+ (`engines`), per-OS setup in `ONBOARDING-TROUBLESHOOTING.md`.
-- **Pending operator runs**: pre-IDF KBs need document re-upload; chunking/normalization change needs re-index; OCR models not pre-warmed; live-model verification (Gemini/NVIDIA/MLX) + k6 + Playwright e2e — see `ONBOARDING-TROUBLESHOOTING.md §5`.
+- **Pending operator runs**: pre-IDF KBs need document re-upload; chunking/normalization change needs re-index; OCR models not pre-warmed; live-model verification (Gemini via `cloud` extra / MLX) + k6 + Playwright e2e — see `ONBOARDING-TROUBLESHOOTING.md §5`.

@@ -4,6 +4,7 @@ Unit tests for Analysis runs and execution trace routes.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_user
 from app.main import app
+from app.rag.verification.verdict import DiagnosisType, ReliabilityStatus
 
 client = TestClient(app)
 
@@ -32,8 +34,8 @@ def mock_user_doc():
 def mock_kb_doc():
     return {
         "_id": ObjectId("64ee39d09c6292376e191982"),
-        "name": "Refund Policies",
-        "description": "Standard refund schedules",
+        "name": "API Limits",
+        "description": "API limit schedules",
         "user_id": ObjectId("64ee39d09c6292376e191981"),
         "created_at": "2026-08-27T10:00:00Z",
     }
@@ -70,7 +72,7 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeyp
     # Patch discovered models so the default model is allowed.
     # monkeypatch (not manual assignment) so a mid-test failure cannot leak
     # the stub into later tests (global-state pollution).
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
 
     monkeypatch.setattr(
@@ -105,7 +107,7 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeyp
             patch("app.services.analysis_service.add_trace_event", AsyncMock()) as mock_add_trace,
             # Local-LLM preflight probe (no inference server in CI)
             patch(
-                "app.core.local_llm.probe_local_llm_server",
+                "app.llm.local_llm.probe_local_llm_server",
                 AsyncMock(return_value=None),
             ),
         ):
@@ -131,7 +133,7 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeyp
 
 def test_create_analysis_ignores_legacy_embedding_overrides(monkeypatch):
     """Legacy per-request embedding fields are ignored (single models.yaml engine)."""
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
     from app.api.v1.schemas.analysis import AnalysisCreate
 
     monkeypatch.setattr(
@@ -176,9 +178,9 @@ def test_create_analysis_fails_fast_when_local_llm_down(
     mock_create_indexes, mock_connect, mock_kb_doc, monkeypatch
 ):
     """Stopped ollama/llama-server → synchronous 503 alert, not a silent burn."""
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
-    from app.core.exceptions import LLMUnavailableError
+    from app.core.security.exceptions import LLMUnavailableError
 
     monkeypatch.setattr(
         _llm_mod,
@@ -200,7 +202,7 @@ def test_create_analysis_fails_fast_when_local_llm_down(
     with (
         patch("app.services.analysis_service.get_kb", return_value=mock_kb),
         patch(
-            "app.core.local_llm.probe_local_llm_server",
+            "app.llm.local_llm.probe_local_llm_server",
             AsyncMock(
                 side_effect=LLMUnavailableError(
                     "Local LLM server 'llama_cpp' is not reachable at "
@@ -229,7 +231,7 @@ def test_create_analysis_rejects_embedding_mismatch(
     mock_create_indexes, mock_connect, mock_kb_doc, mock_user_doc, monkeypatch
 ):
     """A KB pinned to one embedding space must reject analyses after a model change."""
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
 
     monkeypatch.setattr(
@@ -264,7 +266,7 @@ def test_create_analysis_rejects_embedding_mismatch(
         }
         # Simulate a post-deploy models.yaml model change: server now serves
         # MiniLM while the KB is pinned to BGE → guard must 422.
-        from app.core.config import ModelConfig
+        from app.core.config.model_config import ModelConfig
 
         monkeypatch.setattr(
             ModelConfig,
@@ -385,7 +387,7 @@ def test_stream_trace_rejects_invalid_and_reused_ticket(mock_create_indexes, moc
 @patch("app.db.mongodb.create_indexes")
 def test_stream_ticket_requires_ownership(mock_create_indexes, mock_connect):
     """Ticket issuance for a foreign/missing analysis must not succeed (IDOR guard)."""
-    from app.core.exceptions import NotFoundError
+    from app.core.security.exceptions import NotFoundError
 
     fake_tickets = _ticket_collection()
     with (
@@ -452,7 +454,7 @@ def test_create_analysis_guides_new_user_without_models(
     mock_create_indexes, mock_connect, monkeypatch
 ):
     """Empty discovery → 422 with install instructions, not a bare rejection."""
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
 
     monkeypatch.setattr(_llm_mod, "get_discovered_llms", lambda provider: frozenset())
     payload = {
@@ -471,10 +473,7 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
     Regression: markers are load-bearing during verification (claim->evidence
     linking) so they are stripped ONLY at finalize, after verification ran.
     """
-    from types import SimpleNamespace
-
     from app.services import analysis_service as svc
-    from app.verification.verdict import DiagnosisType, ReliabilityStatus
 
     raw_answer = (
         "### Contents of the Knowledge Base\n"
@@ -491,7 +490,7 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
             "reliability_score": 0.9,
         }
 
-    monkeypatch.setattr("app.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
     coll = MagicMock()
     coll.update_one = AsyncMock()
 
@@ -502,11 +501,11 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
         async def __aexit__(self, *_exc):
             return False
 
-    async def _get_sem():
+    def _get_sem():
         return _Sem()
 
     monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
-    monkeypatch.setattr(svc, "_get_concurrency_semaphore", _get_sem, raising=False)
+    # P1-2: pipeline semaphore removed; per-call LLM permit is the only gate.
     monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
     monkeypatch.setattr(
         svc,
@@ -518,7 +517,10 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
             diagnosis_failures=[],
         ),
     )
-    monkeypatch.setattr("app.core.metrics.record_analysis_completed", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "app.core.observability.metrics.record_analysis_completed",
+        lambda *_a, **_k: None,
+    )
 
     await svc.run_analysis_pipeline(
         analysis_id_str="507f1f77bcf86cd799439011",
@@ -535,3 +537,146 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
     # otherwise citation_correctness silently reports nothing.
     assert "[Segment 2]" in set_arg["answer_cited"]
     assert "[Segment 6]" in set_arg["answer_cited"]
+
+
+# ─── GROUNDING GATE (audit G-1) ───────────────────────────────────────────────
+# The verdict engine decides how much of a generated answer the evidence
+# supports. Before the gate, only ABSTAINED was filtered, so FAILED/UNCERTAIN
+# answers were stored verbatim with status "completed" — the pipeline detected
+# the ungrounded content and then showed it to the user anyway.
+
+_HALLUCINATED_ANSWER = (
+    "### Retention Policy\n"
+    "Records are retained for 90 days [Segment 1]. "
+    "Enterprise plans include unlimited seats [Segment 2]."
+)
+
+
+@pytest.mark.parametrize(
+    ("reliability_status", "score"),
+    [
+        (ReliabilityStatus.FAILED, 0.20),
+        (ReliabilityStatus.UNCERTAIN, 0.62),
+    ],
+)
+async def test_finalize_withholds_unverified_answer_from_user(
+    monkeypatch, reliability_status, score
+):
+    """FAILED and UNCERTAIN must never surface the model's own prose."""
+    from app.services import analysis_service as svc
+
+    async def _fake_flow(**_kwargs):
+        return {
+            "answer": _HALLUCINATED_ANSWER,
+            "claims": [{"state": "CONTRADICTED"}, {"state": "NEUTRAL"}],
+            "diagnosis_type": "LOW_COVERAGE",
+            "diagnosis_failures": ["Only 1/2 claims supported by evidence"],
+            "reliability_score": score,
+        }
+
+    coll = MagicMock()
+    coll.update_one = AsyncMock()
+
+    class _Sem:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
+
+    def _get_sem():
+        return _Sem()
+
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
+    # P1-2: pipeline semaphore removed; per-call LLM permit is the only gate.
+    monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
+    monkeypatch.setattr(
+        svc,
+        "verdict_from_state",
+        lambda _state, _thresholds: SimpleNamespace(
+            reliability_status=reliability_status,
+            reliability_score=score,
+            diagnosis_type=DiagnosisType.LOW_COVERAGE,
+            diagnosis_failures=["Only 1/2 claims supported by evidence"],
+        ),
+    )
+    monkeypatch.setattr(
+        "app.core.observability.metrics.record_analysis_completed",
+        lambda *_a, **_k: None,
+    )
+
+    await svc.run_analysis_pipeline(
+        analysis_id_str="507f1f77bcf86cd799439011",
+        kb_id_str="507f1f77bcf86cd799439012",
+        query="What is the retention policy?",
+    )
+
+    set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]
+    # The ungrounded specifics must not be present in any user-visible field.
+    assert "90 days" not in set_arg["answer"]
+    assert "unlimited seats" not in set_arg["answer"]
+    assert set_arg["answer"] == svc._UNVERIFIED_ANSWER
+    # It is an abstention, not a completed synthesis.
+    assert set_arg["status"] == "abstained"
+    # Score and diagnosis survive so the UI can still explain what happened.
+    assert set_arg["reliability"]["status"] == reliability_status.value
+    assert set_arg["reliability"]["score"] == score
+
+
+async def test_finalize_keeps_trusted_answer(monkeypatch):
+    """The gate must not swallow genuinely supported answers."""
+    from app.services import analysis_service as svc
+
+    async def _fake_flow(**_kwargs):
+        return {
+            "answer": "Records are retained for 30 days [Segment 1].",
+            "claims": [{"state": "SUPPORTED"}],
+            "diagnosis_type": None,
+            "diagnosis_failures": [],
+            "reliability_score": 0.95,
+        }
+
+    coll = MagicMock()
+    coll.update_one = AsyncMock()
+
+    class _Sem:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
+
+    def _get_sem():
+        return _Sem()
+
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
+    # P1-2: pipeline semaphore removed; per-call LLM permit is the only gate.
+    monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
+    monkeypatch.setattr(
+        svc,
+        "verdict_from_state",
+        lambda _state, _thresholds: SimpleNamespace(
+            reliability_status=ReliabilityStatus.TRUSTED,
+            reliability_score=0.95,
+            diagnosis_type=DiagnosisType.NONE,
+            diagnosis_failures=[],
+        ),
+    )
+    monkeypatch.setattr(
+        "app.core.observability.metrics.record_analysis_completed",
+        lambda *_a, **_k: None,
+    )
+
+    await svc.run_analysis_pipeline(
+        analysis_id_str="507f1f77bcf86cd799439011",
+        kb_id_str="507f1f77bcf86cd799439012",
+        query="What is the retention policy?",
+    )
+
+    set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]
+    assert set_arg["status"] == "completed"
+    assert "30 days" in set_arg["answer"]
+    assert "[Segment" not in set_arg["answer"]
+    assert "[Segment 1]" in set_arg["answer_cited"]

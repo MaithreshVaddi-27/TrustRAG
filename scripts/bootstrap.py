@@ -51,7 +51,7 @@ def _ensure_onnx(argv: list[str]) -> int:
 def _seed_discovery() -> int:
     """Best-effort local-LLM discovery snapshot. Never fails the bootstrap."""
     try:
-        from app.core.local_llm import seed_local_model_discovery
+        from app.llm.local_llm import seed_local_model_discovery
     except Exception as exc:
         print(f"[bootstrap] discovery skipped (import failed: {exc})")
         return 0

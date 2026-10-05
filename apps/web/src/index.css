@@ -4,17 +4,7 @@
 @import './styles/materials.css';
 @import './styles/landing.css';
 @import './styles/app-layout.css';
-@import './styles/dashboard.css';
-@import './styles/playground.css';
-@import './styles/auth.css';
-@import './styles/knowledge-bases.css';
-@import './styles/evidence.css';
-@import './styles/claims.css';
-@import './styles/conflicts.css';
-@import './styles/experiments.css';
-@import './styles/settings.css';
-@import './styles/trace.css';
-@import './styles/components.css';
+@import './styles/loaders.css';
 
 @tailwind base;
 @tailwind components;
@@ -38,9 +28,7 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
 
-  :focus-visible {
-    @apply outline-none ring-2 ring-primary-400 ring-offset-2 ring-offset-surface-950;
-  }
+  /* Focus ring lives once at root level (see bottom of file). */
 }
 
 /* ── Component utilities ─────────────────────────────────────────────────── */
@@ -98,14 +86,15 @@
   }
 }
 
-/* Visible keyboard focus — Apple HIG agency: every pointer path needs a keyboard path */
+/* Visible keyboard focus — single definition (consolidated from 3). */
 :focus-visible {
   outline: 2px solid rgba(56, 189, 248, 0.7);
   outline-offset: 2px;
   border-radius: 6px;
 }
 
-/* Global press feedback — Apple HIG: "Give people consistent feedback" */
+/* Global press feedback — disabled under reduced motion (N-83). */
+@media (prefers-reduced-motion: no-preference) {
 @media (hover: hover) and (pointer: fine) {
   button:not(:disabled):active,
   a:active,
@@ -122,4 +111,5 @@
     transform: scale(0.98);
     transition: transform 80ms ease-out;
   }
+}
 }

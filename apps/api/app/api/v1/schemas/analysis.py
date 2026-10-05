@@ -10,6 +10,18 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.config.model_config import (
+    SUPPORTED_LLM_PROVIDERS,
+    get_model_config,
+    normalize_provider,
+)
+from app.core.config.settings import get_settings
+
+# Module-level imports (verified cycle-free): the AnalysisCreate validator
+# resolves provider allowlists on every request, so keeping these at the top
+# avoids per-call import lookups.
+from app.llm import local_llm as _local_llm_mod
+
 
 class AnalysisCreate(BaseModel):
     knowledge_base_id: str = Field(..., description="Target knowledge base")
@@ -25,13 +37,11 @@ class AnalysisCreate(BaseModel):
     )
     web_search_provider: str = Field(
         default="both",
-        description="Web search provider: 'tavily', 'duckduckgo', or 'both'",
+        description="Accepted for compatibility; web grounding is Tavily-only",
     )
     llm_provider: str | None = Field(
         default=None,
-        description=(
-            "Active LLM provider override ('ollama', 'llama_cpp', 'mlx', 'gemini', 'nvidia')"
-        ),
+        description=("Active LLM provider override ('ollama', 'llama_cpp', 'mlx', 'gemini')"),
     )
     llm_model: str | None = Field(
         default=None,
@@ -46,14 +56,6 @@ class AnalysisCreate(BaseModel):
         only select models exposed by this deployment. This prevents arbitrary
         Hugging Face downloads and unbudgeted cloud model invocations.
         """
-        from app.core.config import (
-            SUPPORTED_LLM_PROVIDERS,
-            get_model_config,
-            get_settings,
-            normalize_provider,
-        )
-        from app.core.local_llm import get_discovered_llms
-
         cfg = get_model_config()
         settings = get_settings()
 
@@ -67,21 +69,19 @@ class AnalysisCreate(BaseModel):
         # auto-download path — but it does let operators select freshly-installed
         # models that the /models dropdown already lists.
         allowed_llms = {
-            "ollama": set(get_discovered_llms("ollama")),
-            "llama_cpp": set(get_discovered_llms("llama_cpp")),
-            "mlx": set(get_discovered_llms("mlx")),
+            "ollama": set(_local_llm_mod.get_discovered_llms("ollama")),
+            "llama_cpp": set(_local_llm_mod.get_discovered_llms("llama_cpp")),
+            "mlx": set(_local_llm_mod.get_discovered_llms("mlx")),
             # Cloud allowlists live in models.yaml (single source of truth) —
             # never hardcode model IDs here, or the next model release 422s
             # again (cf. gemini-3.8-flash).
             "gemini": set(cfg.supported_gemini_models),
-            "nvidia": set(cfg.supported_nvidia_models),
         }
         operator_llm_overrides = {
             "ollama": settings.ollama_model,
             "llama_cpp": settings.llamacpp_model,
             "mlx": settings.mlx_model,
             "gemini": settings.gemini_model,
-            "nvidia": cfg.llm_model if cfg.llm_provider == "nvidia" else "",
         }
         if operator_llm_overrides.get(provider):
             allowed_llms[provider].add(operator_llm_overrides[provider])
@@ -132,7 +132,7 @@ class AnalysisCreate(BaseModel):
         v_provider = normalize_provider(cfg.verification_provider)
         if v_provider not in SUPPORTED_LLM_PROVIDERS:
             raise ValueError(f"Unsupported verification provider: {v_provider}")
-        if v_provider in ("gemini", "nvidia"):
+        if v_provider == "gemini":
             v_allowed = set(allowed_llms[v_provider])
             # An explicit env override is an operator decision, same trust level
             # as settings.<provider>_model above: honour it rather than 422.

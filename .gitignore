@@ -1,7 +1,14 @@
 # ─── Secrets & environment ────────────────────────────────────────────────────
+# NOTE: `.env.*` also matches nested templates, so EVERY `.env.example` is
+# explicitly re-included below — otherwise a new app's template would be
+# silently untrackable.
 .env
 .env.*
 !.env.example
+!**/.env.example
+# Test env is committed on purpose: synthetic dummies only, so the suite is
+# hermetic and never reads a developer's real .env.
+!**/.env.test
 *.pem
 *.key
 *.p12
@@ -169,6 +176,7 @@ docker-compose.override.yaml
 # ─── Runtime data (Qdrant collections, caches, model snapshots) ────────────────
 data/
 apps/api/data/
+qdrant_storage/
 
 # ─── ML / Model cache (sentence-transformers, HuggingFace Hub, GGUF) ──────────
 # Model weights are NEVER committed — every machine fetches them once via
@@ -189,6 +197,14 @@ models/
 llama-server.log
 .huggingface/
 
+# Local-LLM launcher output (scripts/start_local_llm.sh, start_mlx_server.sh)
+*.mlx.server.log
+mlx-server.log
+mlx_lm.server.log
+# Legacy SQLite cache dir — the embedding/answer cache was removed; kept so a
+# stale dev DB on someone's machine is never committed.
+apps/api/data/cache/
+
 # ─── Security scan output ─────────────────────────────────────────────────────
 bandit-report.json
 safety-report.json
@@ -196,6 +212,8 @@ trivy-report.json
 trivy-results.sarif
 semgrep-report.json
 pip-audit-report.json
+# pip-audit's DEFAULT output format is report.html (security.yml runs it unflagged).
+report.html
 
 # ─── Package manager lockfiles ────────────────────────────────────────────────
 # apps/web uses npm (package-lock.json is committed)
@@ -232,6 +250,8 @@ test_*.txt
 
 # ─── Agent memory & machine-local dirs ────────────────────────────────────────
 .remember/
+# Project-id/credential scratch dirs written by external CLIs into the repo root.
+.freebuff/
 
 # ─── Env-tool locals ─────────────────────────────────────────────────────────
 .envrc
@@ -239,9 +259,11 @@ test_*.txt
 # ─── SQLite runtime caches (embedding disk cache, etc.) ───────────────────────
 *.sqlite
 *.sqlite3
+*.sqlite3-journal
 *.db
 *.db-wal
 *.db-shm
+*.rdb
 
 # ─── Evaluation run artifacts (runner JSON output; methodology stays tracked) ──
 docs/evaluation/results/

@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.exceptions import RetrievalOutageError
-from app.retrieval.retriever import (
+from app.core.security.exceptions import RetrievalOutageError
+from app.rag.retrieval.retriever import (
     apply_temporal_filtering,
     dense_search,
     reciprocal_rank_fusion,
@@ -83,21 +83,23 @@ def test_rrf_carries_ocr_image_and_version_provenance():
 
 
 @pytest.mark.asyncio
-async def test_collection_dimension_is_cached_per_collection():
-    import app.retrieval.retriever as retriever
+async def test_collection_dimension_is_read_live_per_call():
+    """Dimension is memoized per collection (P1-27): repeat reads for the
+    same collection hit cache; a new collection re-reads live."""
+    import app.rag.retrieval.retriever as retriever
 
-    collection_name = "kb_dimension_cache_test"
-    retriever._collection_dimension_cache.clear()
+    retriever._collection_dim_cache.clear()
     vectors = SimpleNamespace(size=384)
     col_info = SimpleNamespace(config=SimpleNamespace(params=SimpleNamespace(vectors=vectors)))
     client = SimpleNamespace(get_collection=AsyncMock(return_value=col_info))
 
-    first = await retriever._get_collection_dimension(client, collection_name)
-    second = await retriever._get_collection_dimension(client, collection_name)
+    first = await retriever._get_collection_dimension(client, "kb_dim_live")
+    second = await retriever._get_collection_dimension(client, "kb_dim_live")
 
     assert first == 384
     assert second == 384
-    client.get_collection.assert_awaited_once_with(collection_name)
+    assert client.get_collection.await_count == 1
+    retriever._collection_dim_cache.clear()
 
 
 @pytest.mark.asyncio
@@ -144,7 +146,7 @@ async def test_temporal_validity_filtering():
     mock_collection = MagicMock()
     mock_collection.find = MagicMock(return_value=mock_cursor)
 
-    with patch("app.retrieval.retriever.get_collection", return_value=mock_collection):
+    with patch("app.rag.retrieval.retriever.get_collection", return_value=mock_collection):
         filtered = await apply_temporal_filtering(results, ref_time)
 
         # Only doc-active fits (2026-08-01 lies between 2026-07-01 and 2026-09-01)
@@ -182,7 +184,7 @@ async def test_temporal_filter_drops_orphan_points_and_marks_versions():
     mock_collection = MagicMock()
     mock_collection.find = MagicMock(return_value=mock_cursor)
 
-    with patch("app.retrieval.retriever.get_collection", return_value=mock_collection):
+    with patch("app.rag.retrieval.retriever.get_collection", return_value=mock_collection):
         filtered = await apply_temporal_filtering(results, datetime(2026, 8, 1, tzinfo=UTC))
 
     texts = [r["text"] for r in filtered]
@@ -196,30 +198,26 @@ async def test_temporal_filter_drops_orphan_points_and_marks_versions():
 
 @pytest.mark.asyncio
 async def test_dense_search_raises_outage_when_qdrant_unavailable():
-    import app.retrieval.retriever as retriever
 
-    retriever._query_cache._cache.clear()
     with patch(
-        "app.retrieval.retriever.get_qdrant_client", side_effect=Exception("connection refused")
+        "app.rag.retrieval.retriever.get_qdrant_client", side_effect=Exception("connection refused")
     ):
-        with pytest.raises(RetrievalOutageError, match="Vector store unavailable"):
+        with pytest.raises(RetrievalOutageError, match="query failed"):
             await dense_search("outage probe query alpha", "kb_outage_1")
 
 
 @pytest.mark.asyncio
 async def test_dense_search_returns_empty_for_genuine_no_evidence():
-    import app.retrieval.retriever as retriever
 
-    retriever._query_cache._cache.clear()
     mock_client = SimpleNamespace(query_points=AsyncMock(return_value=SimpleNamespace(points=[])))
     mock_embed = MagicMock()
     mock_embed.embed_query = MagicMock(return_value=[0.1] * 8)
 
     with (
-        patch("app.retrieval.retriever.get_qdrant_client", return_value=mock_client),
-        patch("app.retrieval.retriever.get_embedding_model", return_value=mock_embed),
+        patch("app.rag.retrieval.retriever.get_qdrant_client", return_value=mock_client),
+        patch("app.rag.retrieval.retriever.get_embedding_model", return_value=mock_embed),
         patch(
-            "app.retrieval.retriever._get_collection_dimension",
+            "app.rag.retrieval.retriever._get_collection_dimension",
             AsyncMock(return_value=8),
         ),
     ):
@@ -229,18 +227,16 @@ async def test_dense_search_returns_empty_for_genuine_no_evidence():
 
 @pytest.mark.asyncio
 async def test_dense_search_raises_outage_when_query_fails():
-    import app.retrieval.retriever as retriever
 
-    retriever._query_cache._cache.clear()
     mock_client = SimpleNamespace(query_points=AsyncMock(side_effect=Exception("connection reset")))
     mock_embed = MagicMock()
     mock_embed.embed_query = MagicMock(return_value=[0.1] * 8)
 
     with (
-        patch("app.retrieval.retriever.get_qdrant_client", return_value=mock_client),
-        patch("app.retrieval.retriever.get_embedding_model", return_value=mock_embed),
+        patch("app.rag.retrieval.retriever.get_qdrant_client", return_value=mock_client),
+        patch("app.rag.retrieval.retriever.get_embedding_model", return_value=mock_embed),
         patch(
-            "app.retrieval.retriever._get_collection_dimension",
+            "app.rag.retrieval.retriever._get_collection_dimension",
             AsyncMock(return_value=8),
         ),
     ):
@@ -252,9 +248,9 @@ async def test_dense_search_raises_outage_when_query_fails():
 async def test_sparse_search_returns_empty_when_no_indexable_tokens():
     mock_client = SimpleNamespace(query_points=AsyncMock())
     with (
-        patch("app.retrieval.retriever.get_qdrant_client", return_value=mock_client),
+        patch("app.rag.retrieval.retriever.get_qdrant_client", return_value=mock_client),
         patch(
-            "app.retrieval.retriever.generate_sparse_vector",
+            "app.rag.retrieval.retriever.generate_sparse_vector",
             return_value={"indices": [], "values": []},
         ),
     ):
@@ -268,16 +264,16 @@ async def test_sparse_search_top_k_zero_disables_leg_without_qdrant():
     """top_k<=0 means the sparse leg is disabled: successful empty, never an outage."""
     with (
         patch(
-            "app.retrieval.retriever.get_qdrant_client",
+            "app.rag.retrieval.retriever.get_qdrant_client",
             side_effect=AssertionError("must not touch Qdrant when leg disabled"),
         ),
         patch(
-            "app.retrieval.retriever.generate_sparse_vector",
+            "app.rag.retrieval.retriever.generate_sparse_vector",
             side_effect=AssertionError("must not vectorize when leg disabled"),
         ),
     ):
-        assert await sparse_search("refund policy", "kb_x", top_k=0) == []
-        assert await sparse_search("refund policy", "kb_x", top_k=-3) == []
+        assert await sparse_search("retention policy", "kb_x", top_k=0) == []
+        assert await sparse_search("retention policy", "kb_x", top_k=-3) == []
 
 
 @pytest.mark.asyncio
@@ -285,25 +281,25 @@ async def test_dense_search_top_k_zero_disables_leg_without_embedding():
     """top_k<=0 means the dense leg is disabled: successful empty, never an outage."""
     with (
         patch(
-            "app.retrieval.retriever.get_qdrant_client",
+            "app.rag.retrieval.retriever.get_qdrant_client",
             side_effect=AssertionError("must not touch Qdrant when leg disabled"),
         ),
         patch(
-            "app.retrieval.retriever.get_embedding_model",
+            "app.rag.retrieval.retriever.get_embedding_model",
             side_effect=AssertionError("must not embed when leg disabled"),
         ),
     ):
-        assert await dense_search("refund policy", "kb_x", top_k=0) == []
-        assert await dense_search("refund policy", "kb_x", top_k=-1) == []
+        assert await dense_search("retention policy", "kb_x", top_k=0) == []
+        assert await dense_search("retention policy", "kb_x", top_k=-1) == []
 
 
 @pytest.mark.asyncio
 async def test_sparse_search_raises_outage_when_query_fails():
     mock_client = SimpleNamespace(query_points=AsyncMock(side_effect=Exception("Qdrant timed out")))
     with (
-        patch("app.retrieval.retriever.get_qdrant_client", return_value=mock_client),
+        patch("app.rag.retrieval.retriever.get_qdrant_client", return_value=mock_client),
         patch(
-            "app.retrieval.retriever.generate_sparse_vector",
+            "app.rag.retrieval.retriever.generate_sparse_vector",
             return_value={"indices": [7], "values": [0.5]},
         ),
     ):
@@ -315,19 +311,20 @@ async def test_sparse_search_raises_outage_when_query_fails():
 async def test_retrieve_hybrid_chunks_propagates_outage_not_empty():
     with (
         patch(
-            "app.retrieval.retriever.dense_search",
+            "app.rag.retrieval.retriever.dense_search",
             AsyncMock(side_effect=RetrievalOutageError("Vector store unavailable: down")),
         ),
-        patch("app.retrieval.retriever.sparse_search", AsyncMock(return_value=[])),
+        patch("app.rag.retrieval.retriever.sparse_search", AsyncMock(return_value=[])),
     ):
         with pytest.raises(RetrievalOutageError):
             await retrieve_hybrid_chunks("outage probe query epsilon", "kb_outage_4")
 
 
 @pytest.mark.asyncio
-async def test_hybrid_degrades_to_healthy_branch_on_timeout(monkeypatch):
-    """One hung branch must not discard the healthy branch's results."""
-    from app.retrieval import retriever
+async def test_hybrid_one_hung_branch_is_outage_not_partial(monkeypatch):
+    """Strict retrieval: one hung branch fails the analysis — the healthy
+    branch's results are never served as if they were the whole evidence."""
+    from app.rag.retrieval import retriever
 
     monkeypatch.setattr(retriever, "RETRIEVAL_BRANCH_TIMEOUT", 0.05)
 
@@ -340,19 +337,17 @@ async def test_hybrid_degrades_to_healthy_branch_on_timeout(monkeypatch):
     sparse_point.score = 0.7
     sparse_point.payload = {"text": "sparse hit"}
     with (
-        patch("app.retrieval.retriever.dense_search", AsyncMock(side_effect=slow_dense)),
-        patch("app.retrieval.retriever.sparse_search", AsyncMock(return_value=[sparse_point])),
+        patch("app.rag.retrieval.retriever.dense_search", AsyncMock(side_effect=slow_dense)),
+        patch("app.rag.retrieval.retriever.sparse_search", AsyncMock(return_value=[sparse_point])),
     ):
-        res = await retrieve_hybrid_chunks("degraded branch probe", "kb_degraded_1")
-
-    assert len(res) == 1
-    assert res[0]["text"] == "sparse hit"
+        with pytest.raises(RetrievalOutageError, match="dense"):
+            await retrieve_hybrid_chunks("strict branch probe", "kb_strict_1")
 
 
 @pytest.mark.asyncio
 async def test_hybrid_both_branches_timeout_is_outage(monkeypatch):
     """Both branches hung → hard outage, never silent 'no evidence'."""
-    from app.retrieval import retriever
+    from app.rag.retrieval import retriever
 
     monkeypatch.setattr(retriever, "RETRIEVAL_BRANCH_TIMEOUT", 0.05)
 
@@ -361,17 +356,17 @@ async def test_hybrid_both_branches_timeout_is_outage(monkeypatch):
         return []
 
     with (
-        patch("app.retrieval.retriever.dense_search", AsyncMock(side_effect=slow)),
-        patch("app.retrieval.retriever.sparse_search", AsyncMock(side_effect=slow)),
+        patch("app.rag.retrieval.retriever.dense_search", AsyncMock(side_effect=slow)),
+        patch("app.rag.retrieval.retriever.sparse_search", AsyncMock(side_effect=slow)),
     ):
-        with pytest.raises(RetrievalOutageError, match="both"):
+        with pytest.raises(RetrievalOutageError, match="timed out"):
             await retrieve_hybrid_chunks("outage probe query zeta", "kb_outage_5")
 
 
 @pytest.mark.asyncio
 async def test_hybrid_enforces_fusion_top_k():
     """Fused candidates are truncated to retrieval.fusion_top_k (default 20)."""
-    from app.core.config import get_model_config
+    from app.core.config.model_config import get_model_config
 
     fusion_top_k = get_model_config().fusion_top_k
     assert fusion_top_k == 20
@@ -388,11 +383,11 @@ async def test_hybrid_enforces_fusion_top_k():
 
     with (
         patch(
-            "app.retrieval.retriever.dense_search",
+            "app.rag.retrieval.retriever.dense_search",
             AsyncMock(return_value=make_points("d", 25)),
         ),
         patch(
-            "app.retrieval.retriever.sparse_search",
+            "app.rag.retrieval.retriever.sparse_search",
             AsyncMock(return_value=make_points("s", 25)),
         ),
     ):

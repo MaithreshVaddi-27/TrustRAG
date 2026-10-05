@@ -2,6 +2,7 @@ import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { ExecutionTrace } from '@/components/workbench/ExecutionTrace'
+import { SkeletonRows } from '@/components/workbench/Skeleton'
 import { analysisService } from '@/services/api'
 import { Terminal } from 'lucide-react'
 
@@ -26,7 +27,7 @@ export default function TracePage() {
         </div>
         <div className="glass-card p-5">
           {isLoading && (
-            <p className="text-slate-500 text-sm">Loading trace…</p>
+            <SkeletonRows rows={5} className="h-11 rounded-xl" />
           )}
           {isError && (
             <p className="text-red-400 text-sm">Failed to load trace history.</p>

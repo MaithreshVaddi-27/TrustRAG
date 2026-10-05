@@ -10,14 +10,16 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
-from app.core.config import get_model_config, get_ports, get_settings
-from app.core.hardware import get_cached_hardware_profile
-from app.core.local_llm import (
+from app.core.config.model_config import get_model_config
+from app.core.config.settings import get_ports, get_settings
+from app.core.observability.logging import get_logger
+from app.core.system import memory as memory_mod
+from app.core.system.hardware import get_cached_hardware_profile
+from app.llm.local_llm import (
     check_llamacpp_status,
     check_mlx_status,
     check_ollama_status,
 )
-from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -33,7 +35,7 @@ async def _safe_provider_status(check_fn, base_url: str, provider: str) -> dict[
     """
     try:
         return await check_fn(base_url)
-    except Exception as exc:
+    except Exception:
         logger.warning("Provider status check failed; degrading to stub", provider=provider)
         return {
             "connected": False,
@@ -41,7 +43,7 @@ async def _safe_provider_status(check_fn, base_url: str, provider: str) -> dict[
             "base_url": base_url,
             "models": [],
             "default_model": "",
-            "error": str(exc)[:200],
+            "error": "PROVIDER_UNREACHABLE",
         }
 
 
@@ -130,31 +132,12 @@ async def get_providers_endpoint(
                 "name": "Google Gemini (Cloud)",
                 "type": "cloud",
                 "connected": bool(settings.gemini_api_key),
+                # Single source of truth: models.yaml llm.supported_models_gemini
+                # + llm.model_gemini. A yaml edit propagates here with no code change.
                 "default_model": cfg.llm_model
                 if cfg.llm_provider == "gemini"
-                else "gemini-3.5-flash-lite",
-                "models": [
-                    "gemini-3.8-flash",
-                    "gemini-3.7-flash",
-                    "gemini-3.6-flash",
-                    "gemini-3.5-flash",
-                    "gemini-3.5-flash-lite",
-                ],
-            },
-            "nvidia": {
-                "name": "NVIDIA NIM (Cloud)",
-                "type": "cloud",
-                "connected": bool(settings.nvidia_api_key),
-                # Verified live 2026-09-21: only these three answer on this
-                # account (lightning stalls, nano-omni 503s, rest 404).
-                # Reasoning models (gpt-oss, muse-glimmer) need headroom:
-                # reasoning shares the max_tokens budget with the answer.
-                "default_model": "openai/gpt-oss-20b",
-                "models": [
-                    "openai/gpt-oss-20b",
-                    "google/gemma-4-31b-it",
-                    "meta/muse-glimmer-30b",
-                ],
+                else cfg.llm_model_for("gemini"),
+                "models": cfg.supported_gemini_models,
             },
         },
         "embedding": embedding_info,
@@ -179,13 +162,9 @@ async def trim_memory_endpoint(
     """
     Manually invoke garbage collection and glibc malloc_trim to free resident memory.
     """
-    import asyncio
-
-    from app.core.memory import get_memory_usage_mb, trim_memory
-
-    before_mb = get_memory_usage_mb()
-    await asyncio.to_thread(trim_memory)
-    after_mb = get_memory_usage_mb()
+    before_mb = memory_mod.get_memory_usage_mb()
+    await asyncio.to_thread(memory_mod.trim_memory)
+    after_mb = memory_mod.get_memory_usage_mb()
     return {
         "status": "ok",
         "before_mb": before_mb,

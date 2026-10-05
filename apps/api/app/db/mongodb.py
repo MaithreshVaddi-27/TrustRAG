@@ -22,9 +22,9 @@ import pymongo
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo.errors import PyMongoError
 
-from app.core.config import get_settings
-from app.core.exceptions import DatabaseError
-from app.core.logging import get_logger
+from app.core.config.settings import get_settings
+from app.core.observability.logging import get_logger
+from app.core.security.exceptions import DatabaseError
 
 if TYPE_CHECKING:
     from motor.motor_asyncio import AsyncIOMotorCollection
@@ -85,9 +85,6 @@ class Collections:
     EVIDENCE = "evidence"
     RECOVERY_RUNS = "recovery_runs"
     TRACE_EVENTS = "trace_events"
-    EXPERIMENTS = "experiments"
-    FEATURE_FLAGS = "feature_flags"
-    FEEDBACK = "feedback"
     REVOKED_TOKENS = "revoked_tokens"
     STREAM_TICKETS = "stream_tickets"
     FAILED_LOGINS = "failed_logins"
@@ -334,6 +331,13 @@ async def create_indexes() -> None:
             name="chunk_kb_order",
         )
     )
+    # N-46: citation-click page-image lookup filters by document + page.
+    index_tasks.append(
+        db[Collections.DOCUMENT_CHUNKS].create_index(
+            [("document_id", pymongo.ASCENDING), ("page", pymongo.ASCENDING)],
+            name="chunk_doc_page",
+        )
+    )
 
     # ── analyses ───────────────────────────────────────────────────────────
     index_tasks.append(
@@ -384,6 +388,13 @@ async def create_indexes() -> None:
             name="claim_analysis_state",
         )
     )
+    # N-46: hottest claims read sorts by recency per analysis.
+    index_tasks.append(
+        db[Collections.CLAIMS].create_index(
+            [("analysis_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="claim_analysis_time",
+        )
+    )
 
     # ── evidence ───────────────────────────────────────────────────────────
     index_tasks.append(
@@ -400,6 +411,13 @@ async def create_indexes() -> None:
     index_tasks.append(
         db[Collections.EVIDENCE].create_index(
             [("document_id", pymongo.ASCENDING)], name="evidence_document"
+        )
+    )
+    # N-46: hottest evidence read sorts by recency per analysis.
+    index_tasks.append(
+        db[Collections.EVIDENCE].create_index(
+            [("analysis_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="evidence_analysis_time",
         )
     )
 
@@ -430,14 +448,6 @@ async def create_indexes() -> None:
             [("timestamp", pymongo.ASCENDING)],
             name="trace_timestamp_ttl",
             expireAfterSeconds=2_592_000,  # 30 days
-        )
-    )
-
-    # ── experiments ────────────────────────────────────────────────────────
-    index_tasks.append(
-        db[Collections.EXPERIMENTS].create_index(
-            [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
-            name="exp_owner_time",
         )
     )
 

@@ -7,8 +7,21 @@ without requiring live production secrets or pre-existing local .env files.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
+
+# Test secrets come from an env FILE, never hardcoded literals here:
+# apps/api/.env.test is committed (synthetic values only) so CI and dev machines
+# share identical config without editing code. override=True is deliberate:
+# it makes the suite hermetic, so an exported shell key or a developer's real
+# .env can never win over the dummies and make results machine-dependent.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env.test", override=True)
+except Exception:
+    pass
 
 # Hermetic provider config: a developer's local .env (e.g. AI_PROVIDER=ollama)
 # must not leak into the suite — tests assert models.yaml defaults
@@ -27,16 +40,14 @@ for _leaky_var in (
     os.environ.pop(_leaky_var, None)
 del _leaky_var
 
-# Set dummy test environment variables before any app modules are imported
+# Last-resort defaults, only if .env.test is missing (e.g. a partial checkout).
+# These are format-valid SYNTHETIC dummies, never real credentials.
 os.environ.setdefault(
     "JWT_SECRET",
     "test-secret-minimum-32-characters-long-key-for-unit-testing",
 )
-os.environ.setdefault("GEMINI_API_KEY", "test-gemini-api-key")
 os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017")
-os.environ.setdefault("QDRANT_URL", "http://localhost:6333")
 os.environ.setdefault("APP_ENV", "development")
-os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 
 
 # Clear global caches between tests to avoid cross-test pollution
@@ -58,29 +69,11 @@ def _clear_all_caches() -> None:
         "EMBEDDING_MODEL",
     ):
         os.environ.pop(_leaky_var, None)
-    # Reranker result cache
-    from app.retrieval import reranker as reranker_module
-
-    if reranker_module._reranker_cache is not None:
-        reranker_module._reranker_cache.clear()
-    # Query-vector embedding cache (dim-mismatch guard reads this)
-    try:
-        from app.retrieval.retriever import _query_cache
-
-        _query_cache.clear()
-    except Exception:
-        pass
-    # Settings / model-config lru_cache (tests that mutate env leak by order)
-    try:
-        from app.core.config import get_model_config, get_settings
-
-        get_settings.cache_clear()
-        get_model_config.cache_clear()
-    except Exception:
-        pass
+    # No volatile caches exist (singletons, registries, query/reranker result
+    # caches all removed): nothing to clear here.
     # OCR engine/error globals (a failed load would otherwise poison later tests)
     try:
-        from app.ingestion.ocr import reset_engine_for_tests
+        from app.rag.ingestion.ocr import reset_engine_for_tests
 
         reset_engine_for_tests()
     except Exception:

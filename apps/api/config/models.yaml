@@ -16,18 +16,19 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 runtime:
-  config_version: "1.22"
+  # 1.27 (2026-10-03 audit pass): sparse_top_k 0->20 (hybrid leg),
+  # max_analysis_seconds 120->600 (recovery reachable), ocr.dpi 200->300,
+  # retrieval.quantization.enabled added (INT8 gated off), local_llm.num_ctx_by_model.
+  config_version: "1.27"
 
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
-  # Provider options: ollama, llama_cpp, mlx (Apple Silicon), google_genai, nvidia
+  # Provider options: ollama, llama_cpp, mlx (Apple Silicon), gemini
   provider: llama_cpp
   ollama_base_url: "http://localhost:11434"
   llamacpp_base_url: "http://127.0.0.1:8080/v1"
   mlx_base_url: "http://127.0.0.1:8090/v1"
-  # NVIDIA NIM endpoint. Point this at a self-hosted or OpenAI-compatible
-  # NIM gateway to leave the public integrate.api.nvidia.com (audit B-13).
-  nvidia_base_url: ""
+
   # Supported local models (exactly what is installed):
   #   ollama (`ollama list`):
   #     - Impulse2000/smollm3:3b-q4_K_M
@@ -49,10 +50,7 @@ llm:
   model_ollama: gemma3:1b
   model_llamacpp: LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
   model_mlx: mlx-community/Llama-3.2-1B-Instruct-4bit
-  # NVIDIA NIM (cloud) default model — verified live 2026-09-21: the only
-  # entitlement with a responding endpoint (gpt-oss-20b ~3s; gemma-4-31b-it
-  # ~8s). nemotron-3.5-lightning-30b-a3b stalls with zero bytes.
-  model_nvidia: openai/gpt-oss-20b
+
   # Gemini (cloud) default model — override with LLM_MODEL env or this key.
   # Stable Gemini 3 models (Sep 2025): gemini-3.8-flash (flagship), gemini-3.7-flash, gemini-3.6-flash, gemini-3.5-flash, gemini-3.5-flash-lite
   # Deprecated: gemini-2.0-flash, gemini-2.0-flash-lite, gemini-3.1-flash-lite-preview, gemini-3-pro-preview (shut down)
@@ -68,12 +66,7 @@ llm:
     - gemini-3.5-flash-lite
     - gemini-2.5-flash
     - gemini-2.5-pro
-  # Verified live 2026-09-21: only these answer (lightning stalls,
-  # nano-omni 503s, everything else 404-not-entitled).
-  supported_models_nvidia:
-    - openai/gpt-oss-20b
-    - google/gemma-4-31b-it
-    - meta/muse-glimmer-30b
+
   temperature: 0.2
   top_p: 0.9
   max_output_tokens: 1024
@@ -104,9 +97,7 @@ verification:
   model_ollama: gemma3:1b
   model_llamacpp: LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
   model_mlx: mlx-community/Llama-3.2-1B-Instruct-4bit
-  # NVIDIA NIM verification model (same verified-live default as llm.model_nvidia)
-  model_nvidia: openai/gpt-oss-20b
-  temperature: 0.0          # Zero temperature for deterministic verification
+
   max_output_tokens: 512
   timeout_seconds: 180
   max_retries: 1
@@ -131,6 +122,8 @@ reranker:
   top_k: 20
   # Batch size for CrossEncoder inference (CPU: 16, GPU: 64)
   batch_size: 16
+  # Max sequence length for reranker tokenization (pairs truncate longest_first)
+  max_seq_length: 512
   # Early termination confidence threshold
   early_termination_confidence: 0.85
   # Early termination score gap threshold
@@ -138,17 +131,56 @@ reranker:
   # ONNX quantization for reranker (int8 for 3-4x CPU speedup, torch-free)
   use_onnx: true
   onnx_model_path: ""  # Auto-generated if empty
-  # Result cache size for reranker (Phase 3.2) - avoids re-scoring same query-doc pairs
-  cache_size: 500
+
+# ─── ONNX Runtime (shared embedding + reranker engine) ──────────────────────
+# Single source of truth for every ORT session in the backend. Both
+# app/core/onnx_embeddings.py and app/core/onnx_reranker.py build their
+# sessions from here via app/core/onnx_runtime.py — update here and it
+# updates everywhere. Env vars (ONNX_*) win over these defaults.
+onnx:
+  # Execution providers in priority order. CPU-only keeps RAM flat;
+  # add CUDAExecutionProvider first on GPU hosts if onnxruntime-gpu is installed.
+  providers:
+    - CPUExecutionProvider
+  # Intra-op thread pool. 0 = auto → min(cpu_count, 4): enough parallelism
+  # for GEMM without oversubscribing next to uvicorn workers. Lower (1-2)
+  # for less RAM on ≤8GB hosts; raise on 32GB+ hosts.
+  intra_op_threads: 0
+  # Inter-op thread pool. 1 = lowest RAM (no parallel branches); raise only
+  # for multi-graph parallel workloads.
+  inter_op_threads: 1
+  # Graph optimization: none | basic | extended | all. `all` fuses ops for
+  # faster warm inference at a slightly larger load-time memory spike.
+  graph_optimization: "all"
+  # CPU memory arena: true = faster warm inference (reuses blocks);
+  # false = lower peak RAM on tiny containers (≤2GB).
+  cpu_mem_arena: true
+  # Memory pattern optimization (pairs with the arena; disable with it).
+  mem_pattern: true
+  # Internal micro-batch bound for embedding _encode_batch (tokenize+infer
+  # chunking). 0 = auto (hardware-tier sizing: lean 32 / standard 64 /
+  # high 128 — see hardware.get_ingest_embed_batch_size). Set >0 to force
+  # one size everywhere from this file (env ONNX_EMBED_MICRO_BATCH wins).
+  embed_micro_batch: 0
 
 # ─── Retrieval ────────────────────────────────────────────────────────────────
 retrieval:
   dense_top_k: 20
-  sparse_top_k: 0          # BM25 via Qdrant sparse vectors
+  sparse_top_k: 20          # BM25 via Qdrant sparse vectors
   fusion_method: rrf        # Reciprocal Rank Fusion
   rrf_k: 60                 # RRF constant (standard default)
   fusion_top_k: 20
   max_context_chunks: 8     # Maximum evidence chunks sent to LLM
+  # Time budgets (seconds). 0 = use built-in fallback (branch 45s / hybrid
+  # 60s). One hung branch degrades to the other branch; both timing out is
+  # a hard outage. Env wins: RETRIEVAL_BRANCH_TIMEOUT_SECONDS,
+  # RETRIEVAL_HYBRID_TIMEOUT_SECONDS.
+  branch_timeout_seconds: 0
+  hybrid_timeout_seconds: 0
+  # Query-vector LRU capacity (RAM-bounded; entries are 384-float vectors).
+  # Lower (256) on ≤8GB hosts; raise (2048) on 32GB+ hosts.
+  # Env wins: RETRIEVAL_QUERY_CACHE_CAPACITY.
+  query_cache_capacity: 1024
   # Deterministic query router (no LLM call): simple → 1 call; temporal → 1 call +
   # reference_time; comparison/complex → bounded parallel fan-out merged by RRF.
   query_router:
@@ -159,6 +191,12 @@ retrieval:
   sparse_k1: 1.2             # Term-frequency saturation
   sparse_b: 0.75             # Length-normalization strength
   sparse_avg_len_tokens: 128 # Reference length ≈ default 512-char chunk
+  # Vector quantization (N-53): INT8 scalar quantization is OFF by default.
+  # Enable only after measuring recall impact on BGE-small 384-d — 1% clipping
+  # can drop the true nearest neighbour at the reranker boundary.
+  # Env wins: QDRANT_QUANTIZATION_ENABLED=1.
+  quantization:
+    enabled: false
 
 # ─── Document Processing ──────────────────────────────────────────────────────
 ingestion:
@@ -178,13 +216,16 @@ ingestion:
     - html
     - htm
   max_file_size_mb: 20
+  # Qdrant upsert batch: points per upsert call (prevents network timeouts
+  # on large documents). Lower (50) on flaky networks; raise (200) on LAN.
+  qdrant_upsert_batch: 100
   # OCR fallback (RapidOCR-ONNX): native extraction stays the default; only
   # pages with less than min_native_chars of native text are OCR-rendered.
   # Page text below min_confidence is dropped (never becomes evidence).
   ocr:
     enabled: true
     min_native_chars: 50
-    dpi: 200
+    dpi: 300
     min_confidence: 0.5
     # Persist the exact page renders the OCR engine read (Phase 7 chain:
     # Answer → chunk → page → image). Native pages render nothing (no cost);
@@ -206,6 +247,8 @@ recovery:
   max_recovery_attempts: 2          # Allow up to 2-3 recovery attempts
   max_recovery_tokens: 2000         # Token budget across all recovery rounds
   max_recovery_latency_seconds: 180 # Latency budget across all recovery rounds
+  # NOTE: the recovery budgets above only count work inside the recovery node.
+  # The whole-analysis wall-clock ceiling is cost_controls.max_analysis_seconds.
   # Strategy costs (relative units) — prefer cheaper strategies first
   # Fallback for undiagnosed failures; diagnosed failures map directly to strategy
   strategy_priority:
@@ -232,6 +275,13 @@ cost_controls:
   # per round x up to 3 rounds lands near 24-36 calls, so 24 stops a runaway
   # recovery loop before it bills without bound. Local tiers are never capped.
   max_llm_calls_per_analysis: 24
+  # Analysis-wide wall-clock ceiling (audit L-1). The recovery budgets count
+  # only time spent inside the recovery node, so a 3-round run was effectively
+  # unbounded and produced multi-minute answers. This bounds the whole graph:
+  # once spent, no new round starts and the current verdict stands (the run
+  # abstains rather than guessing). 0 disables the bound. Raise only for slow
+  # hardware or cloud providers with real per-call latency.
+  max_analysis_seconds: 600
   max_verification_claims: 8        # Small models choke on 20; 8 keeps NLI focused
   max_individual_nli_fallback: 8    # Must cover max_verification_claims (8): when
                                     # batch NLI fails, every claim is still attempted
@@ -262,7 +312,6 @@ optimization:
   kv_cache_quantization: "q8_0"                 # q8_0 (measured default) | q4_0 | q4_1 — honored by scripts/start_local_llm.sh (unknown values fall back to q8_0; "fp16" is not a valid llama-server k-quant)
   flash_attention: true                         # Computes attention in SRAM tiles (O(N) memory)
   prompt_caching: true                          # Reuses KV cache for static system prompt prefixes
-  adaptive_top_k: true                          # Caps fused candidates at 4 on high RRF confidence (>= 0.02)
   # Context Compression (Phase 2.4) — hierarchical summarization before LLM call
   # Compression issues a SECOND full LLM call on the same model, so it is a net
   # cost on any tier whose window comfortably fits the context. Cloud tiers have
@@ -272,13 +321,15 @@ optimization:
   context_compression_enabled: false            # Enable/disable context compression globally
   context_compression_provider: "off"           # "cloud" | "local" | "off"
   context_compression_min_tokens: 6000          # Skip compression below this context size
-  context_compression_target_reduction: 0.5     # Target: 50% of original size (40-60% range)
 
 # ─── Local LLM Inference Parameters ────────────────────────────────────────────
 # Applied to Ollama, llama.cpp, and MLX clients
 local_llm:
   # Context window size (tokens). Must match or be <= llama-server -c / Ollama num_ctx
   num_ctx: 4096
+  # Per-model overrides (L-2): a 30B GGUF served with -c 32768 must not be
+  # clamped to the small-model 4096 default. Keys are exact model ids.
+  num_ctx_by_model: {}
   # Prompt processing batch size for llama.cpp (controls KV cache build parallelism)
   num_batch: 512
   # Release GPU memory after this idle period (Ollama: keep_alive; llama.cpp: auto-unload)

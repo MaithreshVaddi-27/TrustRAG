@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.generation.generator import (
+from app.rag.generation.generator import (
     format_context,
     format_context_with_chunk_indices,
     generate_grounded_answer,
@@ -66,7 +66,7 @@ def test_context_format_returns_original_chunk_indexes_after_sort_and_dedup():
     high = {
         "filename": "doc-high.txt",
         "page": 2,
-        "text": "The approved policy permits refunds within thirty days.",
+        "text": "The approved policy permits records within thirty days.",
         "rrf_score": 0.9,
     }
 
@@ -106,7 +106,7 @@ async def test_generation_abstention_on_empty_context():
     assert answer == "ABSTAIN"
 
 
-@patch("app.generation.generator.get_llm")
+@patch("app.rag.generation.generator.get_llm")
 @pytest.mark.asyncio
 async def test_generation_successful_call(mock_get_llm):
     # Mock LangChain ChatGoogleGenerativeAI call
@@ -126,7 +126,7 @@ async def test_generation_successful_call(mock_get_llm):
 
 def test_strip_stray_abstain_matrix():
     """Trailing bare ABSTAIN (small-model habit) is peeled, never content."""
-    good = "Refunds are available for 45 days with processing in a week."
+    good = "Records are available for 45 days with processing in a week."
     assert strip_stray_abstain(f"{good}\nABSTAIN") == good
     assert strip_stray_abstain(f"{good}    ABSTAIN") == good
     assert strip_stray_abstain(f"{good}\nABSTAIN.") == good
@@ -187,7 +187,7 @@ def test_format_dedupes_punctuation_variants():
 
 
 def test_strip_citation_markers_removes_all_refs():
-    from app.generation.generator import strip_citation_markers
+    from app.rag.generation.generator import strip_citation_markers
 
     raw = (
         "### Contents\n"
@@ -208,7 +208,7 @@ def test_strip_citation_markers_removes_all_refs():
 
 
 def test_strip_citation_markers_is_noop_without_markers():
-    from app.generation.generator import strip_citation_markers
+    from app.rag.generation.generator import strip_citation_markers
 
     plain = "### Answer\nA grounded sentence with no refs.\n* bullet two"
     assert strip_citation_markers(plain) == plain
@@ -216,7 +216,7 @@ def test_strip_citation_markers_is_noop_without_markers():
 
 
 def test_strip_citation_markers_leaves_bracketless_prose():
-    from app.generation.generator import strip_citation_markers
+    from app.rag.generation.generator import strip_citation_markers
 
     # Only the bracketed form is provenance; prose mentions are real content.
     text = "Segment 2 states that patterns must be interesting [Segment 3]."

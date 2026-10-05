@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 // Public Landing page
 const LandingPage = lazy(() => import('@/pages/LandingPage'))
@@ -18,7 +18,6 @@ const KnowledgeBasesPage = lazy(() => import('@/pages/KnowledgeBasesPage'))
 const EvidencePage       = lazy(() => import('@/pages/EvidencePage'))
 const ClaimsPage         = lazy(() => import('@/pages/ClaimsPage'))
 const ConflictsPage      = lazy(() => import('@/pages/ConflictsPage'))
-const ExperimentsPage    = lazy(() => import('@/pages/ExperimentsPage'))
 const SettingsPage       = lazy(() => import('@/pages/SettingsPage'))
 const TracePage          = lazy(() => import('@/pages/TracePage'))
 const NotFoundPage       = lazy(() => import('@/pages/NotFoundPage'))
@@ -27,7 +26,7 @@ function PageLoading() {
   return (
     <div className="min-h-screen supports-[min-height:100dvh]:min-h-dvh bg-surface-950 flex flex-col items-center justify-center">
       <div className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-surface-900 border border-slate-800 shadow-2xl">
-        <Loader2 className="w-5 h-5 text-primary-400 animate-spin" />
+        <ThinkingOrbs size="md" />
         <span className="text-sm font-medium text-slate-300">Loading module...</span>
       </div>
     </div>
@@ -58,11 +57,15 @@ function RedirectIfAuth({ children }) {
 }
 
 /**
- * Wraps a route element in an ErrorBoundary so a crash on one page
- * shows a recovery UI instead of unmounting the entire app (FE-H3).
+ * Wraps a route element in an ErrorBoundary + per-route Suspense so a lazy
+ * chunk load replaces only its route — never the whole sidebar/navbar tree.
  */
 function guarded(element) {
-  return <ErrorBoundary>{element}</ErrorBoundary>
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<PageLoading />}>{element}</Suspense>
+    </ErrorBoundary>
+  )
 }
 
 const PATH_TITLES = {
@@ -75,7 +78,6 @@ const PATH_TITLES = {
   '/evidence': 'Evidence Vault — TRUSTRAG',
   '/claims': 'Claim Inspector — TRUSTRAG',
   '/conflicts': 'Source & Claim Conflicts — TRUSTRAG',
-  '/experiments': 'Experiments — TRUSTRAG',
   '/settings': 'Settings — TRUSTRAG',
 }
 
@@ -91,7 +93,7 @@ function TitleSync() {
 
 export default function App() {
   return (
-    <Suspense fallback={<PageLoading />}>
+    <>
       <TitleSync />
       <Routes>
         {/* ── Public ──────────────────────────────────────────── */}
@@ -106,13 +108,12 @@ export default function App() {
         <Route path="/evidence"        element={guarded(<RequireAuth><EvidencePage /></RequireAuth>)} />
         <Route path="/claims"          element={guarded(<RequireAuth><ClaimsPage /></RequireAuth>)} />
         <Route path="/conflicts"       element={guarded(<RequireAuth><ConflictsPage /></RequireAuth>)} />
-        <Route path="/experiments"     element={guarded(<RequireAuth><ExperimentsPage /></RequireAuth>)} />
         <Route path="/settings"        element={guarded(<RequireAuth><SettingsPage /></RequireAuth>)} />
         <Route path="/traces/:id"      element={guarded(<RequireAuth><TracePage /></RequireAuth>)} />
 
         {/* ── Fallback ────────────────────────────────────────── */}
         <Route path="*" element={guarded(<NotFoundPage />)} />
       </Routes>
-    </Suspense>
+    </>
   )
 }

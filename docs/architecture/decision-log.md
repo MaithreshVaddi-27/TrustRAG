@@ -150,7 +150,9 @@ Docker Compose connects to host MongoDB; Atlas remains supported via
 
 **Decision:** The configured model ID is `gemini-2.5-flash` (or `gemini-3.5-flash-lite`). The user requested "Gemini 3.5 Flash" which does not exist as a published model ID. `gemini-2.5-flash` is the current free-tier Flash generation model.
 
-**Amendment 2026-09-16:** the LLM is now multi-provider and selectable per request (llama.cpp default, Ollama, Gemini, NVIDIA). The Gemini IDs above apply only when the Gemini provider is selected.
+**Amendment 2026-09-16:** the LLM became multi-provider and selectable per request (llama.cpp default, Ollama, Gemini, NVIDIA).
+
+**Amendment 2026-10-03:** NVIDIA NIM was removed entirely (provider, settings, dependency). `SUPPORTED_LLM_PROVIDERS` is now `ollama | llama_cpp | mlx | gemini`; CUDA remains only as a llama.cpp launch flag. Gemini requires the optional `cloud` extra. The Gemini IDs above apply only when the Gemini provider is selected.
 
 **Action required:** Verify the exact model ID at [Google AI Studio](https://aistudio.google.com/app/apikey) before deployment and update `models.yaml` if needed.
 

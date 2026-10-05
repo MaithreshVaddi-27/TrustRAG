@@ -39,7 +39,7 @@ TrustRAG is a trustworthy Retrieval-Augmented Generation system. It goes beyond 
 | Document store | MongoDB (async `motor`) |
 | Embeddings | Local-only `BAAI/bge-small-en-v1.5` — PyTorch (`huggingface`) or ONNX Runtime (`onnx`, torch-free) |
 | Reranking | CrossEncoder (sentence-transformers, off by default) |
-| Generation | llama.cpp / Ollama (local, default) · Gemini / NVIDIA NIM (cloud, selectable) |
+| Generation | llama.cpp / Ollama / MLX (local, default) · Gemini (cloud, optional `cloud` extra) |
 | Frontend | React 18, Vite 6, Tailwind CSS 3, `motion` |
 | Container runtime | Docker Compose |
 
@@ -72,13 +72,18 @@ TrustRAG/
 │   │   │   │   ├── chunker.py        # Word-snapping windows (512/64)
 │   │   │   │   ├── chunking_strategies.py  # Pluggable chunking strategies
 │   │   │   │   └── sparse_vector.py  # BM25-style sparse weight generation
-│   │   │   ├── core/
-│   │   │   │   ├── config.py         # Settings + models.yaml loader
-│   │   │   │   ├── model_registry.py # Model factory (embedding, verification, LLM)
-│   │   │   │   ├── semantic_cache.py # Semantic response cache + context pruning
+│   │   │   ├── llm/
+│   │   │   │   ├── model_registry.py # Model factory (embedding, reranker, LLM)
+│   │   │   │   ├── onnx_embeddings.py  # ONNX BGE embedding engine
+│   │   │   │   ├── onnx_reranker.py    # ONNX cross-encoder reranker
+│   │   │   │   ├── onnx_runtime.py     # Shared ORT session options
 │   │   │   │   ├── local_llm.py      # Ollama + llama.cpp LangChain clients
-│   │   │   │   ├── hardware.py       # Hardware detection + llama.cpp launch args
-│   │   │   │   └── memory.py         # Conversation memory trimming
+│   │   │   │   └── llm_ledger.py     # Per-analysis LLM call budget
+│   │   │   ├── core/
+│   │   │   │   ├── config/           # settings.py + model_config.py (models.yaml loader)
+│   │   │   │   ├── observability/    # logging + metrics + tracing
+│   │   │   │   ├── security/         # Auth primitives + exception hierarchy
+│   │   │   │   └── system/           # hardware + memory + concurrency
 │   │   │   ├── db/
 │   │   │   │   ├── qdrant.py         # Qdrant client + collection init
 │   │   │   │   └── mongodb.py        # MongoDB client + indexes (`Collections`)
@@ -90,7 +95,7 @@ TrustRAG/
 │   │   │   │   └── search_service.py # Web-search orchestration (SSRF-guarded)
 │   │   │   └── mcp/                  # MCP server (`trustrag_*` tools) + client
 │   │   ├── config/
-│   │   │   └── models.yaml           # Model IDs, thresholds, tuning params (v1.15)
+│   │   │   └── models.yaml           # Model IDs, thresholds, tuning params (v1.26)
 │   │   ├── tests/                    # Backend suite incl. `tests/eval/` harness
 │   │   └── pyproject.toml
 │   └── web/                          # React frontend
@@ -180,7 +185,7 @@ class AgentState(TypedDict):
 
 ### Ingestion
 
-Pipeline (`app/ingestion/pipeline.py`) stages:
+Pipeline (`app/rag/ingestion/pipeline.py`) stages:
 
 1. **Parse** — file type handler extracts raw text (PDF, DOCX, CSV, JSON, HTML, HTM, TXT, MD; scanned pages via RapidOCR-ONNX fallback)
 2. **Chunk** — word-snapping windows; configurable `chunk_size` (default 512) and `chunk_overlap` (default 64); selectable `chunking_strategy`
@@ -194,7 +199,7 @@ A per-event-loop `Semaphore(1)` serializes ingestion jobs so concurrent uploads 
 
 ### Query Processing
 
-Router (`app/agent/router.py`) applies deterministic regex rules before any retrieval:
+Router (`app/rag/agent/router.py`) applies deterministic regex rules before any retrieval:
 
 | Route | Trigger | Behavior |
 |---|---|---|
@@ -203,27 +208,29 @@ Router (`app/agent/router.py`) applies deterministic regex rules before any retr
 | COMPARISON | Markers (`vs`, `versus`, `compare`, "differences between") | Fan-out to sub-queries (≤2× base), merged via RRF |
 | COMPLEX | Multi-`?` input | Deterministic per-question split, capped at `max_sub_queries: 3` |
 
-The router is a pure function — no LLM call — so it adds zero latency. Partial branch outage degrades to surviving branches.
+The router is a pure function — no LLM call — so it adds zero latency. Retrieval is
+strict: either branch failing (or timing out) fails the query loudly instead of
+serving partial evidence silently.
 
 ---
 
 ### Retrieval
 
-Retriever (`app/retrieval/retriever.py`):
+Retriever (`app/rag/retrieval/retriever.py`):
 
-1. **Dense path** — embed query via local BGE, Qdrant `search` with cosine similarity
+1. **Dense path** — embed query via local ONNX BGE (bounded query-vector LRU), Qdrant `search` with cosine similarity
 2. **Sparse path** — BM25-style client TF saturation + Qdrant server-side IDF (`Modifier.IDF`); `sparse_top_k: 0` disables this leg (current default — set `20` for full hybrid)
 3. **Reciprocal Rank Fusion** — merge ranked lists: `score = Σ 1/(k + rank_i)` with `rrf_k: 60`, `fusion_top_k: 20` enforced
-4. **CrossEncoder reranking** — `sentence-transformers` CrossEncoder on fused candidates (off by default; needs the `local-models` extra); depth cap `top_k: 20`
-5. **Adaptive top-k** — returns fewer chunks when confidence is high, up to `max_context_chunks: 8` when confidence is low
+4. **CrossEncoder reranking** — ONNX int8 CrossEncoder on fused candidates (batched, early termination on confident heads, result cache, RRF fallback); depth cap `top_k: 20`
 
-Per-branch timeouts (45 s each) ensure one hung branch degrades gracefully instead of failing the whole query.
+Per-branch (45 s) + hybrid (60 s) timeouts bound hung branches; either branch failing
+is a hard `RetrievalOutageError`, never silent partial evidence.
 
 ---
 
 ### Generation
 
-Generator (`app/generation/generator.py`):
+Generator (`app/rag/generation/generator.py`):
 
 - System prompt enforces: ground every assertion in Context segments, never fabricate, address all sub-questions, end every factual sentence with an inline citation like `[Segment 3]`
 - Prompt injection defense: treats Context section as untrusted raw data
@@ -234,12 +241,12 @@ Generator (`app/generation/generator.py`):
 
 ### Verification
 
-Verifier (`app/verification/verifier.py`):
+Verifier (`app/rag/verification/verifier.py`):
 
 1. **Claim decomposition** — LLM breaks answer into atomic factual claims
 2. **Meta-claim filter** — removes opinion/meta claims ("I believe…") that cannot be NLI-verified
 3. **Batch NLI** — each claim scored against evidence segments as SUPPORTED / CONTRADICTED / NEUTRAL
-4. **Verdict** (`app/verification/verdict.py`):
+4. **Verdict** (`app/rag/verification/verdict.py`):
    - `VerdictStatus`: PASS or FAIL
    - `ReliabilityStatus`: TRUSTED / UNCERTAIN / FAILED / ABSTAINED
    - `DiagnosisType`: RETRIEVAL_FAILURE / OUTAGE / EVIDENCE_CONFLICT / LOW_COVERAGE / NONE
@@ -249,7 +256,7 @@ Verifier (`app/verification/verifier.py`):
 
 ### Adaptive Recovery
 
-Recovery node (`app/agent/graph.py:recovery_node`) cycles through strategies until verdict passes or `max_recovery_attempts` is exhausted:
+Recovery node (`app/rag/agent/graph.py:recovery_node`) cycles through strategies until verdict passes or `max_recovery_attempts` is exhausted:
 
 | Strategy | Behavior |
 |---|---|
@@ -319,12 +326,12 @@ Motion system: `motion` package with shared config (`lib/motionConfig.js`), entr
 
 **`.env`** — secrets and deployment-specific values:
 - `JWT_SECRET`, `MONGODB_URI`, `QDRANT_URL` (+ `QDRANT_API_KEY` for cloud)
-- `GEMINI_API_KEY` / `NVIDIA_API_KEY` (only for cloud LLM providers), `TAVILY_API_KEY` (else DuckDuckGo)
+- `GEMINI_API_KEY` / `TAVILY_API_KEY` — only with the optional `cloud` extra installed (both send data off-box)
 - `LLM_PROVIDER` (`AI_PROVIDER` alias), model/endpoint overrides (env wins over `models.yaml`). Embeddings have no provider choice — single ONNX engine from `embedding.model`.
 
 **`config/ports.yaml`** — canonical port registry for all services (Qdrant, MongoDB, Ollama, llama.cpp, frontend dev server).
 
-Settings class (`app/core/config.py`) merges `.env` → `models.yaml` into a typed `Settings` object via pydantic-settings. Business code never reads `os.environ` directly.
+Settings class (`app/core/config/settings.py`) merges `.env` → `models.yaml` into a typed `Settings` object via pydantic-settings. Business code never reads `os.environ` directly.
 
 ---
 
@@ -338,10 +345,20 @@ Settings class (`app/core/config.py`) merges `.env` → `models.yaml` into a typ
 MongoDB and the LLM server (Ollama / llama-server) run on the **host**; the `api`
 container reaches them via `host.docker.internal`.
 
-**Hardware detection** (`app/core/hardware.py`):
+**Hardware detection** (`app/core/system/hardware.py`):
 - Auto-detects Apple Silicon Metal, NVIDIA CUDA, or CPU-only
 - Generates optimal `llama-server` launch flags (GPU offload, flash attention, KV-cache quantization)
 - Monitors system memory and adjusts context budgets to prevent OOM
+
+**Model-size adaptation** (`is_small_model()` in `app/llm/local_llm.py`): a
+conservative id-size classifier picks a compact CRAFT prompt and the two-step
+verification path for ≤3B models, and the full prompt plus the fused
+decompose+verify call for larger ones. Cloud providers are never downgraded.
+
+Consumed by `scripts/start_local_llm.sh` (llama.cpp on :8080) and
+`scripts/start_mlx_server.sh` (MLX on :8090, Apple Silicon). Both read the
+canonical ports from `config/ports.yaml` — `scripts/apply_ports.py` propagates
+any change to every consumer, so the registry cannot drift.
 
 **Local development** — all services run natively; `ports.yaml` ensures consistent port assignments across team members.
 

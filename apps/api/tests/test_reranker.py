@@ -1,5 +1,5 @@
 """
-Unit tests for the cross-encoder reranker (Phase 2).
+Unit tests for the cross-encoder reranker .
 
 The real CrossEncoder is NEVER loaded (no torch/model downloads): scoring is
 driven by a FakeCrossEncoder through the get_reranker seam, and config by a
@@ -13,8 +13,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.retrieval import reranker as reranker_module
-from app.retrieval.reranker import _rerank_sync, rerank_candidate_chunks
+from app.rag.retrieval import reranker as reranker_module
+from app.rag.retrieval.reranker import _rerank_sync, rerank_candidate_chunks
 
 
 def _stub_cfg(**overrides):

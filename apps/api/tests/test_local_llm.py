@@ -8,9 +8,9 @@ import pytest
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
-import app.core.local_llm as _llm_mod
-from app.core.exceptions import ConfigurationError
-from app.core.local_llm import (
+import app.llm.local_llm as _llm_mod
+from app.core.security.exceptions import ConfigurationError
+from app.llm.local_llm import (
     ChatLlamaCppClient,
     ChatOllamaClient,
     _shared_http_client,
@@ -18,7 +18,7 @@ from app.core.local_llm import (
     check_ollama_status,
     close_local_llm_clients,
 )
-from app.core.model_registry import get_llm, get_verification_model
+from app.llm.model_registry import get_llm, get_verification_model
 
 
 class SampleExtraction(BaseModel):
@@ -66,49 +66,35 @@ async def test_local_llm_http_clients_are_reused_per_endpoint_and_loop():
 
 def test_model_registry_local_providers(monkeypatch):
     # Isolate from developer .env so local overrides can't flip expectations.
+    # Blank env = no override (Settings reads env fresh per call, no cache).
     for var in ("OLLAMA_MODEL", "LLAMACPP_MODEL", "LLAMA_CPP_MODEL", "LLM_MODEL", "GEMINI_MODEL"):
-        monkeypatch.delenv(var, raising=False)
-    from app.core.config import reload_settings
-    from app.core.model_registry import clear_model_caches
+        monkeypatch.setenv(var, "")
+    from app.core.config.settings import get_settings
 
-    reload_settings()
-    clear_model_caches()
-    try:
-        # Force the no-override path: Settings reads the .env FILE (not just
-        # os.environ), so blank the model overrides on the singleton itself.
-        from app.core.config import get_settings
+    ollama_llm = get_llm("ollama")
+    assert isinstance(ollama_llm, ChatOllamaClient)
+    assert ollama_llm.model == "gemma3:1b"
 
-        s = get_settings()
-        monkeypatch.setattr(s, "ollama_model", "")
-        monkeypatch.setattr(s, "llamacpp_model", "")
-        monkeypatch.setattr(s, "mlx_model", "")
-        ollama_llm = get_llm("ollama")
-        assert isinstance(ollama_llm, ChatOllamaClient)
-        assert ollama_llm.model == "gemma3:1b"
+    llamacpp_llm = get_llm("llama_cpp")
+    assert isinstance(llamacpp_llm, ChatLlamaCppClient)
+    assert llamacpp_llm.model == "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
 
-        llamacpp_llm = get_llm("llama_cpp")
-        assert isinstance(llamacpp_llm, ChatLlamaCppClient)
-        assert llamacpp_llm.model == "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
+    mlx_llm = get_llm("mlx")
+    assert isinstance(mlx_llm, ChatLlamaCppClient)
+    assert mlx_llm.model == "mlx-community/Llama-3.2-1B-Instruct-4bit"
+    assert mlx_llm.base_url == get_settings().mlx_base_url
 
-        mlx_llm = get_llm("mlx")
-        assert isinstance(mlx_llm, ChatLlamaCppClient)
-        assert mlx_llm.model == "mlx-community/Llama-3.2-1B-Instruct-4bit"
-        assert mlx_llm.base_url == s.mlx_base_url
+    v_ollama = get_verification_model("ollama")
+    assert isinstance(v_ollama, ChatOllamaClient)
+    assert v_ollama.temperature == 0.0
 
-        v_ollama = get_verification_model("ollama")
-        assert isinstance(v_ollama, ChatOllamaClient)
-        assert v_ollama.temperature == 0.0
+    v_llamacpp = get_verification_model("llama_cpp")
+    assert isinstance(v_llamacpp, ChatLlamaCppClient)
+    assert v_llamacpp.temperature == 0.0
 
-        v_llamacpp = get_verification_model("llama_cpp")
-        assert isinstance(v_llamacpp, ChatLlamaCppClient)
-        assert v_llamacpp.temperature == 0.0
-
-        v_mlx = get_verification_model("mlx")
-        assert isinstance(v_mlx, ChatLlamaCppClient)
-        assert v_mlx.temperature == 0.0
-    finally:
-        clear_model_caches()
-        reload_settings()
+    v_mlx = get_verification_model("mlx")
+    assert isinstance(v_mlx, ChatLlamaCppClient)
+    assert v_mlx.temperature == 0.0
 
 
 @pytest.mark.asyncio
@@ -136,8 +122,8 @@ async def test_llamacpp_health_check():
 
 def test_embedding_model_is_single_onnx_engine():
     """Single embedding engine: ONNX BGE from models.yaml, no provider choice."""
-    from app.core.config import get_model_config
-    from app.core.model_registry import get_embedding_model
+    from app.core.config.model_config import get_model_config
+    from app.llm.model_registry import get_embedding_model
 
     cfg = get_model_config()
     assert cfg.embedding_model == "BAAI/bge-small-en-v1.5"
@@ -149,19 +135,16 @@ def test_embedding_model_is_single_onnx_engine():
 
     assert "model" not in inspect.signature(get_embedding_model).parameters
     # Missing ONNX weights fail loudly with the bootstrap fix (not silent).
-    get_embedding_model.cache_clear()
-    try:
-        with pytest.raises(ConfigurationError, match="bootstrap"):
-            import app.core.model_registry as _reg
+    # No model cache exists: every call loads fresh, so no clearing needed.
+    with pytest.raises(ConfigurationError, match="bootstrap"):
+        import app.llm.model_registry as _reg
 
-            orig = _reg._resolve_embedding_onnx_path
-            _reg._resolve_embedding_onnx_path = lambda _cache_dir: None
-            try:
-                get_embedding_model()
-            finally:
-                _reg._resolve_embedding_onnx_path = orig
-    finally:
-        get_embedding_model.cache_clear()
+        orig = _reg._resolve_embedding_onnx_path
+        _reg._resolve_embedding_onnx_path = lambda _cache_dir: None
+        try:
+            get_embedding_model()
+        finally:
+            _reg._resolve_embedding_onnx_path = orig
 
 
 # ─── Discovery snapshot + seeding tests ───────────────────────────────────────
@@ -255,7 +238,7 @@ def test_local_cap_kwargs_only_for_local_providers():
     assert _llm_mod.local_cap_kwargs("ollama", 384) == {"max_tokens": 384}
     assert _llm_mod.local_cap_kwargs("LLAMA_CPP", 384) == {"max_tokens": 384}
     assert _llm_mod.local_cap_kwargs("gemini", 384) == {}
-    assert _llm_mod.local_cap_kwargs("nvidia", 384) == {}
+    assert _llm_mod.local_cap_kwargs("some-retired-cloud", 384) == {}
     assert _llm_mod.local_cap_kwargs(None, 384) == {}
     assert _llm_mod.local_cap_kwargs("", 384) == {}
 
@@ -272,36 +255,22 @@ def test_verification_cap_kwargs_reasoning_headroom():
     returned None, and silently fell back to the two-step path — 3 billed
     calls instead of 1 on the common cloud path. Unknown providers still get
     {} rather than a foreign kwarg."""
-    # Local direct-answer: identical to local_cap_kwargs (KV-saving, unchanged).
-    assert _llm_mod.verification_cap_kwargs("ollama", "gemma3:1b", 384) == {"max_tokens": 384}
+    # Local direct-answer: small (<=3B) models get the 1024 floor (L-3/L-7) —
+    # 768 tokens for 8 verdicts truncates mid-JSON on the hottest call.
+    assert _llm_mod.verification_cap_kwargs("ollama", "gemma3:1b", 384) == {"max_tokens": 1024}
     assert _llm_mod.verification_cap_kwargs("llama_cpp", "any-model", 768) == {"max_tokens": 768}
     # Cloud direct-answer: capped per call, provider-correct name.
-    assert _llm_mod.verification_cap_kwargs("nvidia", "google/gemma-4-31b-it", 384) == {
-        "max_completion_tokens": 384
-    }
     assert _llm_mod.verification_cap_kwargs("gemini", "gemini-3.5-flash-lite", 384) == {
         "max_output_tokens": 384
     }
     assert _llm_mod.verification_cap_kwargs("google_genai", "gemini-3.5-flash-lite", 384) == {
         "max_output_tokens": 384
     }
-    assert _llm_mod.verification_cap_kwargs("nim", "meta/llama-3.3-70b-instruct", 768) == {
-        "max_completion_tokens": 768
-    }
     # A model id is optional; the provider alone still yields a correct cap.
-    assert _llm_mod.verification_cap_kwargs("nvidia", None, 384) == {"max_completion_tokens": 384}
+    assert _llm_mod.verification_cap_kwargs("gemini", None, 384) == {"max_output_tokens": 384}
     # Unknown provider: inject nothing rather than risk a foreign kwarg.
     assert _llm_mod.verification_cap_kwargs("some-future-cloud", "m", 384) == {}
     # Reasoning: 2x with 1024 floor, provider-correct names.
-    assert _llm_mod.verification_cap_kwargs("nvidia", "meta/muse-glimmer-30b", 384) == {
-        "max_completion_tokens": 1024
-    }
-    assert _llm_mod.verification_cap_kwargs("nvidia", "openai/gpt-oss-20b", 512) == {
-        "max_completion_tokens": 1024
-    }
-    assert _llm_mod.verification_cap_kwargs("nvidia", "openai/gpt-oss-20b", 768) == {
-        "max_completion_tokens": 1536
-    }
     assert _llm_mod.verification_cap_kwargs("gemini", "some-reasoning-model", 384) == {
         "max_output_tokens": 1024
     }
@@ -314,8 +283,6 @@ def test_verification_cap_covers_fused_call_budget():
     for provider, key in (
         ("gemini", "max_output_tokens"),
         ("google_genai", "max_output_tokens"),
-        ("nvidia", "max_completion_tokens"),
-        ("nim", "max_completion_tokens"),
     ):
         cap = _llm_mod.verification_cap_kwargs(provider, "gemini-3.8-flash", 1024)
         assert cap.get(key) == 1024, f"{provider} fused cap wrong: {cap}"
@@ -326,7 +293,7 @@ def test_verification_cap_covers_fused_call_budget():
 def test_is_reasoning_model_detection():
     assert _llm_mod.is_reasoning_model("meta/muse-glimmer-30b") is True
     assert _llm_mod.is_reasoning_model("openai/gpt-oss-20b") is True
-    assert _llm_mod.is_reasoning_model("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning") is True
+    assert _llm_mod.is_reasoning_model("org/nemotron-3-nano-30b-a3b-reasoning") is True
     assert _llm_mod.is_reasoning_model("qwen3:1.7b") is True
     assert _llm_mod.is_reasoning_model("google/gemma-4-31b-it") is False
     assert _llm_mod.is_reasoning_model("gemma3:1b") is False
@@ -338,7 +305,7 @@ def test_verification_caps_cover_local_thinking_models():
     """Thinking traces share the budget on local servers too: qwen3 with a
     128-token rewrite cap returns empty → retry spiral. 1024 floor."""
     assert _llm_mod.verification_cap_kwargs("ollama", "qwen3:1.7b", 128) == {"max_tokens": 1024}
-    assert _llm_mod.verification_cap_kwargs("ollama", "gemma3:1b", 128) == {"max_tokens": 128}
+    assert _llm_mod.verification_cap_kwargs("ollama", "gemma3:1b", 128) == {"max_tokens": 1024}
 
 
 @pytest.mark.asyncio
@@ -401,7 +368,7 @@ class _FakeHTTPClient:
 
 @pytest.mark.asyncio
 async def test_probe_reaches_running_server(monkeypatch):
-    from app.core.local_llm import probe_local_llm_server
+    from app.llm.local_llm import probe_local_llm_server
 
     class _OK(_FakeHTTPClient):
         async def get(self, url):
@@ -416,8 +383,8 @@ async def test_probe_reaches_running_server(monkeypatch):
 async def test_probe_down_server_raises_actionable_error(monkeypatch):
     import httpx
 
-    from app.core.exceptions import LLMUnavailableError
-    from app.core.local_llm import probe_local_llm_server
+    from app.core.security.exceptions import LLMUnavailableError
+    from app.llm.local_llm import probe_local_llm_server
 
     class _Down(_FakeHTTPClient):
         async def get(self, url):
@@ -437,7 +404,7 @@ async def test_probe_retries_slow_server_then_succeeds(monkeypatch):
     """One slow accept must not 503 the run — retry, then pass."""
     import httpx
 
-    from app.core.local_llm import probe_local_llm_server
+    from app.llm.local_llm import probe_local_llm_server
 
     calls = []
 
@@ -458,8 +425,8 @@ async def test_probe_timeout_reports_overloaded_not_down(monkeypatch):
     """Persistent timeouts mean slow/overloaded — never 'not reachable'."""
     import httpx
 
-    from app.core.exceptions import LLMUnavailableError
-    from app.core.local_llm import probe_local_llm_server
+    from app.core.security.exceptions import LLMUnavailableError
+    from app.llm.local_llm import probe_local_llm_server
 
     class _Slow(_FakeHTTPClient):
         async def get(self, url):
@@ -614,8 +581,8 @@ async def test_probe_mlx_hint_names_server_command(monkeypatch):
     """A down MLX server must tell the operator the mlx_lm.server command."""
     import httpx
 
-    from app.core.exceptions import LLMUnavailableError
-    from app.core.local_llm import probe_local_llm_server
+    from app.core.security.exceptions import LLMUnavailableError
+    from app.llm.local_llm import probe_local_llm_server
 
     class _Down(_FakeHTTPClient):
         async def get(self, url):
@@ -629,3 +596,37 @@ async def test_probe_mlx_hint_names_server_command(monkeypatch):
         await probe_local_llm_server("mlx", "http://127.0.0.1:8080/v1")
     except LLMUnavailableError as exc:
         assert "mlx_lm.server" in exc.message
+
+
+# ─── Unknown providers must fail loud, not impersonate another provider ───────
+# Regression: the NIM integration was removed from the backend but _create_llm
+# had no final `else: raise`, so ANY unrecognised provider fell through to the
+# Gemini branch. The frontend still offered a "NVIDIA" button, so selecting it
+# returned Gemini responses labelled as NVIDIA. Unknown names now reject.
+
+
+@pytest.mark.parametrize("provider", ["nvidia", "nim", "bogus", "NVIDIA"])
+def test_unknown_provider_is_rejected_not_silently_gemini(provider):
+    from app.core.security.exceptions import ConfigurationError
+    from app.llm.model_registry import get_llm
+
+    with pytest.raises(ConfigurationError, match="Unknown LLM provider"):
+        get_llm(provider, "some-model")
+
+
+def test_blank_provider_falls_back_to_configured_default():
+    """Empty/None means "use the configured provider" — that is NOT an unknown
+    provider and must not be rejected."""
+    from app.llm.model_registry import get_llm
+
+    assert get_llm(None, "m") is not None
+    assert get_llm("", "m") is not None
+
+
+def test_supported_providers_still_resolve():
+    """The rejection must not have broken the real providers."""
+    from app.core.config.model_config import SUPPORTED_LLM_PROVIDERS
+
+    assert SUPPORTED_LLM_PROVIDERS == frozenset({"ollama", "llama_cpp", "mlx", "gemini"})
+    assert "nvidia" not in SUPPORTED_LLM_PROVIDERS
+    assert "nim" not in SUPPORTED_LLM_PROVIDERS

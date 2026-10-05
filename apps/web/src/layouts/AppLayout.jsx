@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { useQuery } from '@tanstack/react-query'
 import { motion, useReducedMotion, useMotionValue, useSpring, useTransform, AnimatePresence } from 'motion/react'
 import {
   Brain, Database, FileSearch,
-  FlaskConical, GitMerge, LayoutDashboard, LogOut,
+  GitMerge, LayoutDashboard, LogOut,
   Settings, Swords, Zap, Menu, X, ChevronLeft, ChevronRight,
   ShieldCheck, Cpu, Layers, RefreshCw
 } from 'lucide-react'
@@ -34,8 +34,6 @@ const NAV = [
   { label: 'Claims',          to: '/claims',          icon: Brain,           badge: null },
   { label: 'Conflicts',       to: '/conflicts',       icon: GitMerge,        badge: null },
   null,
-  { label: 'Experiments',     to: '/experiments',     icon: FlaskConical,    badge: null },
-  null,
   { label: 'Settings',        to: '/settings',        icon: Settings,        badge: null },
 ]
 
@@ -52,14 +50,31 @@ export default function AppLayout({ children }) {
   const glowX = useSpring(cursorX, { damping: 30, stiffness: 200 })
   const glowY = useSpring(cursorY, { damping: 30, stiffness: 200 })
 
+  // Cursor glow: rAF-throttled + fine-pointer only (battery/perf).
+  // Coarse pointers (touch) never get the spotlight layer.
   useEffect(() => {
-    const handler = (e) => {
-      cursorX.set(e.clientX)
-      cursorY.set(e.clientY)
+    if (reducedMotion) return undefined
+    if (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches) return undefined
+    let raf = 0
+    let pending = null
+    const flush = () => {
+      raf = 0
+      if (pending) {
+        cursorX.set(pending.x)
+        cursorY.set(pending.y)
+        pending = null
+      }
     }
-    window.addEventListener('mousemove', handler)
-    return () => window.removeEventListener('mousemove', handler)
-  }, [cursorX, cursorY])
+    const handler = (e) => {
+      pending = { x: e.clientX, y: e.clientY }
+      if (!raf) raf = requestAnimationFrame(flush)
+    }
+    window.addEventListener('mousemove', handler, { passive: true })
+    return () => {
+      window.removeEventListener('mousemove', handler)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [cursorX, cursorY, reducedMotion])
 
   // Dynamic model telemetry query
   const { data: providersData } = useQuery({
@@ -79,6 +94,23 @@ export default function AppLayout({ children }) {
 
   // Mobile drawer state
   const [isMobileOpen, setIsMobileOpen] = useState(false)
+  const mobileCloseRef = useRef(null)
+
+  // Mobile drawer: Escape to close, scroll lock, focus close on open.
+  useEffect(() => {
+    if (!isMobileOpen) return
+    mobileCloseRef.current?.focus()
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = e => {
+      if (e.key === 'Escape') setIsMobileOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [isMobileOpen])
 
   // Playground engine override: the top pills show what the Playground will
   // actually run (user selection), falling back to the server default.
@@ -101,26 +133,14 @@ export default function AppLayout({ children }) {
   // Single embedding engine — server default only, no Playground override.
   const effEmbeddingModel = providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
 
-  // Motion values for spring animations
+  // Motion values for spring animations (useSpring retargets on value change;
+  // no manual .set() effects needed).
   const sidebarWidth = useSpring(isCollapsed ? 72 : 240, { damping: 20, stiffness: 220 })
-  const mobileDrawerX = useSpring(isMobileOpen ? 0 : -256, { damping: 20, stiffness: 220 })
 
   // Close mobile drawer on route change
   useEffect(() => {
     setIsMobileOpen(false)
   }, [location.pathname])
-
-  // Animate sidebar width on collapse/expand with spring
-  useEffect(() => {
-    const targetWidth = isCollapsed ? 72 : 240
-    sidebarWidth.set(targetWidth)
-  }, [isCollapsed, sidebarWidth])
-
-  // Animate mobile drawer
-  useEffect(() => {
-    const targetX = isMobileOpen ? 0 : -256
-    mobileDrawerX.set(targetX)
-  }, [isMobileOpen, mobileDrawerX])
 
   const toggleSidebar = useCallback(() => {
     setIsCollapsed(prev => {
@@ -150,10 +170,18 @@ export default function AppLayout({ children }) {
   }
 
   return (
-    <div className="flex flex-col h-screen supports-[height:100dvh]:h-dvh bg-surface-950 text-slate-100 overflow-hidden select-none">
+    <div className="flex flex-col h-screen supports-[height:100dvh]:h-dvh bg-surface-950 text-slate-100 overflow-hidden">
+      {/* Skip link — keyboard / screen-reader fast path to content */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-3 focus:py-2 focus:rounded-lg focus:bg-surface-800 focus:text-white focus:ring-2 focus:ring-primary-400"
+      >
+        Skip to main content
+      </a>
       {/* ── CURSOR GLOW ──────────────────────────────────────────────────── */}
       {!reducedMotion && (
         <motion.div
+          aria-hidden="true"
           className="cursor-glow hidden md:block"
           style={{ left: glowX, top: glowY }}
         />
@@ -453,12 +481,14 @@ export default function AppLayout({ children }) {
           <div className="flex items-center justify-between p-3 border-b border-slate-800">
             <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">Navigation</span>
             <motion.button
+              ref={mobileCloseRef}
               onClick={() => setIsMobileOpen(false)}
               whileTap={{ scale: 0.9 }}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-surface-800 transition-colors"
               title="Close sidebar"
+              aria-label="Close navigation menu"
             >
-              <X size={16} />
+              <X size={16} aria-hidden="true" />
             </motion.button>
           </div>
 
@@ -496,7 +526,7 @@ export default function AppLayout({ children }) {
         </motion.div>
 
         {/* ── MAIN CONTENT AREA ─────────────────────────────────────────── */}
-        <main className="flex-1 min-w-0 overflow-y-auto bg-surface-950 bg-cyber-grid relative h-full flex flex-col">
+        <main id="main-content" tabIndex={-1} aria-label="Main content" className="flex-1 min-w-0 overflow-y-auto bg-surface-950 bg-cyber-grid relative h-full flex flex-col">
           {children}
         </main>
       </div>
@@ -546,6 +576,8 @@ function SidebarLink({ to, label, icon: Icon, badge, isCollapsed }) {
           >
             <Icon
               size={18}
+              aria-hidden="true"
+              focusable="false"
               className={clsx(
                 'shrink-0 transition-colors',
                 isActive ? 'text-primary-400' : 'text-slate-400 group-hover:text-slate-200'
@@ -592,7 +624,7 @@ function SidebarLink({ to, label, icon: Icon, badge, isCollapsed }) {
                 animate={{ opacity: 1, x: 0, scale: 1 }}
                 exit={{ opacity: 0, x: -8, scale: 0.95 }}
                 transition={SPRING_GENTLE}
-                className="sidebar-tooltip"
+                className="sidebar-tooltip opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
               >
                 {label}
               </motion.div>

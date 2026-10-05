@@ -1,10 +1,11 @@
 import {
-  Database, Loader2, Zap, Globe, Sparkles, Cpu,
+  Database, Zap, Globe, Sparkles, Cpu,
   RotateCcw, AlertTriangle, CornerDownLeft, Layers, ServerOff
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
 import { shortModelId } from '@/lib/modelLabels'
 import { SPRING_SNAPPY } from '@/lib/motionConfig'
+import { ThinkingOrbs } from './ThinkingOrbs'
 
 const SAMPLE_PRESETS = [
   { text: "Explain the key concepts in this document", icon: "📖" },
@@ -32,8 +33,6 @@ export function QueryPanel({
   selectedEmbeddingModel,
   enableWebSearch,
   setEnableWebSearch,
-  webSearchProvider,
-  setWebSearchProvider,
   providersData,
   elapsedSec,
   activeProviderInfo,
@@ -58,8 +57,6 @@ export function QueryPanel({
       setSelectedModel('mlx-community/Llama-3.2-1B-Instruct-4bit')
     } else if (providerKey === 'gemini') {
       setSelectedModel('gemini-3.5-flash-lite')
-    } else if (providerKey === 'nvidia') {
-      setSelectedModel('meta/llama-3.3-70b-instruct')
     }
   }
 
@@ -275,20 +272,6 @@ export function QueryPanel({
                 <span>Gemini</span>
                 <span className="text-[10px] text-slate-500">Cloud</span>
               </motion.button>
-              <motion.button
-                type="button"
-                onClick={() => handleProviderChange('nvidia')}
-                disabled={loading}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.96, transition: SPRING_SNAPPY }}
-                className={`text-xs py-1 px-2 rounded-md font-medium flex items-center justify-between transition-all duration-150 ease-out ${
-                  selectedProvider === 'nvidia'
-                    ? 'bg-purple-600/30 text-purple-200 border border-purple-500/50 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
-                }`}>
-                <span>NVIDIA</span>
-                <span className="text-[10px] text-slate-500">Cloud</span>
-              </motion.button>
             </div>
 
             <div className="space-y-1 pt-1 border-t border-slate-800">
@@ -315,9 +298,13 @@ export function QueryPanel({
                   onChange={e => setSelectedModel(e.target.value)}
                   disabled={loading}
                   className="w-full bg-surface-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500/50">
-                {availableModels.map(m => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
+                {availableModels.length === 0 ? (
+                  <option value="">No models discovered — check server</option>
+                ) : (
+                  availableModels.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))
+                )}
                 </select>
               </div>
             </div>
@@ -368,46 +355,12 @@ export function QueryPanel({
 
             {enableWebSearch && (
               <div className="pt-2 border-t border-slate-800/80 space-y-2 animate-fade-in">
-                <span className="text-[11px] text-slate-300 block font-medium">Select MCP Search Engine:</span>
-                <div className="grid grid-cols-3 gap-1 bg-surface-900 p-1 rounded-lg border border-slate-800">
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => setWebSearchProvider('duckduckgo')}
-                    className={`text-[11px] py-1 px-1.5 rounded font-medium transition-all ${
-                      webSearchProvider === 'duckduckgo'
-                        ? 'bg-amber-600/30 text-amber-300 border border-amber-500/40 shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}>
-                    DuckDuckGo (Free)
-                  </button>
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => setWebSearchProvider('tavily')}
-                    className={`text-[11px] py-1 px-1.5 rounded font-medium transition-all ${
-                      webSearchProvider === 'tavily'
-                        ? 'bg-primary-600/30 text-primary-300 border border-primary-500/40 shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}>
-                    Tavily (AI)
-                  </button>
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => setWebSearchProvider('both')}
-                    className={`text-[11px] py-1 px-1.5 rounded font-medium transition-all ${
-                      webSearchProvider === 'both'
-                        ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}>
-                    Both (Parallel)
-                  </button>
+                <span className="text-[11px] text-slate-300 block font-medium">MCP Search Engine:</span>
+                <div className="flex items-center gap-1.5 text-[11px] py-1 px-1.5 rounded font-medium bg-primary-600/30 text-primary-300 border border-primary-500/40 shadow-sm w-fit">
+                  ⚡ Tavily (AI)
                 </div>
                 <p className="text-[10px] text-slate-400 leading-tight">
-                  {webSearchProvider === 'duckduckgo' && '🆓 100% Free search, zero API key or configuration required.'}
-                  {webSearchProvider === 'tavily' && '⚡ High-accuracy AI RAG search with clean parsed content.'}
-                  {webSearchProvider === 'both' && '🌐 Parallel search across Tavily + DuckDuckGo with URL deduplication.'}
+                  High-accuracy AI RAG search with clean parsed content — the sole web provider.
                 </p>
 
                 {/* MCP Tool Grounding - only when web search is enabled */}
@@ -423,7 +376,7 @@ export function QueryPanel({
                       </span>
                     </div>
                     <p className="text-[10px] text-slate-400 leading-relaxed">
-                      Connected to local MCP tool suite: <code className="text-cyan-400 font-mono">trustrag_search</code>, <code className="text-cyan-400 font-mono">duckduckgo_search</code>, & <code className="text-cyan-400 font-mono">verify_claim</code>.
+                      Connected to local MCP tool suite: <code className="text-cyan-400 font-mono">trustrag_search</code>, <code className="text-cyan-400 font-mono">tavily_search</code>, & <code className="text-cyan-400 font-mono">verify_claim</code>.
                     </p>
                   </div>
                 )}
@@ -490,6 +443,7 @@ export function QueryPanel({
               onKeyDown={handleKeyDown}
               placeholder="Ask a question about your documents… (Press ⌘+Enter to run)"
               rows={4}
+              maxLength={2000}
               className="w-full min-h-[105px] bg-surface-800 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 resize-none focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-600 focus:shadow-[0_0_20px_rgba(6,182,212,0.12)] transition-all duration-200"
               disabled={loading}
             />
@@ -527,7 +481,7 @@ export function QueryPanel({
           >
             {loading ? (
               <>
-                <Loader2 size={14} className="animate-spin text-cyan-300" />
+                <ThinkingOrbs size="sm" />
                 <span>Executing Pipeline ({elapsedSec}s)…</span>
               </>
             ) : (

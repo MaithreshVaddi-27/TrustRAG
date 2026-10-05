@@ -12,17 +12,19 @@ from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 
-from app.api.deps import require_service_permission
-from app.core.rate_limiter import limiter
-from app.core.security import create_service_token
+from app.api.deps import enforce_service_tenant, require_service_permission
+from app.core.security.exceptions import RetrievalOutageError
+from app.core.security.security import create_service_token
+from app.llm.model_registry import registry_status
+from app.rag.retrieval.retriever import retrieve_hybrid_chunks
+from app.rag.verification.verifier import batch_verify_claims_nli
 from app.services.kb_service import add_document
 
 # Cost-DoS backstop for service-to-service routes (generous: functionality is
 # already gated by service-token permissions, this only bounds LLM fan-out).
-_INTERNAL_RATE_LIMIT = "60/minute"
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -52,20 +54,6 @@ class InternalDocumentIngest(BaseModel):
         return value
 
 
-class InternalUrlIngest(BaseModel):
-    """Strict body for service-triggered URL ingestion."""
-
-    url: str
-    user_id: str | None = None
-
-    @field_validator("user_id")
-    @classmethod
-    def _valid_user_id(cls, value: str | None) -> str | None:
-        if value is not None and not ObjectId.is_valid(value):
-            raise ValueError("user_id must be a valid ObjectId")
-        return value
-
-
 # ─── Service Token Management ─────────────────────────────────────────────────
 
 
@@ -77,6 +65,8 @@ class InternalUrlIngest(BaseModel):
 async def generate_service_token_endpoint(
     service_name: str,
     permissions: list[str],
+    bound_kb_id: str | None = None,
+    bound_user_id: str | None = None,
     current_service: Mapping[str, Any] = Depends(require_service_permission("admin:token:create")),
 ) -> dict[str, Any]:
     """
@@ -84,7 +74,12 @@ async def generate_service_token_endpoint(
 
     Requires admin:token:create permission.
     """
-    token = create_service_token(service_name=service_name, permissions=permissions)
+    token = create_service_token(
+        service_name=service_name,
+        permissions=permissions,
+        bound_kb_id=bound_kb_id,
+        bound_user_id=bound_user_id,
+    )
     return {
         "service_name": service_name,
         "token": token,
@@ -100,9 +95,7 @@ async def generate_service_token_endpoint(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Internal document ingestion trigger",
 )
-@limiter.limit(_INTERNAL_RATE_LIMIT)
 async def internal_ingest_document(
-    request: Request,
     kb_id: str,
     document_data: InternalDocumentIngest,
     current_service: Mapping[str, Any] = Depends(require_service_permission("ingest:write")),
@@ -117,25 +110,7 @@ async def internal_ingest_document(
     """
     service_name = current_service.get("sub")
 
-    # M-2 tenant binding: if token is bound to a specific KB or user, enforce it
-    bound_kb = current_service.get("bound_kb_id")
-    if bound_kb and str(bound_kb) != str(kb_id):
-        from fastapi import HTTPException
-        from fastapi import status as _status
-
-        raise HTTPException(
-            status_code=_status.HTTP_403_FORBIDDEN,
-            detail="Service token not authorized for this knowledge base",
-        )
-    bound_user = current_service.get("bound_user_id")
-    if bound_user and str(bound_user) != str(document_data.user_id):
-        from fastapi import HTTPException
-        from fastapi import status as _status2
-
-        raise HTTPException(
-            status_code=_status2.HTTP_403_FORBIDDEN,
-            detail="Service token not authorized for this user",
-        )
+    enforce_service_tenant(current_service, kb_id, document_data.user_id)
 
     # Add document metadata
     doc = await add_document(
@@ -155,45 +130,6 @@ async def internal_ingest_document(
     }
 
 
-@router.post(
-    "/ingest/url",
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="Internal URL ingestion trigger",
-)
-@limiter.limit(_INTERNAL_RATE_LIMIT)
-async def internal_ingest_url(
-    request: Request,
-    kb_id: str,
-    url_data: InternalUrlIngest,
-    current_service: Mapping[str, Any] = Depends(require_service_permission("ingest:write")),
-) -> dict[str, Any]:
-    """
-    Trigger URL document ingestion from an internal service.
-
-    Requires ingest:write permission. Same SSRF validation as the public
-    from-url endpoint (allowlist + DNS pinning + per-hop checks).
-    """
-    from fastapi import HTTPException
-    from fastapi import status as _status
-
-    from app.services.search_service import validate_ingestion_url
-
-    service_name = current_service.get("sub")
-
-    is_valid, error = validate_ingestion_url(url_data.url, None)
-    if not is_valid:
-        raise HTTPException(
-            status_code=_status.HTTP_400_BAD_REQUEST,
-            detail=f"URL validation failed: {error}",
-        )
-
-    return {
-        "status": "queued",
-        "url": url_data.url,
-        "triggered_by": service_name,
-    }
-
-
 # ─── Internal Search/Retrieval ────────────────────────────────────────────────
 
 
@@ -201,9 +137,7 @@ async def internal_ingest_url(
     "/search",
     summary="Internal hybrid search",
 )
-@limiter.limit(_INTERNAL_RATE_LIMIT)
 async def internal_search(
-    request: Request,
     query: str,
     kb_id: str,
     top_k: int = 10,
@@ -214,9 +148,7 @@ async def internal_search(
 
     Requires search:read permission.
     """
-    from app.core.exceptions import RetrievalOutageError
-    from app.retrieval.retriever import retrieve_hybrid_chunks
-
+    enforce_service_tenant(current_service, kb_id)
     try:
         top_k = max(1, min(int(top_k), 50))
     except (TypeError, ValueError):
@@ -224,11 +156,10 @@ async def internal_search(
     try:
         results = await retrieve_hybrid_chunks(query=query, kb_id=kb_id, top_k_override=top_k)
     except RetrievalOutageError as exc:
-        return {
-            "results": [],
-            "count": 0,
-            "error": f"retrieval outage: {exc}",
-        }
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Retrieval service temporarily unavailable",
+        ) from exc
 
     return {
         "results": results,
@@ -243,9 +174,7 @@ async def internal_search(
     "/verify/claims",
     summary="Internal claim verification",
 )
-@limiter.limit(_INTERNAL_RATE_LIMIT)
 async def internal_verify_claims(
-    request: Request,
     claims: list[str],
     evidence_texts: list[str],
     current_service: Mapping[str, Any] = Depends(require_service_permission("verify:execute")),
@@ -255,8 +184,6 @@ async def internal_verify_claims(
 
     Requires verify:execute permission.
     """
-    from app.verification.verifier import batch_verify_claims_nli
-
     # Cost-DoS guard: unbounded lists fan out to LLM calls.
     claims = claims[:20]
     evidence_texts = [t[:4000] for t in evidence_texts[:20]]
@@ -273,16 +200,9 @@ async def internal_verify_claims(
 # ─── Health & Status ──────────────────────────────────────────────────────────
 
 
-@router.get(
-    "/health",
-    summary="Internal service health check",
-)
-async def internal_health() -> dict[str, str]:
-    """
-    Health check endpoint for service mesh / load balancer.
-    No authentication required for basic liveness.
-    """
-    return {"status": "healthy"}
+# Liveness/readiness live at /api/v1/health and /api/v1/health/ready (which
+# actually probes Mongo + Qdrant). A hardcoded "healthy" here would report
+# success during an outage.
 
 
 @router.get(
@@ -297,8 +217,6 @@ async def internal_status(
 
     Requires admin:status:read permission.
     """
-    from app.core.model_registry import registry_status
-
     return {
         "service": "trustrag-api",
         "status": "operational",

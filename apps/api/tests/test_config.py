@@ -1,7 +1,7 @@
 """
 TRUSTRAG — Configuration and settings unit tests.
 
-Tests for Phase 1:
+Tests for:
   - models.yaml loads and validates correctly
   - ModelConfig exposes correct values
   - Settings rejects invalid/missing required fields
@@ -99,7 +99,7 @@ class TestModelConfig:
     """Tests for the ModelConfig wrapper."""
 
     def _make_config(self):
-        from app.core.config import ModelConfig
+        from app.core.config.model_config import ModelConfig
 
         with _MODELS_YAML.open() as f:
             data = yaml.safe_load(f)
@@ -140,7 +140,7 @@ class TestModelConfig:
         assert snapshot["config_version"]
 
     def test_missing_required_key_raises(self) -> None:
-        from app.core.config import ModelConfig
+        from app.core.config.model_config import ModelConfig
 
         incomplete = {"runtime": {"config_version": "1.0"}}
         cfg = ModelConfig(incomplete)
@@ -168,18 +168,13 @@ class TestModelConfig:
 
     def test_mlx_base_url_default_and_env(self, monkeypatch) -> None:
         """MLX uses dedicated port 8090; env overrides it."""
-        from app.core.config import get_settings, reload_settings
+        from app.core.config.settings import get_settings
 
-        # get_settings() is an lru_cached singleton — reload between env states.
-        try:
-            monkeypatch.delenv("MLX_BASE_URL", raising=False)
-            reload_settings()
-            assert get_settings().mlx_base_url == "http://127.0.0.1:8090/v1"
-            monkeypatch.setenv("MLX_BASE_URL", "http://127.0.0.1:8091/v1")
-            reload_settings()
-            assert get_settings().mlx_base_url == "http://127.0.0.1:8091/v1"
-        finally:
-            reload_settings()
+        # Fresh read per call: no reload dance needed between env states.
+        monkeypatch.delenv("MLX_BASE_URL", raising=False)
+        assert get_settings().mlx_base_url == "http://127.0.0.1:8090/v1"
+        monkeypatch.setenv("MLX_BASE_URL", "http://127.0.0.1:8091/v1")
+        assert get_settings().mlx_base_url == "http://127.0.0.1:8091/v1"
 
 
 # ─── Settings tests ───────────────────────────────────────────────────────────
@@ -190,7 +185,7 @@ class TestSettings:
 
     def _make_settings(self, **overrides):
         """Create Settings with test values, bypassing .env file."""
-        from app.core.config import Settings
+        from app.core.config.settings import Settings
 
         base = {
             "jwt_secret": "a" * 64,
@@ -241,6 +236,26 @@ class TestSettings:
         assert settings.is_development()
         assert not settings.is_production()
 
+    def test_production_requires_qdrant_key(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="QDRANT_API_KEY must be set in production"):
+            self._make_settings(app_env="production", qdrant_api_key="")
+
+    def test_production_rejects_env_example_jwt_placeholder(self) -> None:
+        """The shipped template placeholder is 44 chars, so it clears the
+        length check — production must reject it explicitly."""
+        from pydantic import ValidationError
+
+        placeholder = "REPLACE_WITH_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS"
+        assert len(placeholder) >= 32
+        with pytest.raises(ValidationError, match="placeholder"):
+            self._make_settings(app_env="production", qdrant_api_key="k", jwt_secret=placeholder)
+
+    def test_production_accepts_real_jwt_secret(self) -> None:
+        settings = self._make_settings(app_env="production", qdrant_api_key="k")
+        assert settings.is_production()
+
 
 class TestAnalysisModelPolicy:
     def test_known_local_model_override_is_allowed(self, monkeypatch) -> None:
@@ -248,7 +263,7 @@ class TestAnalysisModelPolicy:
 
         # Patch the discovery cache to include the expected model
         monkeypatch.setattr(
-            "app.core.local_llm.get_discovered_llms",
+            "app.llm.local_llm.get_discovered_llms",
             lambda provider: (
                 frozenset(["granite4.2:3b-q4_K_M"]) if provider == "ollama" else frozenset()
             ),
@@ -286,7 +301,7 @@ class TestAnalysisModelPolicy:
 
         discovered = {"huggingface/SmolLM3-3B-GGUF:Q4_K_M"}
         monkeypatch.setattr(
-            "app.core.local_llm.get_discovered_llms",
+            "app.llm.local_llm.get_discovered_llms",
             lambda provider: frozenset(discovered) if provider == "llama_cpp" else frozenset(),
         )
 
@@ -304,7 +319,7 @@ class TestAnalysisModelPolicy:
 
         discovered = {"mlx-community/LFM2.5-1.2B-Instruct-4bit"}
         monkeypatch.setattr(
-            "app.core.local_llm.get_discovered_llms",
+            "app.llm.local_llm.get_discovered_llms",
             lambda provider: frozenset(discovered) if provider == "mlx" else frozenset(),
         )
 
@@ -339,7 +354,7 @@ class TestAnalysisModelPolicy:
         generation's model IDs.
         """
         from app.api.v1.schemas.analysis import AnalysisCreate
-        from app.core.config import get_model_config
+        from app.core.config.model_config import get_model_config
 
         assert "gemini-3.8-flash" in get_model_config().supported_gemini_models
         request = AnalysisCreate(
@@ -365,7 +380,7 @@ class TestAnalysisModelPolicy:
             )
 
     def test_merge_discovered_llms_filters_embedding_models(self) -> None:
-        from app.core.local_llm import get_discovered_llms, merge_discovered_llms
+        from app.llm.local_llm import get_discovered_llms, merge_discovered_llms
 
         merge_discovered_llms("ollama", ["granite4.2:3b-q4_K_M", "nomic-embed-text"])
         discovered = get_discovered_llms("ollama")
@@ -376,9 +391,9 @@ class TestAnalysisModelPolicy:
         # No per-request embedding choice exists: attacker-controlled model IDs
         # in the payload are dropped (extra='ignore') and can never reach a
         # model loader. The engine always serves models.yaml `embedding.model`.
-        import app.core.local_llm as _llm_mod
+        import app.llm.local_llm as _llm_mod
         from app.api.v1.schemas.analysis import AnalysisCreate
-        from app.core.config import get_model_config
+        from app.core.config.model_config import get_model_config
 
         _orig_get_discovered = _llm_mod.get_discovered_llms
         _llm_mod.get_discovered_llms = lambda provider: frozenset(

@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { EvidenceViewer } from '@/components/workbench/EvidenceViewer'
 import { evidenceService } from '@/services/api'
-import { FileSearch, Loader2, Search, Filter } from 'lucide-react'
+import { FileSearch, Search, Filter } from 'lucide-react'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 export default function EvidencePage() {
   const [search, setSearch] = useState('')
@@ -51,6 +52,7 @@ export default function EvidencePage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by snippet or source filename..."
+              aria-label="Search evidence by snippet or source filename"
               className="w-full bg-surface-800/80 border border-slate-700/80 rounded-lg pl-9 pr-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40 transition-colors"
             />
           </div>
@@ -72,8 +74,8 @@ export default function EvidencePage() {
 
         {/* Body */}
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center p-16 space-y-3">
-            <Loader2 size={24} className="animate-spin text-primary-400" />
+          <div className="flex flex-col items-center justify-center p-16 space-y-4">
+            <ThinkingOrbs size="md" />
             <span className="text-sm text-slate-400">Loading retrieved evidence records...</span>
           </div>
         ) : error ? (

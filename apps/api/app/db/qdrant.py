@@ -8,13 +8,15 @@ Separates knowledge bases into independent Qdrant collections.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models
 
-from app.core.config import get_model_config, get_settings
-from app.core.exceptions import VectorStoreError
-from app.core.logging import get_logger
+from app.core.config.model_config import get_model_config
+from app.core.config.settings import get_settings
+from app.core.observability.logging import get_logger
+from app.core.security.exceptions import VectorStoreError
 
 logger = get_logger(__name__)
 
@@ -169,9 +171,10 @@ async def _create_kb_collection(client: AsyncQdrantClient, collection_name: str,
         dense_dim=cfg.embedding_dimensionality,
     )
 
-    await client.create_collection(
-        collection_name=collection_name,
-        vectors_config=models.VectorParams(
+    quant_enabled = bool(getattr(cfg, "qdrant_quantization_enabled", False))
+    create_kwargs: dict[str, Any] = {
+        "collection_name": collection_name,
+        "vectors_config": models.VectorParams(
             size=cfg.embedding_dimensionality,
             distance=models.Distance.COSINE,
             on_disk=True,
@@ -179,27 +182,43 @@ async def _create_kb_collection(client: AsyncQdrantClient, collection_name: str,
         # Sparse leg: client sends BM25 TF-saturated values (see
         # app/ingestion/sparse_vector.py); Qdrant multiplies query-time IDF
         # from collection statistics (Modifier.IDF).
-        sparse_vectors_config={
+        "sparse_vectors_config": {
             "sparse-text": models.SparseVectorParams(
                 index=models.SparseIndexParams(on_disk=True),
                 modifier=models.Modifier.IDF,
             )
         },
         # Keep document payloads on disk using memory-mapped pages
-        on_disk_payload=True,
-        # Ultra-low RAM: Quantize float32 vectors to INT8 with on-disk storage
-        quantization_config=models.ScalarQuantization(
+        "on_disk_payload": True,
+    }
+    # N-53: INT8 quantization is gated (default OFF) until recall impact is
+    # measured on BGE-small 384-d; enabling without a gate risks dropping the
+    # true nearest neighbour at the reranker boundary.
+    if quant_enabled:
+        create_kwargs["quantization_config"] = models.ScalarQuantization(
             scalar=models.ScalarQuantizationConfig(
                 type=models.ScalarType.INT8,
                 quantile=0.99,
                 always_ram=False,
             )
-        ),
-    )
+        )
+    await client.create_collection(**create_kwargs)
     logger.info(
-        "Qdrant collection created with on_disk and INT8 quantization",
+        "Qdrant collection created",
         collection=collection_name,
+        quantization="int8" if quant_enabled else "off",
     )
+    # N-47: document deletion filters on these payload keys; without indexes
+    # it full-scans inside a DELETE request.
+    for _field in ("document_id", "knowledge_base_id", "chunk_index", "integrity_status"):
+        try:
+            await client.create_payload_index(
+                collection_name=collection_name,
+                field_name=_field,
+                field_schema=models.PayloadSchemaType.KEYWORD,
+            )
+        except Exception as exc:
+            logger.debug("Payload index skipped", field=_field, error=str(exc))
 
 
 async def delete_kb_collection(kb_id: str) -> None:

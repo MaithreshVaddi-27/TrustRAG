@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from app.ingestion.chunker import chunk_text
-from app.ingestion.parser import (
+from app.rag.ingestion.chunker import chunk_text
+from app.rag.ingestion.parser import (
     extract_dates,
     parse_csv,
     parse_document,
@@ -20,7 +20,7 @@ from app.ingestion.parser import (
     parse_html,
     parse_json,
 )
-from app.ingestion.sparse_vector import generate_sparse_vector, tokenize
+from app.rag.ingestion.sparse_vector import generate_sparse_vector, tokenize
 
 
 def test_chunking_strategy():
@@ -77,23 +77,23 @@ def test_sparse_vectorizer_tokenize():
 
 
 def test_sparse_vectorizer_generation():
-    text = "refund processing refund window"
+    text = "token processing token lifetime"
     sparse_vec = generate_sparse_vector(text)
 
     assert "indices" in sparse_vec
     assert "values" in sparse_vec
     assert len(sparse_vec["indices"]) == len(sparse_vec["values"])
 
-    # BM25-style TF, not linear TF: "refund" appears twice in 4 tokens.
+    # BM25-style TF, not linear TF: "token" appears twice in 4 tokens.
     # sat(2) = 2*2.2/(2+1.2) = 1.375; length norm for 4 tokens against the
     # 128-token reference = 0.25 + 0.75*(4/128). Linear TF would give 0.5.
-    expected_refund = 1.375 / (0.25 + 0.75 * (4 / 128))
-    assert max(sparse_vec["values"]) == pytest.approx(expected_refund)
+    expected_token = 1.375 / (0.25 + 0.75 * (4 / 128))
+    assert max(sparse_vec["values"]) == pytest.approx(expected_token)
     assert 0.5 not in sparse_vec["values"]
 
 
-@patch("app.ingestion.pipeline.init_kb_collection", AsyncMock())
-@patch("app.ingestion.pipeline.get_embedding_model")
+@patch("app.rag.ingestion.pipeline.init_kb_collection", AsyncMock())
+@patch("app.rag.ingestion.pipeline.get_embedding_model")
 @patch("app.db.mongodb.connect_db")
 @patch("app.db.mongodb.create_indexes")
 @pytest.mark.asyncio
@@ -121,13 +121,13 @@ async def test_indexing_pipeline_execution(mock_create_indexes, mock_connect, mo
     mock_collection.insert_many = AsyncMock()
 
     with (
-        patch("app.ingestion.pipeline.get_collection", return_value=mock_collection),
+        patch("app.rag.ingestion.pipeline.get_collection", return_value=mock_collection),
         patch(
-            "app.ingestion.pipeline.get_qdrant_client",
+            "app.rag.ingestion.pipeline.get_qdrant_client",
             AsyncMock(return_value=mock_client),
         ),
     ):
-        from app.ingestion.pipeline import index_parsed_chunks
+        from app.rag.ingestion.pipeline import index_parsed_chunks
 
         chunks = [
             {"text": "chunk 1", "page": 1, "chunk_index": 0, "character_offset": 0},
@@ -241,6 +241,6 @@ def test_chunker_long_token_falls_back_to_hard_cut():
     pages = [{"page": 1, "text": "A" * 300}]
     chunks = chunk_text(pages, chunk_size=100, chunk_overlap=10)
     assert len(chunks) >= 1
-    # normalize_text lowercases; the hard cut keeps the full window width.
-    assert chunks[0]["text"].startswith("a")
+    # P1-5: normalize preserves case for verbatim citations; hard cut keeps width.
+    assert chunks[0]["text"].startswith("A")
     assert len(chunks[0]["text"]) == 100

@@ -8,14 +8,16 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+import pymongo.errors
 from bson import ObjectId
 from qdrant_client.http import models
 
 from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
-from app.core.exceptions import AuthorizationError, NotFoundError
-from app.core.logging import get_logger
+from app.core.observability.logging import get_logger
+from app.core.security.exceptions import AuthorizationError, ConflictError, NotFoundError
 from app.db.mongodb import Collections, get_collection
 from app.db.qdrant import delete_kb_collection, get_collection_name, get_qdrant_client
+from app.rag.ingestion import page_images as page_images_mod
 
 logger = get_logger(__name__)
 
@@ -84,7 +86,7 @@ async def get_kb(kb_id_str: str, user_id_str: str) -> KBResponse:
     try:
         kb_id = ObjectId(kb_id_str)
     except Exception as exc:
-        raise NotFoundError("Knowledge Base not found", detail=str(exc)) from exc
+        raise NotFoundError("Knowledge Base not found") from exc
 
     kb = await get_collection(Collections.KNOWLEDGE_BASES).find_one({"_id": kb_id})
     if not kb:
@@ -101,14 +103,25 @@ async def get_kb(kb_id_str: str, user_id_str: str) -> KBResponse:
     return serialize_kb(kb, doc_count)
 
 
-async def list_kbs(user_id_str: str) -> list[KBResponse]:
+async def list_kbs(user_id_str: str, limit: int = 200, skip: int = 0) -> list[KBResponse]:
     """List all knowledge bases owned by user with document counts in a single aggregation."""
     kb_coll = get_collection(Collections.KNOWLEDGE_BASES)
     doc_coll = get_collection(Collections.DOCUMENTS)
 
     # Fetch all KBs owned by user in one query
     user_obj_id = ObjectId(user_id_str)
-    kbs_raw = await kb_coll.find({"user_id": user_obj_id}).sort("created_at", -1).to_list(500)
+    capped = min(max(limit, 1), 500)
+    kbs_raw = (
+        await kb_coll.find({"user_id": user_obj_id})
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(capped)
+        .to_list(capped)
+    )
+    if len(kbs_raw) == 500 and skip == 0:
+        from app.core.observability.logging import get_logger as _get_logger
+
+        _get_logger(__name__).warning("KB list truncated at 500; use skip/limit pagination")
 
     if not kbs_raw:
         return []
@@ -154,15 +167,9 @@ async def delete_kb(kb_id_str: str, user_id_str: str) -> None:
     # 3. Delete the KB record itself
     await get_collection(Collections.KNOWLEDGE_BASES).delete_one({"_id": kb_id})
 
-    # 4. Purge OCR page-image files (Phase 7 chain). Best-effort, never raises.
-    from app.ingestion.page_images import delete_kb_page_images
+    # 4. Purge OCR page-image files (page-image chain). Best-effort, never raises.
+    page_images_mod.delete_kb_page_images(kb_id_str)
 
-    delete_kb_page_images(kb_id_str)
-
-    # Cached answers must never outlive the evidence that produced them.
-    from app.core.semantic_cache import invalidate_kb_cache
-
-    invalidate_kb_cache(kb_id_str)
     logger.info(
         "KB permanently deleted with all associated data",
         kb_id=kb_id_str,
@@ -185,8 +192,6 @@ async def add_document(
     Add a document metadata record. Verifies KB ownership first.
     Returns 409 Conflict if a document with the same content_hash already exists in the KB.
     """
-    import pymongo.errors
-
     # Verify owner
     await get_kb(kb_id_str, user_id_str)
 
@@ -210,15 +215,9 @@ async def add_document(
         result = await doc_coll.insert_one(doc_doc)
         doc_doc["_id"] = result.inserted_id
 
-        # New evidence can change the best answer for an already cached query.
-        from app.core.semantic_cache import invalidate_kb_cache
-
-        invalidate_kb_cache(kb_id_str)
         return serialize_doc(doc_doc)
     except pymongo.errors.DuplicateKeyError as exc:
         if "doc_kb_content_hash_unique" in str(exc):
-            from app.core.exceptions import ConflictError
-
             raise ConflictError(
                 "Document with identical content already exists in this knowledge base",
                 detail=f"content_hash: {content_hash}",
@@ -226,14 +225,23 @@ async def add_document(
         raise
 
 
-async def list_kb_documents(kb_id_str: str, user_id_str: str) -> list[DocResponse]:
+async def list_kb_documents(
+    kb_id_str: str, user_id_str: str, limit: int = 200, skip: int = 0
+) -> list[DocResponse]:
     """List all documents registered in a knowledge base."""
     # Verify owner
     await get_kb(kb_id_str, user_id_str)
 
     doc_coll = get_collection(Collections.DOCUMENTS)
     docs = []
-    async for d in doc_coll.find({"knowledge_base_id": ObjectId(kb_id_str)}).sort("created_at", -1):
+    capped = min(max(limit, 1), 500)
+    cursor = (
+        doc_coll.find({"knowledge_base_id": ObjectId(kb_id_str)})
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(capped)
+    )
+    async for d in cursor:
         docs.append(serialize_doc(d))
     return docs
 
@@ -252,8 +260,6 @@ async def create_kb_snapshot(kb_id_str: str, user_id_str: str, version: str = "1
     current_kb = await kb_coll.find_one({"_id": ObjectId(kb_id_str)})
 
     if not current_kb:
-        from app.core.exceptions import NotFoundError
-
         raise NotFoundError("Knowledge Base not found")
 
     # Create snapshot KB with incremented version
@@ -311,18 +317,16 @@ async def create_kb_snapshot(kb_id_str: str, user_id_str: str, version: str = "1
         {"knowledge_base_id": ObjectId(kb_id_str), "is_snapshot": {"$ne": True}}
     ).to_list(10000)
 
-    from app.ingestion.page_images import copy_page_image
-
     doc_version_map = {str(d["_id"]): d.get("version", "1.0") for d in existing_docs}
 
     for chunk in existing_chunks:
         remapped_doc_id = doc_id_map.get(str(chunk["document_id"]), str(chunk["document_id"]))
-        # Phase 7 chain: snapshot owns COPIES of page images (live files may
+        # page-image chain: snapshot owns COPIES of page images (live files may
         # be deleted later); copy failures fail open with a warning, never
         # fail the snapshot.
         new_image_ref: str | None = None
         if chunk.get("page_image_ref"):
-            new_image_ref = copy_page_image(
+            new_image_ref = page_images_mod.copy_page_image(
                 chunk["page_image_ref"], snapshot_id_str, remapped_doc_id
             )
         chunk_copy = {
@@ -369,8 +373,13 @@ async def _copy_kb_vectors(source_kb_id: str, dest_kb_id: str, doc_id_map: dict[
     ids); point ids are recomputed deterministically from the new doc ids so
     re-snapshotting stays idempotent.
     """
+    # NOTE: function-level imports are INTENTIONAL here (not tech debt).
+    # Tests patch these names at BOTH levels — module attrs on kb_service
+    # (test_kb/test_lifecycle) and sources (test_delete_safety/test_agent) —
+    # so the snapshot path re-reads source attributes per call while the rest
+    # of this module uses top-level bindings. Do not hoist.
     from app.db.qdrant import get_collection_name, init_kb_collection
-    from app.ingestion.pipeline import hashlib_qdrant_id
+    from app.rag.ingestion.pipeline import hashlib_qdrant_id
 
     client = await get_qdrant_client()
     source_name = get_collection_name(source_kb_id)
@@ -440,13 +449,9 @@ async def rollback_kb_to_snapshot(
     snapshot_kb = await get_kb(snapshot_kb_id_str, user_id_str)
 
     if not snapshot_kb.is_snapshot:
-        from app.core.exceptions import ConflictError
-
         raise ConflictError("Rollback target is not a snapshot of this knowledge base")
 
     if str(snapshot_kb.parent_kb_id) != kb_id_str:
-        from app.core.exceptions import ConflictError
-
         raise ConflictError("Snapshot does not belong to this knowledge base")
 
     kb_id = ObjectId(kb_id_str)
@@ -472,8 +477,6 @@ async def rollback_kb_to_snapshot(
             {"knowledge_base_id": snapshot_kb_id}
         )
         if snap_chunks > 0:
-            from app.core.exceptions import ConflictError
-
             raise ConflictError(
                 "Snapshot has no searchable vectors (predates the vector-copy fix); "
                 "re-upload the documents instead of rolling back",
@@ -500,13 +503,7 @@ async def rollback_kb_to_snapshot(
         },
     )
 
-    # 3. Cached answers for both identities are stale after a rollback.
-    from app.core.semantic_cache import invalidate_kb_cache
-
-    invalidate_kb_cache(kb_id_str)
-    invalidate_kb_cache(snapshot_kb_id_str)
-
-    # 4. Return the restored (formerly snapshot) KB.
+    # 3. Return the restored (formerly snapshot) KB.
     return await get_kb(snapshot_kb_id_str, user_id_str)
 
 
@@ -516,12 +513,10 @@ async def delete_document(doc_id_str: str, user_id_str: str) -> None:
 
     Verifies ownership of the parent KB before deleting.
     """
-    from app.core.exceptions import NotFoundError
-
     try:
         doc_id = ObjectId(doc_id_str)
     except Exception as exc:
-        raise NotFoundError("Document not found", detail=str(exc)) from exc
+        raise NotFoundError("Document not found") from exc
 
     doc_coll = get_collection(Collections.DOCUMENTS)
     doc = await doc_coll.find_one({"_id": doc_id})
@@ -567,14 +562,9 @@ async def delete_document(doc_id_str: str, user_id_str: str) -> None:
     # 3. Delete document record itself
     await doc_coll.delete_one({"_id": doc_id})
 
-    # 4. Purge OCR page-image files (Phase 7 chain). Best-effort: the helper
+    # 4. Purge OCR page-image files (page-image chain). Best-effort: the helper
     # never raises, and chunks/vectors are already gone so nothing can serve
     # a dangling ref.
-    from app.ingestion.page_images import delete_doc_page_images
+    page_images_mod.delete_doc_page_images(kb_id_str, doc_id_str)
 
-    delete_doc_page_images(kb_id_str, doc_id_str)
-
-    from app.core.semantic_cache import invalidate_kb_cache
-
-    invalidate_kb_cache(kb_id_str)
     logger.info("Document deleted successfully", doc_id=doc_id_str, kb_id=kb_id_str)

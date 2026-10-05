@@ -1,5 +1,5 @@
 """
-Unit tests for index lifecycle: snapshots, rollback, delete purge (Phase 8).
+Unit tests for index lifecycle: snapshots, rollback, delete purge .
 
 RED: snapshot/rollback routes do not exist; rollback has no empty-snapshot
 guard; snapshot chunk copies drop OCR provenance.
@@ -45,8 +45,8 @@ def setup_dependency_override(mock_user_doc):
 def _kb_doc(kb_id: str, **overrides):
     doc = {
         "_id": ObjectId(kb_id),
-        "name": "Refund Policies",
-        "description": "Standard refund schedules",
+        "name": "API Limits",
+        "description": "API limit schedules",
         "user_id": ObjectId(USER_ID),
         "created_at": "2026-08-27T10:00:00Z",
         "version": "1.0",
@@ -178,7 +178,7 @@ async def test_rollback_refuses_snapshot_without_vectors():
         patch.object(kb_service, "get_collection", return_value=mock_collection),
         patch.object(kb_service, "get_qdrant_client", return_value=mock_qdrant),
     ):
-        from app.core.exceptions import ConflictError
+        from app.core.security.exceptions import ConflictError
 
         with pytest.raises(ConflictError, match="no searchable vectors"):
             await kb_service.rollback_kb_to_snapshot(KB_ID, SNAP_ID, USER_ID)
@@ -199,7 +199,7 @@ async def test_snapshot_chunk_copies_keep_ocr_provenance():
         "knowledge_base_id": ObjectId(KB_ID),
         "user_id": ObjectId(USER_ID),
         "chunk_index": 0,
-        "text": "scanned refund text",
+        "text": "scanned record text",
         "page": 2,
         "character_offset": 0,
         "zone": "body",
@@ -239,7 +239,7 @@ async def test_snapshot_chunk_copies_keep_ocr_provenance():
     ):
         await kb_service.create_kb_snapshot(KB_ID, USER_ID, version="1.1")
 
-    chunk_copies = [d for d in inserted if d.get("text") == "scanned refund text"]
+    chunk_copies = [d for d in inserted if d.get("text") == "scanned record text"]
     assert len(chunk_copies) == 1
     assert chunk_copies[0]["ocr_used"] is True
     assert chunk_copies[0]["ocr_confidence"] == 0.87
@@ -257,7 +257,7 @@ async def test_delete_document_purges_qdrant_points_by_document_id():
     mock_doc = {
         "_id": ObjectId(doc_id),
         "knowledge_base_id": ObjectId(KB_ID),
-        "filename": "policy.pdf",
+        "filename": "service-api.md",
     }
     mock_kb = _kb_doc(KB_ID)
     mock_coll = MagicMock()
@@ -286,7 +286,7 @@ async def test_delete_document_purges_qdrant_points_by_document_id():
     mock_coll.delete_one.assert_awaited_once()
 
 
-# ── Page-image lifecycle (Phase 7 residual) ──────────────────────────────────
+# ── Page-image lifecycle (historical note) ──────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -304,7 +304,7 @@ async def test_snapshot_copies_page_images_with_remapped_refs():
         "knowledge_base_id": ObjectId(KB_ID),
         "user_id": ObjectId(USER_ID),
         "chunk_index": 0,
-        "text": "scanned refund text",
+        "text": "scanned record text",
         "page": 2,
         "character_offset": 0,
         "zone": "body",
@@ -342,12 +342,12 @@ async def test_snapshot_copies_page_images_with_remapped_refs():
     with (
         patch.object(kb_service, "get_collection", return_value=mock_collection),
         patch.object(kb_service, "get_qdrant_client", return_value=mock_qdrant),
-        patch("app.ingestion.page_images.copy_page_image", return_value="NEWREF") as mock_copy,
+        patch("app.rag.ingestion.page_images.copy_page_image", return_value="NEWREF") as mock_copy,
     ):
         await kb_service.create_kb_snapshot(KB_ID, USER_ID, version="1.1")
 
     mock_copy.assert_called_once()
-    chunk_copies = [d for d in inserted if d.get("text") == "scanned refund text"]
+    chunk_copies = [d for d in inserted if d.get("text") == "scanned record text"]
     assert len(chunk_copies) == 1
     assert chunk_copies[0]["page_image_ref"] == "NEWREF"
 
@@ -376,7 +376,7 @@ async def test_delete_document_purges_page_images():
     with (
         patch.object(kb_service, "get_collection", return_value=mock_coll),
         patch.object(kb_service, "get_qdrant_client", return_value=mock_qdrant),
-        patch("app.ingestion.page_images.delete_doc_page_images", return_value=2) as mock_purge,
+        patch("app.rag.ingestion.page_images.delete_doc_page_images", return_value=2) as mock_purge,
     ):
         await kb_service.delete_document(doc_id, USER_ID)
 

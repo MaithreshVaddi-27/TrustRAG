@@ -22,16 +22,20 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
+from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 
 from app.api.router import api_router
-from app.core.config import get_model_config, get_settings
-from app.core.exceptions import (
+from app.core.config.model_config import get_model_config
+from app.core.config.settings import get_settings
+from app.core.observability.logging import configure_logging, get_logger
+from app.core.observability.tracing import init_tracing, tracing_middleware
+from app.core.security.exceptions import (
     AnalysisNotFoundError,
     AuthenticationError,
     AuthorizationError,
@@ -47,12 +51,18 @@ from app.core.exceptions import (
     UnsupportedFormatError,
     VectorStoreError,
 )
-from app.core.hardware import get_cached_hardware_profile
-from app.core.logging import configure_logging, get_logger
-from app.core.model_registry import get_embedding_model
-from app.core.rate_limiter import limiter
-from app.core.tracing import init_tracing, tracing_middleware
+from app.core.system.hardware import get_cached_hardware_profile
+from app.core.system.memory import get_memory_usage_mb
 from app.db.mongodb import connect_db, create_indexes, disconnect_db
+from app.llm.local_llm import (
+    close_local_llm_clients,
+    load_discovery_snapshot,
+    seed_local_model_discovery,
+)
+from app.llm.model_registry import (
+    get_embedding_model,
+    onnx_model_status,
+)
 
 logger = get_logger(__name__)
 
@@ -95,6 +105,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     import os
 
     os.environ["LANGCHAIN_TRACING_V2"] = "false"
+    # Low-RAM / inference-speed guards (production default, all platforms):
+    # - TOKENIZERS_PARALLELISM=false prevents Rust tokenizer thread-pool
+    #   fork-bloat next to asyncio.to_thread + torch (saves ~100-300 MB RSS).
+    # - OMP_NUM_THREADS caps ONNX intra-op pools (embeddings + reranker each
+    #   cap at 4 internally; this bounds any other native lib sharing the pool).
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    try:
+        _cpu = os.cpu_count() or 4
+        os.environ.setdefault("OMP_NUM_THREADS", str(max(1, min(4, _cpu))))
+    except Exception:
+        os.environ.setdefault("OMP_NUM_THREADS", "4")
     _model_cached = False
     try:
         cfg_probe = get_model_config()
@@ -151,8 +172,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # query 500s, and without reranker weights reranking silently degrades to
     # RRF order. Both are deploy-time problems (run scripts/bootstrap.py and
     # bake .model_cache into the image) — never per-request surprises.
-    from app.core.model_registry import onnx_model_status
-
     onnx_status = onnx_model_status()
     if not onnx_status["embedding_onnx_present"]:
         logger.error(
@@ -174,17 +193,37 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await connect_db()
     await create_indexes()
 
-    # Load semantic cache from disk (lazy-loaded at import, now explicit)
-    from app.core.semantic_cache import load_cache
+    # P1-18: reap analyses orphaned by restart/--reload/OOM. In-flight runs
+    # stay "processing" forever without this; mark them failed with a message.
+    try:
+        from datetime import UTC as _UTC
+        from datetime import datetime as _dt
 
-    loaded = load_cache()
-    logger.info("Semantic cache loaded", entries=loaded)
+        from app.db.mongodb import Collections as _Colls
+        from app.db.mongodb import get_collection as _get_coll
+
+        _analyses = _get_coll(_Colls.ANALYSES)
+        _reaped = await _analyses.update_many(
+            {"status": "processing"},
+            {
+                "$set": {
+                    "status": "failed",
+                    "error_message": "Server restarted during analysis; please retry.",
+                    "updated_at": _dt.now(_UTC),
+                }
+            },
+        )
+        if getattr(_reaped, "modified_count", 0):
+            logger.warning(
+                "Reaped orphaned processing analyses",
+                count=_reaped.modified_count,
+            )
+    except Exception as _reap_exc:
+        logger.debug("Analysis reaper skipped", error=str(_reap_exc))
 
     # Seed the local-model discovery cache from the persisted snapshot so a
     # pre-run `scripts/bootstrap.py` (or any earlier process) is
     # honored before the server answers its first request.
-    from app.core.local_llm import load_discovery_snapshot, seed_local_model_discovery
-
     load_discovery_snapshot()
 
     logger.info("TRUSTRAG API ready")
@@ -206,18 +245,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 error=str(warm_err),
             )
 
-    async def _cleanup_caches() -> None:
-        """Run periodic cache cleanup on startup (embedding + semantic)."""
-        try:
-            from app.core.disk_cache import maybe_cleanup_cache
-            from app.core.semantic_cache import _cleanup_expired_entries
-
-            maybe_cleanup_cache()
-            _cleanup_expired_entries()
-            logger.debug("Cache TTL cleanup completed on startup")
-        except Exception as exc:
-            logger.debug("Startup cache cleanup skipped", error=str(exc))
-
     async def _warmup_hardware() -> None:
         # OPT-H9: Run the expensive hardware probe once at startup so the first
         # /models/* request never pays the subprocess cost.
@@ -232,15 +259,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # heavy startups contend on first boot; RSS around each step turns the
         # next OOM report into a breakdown instead of a guess. Discovery still
         # re-persists the snapshot so already-running processes stay in sync.
-        from app.core.memory import get_memory_usage_mb
-
         logger.info("Startup warmup: discovery", rss_mb=get_memory_usage_mb())
         await seed_local_model_discovery()
         logger.info("Startup warmup: hardware", rss_mb=get_memory_usage_mb())
         await _warmup_hardware()
         logger.info("Startup warmup: embeddings", rss_mb=get_memory_usage_mb())
         await _warmup_embeddings()
-        await _cleanup_caches()
         logger.info("Startup warmup complete", rss_mb=get_memory_usage_mb())
 
     warmup_task = asyncio.create_task(_async_warmup())
@@ -251,21 +275,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not warmup_task.done():
         warmup_task.cancel()
     logger.info("TRUSTRAG API shutting down")
-    from app.core.local_llm import close_local_llm_clients
-    from app.core.model_registry import close_all_llm_instances
-
     await close_local_llm_clients()
-    await close_all_llm_instances(seal=True)
     await disconnect_db()
 
 
-# ─── Rate limiter ─────────────────────────────────────────────────────────────
-# Import shared limiter (defined in app.core.rate_limiter to avoid circular imports)
-
-
 # ─── Exception handlers ───────────────────────────────────────────────────────
-
-
 def _error_response(status_code: int, code: str, message: str) -> JSONResponse:
     """Produce a consistent error response. Never includes internal detail."""
     return JSONResponse(
@@ -376,6 +390,26 @@ def _register_exception_handlers(app: FastAPI) -> None:
             "An unexpected error occurred.",
         )
 
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        logger.warning("Request validation failed", path=request.url.path)
+        try:
+            msgs = []
+            for err in exc.errors():
+                msg = str(err.get("msg", "invalid"))
+                loc = ".".join(str(p) for p in err.get("loc", []) if str(p) != "body")
+                msgs.append(f"{loc}: {msg}" if loc else msg)
+            message = "; ".join(msgs[:3]) if msgs else "Request validation failed."
+        except Exception:
+            message = "Request validation failed."
+        return _error_response(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "VALIDATION_ERROR",
+            message,
+        )
+
     @app.exception_handler(Exception)
     async def generic_error_handler(request: Request, exc: Exception) -> JSONResponse:
         """
@@ -414,6 +448,13 @@ def _register_exception_handlers(app: FastAPI) -> None:
 # ─── Request ID middleware ─────────────────────────────────────────────────────
 # SEC: validate/truncate client-supplied X-Request-ID to prevent log forgery/trace confusion
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9\-]{1,64}$")
+
+
+async def _rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={"error": {"code": "RATE_LIMITED", "message": "Too many requests. Slow down."}},
+    )
 
 
 async def request_id_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -457,11 +498,6 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json" if not settings.is_production() else None,
     )
 
-    # ── Rate limiting ──────────────────────────────────────────────────────
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-    app.add_middleware(SlowAPIMiddleware)
-
     # ── CORS ───────────────────────────────────────────────────────────────
     # SEC-H-A: In production, only explicit CORS_ORIGINS allowed.
     # Wildcard platform regex (vercel.app, netlify.app, pages.dev) only for dev/staging.
@@ -487,6 +523,11 @@ def create_app() -> FastAPI:
     # ── GZip compression (threshold 1KB, skips small responses) ──────────────
     app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+    # ── Rate limiting (P1-19) ────────────────────────────────────────────
+    limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+
     # ── Request ID ────────────────────────────────────────────────────────
     app.middleware("http")(request_id_middleware)
 
@@ -501,6 +542,11 @@ def create_app() -> FastAPI:
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; font-src 'self' data:; "
+            "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        )
         if settings.is_production():
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response

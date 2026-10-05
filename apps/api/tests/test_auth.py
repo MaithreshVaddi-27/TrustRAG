@@ -69,7 +69,7 @@ def test_login_user_success(mock_create_indexes, mock_connect, mock_user_doc):
     mock_users_collection = MagicMock()
 
     # Hash password correctly so check passes
-    from app.core.security import hash_password
+    from app.core.security.security import hash_password
 
     mock_user_doc_hashed = dict(mock_user_doc)
     mock_user_doc_hashed["hashed_password"] = hash_password("StrongPass123!")
@@ -121,7 +121,7 @@ def test_get_me_protected_route(mock_create_indexes, mock_connect, mock_user_doc
 
     with patch("app.api.deps.get_collection", side_effect=get_collection_side_effect):
         # Create a valid token
-        from app.core.security import create_access_token
+        from app.core.security.security import create_access_token
 
         token = create_access_token("64ee39d09c6292376e191981")
 
@@ -136,7 +136,7 @@ def test_get_me_protected_route(mock_create_indexes, mock_connect, mock_user_doc
 
 def test_access_token_carries_jti_claim():
     """SEC-H1: every issued token must be individually revocable via its jti."""
-    from app.core.security import create_access_token, decode_access_token
+    from app.core.security.security import create_access_token, decode_access_token
 
     token = create_access_token("64ee39d09c6292376e191981")
     payload = decode_access_token(token)
@@ -149,7 +149,7 @@ def test_logout_revokes_token(mock_create_indexes, mock_connect, mock_user_doc):
     """SEC-H1: after /auth/logout the same token is rejected by /auth/me."""
     from bson import ObjectId
 
-    from app.core.security import create_access_token
+    from app.core.security.security import create_access_token
 
     mock_user_with_oid = dict(mock_user_doc)
     mock_user_with_oid["_id"] = ObjectId("64ee39d09c6292376e191981")
@@ -186,7 +186,7 @@ def test_logout_revokes_token(mock_create_indexes, mock_connect, mock_user_doc):
 def test_expired_token_rejected(mock_create_indexes, mock_connect, mock_user_doc):
     from datetime import timedelta
 
-    from app.core.security import create_access_token
+    from app.core.security.security import create_access_token
 
     users_coll = MagicMock()
 
@@ -202,8 +202,8 @@ def test_expired_token_rejected(mock_create_indexes, mock_connect, mock_user_doc
 
 def test_service_token_rejected_as_user_token():
     """Cross-type confusion: a service JWT must never authenticate as a user."""
-    from app.core.exceptions import AuthenticationError
-    from app.core.security import create_service_token, decode_access_token
+    from app.core.security.exceptions import AuthenticationError
+    from app.core.security.security import create_service_token, decode_access_token
 
     svc = create_service_token("ingestion-worker", permissions=["search:read"])
     with pytest.raises(AuthenticationError):
@@ -212,7 +212,7 @@ def test_service_token_rejected_as_user_token():
 
 def test_hash_password_rejects_overlong_input():
     """bcrypt truncates past 72 bytes — new credentials must be rejected, not truncated."""
-    from app.core.security import hash_password
+    from app.core.security.security import hash_password
 
     with pytest.raises(ValueError, match="72 bytes"):
         hash_password("Aa1!" + "x" * 69)  # 73 bytes total
@@ -223,7 +223,7 @@ def test_hash_password_rejects_overlong_input():
 
 def test_verify_password_explicit_truncation_keeps_legacy_hashes():
     """Hashes minted before the ceiling (from truncated prefixes) still verify."""
-    from app.core.security import BCRYPT_MAX_PASSWORD_BYTES, hash_password, verify_password
+    from app.core.security.security import BCRYPT_MAX_PASSWORD_BYTES, hash_password, verify_password
 
     prefix = "Aa1!" + "x" * 68  # exactly 72 bytes
     assert len(prefix.encode("utf-8")) == BCRYPT_MAX_PASSWORD_BYTES

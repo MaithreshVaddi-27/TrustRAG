@@ -22,7 +22,7 @@ DOC_ID = "64ee39d09c6292376e191999"
 def _kb_doc():
     return {
         "_id": ObjectId(KB_ID),
-        "name": "Refund Policies",
+        "name": "API Limits",
         "description": "d",
         "user_id": ObjectId(USER_ID),
         "created_at": "2026-08-27T10:00:00Z",
@@ -45,7 +45,7 @@ async def test_delete_document_qdrant_failure_keeps_metadata():
     mock_doc = {
         "_id": ObjectId(DOC_ID),
         "knowledge_base_id": ObjectId(KB_ID),
-        "filename": "policy.pdf",
+        "filename": "service-api.md",
     }
     mock_coll = MagicMock()
     mock_coll.find_one = AsyncMock(side_effect=[mock_doc, _kb_doc()])
@@ -102,7 +102,6 @@ async def test_delete_kb_drops_vectors_before_metadata():
         patch.object(kb_service, "get_collection", return_value=mock_coll),
         patch.object(kb_service, "get_qdrant_client", return_value=mock_qdrant),
         patch("app.db.qdrant.get_qdrant_client", return_value=mock_qdrant),
-        patch("app.core.semantic_cache.invalidate_kb_cache"),
     ):
         await kb_service.delete_kb(KB_ID, USER_ID)
 
@@ -128,7 +127,6 @@ async def test_delete_kb_qdrant_failure_keeps_all_metadata():
         patch.object(kb_service, "get_collection", return_value=mock_coll),
         patch.object(kb_service, "get_qdrant_client", return_value=mock_qdrant),
         patch("app.db.qdrant.get_qdrant_client", return_value=mock_qdrant),
-        patch("app.core.semantic_cache.invalidate_kb_cache"),
     ):
         with pytest.raises(Exception, match="Failed to drop"):
             await kb_service.delete_kb(KB_ID, USER_ID)
@@ -139,8 +137,8 @@ async def test_delete_kb_qdrant_failure_keeps_all_metadata():
 
 def test_router_cap_below_two_falls_back_to_simple():
     """Capping fan-out below 2 is meaningless — run the full query, not half."""
-    from app.agent.router import QueryRoute, route_query
+    from app.rag.agent.router import QueryRoute, route_query
 
-    routed = route_query("Pro vs Team plan?", max_sub_queries=1)
+    routed = route_query("Pro tier vs Team tier?", max_sub_queries=1)
     assert routed.route == QueryRoute.SIMPLE
-    assert routed.sub_queries == ["Pro vs Team plan?"]
+    assert routed.sub_queries == ["Pro tier vs Team tier?"]

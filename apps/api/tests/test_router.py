@@ -1,7 +1,7 @@
 """
-Unit tests for the deterministic query router + fan-out merge (Phase 6).
+Unit tests for the deterministic query router + fan-out merge.
 
-RED: app.agent.router does not exist — every import here fails first.
+RED: app.rag.agent.router does not exist — every import here fails first.
 Router contract (no LLM anywhere on this path):
 - SIMPLE: today's single hybrid call, byte-identical kwargs.
 - TEMPORAL: single call + explicit reference_time when the query names a year.
@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from app.agent.router import (
+from app.rag.agent.router import (
     QueryRoute,
     fanout_retrieve,
     merge_fanout_results,
@@ -33,34 +33,34 @@ def _chunk(id_: str, rrf: float, text: str = "evidence text") -> dict:
 
 
 def test_simple_factual_query_takes_todays_path():
-    routed = route_query("How long do I have to request a refund?")
+    routed = route_query("How long do I have to request a record?")
     assert routed.route == QueryRoute.SIMPLE
-    assert routed.sub_queries == ["How long do I have to request a refund?"]
+    assert routed.sub_queries == ["How long do I have to request a record?"]
     assert routed.reference_time is None
 
 
 def test_single_question_mark_stays_simple():
-    routed = route_query("What is the Pro plan price?")
+    routed = route_query("What is the Pro tier price?")
     assert routed.route == QueryRoute.SIMPLE
 
 
 def test_temporal_year_sets_reference_time():
-    routed = route_query("What was the Pro plan price in 2025?")
+    routed = route_query("What was the Pro tier price in 2025?")
     assert routed.route == QueryRoute.TEMPORAL
-    assert routed.sub_queries == ["What was the Pro plan price in 2025?"]
+    assert routed.sub_queries == ["What was the Pro tier price in 2025?"]
     assert routed.reference_time == datetime(2025, 7, 1, tzinfo=UTC)
 
 
 def test_temporal_keyword_without_year_keeps_caller_time():
-    routed = route_query("What is the current Pro plan price?")
+    routed = route_query("What is the current Pro tier price?")
     assert routed.route == QueryRoute.TEMPORAL
     assert routed.reference_time is None
 
 
 def test_comparison_vs_splits_into_two_sub_queries():
-    routed = route_query("How much is the Pro vs Team plan?")
+    routed = route_query("What is the difference between Pro vs Team storage?")
     assert routed.route == QueryRoute.COMPARISON
-    assert routed.sub_queries == ["How much is the Pro", "Team plan"]
+    assert routed.sub_queries == ["What is the difference between Pro", "Team storage"]
 
 
 def test_comparison_difference_between_splits():
@@ -77,13 +77,13 @@ def test_unsubstantiated_comparison_falls_back_to_simple():
 
 def test_multi_question_splits_and_caps_sub_queries():
     routed = route_query(
-        "What is the refund window? How fast are refunds paid? Where do I send the request? "
+        "What is the token lifetime? How fast are records paid? Where do I send the request? "
         "Is express delivery available?",
         max_sub_queries=3,
     )
     assert routed.route == QueryRoute.COMPLEX
     assert len(routed.sub_queries) == 3
-    assert routed.sub_queries[0] == "What is the refund window"
+    assert routed.sub_queries[0] == "What is the token lifetime"
 
 
 # ── Merge ────────────────────────────────────────────────────────────────────
@@ -107,34 +107,36 @@ async def test_fanout_runs_sub_queries_concurrently_and_merges():
     async def fake_hybrid(query, **kwargs):
         return [_chunk(f"hit-{query}", 0.02, text=f"text for {query}")]
 
-    with patch("app.agent.router.retrieve_hybrid_chunks", new=AsyncMock(side_effect=fake_hybrid)):
+    with patch(
+        "app.rag.agent.router.retrieve_hybrid_chunks", new=AsyncMock(side_effect=fake_hybrid)
+    ):
         merged = await fanout_retrieve(
-            ["Pro plan", "Team plan"], {"kb_id": "kb1", "top_k_override": None}
+            ["Pro tier", "Team tier"], {"kb_id": "kb1", "top_k_override": None}
         )
     assert len(merged) == 2
-    assert {c["id"] for c in merged} == {"hit-Pro plan", "hit-Team plan"}
+    assert {c["id"] for c in merged} == {"hit-Pro tier", "hit-Team tier"}
 
 
 @pytest.mark.asyncio
 async def test_fanout_degrades_to_healthy_branch_on_partial_outage():
-    from app.core.exceptions import RetrievalOutageError
+    from app.core.security.exceptions import RetrievalOutageError
 
     async def flaky(query, **kwargs):
         if query == "bad side":
             raise RetrievalOutageError("sparse branch down")
         return [_chunk("good-hit", 0.02)]
 
-    with patch("app.agent.router.retrieve_hybrid_chunks", new=AsyncMock(side_effect=flaky)):
+    with patch("app.rag.agent.router.retrieve_hybrid_chunks", new=AsyncMock(side_effect=flaky)):
         merged = await fanout_retrieve(["bad side", "good side"], {"kb_id": "kb1"})
     assert [c["id"] for c in merged] == ["good-hit"]
 
 
 @pytest.mark.asyncio
 async def test_fanout_total_outage_stays_an_outage():
-    from app.core.exceptions import RetrievalOutageError
+    from app.core.security.exceptions import RetrievalOutageError
 
     with patch(
-        "app.agent.router.retrieve_hybrid_chunks",
+        "app.rag.agent.router.retrieve_hybrid_chunks",
         new=AsyncMock(side_effect=RetrievalOutageError("all down")),
     ):
         with pytest.raises(RetrievalOutageError):
@@ -144,16 +146,16 @@ async def test_fanout_total_outage_stays_an_outage():
 # ── Node wiring ──────────────────────────────────────────────────────────────
 
 
-@patch("app.agent.graph.add_trace_event", AsyncMock())
-@patch("app.agent.graph.audit_evidence_integrity")
-@patch("app.agent.graph.rerank_candidate_chunks")
-@patch("app.agent.router.retrieve_hybrid_chunks")
-@patch("app.agent.graph.get_collection")
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.audit_evidence_integrity")
+@patch("app.rag.agent.graph.rerank_candidate_chunks")
+@patch("app.rag.agent.router.retrieve_hybrid_chunks")
+@patch("app.rag.agent.graph.get_collection")
 @pytest.mark.asyncio
 async def test_retrieval_node_fans_out_comparison_query(
     mock_collection, mock_retrieve, mock_rerank, mock_audit
 ):
-    from app.agent.graph import retrieval_node
+    from app.rag.agent.graph import retrieval_node
 
     async def per_side(query, **kwargs):
         return [

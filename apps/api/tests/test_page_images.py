@@ -1,5 +1,5 @@
 """
-Unit tests for OCR page-image persistence (Phase 7 residual).
+Unit tests for OCR page-image persistence (historical note).
 
 RED: app/ingestion/page_images.py does not exist yet.
 """
@@ -10,7 +10,7 @@ import os
 
 import pytest
 
-from app.ingestion import page_images
+from app.rag.ingestion import page_images
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 

@@ -105,7 +105,8 @@ def _fake_tokenizer():
 
 def _make_embedder(session, **kwargs):
     """Construct ONNXBGEEmbeddings without touching onnxruntime or transformers."""
-    from app.core import onnx_embeddings as mod
+    from app.core.config.model_config import get_model_config
+    from app.llm import onnx_embeddings as mod
 
     tok = _fake_tokenizer()
     with (
@@ -116,7 +117,9 @@ def _make_embedder(session, **kwargs):
         with patch.object(mod.ort, "InferenceSession", return_value=session):
             emb = mod.ONNXBGEEmbeddings(
                 model_path="/fake/model.onnx",
-                tokenizer_name=kwargs.pop("tokenizer_name", "BAAI/bge-small-en-v1.5"),
+                # Default tokenizer resolves from models.yaml (embedding.model),
+                # never pinned here — a yaml edit propagates to tests too.
+                tokenizer_name=kwargs.pop("tokenizer_name", get_model_config().embedding_model),
                 **kwargs,
             )
     emb.tokenizer = tok  # our instrumented tokenizer
@@ -128,7 +131,7 @@ def _make_reranker(session, **kwargs):
     configures SessionOptions, so the real (installed) module is patched."""
     import onnxruntime as ort
 
-    from app.core import onnx_reranker as mod
+    from app.llm import onnx_reranker as mod
 
     tok = _fake_tokenizer()
     with (
@@ -190,7 +193,7 @@ def test_embed_query_applies_the_bge_instruction_exactly_once():
     emb = _make_embedder(session, tokenizer_name="BAAI/bge-small-en-v1.5")
     assert emb._is_bge is True
 
-    emb.embed_query("what is the refund window?")
+    emb.embed_query("what is the token lifetime?")
     seen = emb.tokenizer.call_args_list[0].args[0][0]
     assert seen.count(emb._query_instruction) == 1, f"instruction repeated: {seen!r}"
     assert seen.startswith(emb._query_instruction), f"instruction missing: {seen!r}"

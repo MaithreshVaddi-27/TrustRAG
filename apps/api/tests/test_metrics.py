@@ -1,5 +1,5 @@
 """
-Phase 10 — Speed + Production Engineering tests.
+Production engineering tests for metrics and budgets.
 
 Covers: Prometheus /metrics exposition, token estimation, pre-request
 budget enforcement, and metrics counters. No live services needed.
@@ -13,7 +13,7 @@ import pytest
 from bson import ObjectId
 from fastapi.testclient import TestClient
 
-from app.core import metrics
+from app.core.observability import metrics
 from app.main import app
 
 client = TestClient(app)
@@ -82,7 +82,7 @@ def test_metrics_endpoint_public_exposition():
 @pytest.mark.asyncio
 async def test_pre_request_budget_rejects_oversized_query():
     """create_analysis must 422 (InputValidationError) when query exceeds budget."""
-    from app.core.exceptions import InputValidationError
+    from app.core.security.exceptions import InputValidationError
     from app.services import analysis_service
 
     fake_kb = MagicMock()
@@ -127,8 +127,8 @@ def test_pre_request_query_budget_is_not_vacuous():
     (~500 tokens), so it could never fire. Assert the configured query budget
     is genuinely reachable within the schema's own query limit."""
     from app.api.v1.schemas.analysis import AnalysisCreate
-    from app.core.config import get_model_config
-    from app.core.metrics import estimate_tokens
+    from app.core.config.model_config import get_model_config
+    from app.core.observability.metrics import estimate_tokens
 
     cfg = get_model_config()
     max_schema_chars = next(
@@ -181,7 +181,7 @@ async def test_pre_request_budget_disabled_allows_large_query():
         patch.object(analysis_service, "serialize_analysis", return_value=MagicMock()),
         # Cloud preflight probe (no network in unit tests) — mirrors the
         # probe_local_llm_server mock pattern in test_analyses.py.
-        patch("app.core.local_llm.probe_cloud_llm", AsyncMock(return_value=None)),
+        patch("app.llm.local_llm.probe_cloud_llm", AsyncMock(return_value=None)),
     ):
         schema = MagicMock()
         schema.knowledge_base_id = str(ObjectId())

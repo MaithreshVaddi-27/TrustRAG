@@ -21,17 +21,28 @@ from app.api.v1.schemas.analysis import (
     ReliabilitySummary,
     TraceEventResponse,
 )
-from app.core.concurrency import get_global_semaphore
-from app.core.config import get_model_config, get_settings, normalize_provider
-from app.core.exceptions import AuthorizationError, InputValidationError, NotFoundError
-from app.core.logging import get_logger
+from app.core.config.model_config import get_model_config, normalize_provider
+from app.core.config.settings import get_settings
+from app.core.observability.logging import get_logger
+from app.core.observability.metrics import (
+    estimate_tokens,
+    record_analysis_completed,
+    record_analysis_created,
+    record_budget_rejection,
+    record_tokens_estimated,
+)
+from app.core.security.exceptions import AuthorizationError, InputValidationError, NotFoundError
+from app.core.system import memory as memory_mod
 from app.db.mongodb import Collections, get_collection
-from app.services.kb_service import get_kb
-from app.verification.verdict import (
+from app.llm import local_llm as local_llm_mod
+from app.rag.generation.generator import strip_citation_markers
+from app.rag.verification.verdict import (
     ReliabilityStatus,
     Thresholds,
+    VerdictResult,
     verdict_from_state,
 )
+from app.services.kb_service import get_kb
 
 logger = get_logger(__name__)
 
@@ -41,32 +52,118 @@ logger = get_logger(__name__)
 # instead of answering. Such text must never be stored as a synthesis.
 
 _SCAFFOLD_MARKERS = (
+    # Verbatim CRAFT/TOON fence tokens from the grounding prompts.
     "<context>",
-    "<relevance>",
+    "<premise>",
+    "<craft",
+    "<role>",
+    "<action>",
+    "<format>",
+    "<tone>",
+    "<loop>",
     "answering_criteria",
     "final_section",
     "final_answer",
     "final_output",
+    # Rendered section headings the prompt itself uses. A model that restates
+    # the prompt's own structure is echoing scaffolding, not synthesising.
+    "### context",
+    "### role",
+    "### action",
+    "### format",
+    "### tone",
+    "segment 1 [source:",
 )
+
+# A short sentence repeated this many times is a decoding loop, not prose.
+_LOOP_REPEAT_THRESHOLD = 3
+# Phrases below this length are ignored by the loop detector (stopwords repeat
+# legitimately: "the limit is 30 days." is a real answer).
+_LOOP_MIN_PHRASE_LEN = 20
 
 
 def _looks_like_scaffold_echo(answer: str | None) -> bool:
-    """Detect prompt-echo / repetition-loop generations."""
+    """Detect prompt-echo / repetition-loop generations.
+
+    Three independent signals, because each catches a real small-model failure
+    that the others miss:
+      1. verbatim prompt scaffolding (fence tokens, prompt section headings);
+      2. a whole sentence repeated 3+ times;
+      3. the answer being one phrase repeated to the token cap.
+    """
     if not answer:
         return False
     lowered = answer.lower()
     if any(m in lowered for m in _SCAFFOLD_MARKERS):
         return True
-    # Same substantive sentence 3+ times = repetition loop.
+
+    flattened = lowered.replace("\n", " ")
+
+    # 2. Same substantive sentence 3+ times = repetition loop.
     seen: dict[str, int] = {}
-    for sentence in lowered.replace("\n", " ").split(". "):
+    for sentence in flattened.split(". "):
         s = sentence.strip()
-        if len(s) < 40:
+        if len(s) < _LOOP_MIN_PHRASE_LEN:
             continue
         seen[s] = seen.get(s, 0) + 1
-        if seen[s] >= 3:
+        if seen[s] >= _LOOP_REPEAT_THRESHOLD:
             return True
+
+    # 3. One phrase repeated to fill the token cap ("the limit is thirty days"
+    #    xN). Splitting on ". " above misses this because each copy keeps its
+    #    period, so they never collapse into one duplicate key.
+    words = flattened.split()
+    if len(words) >= 24:
+        for size in (4, 6, 8):
+            if len(words) % size:
+                continue
+            phrases = {" ".join(words[i : i + size]) for i in range(0, len(words), size)}
+            if len(phrases) == 1:
+                return True
     return False
+
+
+# Single user-facing refusal used for every non-TRUSTED terminal state, so a
+# user is never shown model prose that verification did not clear.
+_UNVERIFIED_ANSWER = (
+    "I couldn't verify an answer from this knowledge base: the retrieved "
+    "evidence did not support a grounded response, so I am abstaining rather "
+    "than guessing. Try a more specific query or add documents covering this "
+    "topic."
+)
+
+
+def _presentable_answer(
+    answer: str | None,
+    verdict_result: VerdictResult,
+) -> str | None:
+    """Return answer text that is safe to show a user, else None.
+
+    GROUNDING GATE (audit G-1): the verdict engine already decides how much of
+    a generated answer the evidence supports. This function is the single place
+    where that decision is applied to what the user actually reads.
+
+    Previously only ``ABSTAINED`` was filtered, so ``FAILED`` (reliability
+    below ``abstain_below``) and ``UNCERTAIN`` (coverage/contradiction
+    thresholds missed) answers were stored verbatim with status "completed" —
+    the pipeline detected the ungrounded content and then displayed it anyway.
+    That is the "answers that are not from the knowledge base" symptom.
+
+    Only ``TRUSTED`` verdicts may present the model's own text. Everything else
+    is replaced with the abstention message, so the reliability badge can never
+    contradict the prose beside it.
+    """
+    if verdict_result.reliability_status == ReliabilityStatus.TRUSTED:
+        return answer
+    return _UNVERIFIED_ANSWER
+
+
+def _record_completed(status: str) -> None:
+    """Record terminal analysis status; metrics must never break the pipeline."""
+    try:
+        record_analysis_completed(status)
+    except Exception:  # noqa: S110 - telemetry is best-effort
+        pass
 
 
 # ─── In-process SSE Pub/Sub ──────────────────────────────────────────────────
@@ -77,7 +174,7 @@ _subscribers_lock = asyncio.Lock()
 
 async def _subscribe_to_analysis(analysis_id: str) -> asyncio.Queue:
     """Subscribe to real-time events for an analysis."""
-    queue: asyncio.Queue = asyncio.Queue()
+    queue: asyncio.Queue = asyncio.Queue(maxsize=256)
     async with _subscribers_lock:
         if analysis_id not in _analysis_subscribers:
             _analysis_subscribers[analysis_id] = set()
@@ -230,16 +327,9 @@ async def create_analysis(
                 detail=f"kb_dim={kb.embedding_dim} server_dim={cfg.embedding_dimensionality}",
             )
 
-    # Phase 10: pre-request token budget enforcement (zero LLM calls).
+    # Pre-request token budget enforcement (zero LLM calls).
     # Estimate query cost up front; reject absurd inputs with 422 instead of
     # burning embedding/retrieval/generation on a request that cannot fit.
-    from app.core.metrics import (
-        estimate_tokens,
-        record_analysis_created,
-        record_budget_rejection,
-        record_tokens_estimated,
-    )
-
     query_text = schema.query.strip()
     query_tokens = estimate_tokens(query_text)
     record_tokens_estimated(query_tokens)
@@ -264,8 +354,8 @@ async def create_analysis(
     # rendered "DEFAULT" and audits couldn't tell granite from EXAONE).
     # Normalize the provider to its canonical spelling: the request validator
     # already does this, so persisting the raw value stored "google_genai" /
-    # "nim" / "llamacpp" while the allowlist check ran against "gemini" /
-    # "nvidia" / "llama_cpp" (audit B-15/B-18).
+    # "llamacpp" while the allowlist check ran against "gemini" /
+    # "llama_cpp" (audit B-15/B-18).
     effective_llm_provider = normalize_provider(schema.llm_provider or cfg.llm_provider or "")
     effective_llm_model = schema.llm_model or cfg.llm_model_for(effective_llm_provider)
     effective_embedding_model = cfg.embedding_model
@@ -276,8 +366,6 @@ async def create_analysis(
     # before the pipeline abstains or fails. Raises LLMUnavailableError → 503
     # with the exact start command so the UI can alert instead of hanging.
     if effective_llm_provider in ("ollama", "llama_cpp", "llamacpp", "mlx"):
-        from app.core.local_llm import probe_local_llm_server
-
         settings = get_settings()
         if effective_llm_provider == "ollama":
             llm_base_url = settings.ollama_base_url
@@ -288,15 +376,9 @@ async def create_analysis(
         else:
             llm_base_url = settings.llamacpp_base_url
             probe_provider = "llama_cpp"
-        await probe_local_llm_server(probe_provider, llm_base_url)
-    # CLOUD PREFLIGHT: a stalled cloud model (observed: NVIDIA endpoints
-    # returning zero bytes indefinitely while auth/metadata stay healthy)
-    # otherwise burns the full per-call timeout on every sequential pipeline
-    # call. One tiny completion up front fails fast → 503 with retry guidance.
-    elif effective_llm_provider in ("nvidia", "nim", "gemini", "google_genai"):
-        from app.core.local_llm import probe_cloud_llm
-
-        await probe_cloud_llm(effective_llm_provider, effective_llm_model)
+        await local_llm_mod.probe_local_llm_server(probe_provider, llm_base_url)
+    elif effective_llm_provider in ("gemini"):
+        await local_llm_mod.probe_cloud_llm(effective_llm_provider, effective_llm_model)
     analysis_doc = {
         "user_id": ObjectId(user_id_str),
         "knowledge_base_id": ObjectId(schema.knowledge_base_id),
@@ -354,7 +436,7 @@ async def get_analysis(analysis_id_str: str, user_id_str: str) -> AnalysisRespon
     try:
         analysis_id = ObjectId(analysis_id_str)
     except Exception as exc:
-        raise NotFoundError("Analysis not found", detail=str(exc)) from exc
+        raise NotFoundError("Analysis not found") from exc
 
     analysis = await get_collection(Collections.ANALYSES).find_one({"_id": analysis_id})
     if not analysis:
@@ -532,11 +614,6 @@ async def sse_event_generator(
         await _unsubscribe_from_analysis(analysis_id_str, queue)
 
 
-async def _get_concurrency_semaphore() -> asyncio.Semaphore:
-    """Return the global concurrency semaphore from the shared module."""
-    return get_global_semaphore()
-
-
 async def run_analysis_pipeline(
     analysis_id_str: str,
     kb_id_str: str,
@@ -562,29 +639,27 @@ async def run_analysis_pipeline(
     """
     analysis_id = ObjectId(analysis_id_str)
     analyses_coll = get_collection(Collections.ANALYSES)
-    sem = await _get_concurrency_semaphore()
 
     try:
-        async with sem:
-            # Mark status as processing
-            await analyses_coll.update_one(
-                {"_id": analysis_id},
-                {"$set": {"status": "processing", "updated_at": datetime.now(UTC)}},
-            )
+        # Mark status as processing
+        await analyses_coll.update_one(
+            {"_id": analysis_id},
+            {"$set": {"status": "processing", "updated_at": datetime.now(UTC)}},
+        )
 
-            # 1. Execute Agentic LangGraph workflow (retrieval, NLI verify, and recovery loop)
-            from app.agent.graph import execute_agentic_rag_flow
+        # 1. Execute Agentic LangGraph workflow (retrieval, NLI verify, and recovery loop)
+        from app.rag.agent.graph import execute_agentic_rag_flow
 
-            final_state = await execute_agentic_rag_flow(
-                analysis_id_str=analysis_id_str,
-                kb_id_str=kb_id_str,
-                query=query,
-                user_id_str=user_id_str,
-                web_search_enabled=web_search_enabled,
-                web_search_provider=web_search_provider,
-                llm_provider=llm_provider,
-                llm_model=llm_model,
-            )
+        final_state = await execute_agentic_rag_flow(
+            analysis_id_str=analysis_id_str,
+            kb_id_str=kb_id_str,
+            query=query,
+            user_id_str=user_id_str,
+            web_search_enabled=web_search_enabled,
+            web_search_provider=web_search_provider,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
+        )
 
         if final_state.get("diagnosis_type") == "RETRIEVAL_OUTAGE":
             # Retrieval infrastructure outage — never present this as
@@ -619,12 +694,7 @@ async def run_analysis_pipeline(
                 "analysis.outage",
                 {"message": outage_failures[0]},
             )
-            try:
-                from app.core.metrics import record_analysis_completed as _rec_completed
-
-                _rec_completed("failed")
-            except Exception:  # noqa: S110
-                pass
+            _record_completed("failed")
             return
 
         answer = final_state["answer"]
@@ -641,14 +711,7 @@ async def run_analysis_pipeline(
         if verdict.reliability_status == ReliabilityStatus.ABSTAINED:
             # Never store the bare "ABSTAIN" token as the user-facing answer.
             stored_abstain = (
-                answer
-                if answer and answer.strip() != "ABSTAIN"
-                else (
-                    "I couldn't verify an answer from this knowledge base: the "
-                    "retrieved evidence did not support a grounded response, so "
-                    "I am abstaining rather than guessing. Try a more specific "
-                    "query or add documents covering this topic."
-                )
+                answer if answer and answer.strip() != "ABSTAIN" else _UNVERIFIED_ANSWER
             )
             # Update database first, then publish trace event
             await analyses_coll.update_one(
@@ -674,21 +737,46 @@ async def run_analysis_pipeline(
                 "analysis.abstained",
                 {"message": "Agent reasoning resulted in abstention"},
             )
-            try:
-                from app.core.metrics import record_analysis_completed as _rec_abstained
-
-                _rec_abstained("abstained")
-            except Exception:  # noqa: S110
-                pass
+            _record_completed("abstained")
         else:
+            # GROUNDING GATE (audit G-1). The verdict engine has already decided
+            # how much of the generated answer the evidence supports; this is
+            # where that decision is applied to what the user actually reads.
+            # Only TRUSTED may present the model's own text. Previously
+            # FAILED/UNCERTAIN answers fell through to `status: "completed"`
+            # with the raw prose, so the pipeline detected ungrounded content
+            # and then displayed it anyway.
+            stored_answer = _presentable_answer(answer, verdict)
+            stored_status = "completed"
+            gated = stored_answer is not answer
+            if gated:
+                logger.warning(
+                    "Unverified answer withheld from user",
+                    analysis_id=analysis_id_str,
+                    reliability=verdict.reliability_status.value,
+                    score=verdict.reliability_score,
+                    diagnosis=verdict.diagnosis_type.value,
+                )
+                await add_trace_event(
+                    analysis_id_str,
+                    "analysis.grounding_gate",
+                    {
+                        "message": (
+                            "Answer was not fully supported by retrieved evidence "
+                            f"({verdict.reliability_status.value}, "
+                            f"score={verdict.reliability_score:.2f}); "
+                            "presenting abstention instead of ungrounded text."
+                        ),
+                        "reliability_status": verdict.reliability_status.value,
+                        "reliability_score": verdict.reliability_score,
+                    },
+                )
             # DEGENERATE-STUB GUARD 2026-09-06: when verification fails with zero
             # claims, the stored "answer" can be a context-overflow stub (e.g. the
             # single word "The"). Presenting that as a synthesis is dishonest —
             # store a clean abstention sentence instead (score/diagnosis kept).
             # Extended: small local models may echo prompt scaffolding or loop a
             # block until max tokens — also never a synthesis, whatever claims say.
-            stored_answer = answer
-            stored_status = "completed"
             scaffold_echo = _looks_like_scaffold_echo(answer)
             if scaffold_echo:
                 logger.warning(
@@ -706,12 +794,10 @@ async def run_analysis_pipeline(
                 and (answer or "").strip() != "ABSTAIN"
                 and len((answer or "").split()) < 5
             ):
-                stored_answer = (
-                    "I couldn't verify an answer from this knowledge base: the "
-                    "retrieved evidence did not support a grounded response, so "
-                    "I am abstaining rather than guessing. Try a more specific "
-                    "query or add documents covering this topic."
-                )
+                stored_answer = _UNVERIFIED_ANSWER
+            if scaffold_echo or gated:
+                # A withheld or degenerate answer is not a completed synthesis.
+                stored_status = "abstained"
             # USER-FACING CLEANUP: verification already consumed the [Segment N]
             # markers (claims carry their own evidence_ids; the Evidence tab is
             # unaffected), so the stored prose drops them — readers see normal
@@ -719,8 +805,6 @@ async def run_analysis_pipeline(
             # `answer_cited` keeps the marker-bearing form for the audit dossier
             # and the baseline-eval provenance check, which must still be able
             # to see which segments the model actually cited.
-            from app.generation.generator import strip_citation_markers
-
             answer_cited = stored_answer
             stored_answer = strip_citation_markers(stored_answer)
             # Update database first, then publish trace event with answer
@@ -752,12 +836,7 @@ async def run_analysis_pipeline(
                     "verdict": verdict.diagnosis_type.value,
                 },
             )
-            try:
-                from app.core.metrics import record_analysis_completed as _rec_done
-
-                _rec_done(stored_status)
-            except Exception:  # noqa: S110
-                pass
+            _record_completed(stored_status)
 
     except Exception as exc:
         logger.error(
@@ -802,19 +881,10 @@ async def run_analysis_pipeline(
                 }
             },
         )
-        try:
-            from app.core.metrics import record_analysis_completed as _rec_failed
-
-            _rec_failed("failed")
-        except Exception:  # noqa: S110
-            pass
+        _record_completed("failed")
     finally:
         try:
-            import asyncio
-
-            from app.core.memory import trim_memory
-
-            await asyncio.to_thread(trim_memory)
+            await asyncio.to_thread(memory_mod.trim_memory)
         except Exception as trim_exc:
             logger.debug("Post-analysis memory compaction skipped", error=str(trim_exc))
 
@@ -827,14 +897,23 @@ async def list_all_user_evidence(
     uid = ObjectId(user_id_str)
 
     query_filter: dict[str, Any] = {"user_id": uid}
-    if await evidence_coll.count_documents(query_filter) == 0:
-        analyses_coll = get_collection(Collections.ANALYSES)
-        user_analyses = await analyses_coll.find({"user_id": uid}, {"_id": 1}).to_list(1000)
-        analysis_ids = [a["_id"] for a in user_analyses]
-        if not analysis_ids:
-            return []
-        query_filter = {"analysis_id": {"$in": analysis_ids}}
-
+    results = []
+    cursor = (
+        evidence_coll.find(query_filter).sort("created_at", -1).skip(skip).limit(min(limit, 200))
+    )
+    async for e in cursor:
+        results.append(serialize_evidence(e))
+    if results:
+        return results
+    # Legacy fallback: docs written before user_id backfill carry only analysis_id.
+    analyses_coll = get_collection(Collections.ANALYSES)
+    user_analyses = (
+        await analyses_coll.find({"user_id": uid}, {"_id": 1}).sort("_id", -1).to_list(1000)
+    )
+    analysis_ids = [a["_id"] for a in user_analyses]
+    if not analysis_ids:
+        return []
+    query_filter = {"analysis_id": {"$in": analysis_ids}}
     results = []
     cursor = (
         evidence_coll.find(query_filter).sort("created_at", -1).skip(skip).limit(min(limit, 200))
@@ -852,14 +931,21 @@ async def list_all_user_claims(
     uid = ObjectId(user_id_str)
 
     query_filter: dict[str, Any] = {"user_id": uid}
-    if await claims_coll.count_documents(query_filter) == 0:
-        analyses_coll = get_collection(Collections.ANALYSES)
-        user_analyses = await analyses_coll.find({"user_id": uid}, {"_id": 1}).to_list(1000)
-        analysis_ids = [a["_id"] for a in user_analyses]
-        if not analysis_ids:
-            return []
-        query_filter = {"analysis_id": {"$in": analysis_ids}}
-
+    results = []
+    cursor = claims_coll.find(query_filter).sort("created_at", -1).skip(skip).limit(min(limit, 200))
+    async for c in cursor:
+        results.append(serialize_claim(c))
+    if results:
+        return results
+    # Legacy fallback: docs written before user_id backfill carry only analysis_id.
+    analyses_coll = get_collection(Collections.ANALYSES)
+    user_analyses = (
+        await analyses_coll.find({"user_id": uid}, {"_id": 1}).sort("_id", -1).to_list(1000)
+    )
+    analysis_ids = [a["_id"] for a in user_analyses]
+    if not analysis_ids:
+        return []
+    query_filter = {"analysis_id": {"$in": analysis_ids}}
     results = []
     cursor = claims_coll.find(query_filter).sort("created_at", -1).skip(skip).limit(min(limit, 200))
     async for c in cursor:
@@ -886,12 +972,12 @@ async def list_all_user_conflicts(
 
     conflicts = []
 
-    # 1. Contradicted claims
+    # 1. Contradicted claims (fetch skip+limit worth per source, paginate after merge)
+    per_source = min(skip + limit, 100)
     cursor_claims = (
         claims_coll.find({"analysis_id": {"$in": a_ids}, "state": "CONTRADICTED"})
         .sort("created_at", -1)
-        .skip(skip)
-        .limit(min(limit, 100))
+        .limit(per_source)
     )
     async for c in cursor_claims:
         conflicts.append(
@@ -917,8 +1003,7 @@ async def list_all_user_conflicts(
             {"analysis_id": {"$in": a_ids}, "integrity_status": {"$nin": ["VERIFIED", None]}}
         )
         .sort("created_at", -1)
-        .skip(skip)
-        .limit(min(limit, 100))
+        .limit(per_source)
     )
     async for e in cursor_evidence:
         conflicts.append(
@@ -938,7 +1023,9 @@ async def list_all_user_conflicts(
             }
         )
 
-    return conflicts
+    # Merge, sort newest-first, then paginate once (N-34).
+    conflicts.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    return conflicts[skip : skip + limit]
 
 
 # ─── Analytics Dashboard ──────────────────────────────────────────────────────

@@ -18,7 +18,7 @@ describe('FormattedAnswer rendering', () => {
   it('renders GFM tables (the reason remark-gfm is wired in)', () => {
     render(
       <FormattedAnswer
-        content={['| Claim | Verdict |', '| --- | --- |', '| Refunds allowed | SUPPORTED |'].join('\n')}
+        content={['| Claim | Verdict |', '| --- | --- |', '| Revocation is fast | SUPPORTED |'].join('\n')}
       />
     )
     expect(screen.getByRole('table')).toBeTruthy()
@@ -42,7 +42,7 @@ describe('FormattedAnswer rendering', () => {
     // The backend strips markers from `answer` but keeps them in
     // `answer_cited` for audit/eval. If a view renders the cited variant, the
     // markers must survive so an auditor can trace a claim to its segment.
-    render(<FormattedAnswer content={'Refunds are allowed [Segment 3] within 30 days [Segment 7].'} />)
+    render(<FormattedAnswer content={'Revocation takes effect [Segment 3] within 60 seconds [Segment 7].'} />)
     expect(screen.getByText(/\[Segment 3\]/)).toBeTruthy()
     expect(screen.getByText(/\[Segment 7\]/)).toBeTruthy()
   })

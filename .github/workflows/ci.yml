@@ -13,13 +13,13 @@ concurrency:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
   # ── Backend ───────────────────────────────────────────────────────────────
   backend-lint:
     name: Backend — Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: apps/api
@@ -32,10 +32,10 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install ruff
+      - name: Install ruff and mypy
         # Pinned: unpinned `ruff` broke CI when 0.16.9 added E402 coverage
         # (conftest import order). Bump deliberately with a lint pass.
-        run: pip install "ruff==0.16.9"
+        run: pip install "ruff==0.16.9" mypy
 
       - name: Lint
         run: ruff check app/ tests/
@@ -43,12 +43,19 @@ jobs:
       - name: Format check
         run: ruff format --check app/ tests/
 
+      - name: Type check (mypy ratchet)
+        # N-94: mypy was configured but never run, so its 48-error backlog was
+        # invisible. Fails only on NEW errors (ceiling ratchets down over time).
+        working-directory: ./
+        run: ./scripts/typecheck_ratchet.sh
+
       - name: Port registry drift check
         run: python3 ../../scripts/apply_ports.py --check
 
   backend-test:
     name: Backend — Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/api
@@ -90,6 +97,7 @@ jobs:
   backend-config-validate:
     name: Backend — Config Validation
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: apps/api
@@ -130,6 +138,7 @@ jobs:
   frontend-lint:
     name: Frontend — Lint & Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/web
@@ -155,6 +164,7 @@ jobs:
   frontend-build:
     name: Frontend — Build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/web
@@ -193,6 +203,7 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
@@ -213,8 +224,8 @@ jobs:
 
       - name: Backend import + config smoke
         run: |
-          python -c "import app.ingestion.parser, app.ingestion.chunker, app.ingestion.chunking_strategies, app.ingestion.pipeline, app.core.config, app.core.model_registry, app.core.hardware, app.core.memory; print('imports OK')"
-          python scripts/apply_ports.py --check
+          python -c "import app.rag.ingestion.parser, app.rag.ingestion.chunker, app.rag.ingestion.chunking_strategies, app.rag.ingestion.pipeline, app.llm.model_registry, app.core.system.hardware, app.core.system.memory; print('imports OK')"
+          python ../../scripts/apply_ports.py --check
         env:
           JWT_SECRET: test-secret-minimum-32-chars-long-padding
           GEMINI_API_KEY: test-key
@@ -236,6 +247,7 @@ jobs:
   e2e:
     name: E2E + Load — Playwright & k6
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     services:
       mongodb:
@@ -301,15 +313,27 @@ jobs:
           E2E_API_URL: http://localhost:8000
         run: npm run test:e2e
 
+      - name: Download k6 (checksum-verified)
+        # N-97: curl|tar with no checksum is an unauthenticated supply-chain
+        # hop. Verify SHA256 against the release checksum file before extracting.
+        id: k6
+        working-directory: load-test
+        run: |
+          set -euo pipefail
+          VER=v2.2.0
+          BASE=https://github.com/grafana/k6/releases/download/${VER}
+          curl -sSfL -o k6.tar.gz "${BASE}/k6-${VER}-linux-amd64.tar.gz"
+          curl -sSfL -o checksums.txt "${BASE}/k6-${VER}-checksums.txt"
+          grep "k6-${VER}-linux-amd64.tar.gz" checksums.txt | sha256sum --check --strict -
+          tar xz k6.tar.gz --strip-components=1
+          ./k6 version
+
       - name: Run k6 API load smoke
         # TEST-M2: reuse the already-running backend from the E2E job.
-        # Pinned k6 release binary — full 35s ramp, ~3.3k requests.
         working-directory: load-test
         env:
           API_BASE_URL: http://localhost:8000
-        run: |
-          curl -sL https://github.com/grafana/k6/releases/download/v2.2.0/k6-v2.2.0-linux-amd64.tar.gz | tar xz --strip-components=1
-          ./k6 run smoke.js
+        run: ./k6 run smoke.js
 
       - name: Upload Playwright report on failure
         if: failure()
@@ -325,6 +349,7 @@ jobs:
   docker-build:
     name: Docker — Build API Image
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # security-events:write is required by the SARIF upload step below.
     permissions:
       contents: read
@@ -379,9 +404,48 @@ jobs:
           path: apps/api/trivy-results.sarif
           retention-days: 30
 
+  # ── Docker Compose Smoke ──────────────────────────────────────────────────
+  # N-103: compose is the only deployable artifact and nothing exercised it,
+  # so P1-16 (model cache shadow), N-64 (unreachable MLX) and N-100 (--reload
+  # killing in-flight analyses) all shipped undetected. This renders the file
+  # and boots the api service against the same config operators run.
+  compose-smoke:
+    name: Docker — Compose Config + API Boot
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compose file
+        run: docker compose config --quiet
+
+      - name: Build API image
+        run: docker compose build api
+
+      - name: Boot api + qdrant and probe readiness
+        run: |
+          set -euo pipefail
+          mkdir -p apps/api/.model_cache
+          docker compose up -d qdrant api
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:8000/api/v1/health/ready > /dev/null 2>&1; then
+              echo "api ready after ${i}s"
+              docker compose logs --tail=60 api
+              docker compose down
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs --tail=120 api
+          docker compose down
+          echo "api never became ready"
+          exit 1
+
   # ── Gate ──────────────────────────────────────────────────────────────────
   ci-gate:
     name: CI Gate
+    timeout-minutes: 5
     needs:
       - backend-lint
       - backend-test
@@ -391,6 +455,7 @@ jobs:
       - cross-platform
       - e2e
       - docker-build
+      - compose-smoke
     runs-on: ubuntu-latest
     if: always()
     steps:

@@ -71,7 +71,7 @@ def test_handler_returns_nested_envelope_with_expected_status(
     """Every domain error must map to its documented status and stable code, in
     the nested envelope. The frontend branches on `error.code`, so a shape
     change here silently degrades the UI's error UX."""
-    from app.core import exceptions as exc_mod
+    from app.core.security import exceptions as exc_mod
 
     exc_cls = getattr(exc_mod, exc_name)
     r = _app_with_route(exc_cls("boom message")).get("/boom")
@@ -121,7 +121,7 @@ def test_validation_error_does_not_echo_the_submitted_payload():
 
 
 def _app_that_raises_not_found():
-    from app.core.exceptions import NotFoundError
+    from app.core.security.exceptions import NotFoundError
 
     return _app_with_route(NotFoundError("nope"))
 

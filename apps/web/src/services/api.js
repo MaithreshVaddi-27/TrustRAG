@@ -37,12 +37,6 @@ export const analysisService = {
   detail:   (id) => api.get(`/api/v1/analyses/${id}/detail`).then(r => r.data),
 }
 
-// ── Experiments ───────────────────────────────────────────────────────────
-export const experimentService = {
-  list:   ()     => api.get('/api/v1/experiments').then(r => r.data),
-  create: (body) => api.post('/api/v1/experiments', body).then(r => r.data),
-}
-
 // ── Evidence ──────────────────────────────────────────────────────────────
 export const evidenceService = {
   list: () => api.get('/api/v1/evidence').then(r => r.data),

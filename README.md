@@ -62,7 +62,7 @@ Query → Route → Retrieve (hybrid) → Generate (grounded) → Decompose
 7. **Recover** — budget-aware LangGraph loop (rewrite → re-retrieve → regenerate, ≤2 attempts).
 8. **Answer or abstain** — returns the grounded answer, or refuses to guess.
 
-The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local embeddings + embedded Qdrant + local MongoDB). No API keys required — Gemini, NVIDIA NIM, and Tavily search are optional.
+The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local embeddings + embedded Qdrant + local MongoDB). No API keys required. The two cloud clients (Gemini LLM, Tavily search) are **not installed by default** — see [Optional cloud extras](#optional-cloud-extras).
 
 ---
 
@@ -76,10 +76,10 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 | **Reliability** | LangGraph self-heal loop with token/latency budgets; safe abstention; conflict detection |
 | **Auth & security** | JWT (HS256, `iss`/`aud`), bcrypt, JTI revocation, login lockout, rate limits, SSRF guards |
 | **Integrations** | MCP server (JSON-RPC 2.0) for Claude Desktop / Cursor / Windsurf; SSE live-progress streaming |
-| **Workbench UI** | Dashboard, Playground, knowledge bases, evidence, claims, conflicts, experiments, trace viewer |
+| **Workbench UI** | Dashboard, Playground, knowledge bases, evidence, claims, conflicts, trace viewer |
 | **Efficiency** | ONNX embedding runtime (torch-free, ~500–1000 MB RAM saved); Metal/CUDA auto-detection |
 | **Inference Acceleration** | KV cache quantization (q8_0 default), flash attention, prompt caching, context compression |
-| **Ops** | KB snapshots + rollback; Prometheus `/metrics`; A/B experiments with feature flags |
+| **Ops** | KB snapshots + rollback; Prometheus `/metrics` |
 
 ---
 
@@ -89,7 +89,7 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 |-------|------------|
 | **Frontend** | React 18, Vite 6, Tailwind CSS 3, TanStack Query 5, React Router 7 |
 | **Backend** | FastAPI 0.115, Python 3.11+, Pydantic v2, LangGraph, LangChain |
-| **LLM** | Ollama / llama.cpp / **MLX** (local, default) · Gemini / NVIDIA NIM (optional cloud) |
+| **LLM** | Ollama / llama.cpp / **MLX** (local, default) · Gemini (optional, `cloud` extra) |
 | **Embeddings** | `BAAI/bge-small-en-v1.5` via ONNX Runtime (torch-free, default) |
 | **Reranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` via ONNX Runtime (int8) |
 | **Storage** | Qdrant (vectors) + MongoDB 7 (documents, async `motor`) |
@@ -114,14 +114,14 @@ TrustRAG/
 │   │   │   ├── retrieval/      # hybrid retriever + reranker
 │   │   │   ├── services/       # analysis, KB, auth, experiment services
 │   │   │   └── verification/   # NLI verifier + SHA-256 integrity audit
-│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.21)
+│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.23)
 │   │   ├── tests/              # backend suite (mocked, no live services)
 │   │   └── pyproject.toml
 │   └── web/                    # React frontend (Node 22+)
 │       ├── src/{pages,components,services,lib,store,hooks,layouts,styles}/
 │       └── e2e/                # Playwright specs
 ├── config/ports.yaml           # canonical port registry
-├── scripts/                    # bootstrap.py, setup.sh, start_local_llm.sh, apply_ports.py, …
+├── scripts/                    # bootstrap.py, setup.sh, start_local_llm.sh, start_mlx_server.sh, eval_provider.sh, apply_ports.py, …
 ├── docs/                       # specs, architecture, ADRs, evaluation, deployment
 ├── load-test/smoke.js          # k6 smoke test
 ├── docker-compose.yml          # api + web + qdrant
@@ -173,13 +173,16 @@ brew services start mongodb-community
 ollama serve &
 ollama pull gemma3:1b        # lightweight default (or: ollama pull llama3)
 
-# llama.cpp (local GGUF models) — hardware-aware launcher
+# llama.cpp (local GGUF models) — hardware-aware launcher, serves on :8080
 brew install llama.cpp   # provides the `llama-server` binary used below
 ./scripts/start_local_llm.sh   # auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
 
-# MLX (Apple Silicon only, optional) — see [MLX on Mac](docs/PERFORMANCE-GUIDE.md#4-mlx-on-mac-apple-silicon-free-fastest-toks-per-watt)
+# MLX (Apple Silicon only, optional) — serves on :8090
+# See [MLX on Mac](docs/PERFORMANCE-GUIDE.md#4-mlx-on-mac-apple-silicon-free-fastest-toks-per-watt)
 pipx install mlx-lm
-mlx_lm.server --model mlx-community/Llama-3.2-1B-Instruct-4bit --port 8090
+./scripts/start_mlx_server.sh              # model + port come from config/ports.yaml
+./scripts/start_mlx_server.sh --check      # scan :8090-:8094, list what is up
+./scripts/start_mlx_server.sh --port 8091  # extra model on the next port (1 model/process)
 
 # Backend (terminal 1)
 cd apps/api
@@ -332,7 +335,7 @@ curl http://localhost:8000/api/v1/health   # → {"status":"ok"}
 > ./scripts/start_local_llm.sh
 >
 > # Terminal 2: MLX on :8090 (id must match MLX_MODEL in .env / model_mlx in models.yaml)
-> mlx_lm.server --model mlx-community/Llama-3.2-3B-Instruct-4bit --port 8090
+> ./scripts/start_mlx_server.sh mlx-community/Llama-3.2-3B-Instruct-4bit
 >
 > # Terminal 3: Backend (auto-detects both)
 > cd apps/api && source .venv/bin/activate && uvicorn app.main:app --reload --port 8000
@@ -357,7 +360,7 @@ MONGODB_DATABASE=trustrag_db
 ### Common optional overrides (full list in [.env.example](.env.example))
 
 ```bash
-LLM_PROVIDER=llama_cpp            # ollama | llama_cpp | mlx | gemini | nvidia
+LLM_PROVIDER=llama_cpp            # ollama | llama_cpp | mlx | gemini
 LLM_MODEL=LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
 MLX_MODEL=mlx-community/Llama-3.2-1B-Instruct-4bit   # Apple Silicon only
 # Embeddings: single ONNX engine (BAAI/bge-small-en-v1.5, 384d) from
@@ -370,6 +373,25 @@ CORS_ORIGINS=https://your-domain.com
 ```
 
 Default ports: API `8000` · Vite `5173` · llama-server `8080` · **MLX server `8090`** · Ollama `11434` · MongoDB `27017` · Qdrant `6335→6333`. Change ports in `config/ports.yaml`, then run `python3 scripts/apply_ports.py` (enforced in CI with `--check`).
+
+### Optional cloud extras
+
+TrustRAG runs fully on-prem by default. Two features can send data off-box and
+their client libraries are therefore **not installed by default**:
+
+| Feature | Extra | Env var |
+|---|---|---|
+| Gemini LLM provider | `cloud` | `GEMINI_API_KEY` |
+| Tavily web search | `cloud` | `TAVILY_API_KEY` |
+
+```bash
+cd apps/api && uv sync --extra cloud    # or: pip install -e ".[cloud]"
+```
+
+The Docker image (`uv sync --locked --no-dev`) ships the on-prem set only, so a
+containerized deployment cannot reach either endpoint unless rebuilt with the
+extra. Distributed tracing is likewise **off unless `TRUSTRAG_TRACING=1` is set
+explicitly**, so prompts and evidence never reach a third-party SaaS by default.
 
 ---
 
@@ -427,7 +449,7 @@ On Windows PowerShell, use `Invoke-RestMethod` / `Invoke-WebRequest` against the
 
 ### Via the Playground UI
 
-Open <http://localhost:5173/playground> → pick a knowledge base → ask a question → inspect the answer side-by-side with per-claim verdicts, evidence cards, reliability badges, conflict flags, and the full LangGraph trace. Other pages: `/dashboard`, `/knowledge-bases`, `/evidence`, `/claims`, `/conflicts`, `/experiments`, `/traces/:id`, `/settings`.
+Open <http://localhost:5173/playground> → pick a knowledge base → ask a question → inspect the answer side-by-side with per-claim verdicts, evidence cards, reliability badges, conflict flags, and the full LangGraph trace. Other pages: `/dashboard`, `/knowledge-bases`, `/evidence`, `/claims`, `/conflicts`, `/traces/:id`, `/settings`.
 
 ---
 
@@ -439,9 +461,29 @@ TrustRAG supports multiple LLM providers interchangeably. Switch via `LLM_PROVID
 |----------|--------|-----|-------|
 | **llama_cpp** | LFM2.5-1.2B, Granite-4.2-3B, SmolLM3-3B, EXAONE-2.4B, SmolLM2-1.7B | 2–4 GB | Default. Hardware-aware `scripts/start_local_llm.sh` auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 concurrent model on 8 GB |
 | **ollama** | gemma3:1b, qwen3:1.7b, llama3 | 1–3 GB | `ollama serve` + `ollama pull <model>`. Set `OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1` for 8 GB RAM |
-| **mlx** | Llama-3.2-1B-4bit, Llama-3.2-3B-4bit, LFM2.5-1.2B-4bit | 1–3 GB | Apple Silicon only. `mlx_lm.server --model <id> --port 8090`. Runs alongside llama.cpp on :8080 |
+| **mlx** | Llama-3.2-1B-4bit, Llama-3.2-3B-4bit, LFM2.5-1.2B-4bit | 1–3 GB | Apple Silicon only. `./scripts/start_mlx_server.sh [id]` on :8090. Runs alongside llama.cpp on :8080 |
+
+#### Small vs large models
+
+The pipeline adapts to model size automatically — no env var, no separate mode:
+
+| | ≤3B (LFM2.5-1.2B, Llama-3.2-1B, Qwen3-1.7B) | larger (Granite-16B, Gemini, …) |
+|---|---|---|
+| Generation prompt | compact CRAFT — 4 rules + 1 worked example (~770 chars) | full CRAFT — 6 rules, scope/loop guidance (~2350 chars) |
+| Verification | two-step decompose → NLI (compact decompose + NLI prompts) | fused decompose+verify in one call (full prompts) |
+| Claim/context caps | `lean_tier` (5 / 5) | `balanced_tier` / `cloud_tier` (8 / 8) |
+
+Detection is by model-id size marker (`is_small_model()` in `app/llm/local_llm.py`), deliberately conservative: an unrecognised id keeps the full-strength path, and cloud providers are never downgraded.
+
+Measured prompt sizes — the win is mostly *rule count*, not characters: generation 2356→773 (33%), decompose 1037→494 (48%), single-claim NLI 969→626 (65%), batch NLI 977→715 (73%). To compare providers on the frozen dataset:
+
+```bash
+./scripts/eval_provider.sh llama_cpp --email you@example.com --password '…' --kb-id $ID
+./scripts/eval_provider.sh gemini    --email you@example.com --password '…' --kb-id $ID
+```
+
+Each provider writes to its own `docs/evaluation/results/<provider>/` and records a separate experiment.
 | **gemini** | gemini-3.5-flash-lite | Cloud | Requires `GEMINI_API_KEY`. Fast, cheap, supports structured output natively |
-| **nvidia** | openai/gpt-oss-20b | Cloud | Requires `NVIDIA_API_KEY`. NVIDIA NIM endpoint. Verified live 2026-09-21 |
 
 ### Per-tier caps (auto-selected by provider + RAM)
 
@@ -467,7 +509,6 @@ Interactive docs: <http://localhost:8000/docs> (Swagger) · `/redoc`. Base URL `
 | **Knowledge bases** | `POST/GET /api/v1/knowledge-bases` · `GET/DELETE /api/v1/knowledge-bases/{id}` · `POST …/{id}/documents` · `POST …/{id}/documents/from-url` · `POST …/{id}/snapshots` · `POST …/{id}/rollback/{snapshot_id}` |
 | **Analyses** | `POST/GET /api/v1/analyses` · `GET /api/v1/analyses/{id}` · `…/{id}/claims` · `…/{id}/evidence` · `…/{id}/trace` · `…/{id}/detail` · `…/{id}/export` · `POST …/{id}/stream-ticket` · `GET …/{id}/stream` (SSE) |
 | **Evidence & claims** | `GET /api/v1/evidence` · `GET /api/v1/claims` · `GET /api/v1/conflicts` |
-| **Experiments** | `POST/GET /api/v1/experiments` · `GET /api/v1/experiments/{exp_id}` |
 | **Documents** | `GET/DELETE /api/v1/documents/{id}` |
 | **Ops** | `GET /api/v1/health` · `GET /api/v1/health/detailed` · `GET /api/v1/metrics` · `GET /api/v1/models/providers` · `GET /api/v1/models/hardware` · `POST /api/v1/internal/ingest/document` · `POST /api/v1/internal/ingest/url` · `POST /api/v1/internal/search` · `POST /api/v1/internal/verify/claims` (service-token auth) |
 
@@ -503,7 +544,9 @@ Lint: `cd apps/api && ruff check app/ tests/ && ruff format --check app/ tests/`
 
 ## Audit Tracker
 
-All bug/error/issue/dead-code findings live in [`docs/audit-2026-09-28-ui-redesign-full.md`](docs/audit-2026-09-28-ui-redesign-full.md) — severity, fix, and verification evidence per item, including the ingestion audit (H1–H2/M1–M5/L1–L2), ONNX-only enforcement, test hermeticity, and the CI triage (CI-1–CI-3). It supersedes the removed point-in-time reports (history preserved in git).
+All bug/error/issue/dead-code findings from the latest engineering audit live in [`docs/AUDIT_2026-10-03.md`](docs/AUDIT_2026-10-03.md) — findings split into CRITICAL / NEEDED / LATER, plus improvements, dead code, and a remove/add list; constraint verification (NVIDIA-except-CUDA, ONNX-only embeddings/reranker, large-vs-small model parity, offline); and a measured test assessment. Earlier point-in-time audit reports were consolidated into it (history preserved in git).
+
+Test-coverage gaps for the analysis service (the lowest-covered core module) are mapped in [`docs/ANALYSIS_SERVICE_TEST_GAPS.md`](docs/ANALYSIS_SERVICE_TEST_GAPS.md) — uncovered regions with risk, and a prioritized 17-test plan to lift it from 54% to ~85%.
 
 ---
 
@@ -511,7 +554,7 @@ All bug/error/issue/dead-code findings live in [`docs/audit-2026-09-28-ui-redesi
 
 | Component | Local dev | Docker Compose | Production |
 |-----------|-----------|----------------|------------|
-| **LLM** | Ollama / llama.cpp on host | Host via `host.docker.internal` | Self-hosted Ollama, Gemini, or NVIDIA NIM |
+| **LLM** | Ollama / llama.cpp on host | Host via `host.docker.internal` | Self-hosted Ollama or Gemini |
 | **Embeddings** | ONNX BGE-small via `scripts/bootstrap.py` (~120 MB, one-time) | Host-exported ONNX via `docker cp` into the cache volume | Same as dev |
 | **Vectors** | Qdrant embedded (`local`) | `qdrant` container + volume | Qdrant Cloud |
 | **Database** | Host MongoDB | Host via `host.docker.internal` | MongoDB Atlas |
@@ -524,7 +567,7 @@ Production checklist: `APP_ENV=production` (+ `QDRANT_API_KEY`), `CORS_ORIGINS` 
 
 ## Optimization
 
-TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.21**) with environment variable overrides.
+TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.23**) with environment variable overrides.
 
 ### Inference Acceleration
 
@@ -544,11 +587,13 @@ TrustRAG implements extensive inference acceleration and memory optimization tec
 | **Dynamic Context Sizing** | Token-aware `num_ctx` per request using tiktoken | `local_llm.num_ctx` (base) | `4096` |
 | **Aggressive Model Eviction** | Registry limits instances by RAM: 1 (≤8GB) / 2 (≤16GB) / 4 (32GB+) | Internal | Dynamic |
 | **ONNX Reranker (int8)** | 3-4x CPU speedup, torch-free inference | `reranker.use_onnx` | `true` |
+| **ONNX Runtime (shared)** | One tuned session factory for embeddings + reranker: capped threads, full graph fusion, sequential exec | `onnx.intra_op_threads`, `onnx.graph_optimization`, `onnx.cpu_mem_arena` | `0` (auto ≤4), `all`, `true` |
+| **Reranker Batch/SeqLen** | Tokenize+infer micro-batches; max pair length | `reranker.batch_size`, `reranker.max_seq_length` | `16`, `512` |
+| **Retrieval Budgets** | Per-branch + hybrid timeouts; one hung branch degrades instead of pinning a worker | `retrieval.branch_timeout_seconds`, `retrieval.hybrid_timeout_seconds` | `0` (45s/60s fallback) |
+| **Qdrant Upsert Batch** | Points per upsert call (no network timeouts on big docs) | `ingestion.qdrant_upsert_batch` | `100` |
 | **ONNX Embeddings** | Single torch-free embedding engine, ~500-1000 MB RAM saved | `embedding.model` | `BAAI/bge-small-en-v1.5` |
-| **Context Compression** | Hierarchical summarization before LLM call (50% reduction target) | `optimization.context_compression_enabled`, `optimization.context_compression_target_reduction` | `true`, `0.5` |
+| **Context Compression** | Hierarchical summarization before LLM call | `optimization.context_compression_enabled` | `false` |
 | **Adaptive Top-K** | Reduces retrieval when confidence high (RRF > 0.02) | `optimization.adaptive_top_k` | `true` |
-| **Reranker Result Caching** | LRU cache for query-document scores | `reranker.cache_size` | `500` |
-| **Cache TTL + VACUUM** | Embedding & semantic caches auto-expire & reclaim disk | `EMBEDDING_CACHE_TTL_SECONDS`, `SEMANTIC_CACHE_TTL_SECONDS` | 30d, 24h |
 
 ### Environment Variable Overrides
 
@@ -560,11 +605,15 @@ All config options support env overrides:
 | Flash Attention | `FLASH_ATTENTION` |
 | Prompt Caching | `PROMPT_CACHING` |
 | Adaptive Top-K | `ADAPTIVE_TOP_K` |
-| Context Compression | `CONTEXT_COMPRESSION_ENABLED`, `CONTEXT_COMPRESSION_TARGET_REDUCTION`, `MAX_CONTEXT_TOKENS` |
+| Adaptive Threshold/Cap | `ADAPTIVE_TOP_K_THRESHOLD`, `ADAPTIVE_TOP_K_CAP` |
+| Retrieval Budgets | `RETRIEVAL_BRANCH_TIMEOUT_SECONDS`, `RETRIEVAL_HYBRID_TIMEOUT_SECONDS` |
+| Qdrant Upsert Batch | `QDRANT_UPSERT_BATCH` |
+| Context Compression | `CONTEXT_COMPRESSION_ENABLED`, `MAX_CONTEXT_TOKENS` |
 | Local LLM Params | `LOCAL_LLM_NUM_CTX`, `LOCAL_LLM_NUM_BATCH`, `LOCAL_LLM_KEEP_ALIVE`, `LOCAL_LLM_MIN_P`, `LOCAL_LLM_TOP_K`, `LOCAL_LLM_EARLY_EXIT_EOS` |
-| Reranker | `RERANKER_USE_ONNX`, `RERANKER_ONNX_MODEL_PATH`, `RERANKER_CACHE_SIZE` |
+| Reranker | `RERANKER_USE_ONNX`, `RERANKER_ONNX_MODEL_PATH`, `RERANKER_BATCH_SIZE`, `RERANKER_MAX_SEQ_LENGTH` |
+| ONNX Runtime | `ONNX_PROVIDERS`, `ONNX_INTRA_OP_THREADS`, `ONNX_INTER_OP_THREADS`, `ONNX_GRAPH_OPTIMIZATION`, `ONNX_CPU_MEM_ARENA`, `ONNX_MEM_PATTERN`, `ONNX_EMBED_MICRO_BATCH` |
 | Embedding model | `embedding.model` in `apps/api/config/models.yaml` (single engine, no env flag) |
-| Cache TTL | `EMBEDDING_CACHE_TTL_SECONDS`, `SEMANTIC_CACHE_TTL_SECONDS`, `EMBEDDING_CACHE_CLEANUP_INTERVAL` |
+| Model weights dir | `MODEL_CACHE_DIR` (ONNX embedding + reranker `.onnx` files) |
 
 ---
 
@@ -587,10 +636,10 @@ Full per-OS field guide (20-row failure table): [docs/ONBOARDING-TROUBLESHOOTING
 
 | Issue | Fix |
 |-------|-----|
-| `LLM_UNAVAILABLE` (llama.cpp) | Start `scripts/start_local_llm.sh --max 1` |
+| `LLM_UNAVAILABLE` (llama.cpp) | Start `./scripts/start_local_llm.sh --max 1` (serves on :8080) |
 | `LLM_UNAVAILABLE` (ollama) | `ollama serve` + `ollama pull <model>` |
-| `LLM_UNAVAILABLE` (gemini/nvidia) | Check API key, retry, or switch provider |
-| `LLM_UNAVAILABLE` (MLX) | `mlx_lm.server --model <id> --port 8090` (Apple Silicon) |
+| `LLM_UNAVAILABLE` (gemini) | Check API key, retry, or switch provider |
+| `LLM_UNAVAILABLE` (MLX) | `./scripts/start_mlx_server.sh` (Apple Silicon); `--check` to see which ports are up |
 | `Database not initialized` | Ensure MongoDB running; check `MONGODB_URI` |
 | `503 Service Unavailable` | DB not connected; check `connect_db()` in lifespan |
 | OOM on 8 GB | `export OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1 OLLAMA_MAX_LOADED_MODELS=1` |

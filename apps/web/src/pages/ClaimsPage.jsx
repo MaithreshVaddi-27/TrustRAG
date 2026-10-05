@@ -3,7 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { ClaimInspector } from '@/components/workbench/ClaimInspector'
 import { claimService } from '@/services/api'
-import { Brain, Loader2, Search } from 'lucide-react'
+import { normalizeClaimState } from '@/lib/claimState'
+import { Brain, Search } from 'lucide-react'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 export default function ClaimsPage() {
   const [search, setSearch] = useState('')
@@ -16,7 +18,7 @@ export default function ClaimsPage() {
 
   const states = ['ALL', 'SUPPORTED', 'CONTRADICTED', 'NEUTRAL']
 
-  const getClaimState = (c) => (c.state || c.status || c.verification_status || 'NEUTRAL').toUpperCase()
+  const getClaimState = (c) => normalizeClaimState(c)
 
   const stateCounts = claims.reduce((acc, c) => {
     const st = getClaimState(c)
@@ -87,6 +89,7 @@ export default function ClaimsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search claims or verification explanations..."
+            aria-label="Search claims or verification explanations"
             className="w-full bg-transparent text-sm text-slate-100 placeholder-slate-500 focus:outline-none"
           />
           {search && (
@@ -101,8 +104,8 @@ export default function ClaimsPage() {
 
         {/* Content */}
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center p-16 space-y-3">
-            <Loader2 size={24} className="animate-spin text-primary-400" />
+          <div className="flex flex-col items-center justify-center p-16 space-y-4">
+            <ThinkingOrbs size="md" />
             <span className="text-sm text-slate-400">Loading verified claim records...</span>
           </div>
         ) : error ? (
