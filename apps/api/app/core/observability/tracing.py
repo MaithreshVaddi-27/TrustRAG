@@ -58,9 +58,10 @@ async def tracing_middleware(request: Request, call_next: Callable[[Request], An
         duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
         response.headers["X-Response-Time"] = f"{duration_ms}ms"
 
-        # Record Prometheus-style counters (never break the request path)
+        # Record route templates, never attacker-controlled raw paths.
+        metric_path = getattr(request.scope.get("route"), "path", "/unmatched")
         try:
-            record_http_request(method, path, response.status_code, duration_ms)
+            record_http_request(method, metric_path, response.status_code, duration_ms)
         except Exception:
             logger.debug("Failed to record HTTP request metric")
 
@@ -85,7 +86,8 @@ async def tracing_middleware(request: Request, call_next: Callable[[Request], An
             error=str(exc),
         )
         try:
-            record_http_request(method, path, 500, duration_ms)
+            metric_path = getattr(request.scope.get("route"), "path", "/unmatched")
+            record_http_request(method, metric_path, 500, duration_ms)
         except Exception:  # noqa: S110
             pass
         raise exc
