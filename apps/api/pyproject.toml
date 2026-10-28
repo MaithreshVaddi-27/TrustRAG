@@ -98,6 +98,11 @@ dev = [
     "types-pyyaml",
     "types-python-jose",
 ]
+eval-ragas = [
+    "ragas>=0.4.3",
+    "langchain-google-vertexai>=3.2.5",
+    "langchain-community<0.4",
+]
 
 [build-system]
 # setuptools handles both regular and editable installs reliably in Docker.
