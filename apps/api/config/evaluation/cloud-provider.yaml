@@ -1,0 +1,7 @@
+# Optional evaluation profile for a cloud judge. Requires provider credentials.
+# Use only with explicit consent to send evaluation prompts off-box.
+profile: cloud-provider
+provider: gemini
+model: gemini-3.5-flash
+max_tokens: 256
+temperature: 0

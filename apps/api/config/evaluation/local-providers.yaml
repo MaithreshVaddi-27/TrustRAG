@@ -1,0 +1,10 @@
+# Baseline evaluation judge profile. Runtime verification still uses models.yaml.
+# The selected 4B model passed the bundled 3-case smoke calibration only; run a
+# labeled benchmark before treating judge scores as a production-quality metric.
+profile: local-providers
+provider: mlx
+model: mlx-community/Qwen3-4B-Instruct-2507-4bit
+base_url: http://127.0.0.1:8091/v1
+max_tokens: 96
+temperature: 0
+api_style: openai
