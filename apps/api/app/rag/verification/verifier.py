@@ -208,6 +208,24 @@ def _is_meta_claim(text: str) -> bool:
     return any(rx.search(lowered) for rx in _META_CLAIM_REGEXES)
 
 
+def _fused_claims_cover_answer(answer: str, claims: list[str]) -> bool:
+    """Conservatively reject fused output that drops answer content."""
+    answer_sentences = [
+        re.sub(r"\[Segment\s+\d+\]", "", sentence).strip(" #\t")
+        for sentence in re.split(r"(?<=[.!?])\s+", answer)
+        if len(sentence.strip()) > 40
+    ]
+    claim_tokens = {
+        token
+        for claim in claims
+        for token in re.findall(r"\w+", claim.lower())
+    }
+    return all(
+        set(re.findall(r"\w+", sentence.lower())) <= claim_tokens
+        for sentence in answer_sentences
+    )
+
+
 # ─── Pydantic Schemas for Structured LLM Mappings ─────────────────────────────
 
 # Small local models (≤3B, temp 0) routinely emit near-miss NLI JSON:
@@ -648,7 +666,7 @@ Segments:
 - NEUTRAL = the segments do not say.
 </action>
 <format>JSON only:
-{"verdict": "SUPPORTED", "supporting_segments": [2], "explanation": "why"}
+{{"verdict": "SUPPORTED", "supporting_segments": [2], "explanation": "why"}}
 verdict must be SUPPORTED, CONTRADICTED or NEUTRAL.
 supporting_segments must be numbers like [1, 3], never text.
 Use [] when NEUTRAL.</format>
@@ -1199,15 +1217,24 @@ async def execute_claim_verification(
                 )
                 fused_items = fused_items[:max_claims]
             if fused_items:
-                claims_texts = [it["claim"] for it in fused_items]
-                results_map = {
-                    i + 1: {
-                        "verdict": it["verdict"],
-                        "supporting_segments": it["supporting_segments"],
-                        "explanation": it["explanation"],
+                fused_claims = [it["claim"] for it in fused_items]
+                # A partial fused response cannot establish coverage of the
+                # generated answer. Fall back to the complete two-step path.
+                if not _fused_claims_cover_answer(answer, fused_claims):
+                    logger.warning(
+                        "Fused verification omitted answer content; using two-step verification",
+                        fused_claim_count=len(fused_claims),
+                    )
+                else:
+                    claims_texts = fused_claims
+                    results_map = {
+                        i + 1: {
+                            "verdict": it["verdict"],
+                            "supporting_segments": it["supporting_segments"],
+                            "explanation": it["explanation"],
+                        }
+                        for i, it in enumerate(fused_items)
                     }
-                    for i, it in enumerate(fused_items)
-                }
 
     if not results_map:
         # 1. Classic two-step path: decompose into atomic assertions first.
@@ -1369,12 +1396,10 @@ async def execute_claim_verification(
     # contradiction rate is over the threshold, skip all individual fallbacks.
     fallback_budget = max(0, int(cfg.max_individual_nli_fallback or 0))
     if attempt > 0 and fallback_budget:
-        # Recovery rounds re-verify a regenerated answer: the batch path above
-        # already ran (twice on failure). Per-claim re-verification would
-        # repeat up to 8 serial local calls inside a node that already timed
-        # out once — skip it and keep batch verdicts (NEUTRAL where missing).
+        # Recovery rounds already spend two batch calls. Avoid multiplying a
+        # slow recovery round into several serial local calls.
         logger.info(
-            "Skipping individual-NLI fallback on recovery attempt",
+            "Skipping individual-NLI fallback after failed recovery batches",
             attempt=attempt,
             saved_calls=fallback_budget,
         )

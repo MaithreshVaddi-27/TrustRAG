@@ -136,6 +136,93 @@ async def test_execute_claim_verification(
 
 
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
+@patch("app.rag.verification.verifier.verify_claim_nli")
+@patch("app.rag.verification.verifier.batch_verify_claims_nli")
+@patch("app.rag.verification.verifier.decompose_answer_to_claims")
+async def test_neutral_batch_verdict_stays_neutral_without_targeted_retrieval(
+    mock_decompose, mock_batch_verify, mock_individual
+):
+    mock_decompose.return_value = ["The policy allows access within thirty days."]
+    mock_batch_verify.return_value = {
+        1: {"verdict": "NEUTRAL", "supporting_segments": [], "explanation": "Unclear"}
+    }
+    mock_collection = MagicMock()
+    mock_collection.insert_many = AsyncMock(return_value=MagicMock(inserted_ids=[ObjectId()]))
+
+    with patch("app.rag.verification.verifier.get_collection", return_value=mock_collection):
+        claims = await execute_claim_verification(
+            analysis_id_str="64ee39d09c6292376e191983",
+            answer="The policy allows access within thirty days.",
+            chunks=[{"text": "Access is allowed within thirty days."}],
+            evidence_ids=[ObjectId("64ee39d09c6292376e191985")],
+            kb_id_str=None,
+        )
+
+    mock_individual.assert_not_awaited()
+    assert claims[0]["state"] == "NEUTRAL"
+
+
+def test_fused_coverage_rejects_short_claim_inside_compound_sentence():
+    from app.rag.verification.verifier import _fused_claims_cover_answer
+
+    answer = (
+        "The policy allows access for thirty days, and rejected applicants may appeal "
+        "within a separate review period."
+    )
+    assert not _fused_claims_cover_answer(answer, ["The policy allows access."])
+@patch("app.rag.verification.verifier.fused_decompose_verify")
+@patch("app.rag.verification.verifier.batch_verify_claims_nli")
+@patch("app.rag.verification.verifier.decompose_answer_to_claims")
+async def test_partial_fused_output_falls_back_to_full_decomposition(
+    mock_decompose, mock_batch_verify, mock_fused
+):
+    from app.core.config.model_config import get_model_config
+
+    answer = (
+        "The policy allows access for thirty days. "
+        "A separate section lists appeal rights for rejected applicants."
+    )
+    mock_decompose.return_value = [
+        "The policy allows access for thirty days.",
+        "A separate section lists appeal rights for rejected applicants.",
+    ]
+    mock_batch_verify.return_value = {
+        1: {"verdict": "SUPPORTED", "supporting_segments": [1], "explanation": "Supported"},
+        2: {"verdict": "SUPPORTED", "supporting_segments": [1], "explanation": "Supported"},
+    }
+    mock_collection = MagicMock()
+    mock_collection.insert_many = AsyncMock(
+        return_value=MagicMock(inserted_ids=[ObjectId(), ObjectId()])
+    )
+    cfg = get_model_config()
+    with (
+        patch("app.rag.verification.verifier._is_small", return_value=False),
+        patch("app.rag.verification.verifier.get_model_config", return_value=cfg),
+        patch("app.rag.verification.verifier.get_verification_model"),
+        patch("app.rag.verification.verifier.get_collection", return_value=mock_collection),
+    ):
+        # Ensure the fused path is eligible (non-small, non-reasoning model).
+        from app.rag.verification.verifier import execute_claim_verification
+        mock_fused.return_value = [{
+            "claim": "The policy allows access for thirty days.",
+            "verdict": "SUPPORTED",
+            "supporting_segments": [1],
+            "explanation": "Directly stated",
+        }]
+        claims = await execute_claim_verification(
+            analysis_id_str="64ee39d09c6292376e191983",
+            answer=answer,
+            chunks=[{"text": answer}],
+            evidence_ids=[ObjectId("64ee39d09c6292376e191985")],
+            provider="gemini",
+            model="gemini-3.5-flash",
+        )
+
+    mock_decompose.assert_awaited_once()
+    assert len(claims) == 2
+
+
+@patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.rag.verification.verifier.batch_verify_claims_nli")
 @patch("app.rag.verification.verifier.decompose_answer_to_claims")
 async def test_execute_claim_verification_maps_sorted_segments_to_original_evidence(
