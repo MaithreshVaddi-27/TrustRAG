@@ -1048,7 +1048,7 @@ async def test_recovery_node_budget_enforcement(mock_get_model, mock_collection)
 
     res = await recovery_node(state)
     assert res["diagnosis_type"] == "RECOVERY_BUDGET_EXHAUSTED"
-    assert res["verdict_status"] == "PASS"  # Forces abstention
+    assert res["verdict_status"] == "FAIL"  # Budget exhausted without a passing verdict
     assert res["attempts"] == cfg.max_recovery_attempts  # Forces end
 
 

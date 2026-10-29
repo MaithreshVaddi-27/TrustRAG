@@ -1190,7 +1190,7 @@ async def recovery_node(state: AgentState) -> AgentState:
                 latency_ms=state["recovery_latency_ms"],
                 max_latency_ms=max_latency,
             )
-            state["verdict_status"] = "PASS"
+            state["verdict_status"] = "FAIL"
             state["diagnosis_type"] = "RECOVERY_BUDGET_EXHAUSTED"
             state["diagnosis_failures"] = [
                 f"Recovery budget exhausted: tokens={state['recovery_tokens_used']}/{max_tokens}, "

@@ -175,9 +175,9 @@ def test_fused_coverage_rejects_short_claim_inside_compound_sentence():
 def test_fused_coverage_rejects_answer_with_no_claims():
     from app.rag.verification.verifier import _fused_claims_cover_answer
 
-    assert not _fused_claims_cover_answer(
-        "The policy allows access for thirty days.", []
-    )
+    assert not _fused_claims_cover_answer("The policy allows access for thirty days.", [])
+
+
 @patch("app.rag.verification.verifier.fused_decompose_verify")
 @patch("app.rag.verification.verifier.batch_verify_claims_nli")
 @patch("app.rag.verification.verifier.decompose_answer_to_claims")
@@ -211,12 +211,15 @@ async def test_partial_fused_output_falls_back_to_full_decomposition(
     ):
         # Ensure the fused path is eligible (non-small, non-reasoning model).
         from app.rag.verification.verifier import execute_claim_verification
-        mock_fused.return_value = [{
-            "claim": "The policy allows access for thirty days.",
-            "verdict": "SUPPORTED",
-            "supporting_segments": [1],
-            "explanation": "Directly stated",
-        }]
+
+        mock_fused.return_value = [
+            {
+                "claim": "The policy allows access for thirty days.",
+                "verdict": "SUPPORTED",
+                "supporting_segments": [1],
+                "explanation": "Directly stated",
+            }
+        ]
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer=answer,

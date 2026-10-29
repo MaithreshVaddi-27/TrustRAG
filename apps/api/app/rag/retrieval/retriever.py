@@ -308,8 +308,9 @@ def reciprocal_rank_fusion(
             }
         )
 
-    # Sort descending by RRF score
-    fused_results.sort(key=lambda x: x["rrf_score"], reverse=True)
+    # Sort descending by RRF score with deterministic tiebreaker (point id)
+    # so equal scores always produce the same evidence order across runs.
+    fused_results.sort(key=lambda x: (x["rrf_score"], str(x["id"])), reverse=True)
     return fused_results
 
 
