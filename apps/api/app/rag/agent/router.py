@@ -165,7 +165,13 @@ def merge_fanout_results(results: list[list[dict[str, Any]]]) -> list[dict[str, 
             score = float(chunk.get("rrf_score") or 0.0)
             if current is None or score > float(current.get("rrf_score") or 0.0):
                 merged[key] = chunk
-    return sorted(merged.values(), key=lambda c: float(c.get("rrf_score") or 0.0), reverse=True)
+    # Deterministic sort: RRF score descending, then chunk id ascending,
+    # so equal scores always produce the same evidence order across runs.
+    return sorted(
+        merged.values(),
+        key=lambda c: (float(c.get("rrf_score") or 0.0), str(c.get("id", ""))),
+        reverse=True,
+    )
 
 
 async def fanout_retrieve(
