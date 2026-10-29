@@ -13,6 +13,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import time
 from typing import Any
 
 from app.core.config.model_config import get_model_config
@@ -273,7 +274,6 @@ def get_cached_hardware_profile() -> dict[str, Any]:
     Only runs the expensive subprocess probe once per TTL period.
     """
     global _hardware_profile_cache
-    import time
 
     if _hardware_profile_cache is not None:
         # Check if cache is still valid

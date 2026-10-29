@@ -158,6 +158,56 @@ MCP_TOOLS: list[dict[str, Any]] = [
 ]
 
 
+def _clamp_results(value: Any, default: int = 5) -> int:
+    """Clamp a numeric result count to [1, 10], returning default on invalid input."""
+    try:
+        return max(1, min(int(value), 10))
+    except (TypeError, ValueError):
+        return default
+
+
+def _require_service_token(arguments: dict[str, Any], *, _internal: bool = False) -> dict[str, Any]:
+    """Extract and validate service token from arguments (returns payload)."""
+    if _internal:
+        return {"sub": "internal-pipeline"}
+    token = arguments.get("service_token")
+    if not token:
+        raise AuthenticationError(
+            "Service token required", detail="MCP tool requires service_token parameter"
+        )
+    try:
+        payload = decode_service_token(token)
+        if not isinstance(payload, dict):
+            raise AuthenticationError("Invalid service token", detail="malformed payload")
+        return payload
+    except AuthenticationError as exc:
+        raise AuthenticationError("Invalid service token") from exc
+
+
+async def _enforce_kb_tenant(payload: dict[str, Any], kb_id: str) -> None:
+    """Cross-tenant guard: a service token bound to a KB/user reads only that scope.
+
+    Mirrors the M-2 checks on internal_ingest_document. Unbound (service-level)
+    tokens keep full access; bound tokens are confined. Ownership failures map
+    to AuthenticationError so bound callers can't probe KB existence.
+    """
+    bound_kb = payload.get("bound_kb_id")
+    if bound_kb and str(bound_kb) != str(kb_id):
+        raise AuthenticationError(
+            "Service token not authorized for this knowledge base",
+            detail="token is bound to a different KB",
+        )
+    bound_user = payload.get("bound_user_id")
+    if bound_user:
+        try:
+            await kb_service_mod.get_kb(str(kb_id), str(bound_user))
+        except (NotFoundError, AuthorizationError) as exc:
+            raise AuthenticationError(
+                "Service token not authorized for this knowledge base",
+                detail="token is bound to a different user",
+            ) from exc
+
+
 async def handle_tool_call(
     tool_name: str, arguments: dict[str, Any], *, _internal: bool = False
 ) -> dict[str, Any]:
@@ -170,59 +220,13 @@ async def handle_tool_call(
             over stdio: run_stdio_mcp_server() does not accept this flag.
     """
 
-    def _clamp_results(value: Any, default: int = 5) -> int:
-        try:
-            return max(1, min(int(value), 10))
-        except (TypeError, ValueError):
-            return default
-
-    def _require_service_token(arguments: dict[str, Any]) -> dict[str, Any]:
-        """Extract and validate service token from arguments (returns payload)."""
-        if _internal:
-            return {"sub": "internal-pipeline"}
-        token = arguments.get("service_token")
-        if not token:
-            raise AuthenticationError(
-                "Service token required", detail="MCP tool requires service_token parameter"
-            )
-        try:
-            payload = decode_service_token(token)
-            if not isinstance(payload, dict):
-                raise AuthenticationError("Invalid service token", detail="malformed payload")
-            return payload
-        except AuthenticationError as exc:
-            raise AuthenticationError("Invalid service token") from exc
-
-    async def _enforce_kb_tenant(payload: dict[str, Any], kb_id: str) -> None:
-        """Cross-tenant guard: a service token bound to a KB/user reads only that scope.
-
-        Mirrors the M-2 checks on internal_ingest_document. Unbound (service-level)
-        tokens keep full access; bound tokens are confined. Ownership failures map
-        to AuthenticationError so bound callers can't probe KB existence.
-        """
-        bound_kb = payload.get("bound_kb_id")
-        if bound_kb and str(bound_kb) != str(kb_id):
-            raise AuthenticationError(
-                "Service token not authorized for this knowledge base",
-                detail="token is bound to a different KB",
-            )
-        bound_user = payload.get("bound_user_id")
-        if bound_user:
-            try:
-                await kb_service_mod.get_kb(str(kb_id), str(bound_user))
-            except (NotFoundError, AuthorizationError) as exc:
-                raise AuthenticationError(
-                    "Service token not authorized for this knowledge base",
-                    detail="token is bound to a different user",
-                ) from exc
-
     if tool_name == "tavily_search":
-        _require_service_token(arguments)
+        _require_service_token(arguments, _internal=_internal)
         count = _clamp_results(arguments.get("max_results", 5))
         res = await search_service_mod.tavily_search(arguments["query"], max_results=count)
         return {"content": [{"type": "text", "text": json.dumps(res, indent=2)}]}
     if tool_name == "trustrag_search":
-        _payload = _require_service_token(arguments)
+        _payload = _require_service_token(arguments, _internal=_internal)
         kb_id = arguments["kb_id"]
         await _enforce_kb_tenant(_payload, kb_id)
         query = arguments["query"]
@@ -260,7 +264,7 @@ async def handle_tool_call(
         return {"content": [{"type": "text", "text": json.dumps(results, indent=2)}]}
 
     elif tool_name == "trustrag_verify_claim":
-        _require_service_token(arguments)
+        _require_service_token(arguments, _internal=_internal)
         claims = arguments["claims"][:20]
         evidence_texts = [t[:4000] for t in arguments["evidence_texts"][:20]]
         fake_chunks = [
@@ -270,7 +274,7 @@ async def handle_tool_call(
         return {"content": [{"type": "text", "text": json.dumps(verdicts, indent=2)}]}
 
     elif tool_name == "trustrag_list_kbs":
-        _payload = _require_service_token(arguments)
+        _payload = _require_service_token(arguments, _internal=_internal)
         coll = get_collection(Collections.KNOWLEDGE_BASES)
         # Bound tokens enumerate only their tenant's KBs; unbound service
         # tokens keep the full listing.
@@ -296,7 +300,7 @@ async def handle_tool_call(
         return {"content": [{"type": "text", "text": json.dumps(kbs, indent=2)}]}
 
     elif tool_name == "local_llm_chat":
-        _require_service_token(arguments)
+        _require_service_token(arguments, _internal=_internal)
         # Local-only tool: never route a service-token call to metered cloud
         # providers (a leaked token must not become a spend vector).
         provider = str(arguments.get("provider", "ollama") or "ollama").strip().lower()
@@ -313,7 +317,7 @@ async def handle_tool_call(
         return {"content": [{"type": "text", "text": text}]}
 
     elif tool_name == "local_llm_status":
-        _require_service_token(arguments)
+        _require_service_token(arguments, _internal=_internal)
         settings = get_settings()
         prov = arguments.get("provider", "both")
         status_res: dict[str, Any] = {}

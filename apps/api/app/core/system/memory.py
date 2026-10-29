@@ -26,10 +26,11 @@ try:
     _PSUTIL_AVAILABLE = True
 except ImportError:
     _PSUTIL_AVAILABLE = False
-    try:
-        import resource
-    except ImportError:  # Windows without psutil
-        resource = None  # type: ignore[assignment]
+
+try:
+    import resource  # type: ignore[import]
+except ImportError:  # Windows without psutil
+    resource = None  # type: ignore[assignment]
 
 
 def trim_memory() -> None:
