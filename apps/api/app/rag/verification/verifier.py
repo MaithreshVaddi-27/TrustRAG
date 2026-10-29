@@ -208,6 +208,39 @@ def _is_meta_claim(text: str) -> bool:
     return any(rx.search(lowered) for rx in _META_CLAIM_REGEXES)
 
 
+def _filter_degenerate_claims(claims: list[str]) -> list[str]:
+    """Drop degenerate claims that small models emit instead of facts:
+    - questions (end with "?" — usually the model echoed the query)
+    - single-word heading-like claims (< 15 chars, title case, no period,
+      e.g. "Eligibility")
+    - section-numbered lines ("1. Eligibility")
+    Returns stripped, non-empty claim texts.
+    """
+    filtered: list[str] = []
+    for c in claims:
+        c_stripped = c.strip()
+        if not c_stripped:
+            continue
+        if c_stripped.endswith("?"):
+            logger.debug("Dropping question-like claim", claim=c_stripped[:60])
+            continue
+        if re.match(r"^\d+\.\s+", c_stripped):
+            logger.debug("Dropping section-numbered claim", claim=c_stripped[:60])
+            continue
+        words = c_stripped.split()
+        if (
+            len(words) == 1
+            and len(c_stripped) < 15
+            and not c_stripped.endswith((".", "!", "?"))
+            and c_stripped[0].isupper()
+            and c_stripped == c_stripped.capitalize()
+        ):
+            logger.debug("Dropping heading-like claim", claim=c_stripped[:60])
+            continue
+        filtered.append(c_stripped)
+    return filtered
+
+
 def _fused_claims_cover_answer(answer: str, claims: list[str]) -> bool:
     """Conservatively reject fused output that drops answer content."""
     answer_sentences = [
@@ -215,14 +248,9 @@ def _fused_claims_cover_answer(answer: str, claims: list[str]) -> bool:
         for sentence in re.split(r"(?<=[.!?])\s+", answer)
         if len(sentence.strip()) > 40
     ]
-    claim_tokens = {
-        token
-        for claim in claims
-        for token in re.findall(r"\w+", claim.lower())
-    }
+    claim_tokens = {token for claim in claims for token in re.findall(r"\w+", claim.lower())}
     return bool(claims) and all(
-        set(re.findall(r"\w+", sentence.lower())) <= claim_tokens
-        for sentence in answer_sentences
+        set(re.findall(r"\w+", sentence.lower())) <= claim_tokens for sentence in answer_sentences
     )
 
 
@@ -1274,8 +1302,20 @@ async def execute_claim_verification(
         # Belt-and-braces: the structured path already filters, but the fallback
         # and capped paths can still carry prompt-echo claims.
         claims_texts = [c for c in claims_texts if not _is_meta_claim(c)]
+        claims_texts = _filter_degenerate_claims(claims_texts)
         if not claims_texts:
-            return []
+            # All decomposed claims were filtered as degenerate (headings,
+            # questions, section numbers). Fall back to sentence-splitting the
+            # answer so every sentence is still NLI-verified individually.
+            parts = [s.strip() for s in re.split(r"(?<=[.!?])\s+", answer) if len(s.strip()) > 40]
+            if parts:
+                logger.info(
+                    "All claims filtered as degenerate; sentence-split answer fallback",
+                    sentences=len(parts),
+                )
+                claims_texts = _filter_degenerate_claims(parts)
+            else:
+                return []
 
         if len(claims_texts) > max_claims:
             logger.info(
@@ -1471,13 +1511,29 @@ async def execute_claim_verification(
         # Resolve 1-based NLI segment numbers through the exact sorted/deduped
         # context order back to the persisted evidence IDs. Raw rerank order is
         # not safe here and previously linked claims to the wrong evidence.
+        # Small models (gemma3:1b, LFM2.5-1.2B) routinely hallucinate segment
+        # numbers outside the served range (e.g. "3" when only 2 segments exist).
+        # Those out-of-range indices are rejected below; when a claim is judged
+        # SUPPORTED/CONTRADICTED but no segment maps cleanly, fall back to
+        # linking every evidence chunk so the claim is not orphaned.
+        raw_segments = nli_res.get("supporting_segments", [])
         supporting_evidence_ids = []
-        for idx in nli_res.get("supporting_segments", []):
+        for idx in raw_segments:
             if not isinstance(idx, int) or not 0 < idx <= len(context_chunk_indices):
                 continue
             chunk_idx = context_chunk_indices[idx - 1]
             if 0 <= chunk_idx < len(evidence_ids):
                 supporting_evidence_ids.append(evidence_ids[chunk_idx])
+
+        if (
+            not supporting_evidence_ids
+            and evidence_ids
+            and nli_res.get("verdict") in ("SUPPORTED", "CONTRADICTED")
+            # Targeted retrieval already mapped this claim's evidence via
+            # claim_evidence_ids; don't clobber it with the original evidence.
+            and i not in claim_evidence_ids
+        ):
+            supporting_evidence_ids = list(evidence_ids)
 
         # Targeted-retrieval linkage from targeted retrieval (freshly persisted evidence).
         for extra_id in claim_evidence_ids.get(i, []):

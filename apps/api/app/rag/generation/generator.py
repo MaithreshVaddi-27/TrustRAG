@@ -486,6 +486,35 @@ def strip_citation_markers(answer: str) -> str:
     return cleaned
 
 
+# Prompt/scaffold tags that small models echo inline (e.g. "[Query]" at the end
+# of an answer). These are not citations and must be stripped before the answer
+# is stored or shown to the user. Matches both bracketed and angle-bracket
+# forms, case-insensitively.
+_SCAFFOLD_TAG_RE = re.compile(
+    r"\[\s*(?:query|context|relevance|reasoning|validation|answering_criteria|"
+    r"final_section|final_output)\s*\]",
+    re.IGNORECASE,
+)
+_SCAFFOLD_XML_RE = re.compile(
+    r"</?\s*(?:query|context|relevance|reasoning|validation|answering_criteria|"
+    r"final_section|final_output)\s*>",
+    re.IGNORECASE,
+)
+
+
+def strip_scaffold_tags(answer: str) -> str:
+    """Remove echoed prompt scaffold tags ([Query], <CONTEXT>, etc.) from the
+    final answer. Runs after strip_citation_markers at finalize time."""
+    if not answer:
+        return answer
+    cleaned = _SCAFFOLD_TAG_RE.sub("", answer)
+    cleaned = _SCAFFOLD_XML_RE.sub("", cleaned)
+    if cleaned != answer:
+        cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+        cleaned = re.sub(r" ([.,;:!?])", r"\1", cleaned)
+    return cleaned.strip()
+
+
 # Sections small reasoning models wrap around the real answer. Extraction is
 # structural (bracket markers), never content-based, so well-behaved models
 # whose output has no markers pass through byte-identical.
@@ -862,6 +891,10 @@ async def generate_grounded_answer(
                 served_segments=len(chunk_indices),
             )
             answer = cited_answer
+
+        # Strip echoed prompt scaffold tags ([Query], <CONTEXT>, etc.) that small
+        # models inline into the answer. These are not citations.
+        answer = strip_scaffold_tags(answer)
 
         logger.info(
             "Grounded generation completed", answer_len=len(answer), abstained=(answer == "ABSTAIN")
