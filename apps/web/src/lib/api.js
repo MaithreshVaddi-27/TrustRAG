@@ -83,7 +83,7 @@ export default api
  * @returns {Promise<EventSource|null>}
  */
 export async function openAnalysisStream(analysisId, { onEvent, onError, onComplete } = {}) {
-  const TERMINAL_EVENTS = new Set(['analysis.completed', 'analysis.abstained', 'analysis.failed'])
+  const TERMINAL_EVENTS = new Set(['analysis.completed', 'analysis.abstained', 'analysis.failed', 'analysis.outage'])
 
   // Mint a short-lived ticket — keeps the JWT out of the URL entirely.
   let streamUrl

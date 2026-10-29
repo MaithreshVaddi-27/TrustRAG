@@ -365,6 +365,7 @@ const activeProviderInfo = providersData?.providers?.[selectedProvider]
           selectedProvider={selectedProvider}
           selectedModel={selectedModel}
           selectedEmbeddingModel={selectedEmbeddingModel}
+          analysisStatus={analysis?.status}
         />
       </motion.div>
     </AppLayout>

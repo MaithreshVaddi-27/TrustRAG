@@ -101,6 +101,12 @@ def _rerank_sync(
         # No result cache: every call scores fresh (stale scores after
         # re-ingest were worse than the re-scoring cost).
         all_scores: list[float] = [0.0] * len(pairs)
+        # Tracks which candidates actually received a cross-encoder score.
+        # Early termination can leave later candidates unscored; those must not
+        # masquerade as scored (a fabricated 0.0 ranks above genuine negative
+        # relevance and can evict real evidence from the generation/verification
+        # context window — which then turns supported claims into NEUTRAL).
+        scored_mask: list[bool] = [False] * len(pairs)
 
         if pairs:
             _batch = getattr(cfg, "reranker_batch_size_effective", None) or cfg.reranker_batch_size
@@ -108,24 +114,26 @@ def _rerank_sync(
             # NOTE: no second `model is None` check here — None already
             # returned above, so it is unreachable.
 
-            scored: list[float] = []
-
             for i in range(0, len(pairs), batch_size):
                 batch_pairs = pairs[i : i + batch_size]
                 batch_scores = model.predict(batch_pairs)
-                scored.extend(batch_scores)
+                for j, score in enumerate(batch_scores):
+                    idx = i + j
+                    all_scores[idx] = float(score)
+                    scored_mask[idx] = True
 
                 # Early termination check after processing enough candidates
                 processed = i + len(batch_scores)
                 if processed >= EARLY_TERMINATION_MIN_BATCH:
-                    # Check if top result is confidently better than rest
-                    if len(scored) >= 3:
-                        top_score = max(scored)
-                        sorted_scores = sorted(scored, reverse=True)
+                    scored_so_far = [all_scores[k] for k in range(processed) if scored_mask[k]]
+                    if len(scored_so_far) >= 3:
+                        top_score = max(scored_so_far)
+                        sorted_scores = sorted(scored_so_far, reverse=True)
                         second_best = sorted_scores[1] if len(sorted_scores) > 1 else 0.0
                         score_gap = top_score - second_best
 
-                        # Early exit if top result is very confident and well separated
+                        # Early exit if top result is very confident and well separated.
+                        # Remaining candidates stay unscored (no fabricated 0.0).
                         if (
                             top_score >= cfg.reranker_early_termination_confidence
                             and score_gap >= cfg.reranker_score_gap_threshold
@@ -136,24 +144,28 @@ def _rerank_sync(
                                 score_gap=score_gap,
                                 processed=processed,
                                 total=len(pairs),
+                                unscored=len(pairs) - processed,
                             )
-                            # Pad remaining scores with 0.0
-                            remaining = len(pairs) - processed
-                            scored.extend([0.0] * remaining)
                             break
 
-            for idx, score in enumerate(scored):
-                all_scores[idx] = score
-
-        # Update scores inside chunks
+        # Update scores inside chunks — only actually-scored candidates get a
+        # rerank_score; unscored ones keep none (never a fake 0.0).
         for i, score in enumerate(all_scores):
-            candidates[i]["rerank_score"] = float(score)
+            if scored_mask[i]:
+                candidates[i]["rerank_score"] = float(score)
 
-        # Sort descending by rerank score — on a copy, never the caller's list.
-        ranked = sorted(candidates, key=lambda x: x.get("rerank_score", 0.0), reverse=True)
+        # Rank scored candidates first (by score desc), then unscored. Unscored
+        # candidates never outrank a genuinely-scored chunk, so early termination
+        # cannot push real evidence out of the top slice.
+        scored = [c for c, m in zip(candidates, scored_mask, strict=False) if m]
+        unscored = [c for c, m in zip(candidates, scored_mask, strict=False) if not m]
+        scored.sort(key=lambda x: x.get("rerank_score", 0.0), reverse=True)
+        ranked = scored + unscored
 
-        # Adaptive Top-K: If top chunks are confident, bound to top 4
-        confident = len(ranked) > 3 and _is_high_confidence(ranked[0])
+        # Adaptive Top-K: If top scored chunks are confident, bound to top 4.
+        # Unscored candidates rank after all scored ones, so a confident head
+        # of real signal bounds the window instead of a fabricated 0.0.
+        confident = len(scored) > 3 and _is_high_confidence(scored[0])
         effective_limit = min(max_context, 4) if confident else max_context
         sliced = ranked[:effective_limit]
         logger.debug(

@@ -54,6 +54,7 @@ export function ResultsPanel({
   selectedProvider,
   selectedModel,
   selectedEmbeddingModel,
+  analysisStatus,
 }) {
   const [copied, setCopied] = useState(false)
   const tabRefs = useRef({})
@@ -99,6 +100,7 @@ export function ResultsPanel({
           provider={selectedProvider}
           model={selectedModel}
           embeddingModel={selectedEmbeddingModel}
+          analysisStatus={analysisStatus}
         />
 
         <div className="border-beam stream-beam flex-1 min-h-0 flex flex-col rounded-2xl border border-slate-800 bg-surface-900/50 backdrop-blur-sm p-4 overflow-hidden shadow-lg shadow-black/20">
@@ -110,13 +112,13 @@ export function ResultsPanel({
               </span>
             </div>
             <span className="text-[10px] font-mono text-cyan-400 flex items-center gap-1.5 bg-surface-950 px-2.5 py-1 rounded-lg border border-slate-800 shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-              STREAM ACTIVE
+              <span className={`w-2 h-2 rounded-full ${analysisStatus && !['pending', 'processing'].includes(analysisStatus) ? 'bg-emerald-400' : 'bg-cyan-400 animate-ping'}`} />
+              {analysisStatus && !['pending', 'processing'].includes(analysisStatus) ? 'STREAM FINISHED' : 'STREAM ACTIVE'}
             </span>
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-            <ExecutionTrace events={currentTraceEvents} isLive={true} />
+            <ExecutionTrace events={currentTraceEvents} isLive={!analysisStatus || ['pending', 'processing'].includes(analysisStatus)} />
           </div>
         </div>
       </div>
@@ -205,11 +207,11 @@ export function ResultsPanel({
               transition={SPRING_SNAPPY}
               className="space-y-5"
             >
-            {(analysis.status === 'failed' || analysis.reliability?.status === 'FAILED') && (
+            {(analysis.status === 'failed' || analysis.status === 'outage' || analysis.reliability?.status === 'FAILED') && (
               <div className="rounded-xl border border-red-800/50 bg-red-950/30 p-4 shadow-glow-crimson animate-fade-in">
                 <p className="text-sm font-medium text-red-300">
-                  {analysis.status === 'failed'
-                    ? `Analysis failed: ${analysis.diagnosis?.failures?.[0] || 'Unknown error occurred'}`
+                  {analysis.status === 'failed' || analysis.status === 'outage'
+                    ? `Analysis failed: ${analysis.diagnosis?.failures?.[0] || 'Retrieval service is temporarily unavailable'}`
                     : `Reliability check failed: ${analysis.diagnosis?.failures?.[0] || 'Thresholds not met'}`}
                 </p>
               </div>
@@ -292,6 +294,11 @@ export function ResultsPanel({
               exit={{ opacity: 0, y: -8 }}
               transition={SPRING_SNAPPY}
             >
+              {analysis.status === 'abstained' || analysis.reliability?.status === 'ABSTAINED' ? (
+                <p className="mb-3 rounded-lg border border-amber-800/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-300">
+                  The generated draft was checked against the evidence, but the final answer was withheld. These claim verdicts apply to that draft, not the abstention message.
+                </p>
+              ) : null}
               <ClaimInspector claims={analysis.claims || []} />
             </motion.div>
           )}

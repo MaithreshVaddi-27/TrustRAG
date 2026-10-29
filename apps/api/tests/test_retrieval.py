@@ -207,6 +207,27 @@ async def test_dense_search_raises_outage_when_qdrant_unavailable():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("embedded", [False, True])
+async def test_dense_search_returns_empty_when_collection_is_missing(embedded):
+    from qdrant_client.http.exceptions import UnexpectedResponse
+
+    client = SimpleNamespace(collection_exists=AsyncMock(return_value=False))
+    error = (
+        ValueError("Collection not found")
+        if embedded
+        else UnexpectedResponse(404, "Not Found", b"missing collection", None)
+    )
+    with (
+        patch("app.rag.retrieval.retriever.get_qdrant_client", AsyncMock(return_value=client)),
+        patch(
+            "app.rag.retrieval.retriever._get_collection_dimension",
+            AsyncMock(side_effect=error),
+        ),
+    ):
+        assert await dense_search("missing collection query", "kb_missing") == []
+
+
+@pytest.mark.asyncio
 async def test_dense_search_returns_empty_for_genuine_no_evidence():
 
     mock_client = SimpleNamespace(query_points=AsyncMock(return_value=SimpleNamespace(points=[])))
@@ -291,6 +312,30 @@ async def test_dense_search_top_k_zero_disables_leg_without_embedding():
     ):
         assert await dense_search("retention policy", "kb_x", top_k=0) == []
         assert await dense_search("retention policy", "kb_x", top_k=-1) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("embedded", [False, True])
+async def test_sparse_search_returns_empty_when_collection_is_missing(embedded):
+    from qdrant_client.http.exceptions import UnexpectedResponse
+
+    missing_error = (
+        ValueError("Collection not found")
+        if embedded
+        else UnexpectedResponse(404, "Not Found", b"missing collection", None)
+    )
+    client = SimpleNamespace(
+        collection_exists=AsyncMock(return_value=False),
+        query_points=AsyncMock(side_effect=missing_error),
+    )
+    with (
+        patch("app.rag.retrieval.retriever.get_qdrant_client", AsyncMock(return_value=client)),
+        patch(
+            "app.rag.retrieval.retriever.generate_sparse_vector",
+            return_value={"indices": [7], "values": [0.5]},
+        ),
+    ):
+        assert await sparse_search("missing collection query", "kb_missing") == []
 
 
 @pytest.mark.asyncio

@@ -220,7 +220,7 @@ def _fused_claims_cover_answer(answer: str, claims: list[str]) -> bool:
         for claim in claims
         for token in re.findall(r"\w+", claim.lower())
     }
-    return all(
+    return bool(claims) and all(
         set(re.findall(r"\w+", sentence.lower())) <= claim_tokens
         for sentence in answer_sentences
     )

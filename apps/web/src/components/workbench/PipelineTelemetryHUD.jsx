@@ -16,6 +16,7 @@ export function PipelineTelemetryHUD({
   provider = 'ollama',
   model = 'granite4.2:3b-q4_K_M',
   embeddingModel = 'BAAI/bge-small-en-v1.5',
+  analysisStatus,
 }) {
   // Determine current active pipeline stage from events
   const status = useMemo(() => {
@@ -26,7 +27,11 @@ export function PipelineTelemetryHUD({
     const retrievalDone = eventNames.has('retrieval.completed')
     const generationDone = eventNames.has('generation.completed') || eventNames.has('claims.started')
     const verificationDone = eventNames.has('claims.verified')
-    const isCompleted = eventNames.has('analysis.completed') || eventNames.has('analysis.abstained')
+    const isCompleted = ['completed', 'abstained', 'failed', 'outage'].includes(analysisStatus)
+      || eventNames.has('analysis.completed')
+      || eventNames.has('analysis.abstained')
+      || eventNames.has('analysis.failed')
+      || eventNames.has('analysis.outage')
     const isRecovering = eventNames.has('recovery.rewrite')
       || eventNames.has('recovery.re_retrieve')
       || eventNames.has('recovery.regenerate')
@@ -38,6 +43,9 @@ export function PipelineTelemetryHUD({
       liveMessage = displayMessage(lastEvent.event, lastEvent.data?.message)
         || lastEvent.event.replace(/[._]/g, ' ')
     }
+    if (analysisStatus && !['pending', 'processing'].includes(analysisStatus)) {
+      liveMessage = analysisStatus === 'failed' ? 'Analysis failed' : 'Analysis finished'
+    }
 
     return {
       retrievalDone,
@@ -48,7 +56,7 @@ export function PipelineTelemetryHUD({
       liveMessage,
       eventCount: compacted.length,
     }
-  }, [events])
+  }, [events, analysisStatus])
 
   const modelShort = shortModelId(model)
   const providerLabel = providerShortLabel(provider)
@@ -60,8 +68,8 @@ export function PipelineTelemetryHUD({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
         <div className="flex items-center gap-2.5">
           <div className="relative flex items-center justify-center">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-            <span className="absolute w-2 h-2 rounded-full bg-cyan-400" />
+            <span className={`w-2.5 h-2.5 rounded-full ${status.isCompleted ? 'bg-emerald-400' : 'bg-cyan-400 animate-ping'}`} />
+            {!status.isCompleted && <span className="absolute w-2 h-2 rounded-full bg-cyan-400" />}
           </div>
           <div>
             <div className="flex items-center gap-2">

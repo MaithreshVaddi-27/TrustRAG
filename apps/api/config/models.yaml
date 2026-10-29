@@ -19,7 +19,8 @@ runtime:
   # 1.27 (2026-10-03 audit pass): sparse_top_k 0->20 (hybrid leg),
   # max_analysis_seconds 120->600 (recovery reachable), ocr.dpi 200->300,
   # retrieval.quantization.enabled added (INT8 gated off), local_llm.num_ctx_by_model.
-  config_version: "1.27"
+  # 1.28 (2026-10-28): reduce grounded-answer output cap to 512 tokens.
+  config_version: "1.28"
 
 # ─── LLM ──────────────────────────────────────────────────────────────────────
 llm:
@@ -69,7 +70,8 @@ llm:
 
   temperature: 0.2
   top_p: 0.9
-  max_output_tokens: 1024
+  # Keep local grounded responses concise; verifier and recovery have separate caps.
+  max_output_tokens: 512
   timeout_seconds: 180
   max_retries: 1
 

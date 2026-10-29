@@ -61,6 +61,20 @@ def _retrieval_timeouts() -> tuple[float, float]:
     return float(branch), float(hybrid)
 
 
+async def _is_collection_not_found(exc: Exception, client: Any, collection_name: str) -> bool:
+    """Recognize missing collections across REST and embedded Qdrant clients."""
+    from qdrant_client.http.exceptions import UnexpectedResponse
+
+    if isinstance(exc, UnexpectedResponse):
+        return exc.status_code == 404
+    if isinstance(exc, ValueError) and "collection" in str(exc).lower():
+        try:
+            return not await client.collection_exists(collection_name)
+        except Exception:
+            return False
+    return False
+
+
 async def _get_collection_dimension(
     client: Any,
     collection_name: str,
@@ -98,10 +112,13 @@ async def dense_search(
         client = await get_qdrant_client()
         collection_name = get_collection_name(kb_id)
 
-        target_dim = await _get_collection_dimension(
-            client,
-            collection_name,
-        )
+        try:
+            target_dim = await _get_collection_dimension(client, collection_name)
+        except Exception as exc:
+            if await _is_collection_not_found(exc, client, collection_name):
+                logger.info("Qdrant collection is missing", kb_id=kb_id)
+                return []
+            raise
 
         try:
             embed_model = get_embedding_model()
@@ -213,6 +230,9 @@ async def sparse_search(query: str, kb_id: str, top_k: int = 20) -> list[Any]:
         # A successful, empty response is genuine "no evidence" — NOT an outage.
         return list(getattr(response, "points", []) or [])
     except Exception as exc:
+        if await _is_collection_not_found(exc, client, collection_name):
+            logger.info("Qdrant collection is missing", kb_id=kb_id)
+            return []
         logger.error("Sparse search failed", kb_id=kb_id, error=str(exc))
         raise RetrievalOutageError(
             f"Vector store query failed during sparse retrieval: {exc}", detail=str(exc)

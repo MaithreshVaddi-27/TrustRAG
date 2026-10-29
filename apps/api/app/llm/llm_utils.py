@@ -76,6 +76,97 @@ def extract_json_substring(text: str) -> str:
 # ─── Structured Output Builder ───────────────────────────────────────────────
 
 
+def _rescue_schema_from_text(raw_text: str, schema: Any) -> Any | None:
+    """Rescue structured objects when an LLM outputs free-form or malformed text."""
+    if not raw_text or not hasattr(schema, "model_fields"):
+        return None
+
+    fields = schema.model_fields
+
+    # Case 1: Verdict schemas (e.g. NLIVerdict)
+    if "verdict" in fields:
+        verdict_match = re.search(
+            r"(?:verdict|status|claim\s*is)?[:\s\*\-]*\b(SUPPORTED|CONTRADICTED|NEUTRAL|VERIFIED|PROVEN|TRUE|CORRECT|REFUTED|FALSE|DISPROVEN|ENTAILMENT|UNVERIFIED|UNCERTAIN|VALID|INVALID)\b",
+            raw_text,
+            re.IGNORECASE,
+        )
+        if verdict_match:
+            raw_verdict = verdict_match.group(1).upper()
+            segments: list[int] = []
+            for seg_match in re.finditer(
+                r"(?:segment|segments|\[segment\]?)\s*#?(\d+)", raw_text, re.IGNORECASE
+            ):
+                with suppress(ValueError):
+                    segments.append(int(seg_match.group(1)))
+            if not segments:
+                for bracket_match in re.finditer(r"\[(\d+)\]", raw_text):
+                    with suppress(ValueError):
+                        segments.append(int(bracket_match.group(1)))
+            deduped_segments = sorted(set(segments))
+
+            exp_match = re.search(
+                r"(?:explanation|reason|because)[:\s]*(.+)", raw_text, re.IGNORECASE | re.DOTALL
+            )
+            explanation = exp_match.group(1).strip() if exp_match else raw_text.strip()
+            if len(explanation) > 300:
+                explanation = explanation[:297] + "..."
+
+            with suppress(Exception):
+                return schema.model_validate(
+                    {
+                        "verdict": raw_verdict,
+                        "supporting_segments": deduped_segments,
+                        "explanation": explanation,
+                    }
+                )
+
+    # Case 2: Batch verdict schemas (e.g. BatchNLIVerdict)
+    if "verdicts" in fields:
+        verdicts_list: list[dict[str, Any]] = []
+        pattern = re.compile(
+            r"(?:claim\s*)?(\d+)[:\.\)]\s*(?:verdict[:\s]*)?\b(SUPPORTED|CONTRADICTED|NEUTRAL|VERIFIED|PROVEN|TRUE|CORRECT|REFUTED|FALSE|DISPROVEN)\b(?:[^\n]*?(?:segment|segments)\s*#?(\d+))?",
+            re.IGNORECASE,
+        )
+        for line in raw_text.splitlines():
+            line_strip = line.strip()
+            if not line_strip:
+                continue
+            m = pattern.search(line_strip)
+            if m:
+                cid = int(m.group(1))
+                v = m.group(2).upper()
+                seg = int(m.group(3)) if m.group(3) else None
+                verdicts_list.append(
+                    {
+                        "claim_id": cid,
+                        "verdict": v,
+                        "supporting_segments": [seg] if seg else [],
+                        "explanation": line_strip,
+                    }
+                )
+        if verdicts_list:
+            with suppress(Exception):
+                return schema.model_validate({"verdicts": verdicts_list})
+
+    # Case 3: Claim decomposition (e.g. ClaimDecomposition)
+    if "claims" in fields:
+        claims: list[str] = []
+        for line in raw_text.splitlines():
+            line_strip = line.strip()
+            if not line_strip:
+                continue
+            m = re.match(r"^(?:\d+[\.\)]|[-*•])\s*(.+)$", line_strip)
+            if m:
+                c = m.group(1).strip()
+                if len(c) > 10:
+                    claims.append(c)
+        if claims:
+            with suppress(Exception):
+                return schema.model_validate({"claims": claims})
+
+    return None
+
+
 def build_structured_output_runnable(
     generate_fn: Callable[..., Awaitable[ChatResult]],
     schema: Any,
@@ -151,16 +242,43 @@ def build_structured_output_runnable(
             )
             try:
                 data = json.loads(cleaned_json)
-                if isinstance(data, dict):
+                fields = getattr(schema, "model_fields", {})
+                if isinstance(data, list):
+                    for target in ("verdicts", "claims", "results", "items"):
+                        if target in fields:
+                            with suppress(Exception):
+                                return schema.model_validate({target: data})
+                    for target in fields:
+                        with suppress(Exception):
+                            return schema.model_validate({target: data})
+                elif isinstance(data, dict):
                     if "properties" in data and isinstance(data["properties"], dict):
                         with suppress(Exception):
                             return schema.model_validate(data["properties"])
+                    for target_key in ("verdicts", "claims"):
+                        if target_key in fields and target_key not in data:
+                            for alt in (
+                                "results",
+                                "claims",
+                                "items",
+                                "data",
+                                "verdicts",
+                                "statements",
+                            ):
+                                if alt in data and alt != target_key:
+                                    with suppress(Exception):
+                                        return schema.model_validate(
+                                            {**data, target_key: data[alt]}
+                                        )
                     for v in data.values():
                         if isinstance(v, dict):
                             with suppress(Exception):
                                 return schema.model_validate(v)
                 return schema.model_validate(data)
             except Exception:
+                rescued = _rescue_schema_from_text(raw_text, schema)
+                if rescued is not None:
+                    return rescued
                 raise parse_err from None
 
     return RunnableLambda(_invoke_structured)  # type: ignore[return-value]

@@ -11,12 +11,34 @@ from bson import ObjectId
 
 from app.core.security.exceptions import RetrievalOutageError
 from app.rag.agent.graph import (
+    _execute_with_fallback,
     generation_node,
     recovery_node,
     retrieval_node,
     should_recover,
     verification_node,
 )
+
+
+@pytest.mark.asyncio
+async def test_execute_with_fallback_records_node_latency():
+    trace = AsyncMock()
+    operation = AsyncMock(return_value={"answer": "ready"})
+    state = {"analysis_id": "analysis-1", "verdict_status": "FAIL"}
+
+    with patch("app.rag.agent.graph.add_trace_event", trace):
+        result = await _execute_with_fallback(
+            state=state,
+            node_name="generation",
+            operation=operation,
+        )
+
+    assert result == {"answer": "ready"}
+    completed = next(
+        call for call in trace.await_args_list if call.args[1] == "generation.completed"
+    )
+    assert isinstance(completed.args[2]["latency_ms"], int)
+    assert completed.args[2]["latency_ms"] >= 0
 
 
 def test_should_recover_router():
@@ -443,6 +465,34 @@ async def test_recovery_empty_rewrite_with_real_answer_retries(mock_model, mock_
 
 
 @pytest.mark.asyncio
+async def test_verification_error_at_recovery_limit_remains_failed():
+    from app.core.config.model_config import get_model_config
+
+    state = {
+        "analysis_id": "64ee39d09c6292376e191983",
+        "answer": "The policy allows access for thirty days.",
+        "chunks": [{"text": "some context"}],
+        "evidence_ids": [],
+        "verdict_status": "FAIL",
+        "claims": [],
+        "attempts": get_model_config().max_recovery_attempts,
+    }
+
+    with (
+        patch(
+            "app.rag.agent.graph.execute_claim_verification",
+            new=AsyncMock(side_effect=RuntimeError("verification unavailable")),
+        ),
+        patch("app.rag.agent.graph.add_trace_event", new=AsyncMock()),
+    ):
+        result = await verification_node(state)
+
+    assert result["verdict_status"] == "FAIL"
+    assert result["reliability_score"] is None
+    assert result["diagnosis_type"] == "VERIFICATION_ERROR"
+
+
+@pytest.mark.asyncio
 async def test_verification_node_abstain_triggers_recovery():
     state = {
         "analysis_id": "64ee39d09c6292376e191983",
@@ -501,8 +551,11 @@ async def test_retrieval_node_outage_is_distinct_from_no_evidence(
         "verdict_status": "FAIL",
         "recovery_strategy": None,
     }
-
-    res = await retrieval_node(state)
+    with patch(
+        "app.db.qdrant.get_qdrant_client",
+        AsyncMock(return_value=MagicMock(collection_exists=AsyncMock(return_value=True))),
+    ):
+        res = await retrieval_node(state)
     assert res["diagnosis_type"] == "RETRIEVAL_OUTAGE"
     assert res["diagnosis_type"] != "RETRIEVAL_FAILURE"
     assert res["verdict_status"] == "FAIL"
@@ -511,6 +564,53 @@ async def test_retrieval_node_outage_is_distinct_from_no_evidence(
     assert res["attempts"] == get_model_config().max_recovery_attempts
     mock_rerank.assert_not_called()
     mock_audit.assert_not_called()
+
+
+@patch("app.rag.agent.graph.add_trace_event", AsyncMock())
+@patch("app.rag.agent.graph.audit_evidence_integrity")
+@patch("app.rag.agent.graph.rerank_candidate_chunks")
+@patch("app.rag.agent.graph.retrieve_hybrid_chunks")
+@patch("app.rag.agent.graph.get_collection")
+@pytest.mark.asyncio
+async def test_retrieval_node_self_heals_missing_qdrant_collection(
+    mock_collection, mock_retrieve, mock_rerank, mock_audit
+):
+    """A missing collection must enter Mongo-backed recovery, not outage handling."""
+    mock_retrieve.return_value = []
+    mock_rerank.side_effect = lambda _q, chunks, **_kwargs: chunks
+    mock_audit.side_effect = lambda chunks: chunks
+
+    chunks_coll = MagicMock()
+    chunks_coll.count_documents = AsyncMock(return_value=0)
+    mock_collection.side_effect = lambda name: (
+        chunks_coll if str(name).split(".")[-1] == "document_chunks" else MagicMock()
+    )
+    qdrant = MagicMock()
+    qdrant.collection_exists = AsyncMock(return_value=False)
+
+    state = {
+        "analysis_id": "64ee39d09c6292376e191983",
+        "kb_id": "64ee39d09c6292376e191984",
+        "query": "query",
+        "current_query": "query",
+        "answer": None,
+        "chunks": [],
+        "evidence_ids": [],
+        "attempts": 0,
+        "verdict_status": "FAIL",
+        "recovery_strategy": None,
+    }
+
+    with (
+        patch("app.db.qdrant.get_qdrant_client", AsyncMock(return_value=qdrant)),
+        patch("app.db.qdrant.init_kb_collection", AsyncMock()),
+    ):
+        result = await retrieval_node(state)
+
+    assert result["diagnosis_type"] == "RETRIEVAL_FAILURE"
+    assert "no indexed document content" in result["answer"].lower()
+    mock_retrieve.assert_awaited_once()
+    qdrant.collection_exists.assert_awaited_once_with("kb_64ee39d09c6292376e191984")
 
 
 @patch("app.rag.agent.graph.add_trace_event", AsyncMock())

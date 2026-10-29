@@ -92,6 +92,31 @@ def test_rerank_bounds_scoring_depth():
     assert len(out) == 8  # output still capped by max_context_chunks
 
 
+def test_rerank_early_termination_excludes_unscored_from_head():
+    """Early-terminated (unscored) candidates must not rank above scored ones.
+
+    A fabricated 0.0 for unscored chunks previously outranked genuinely-scored
+    negative-relevance chunks, evicting real evidence from the head of the
+    context window — which then turns supported claims into NEUTRAL.
+    """
+    # doc-0 is confidently relevant -> early termination fires after batch 1
+    # (doc-0..doc-15). doc-16..doc-19 are never scored (unscored).
+    scores = {"doc-0": 0.99} | {f"doc-{i}": -0.5 for i in range(1, 16)}
+    texts = [f"doc-{i}" for i in range(20)]
+    out, model = _run(texts, scores)
+    # Only batch 1 was scored (early termination skipped the rest).
+    assert len(model.seen_pairs) == 1
+    assert len(model.seen_pairs[0]) == 16
+    # Head is all scored candidates, no unscored doc-16..doc-19 masquerading.
+    head_texts = [c["text"] for c in out]
+    assert head_texts[0] == "doc-0"
+    assert "doc-16" not in head_texts
+    assert "doc-17" not in head_texts
+    assert "doc-18" not in head_texts
+    assert "doc-19" not in head_texts
+    assert all(c.get("rerank_score") is not None for c in out)
+
+
 def test_rerank_does_not_mutate_caller_order():
     chunks = _chunks(["a", "b", "c"])
     before = [c["text"] for c in chunks]

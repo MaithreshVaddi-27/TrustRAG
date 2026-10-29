@@ -170,6 +170,14 @@ def test_fused_coverage_rejects_short_claim_inside_compound_sentence():
         "within a separate review period."
     )
     assert not _fused_claims_cover_answer(answer, ["The policy allows access."])
+
+
+def test_fused_coverage_rejects_answer_with_no_claims():
+    from app.rag.verification.verifier import _fused_claims_cover_answer
+
+    assert not _fused_claims_cover_answer(
+        "The policy allows access for thirty days.", []
+    )
 @patch("app.rag.verification.verifier.fused_decompose_verify")
 @patch("app.rag.verification.verifier.batch_verify_claims_nli")
 @patch("app.rag.verification.verifier.decompose_answer_to_claims")

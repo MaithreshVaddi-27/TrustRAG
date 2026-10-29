@@ -154,6 +154,7 @@ async def _execute_with_fallback(
     Returns:
         Updated state (either from operation or fallback)
     """
+    started_at = time.monotonic()
     await add_trace_event(
         state["analysis_id"],
         f"{node_name}.started",
@@ -209,7 +210,10 @@ async def _execute_with_fallback(
         await add_trace_event(
             state["analysis_id"],
             f"{node_name}.completed",
-            {"message": f"{node_name} completed successfully"},
+            {
+                "message": f"{node_name} completed successfully",
+                "latency_ms": int((time.monotonic() - started_at) * 1000),
+            },
         )
         return result
 
@@ -225,7 +229,10 @@ async def _execute_with_fallback(
         await add_trace_event(
             state["analysis_id"],
             f"{node_name}.timeout",
-            {"message": error_info["message"]},
+            {
+                "message": error_info["message"],
+                "latency_ms": int((time.monotonic() - started_at) * 1000),
+            },
         )
 
         if fallback_state is not None:
@@ -1007,11 +1014,7 @@ async def verification_node(state: AgentState) -> AgentState:
         state["reliability_score"] = None
         state["diagnosis_type"] = "VERIFICATION_TIMEOUT"
         state["diagnosis_failures"] = [f"Verification exceeded {verification_timeout}s timeout"]
-        attempts = state.get("attempts", 0)
-        if attempts < cfg.max_recovery_attempts:
-            state["verdict_status"] = "FAIL"
-        else:
-            state["verdict_status"] = "PASS"
+        state["verdict_status"] = "FAIL"
         return state
     except Exception as exc:
         logger.error("Verification node failed with error", error=str(exc))
@@ -1019,11 +1022,7 @@ async def verification_node(state: AgentState) -> AgentState:
         state["reliability_score"] = None
         state["diagnosis_type"] = "VERIFICATION_ERROR"
         state["diagnosis_failures"] = [f"Verification failed: {type(exc).__name__}"]
-        attempts = state.get("attempts", 0)
-        if attempts < cfg.max_recovery_attempts:
-            state["verdict_status"] = "FAIL"
-        else:
-            state["verdict_status"] = "PASS"
+        state["verdict_status"] = "FAIL"
         return state
 
     state["claims"] = claims
