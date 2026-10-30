@@ -1144,11 +1144,11 @@ async def check_llamacpp_status(base_url: str = "http://127.0.0.1:8080/v1") -> d
 
 
 async def check_mlx_status(
-    base_url: str = "http://127.0.0.1:8090/v1", max_ports: int = 5
+            base_url: str = "http://127.0.0.1:8090/v1", max_ports: int = 5
 ) -> dict[str, Any]:
     """
     Discover MLX status and GENERATIVE models by checking multiple MLX server ports.
-    MLX only supports 1 model per server, so we check ports 8090, 8091, 8092...
+    MLX only supports 1 model per server, so we check ports 8080, 8081, 8082...
     and aggregate all discovered models for UI selection.
     """
     cache_models = discover_mlx_cache_models()
@@ -1158,7 +1158,7 @@ async def check_mlx_status(
 
     # Check consecutive ports starting from base_url port
     base_port_match = re.search(r":(\d+)", base_url)
-    start_port = int(base_port_match.group(1)) if base_port_match else 8090
+    start_port = int(base_port_match.group(1)) if base_port_match     else 8090
 
     for port_offset in range(max_ports):
         port = start_port + port_offset

@@ -162,7 +162,7 @@ class ModelConfig:
         env_url = os.environ.get("MLX_BASE_URL")
         if env_url:
             return env_url
-        # Separate port (:8090) so llama-server (:8080) and mlx_lm.server (:8090)
+        # Separate port (:8080) so llama-server (:8081) and mlx_lm.server (:8080)
         # can run side-by-side. pydantic env > Field default > _DEFAULT_MLX_BASE_URL.
         return str(self._get("llm", "mlx_base_url", required=False) or _DEFAULT_MLX_BASE_URL)
 
