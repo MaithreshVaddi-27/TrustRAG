@@ -15,6 +15,7 @@ from app.services.search_service import (
 
 @pytest.mark.asyncio
 async def test_tavily_search_success():
+    _ = pytest.importorskip("tavily")
     mock_tavily_client = MagicMock()
     mock_tavily_client.search.return_value = {
         "results": [
@@ -46,6 +47,7 @@ async def test_tavily_search_empty_key_returns_empty():
 
     TavilyClient is patched to raise (no live network, no real key): the
     service must convert any client failure into []."""
+    _ = pytest.importorskip("tavily")
     with (
         patch("app.services.search_service.get_settings") as mock_settings,
         patch("tavily.TavilyClient", side_effect=Exception("missing API key")),
@@ -199,6 +201,8 @@ def test_sanitize_url_security():
 async def test_search_service_timeout_returns_empty():
     # Simulate a hanging Tavily client that exceeds timeout: no fallback
     # provider exists, so a hang yields [] (never a crash, never a hang).
+    _ = pytest.importorskip("tavily")
+
     def _hanging_call(*args, **kwargs):
         import time
 
