@@ -1,37 +1,76 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'motion/react'
 import AppLayout from '@/layouts/AppLayout'
 import { TraceEventType } from '@/components/workbench/traceEvents'
-import { kbService, analysisService, modelService } from '@/services/api'
-import { QueryPanel } from '@/components/workbench/QueryPanel'
-import { ResultsPanel } from '@/components/workbench/ResultsPanel'
-import { openAnalysisStream } from '@/lib/api'
+import { modelService } from '@/services/api'
+import { QueryPanel } from '@/components/playground/QueryPanel'
+import { ResultsPanel } from '@/components/results/ResultsPanel'
+import { useAnalysisStream } from '@/hooks/useAnalysisStream'
+import { useModelSelection } from '@/hooks/useModelSelection'
+import { useKnowledgeBaseSelection } from '@/hooks/useKnowledgeBaseSelection'
+
+const RECOVERY_STRATEGY_LABELS = {
+  [TraceEventType.RECOVERY_REWRITE]: 'Targeted Query Rewrite',
+  [TraceEventType.RECOVERY_RE_RETRIEVE]: 'Expanded Context Retrieval',
+  [TraceEventType.RECOVERY_REGENERATE]: 'Regeneration Retry (no new retrieval)',
+  [TraceEventType.RECOVERY_RE_RETRIEVE_SKIPPED]: 'Kept Narrow Retrieval',
+  [TraceEventType.RETRIEVAL_REUSED]: 'Reused Saved Evidence',
+}
+
+const webSearchProvider = 'tavily'
 
 export default function PlaygroundPage() {
   const [query, setQuery] = useState('')
-  const [kbId, setKbId] = useState('')
   const [loading, setLoading] = useState(false)
   const [analysis, setAnalysis] = useState(null)
   const [traceEvents, setTraceEvents] = useState([])
   const [activeTab, setActiveTab] = useState('answer')
   const [errorMsg, setErrorMsg] = useState('')
   const [enableWebSearch, setEnableWebSearch] = useState(false)
-  // Tavily is the sole web-search provider (backend ignores the value, but the
-  // request field stays for API compatibility).
-  const webSearchProvider = 'tavily'
   const [elapsedSec, setElapsedSec] = useState(0)
 
-  const streamRef = useRef(null)
-  const pollTimerRef = useRef(null)
   const finalizedRef = useRef(false)
-  const traceEventsRef = useRef([])
-  useEffect(() => {
-    traceEventsRef.current = traceEvents
-  }, [traceEvents])
 
+  const { data: providersData, refetch: refetchProviders, isLoading: providersLoading, isError: providersError } = useQuery({
+    queryKey: ['model-providers'],
+    queryFn: modelService.getProviders,
+    refetchInterval: 8000,
+  })
+
+  const providersUnresolved = !providersLoading && providersError && !providersData
+
+  const {
+    selectedProvider,
+    setSelectedProvider,
+    selectedModel,
+    setSelectedModel,
+    activeProviderInfo,
+    availableModels,
+    providersUnresolved: modelProvidersUnresolved,
+    refetchProviders: refetchModels,
+  } = useModelSelection(providersData)
+
+  const selectedEmbeddingModel = providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
+
+  const {
+    kbId,
+    setKbId,
+    knowledgeBases,
+    selectedKb,
+    isLoading: kbLoading,
+    error: kbError,
+    refetch: refetchKBs,
+  } = useKnowledgeBaseSelection()
+
+  const {
+    startAnalysis,
+    cleanup,
+  } = useAnalysisStream()
+
+  // Timer for elapsed seconds display
   useEffect(() => {
-    if (!loading) return undefined
+    if (!loading) return
     setElapsedSec(0)
     const timer = setInterval(() => {
       setElapsedSec(prev => +(prev + 0.1).toFixed(1))
@@ -39,117 +78,26 @@ export default function PlaygroundPage() {
     return () => clearInterval(timer)
   }, [loading])
 
-  const { data: knowledgeBases } = useQuery({
-    queryKey: ['knowledgeBases'],
-    queryFn: kbService.list
-  })
-
+  // Cleanup on unmount
   useEffect(() => {
-    if (!kbId && knowledgeBases && knowledgeBases.length > 0) {
-      setKbId(knowledgeBases[0].id)
+    return () => {
+      cleanup()
     }
-  }, [knowledgeBases, kbId])
+  }, [cleanup])
 
-  const {
-    data: providersData,
-    refetch: refetchProviders,
-    isLoading: providersLoading,
-    isError: providersError,
-  } = useQuery({
-    queryKey: ['model-providers'],
-    queryFn: modelService.getProviders,
-    // Re-poll every 8s so a model installed while the page is open (e.g. after
-    // running scripts/bootstrap.py or pulling a new GGUF) shows up
-    // in the dropdown without a page reload.
-    refetchInterval: 8000,
-  })
-  // Providers query failed (backend unreachable for /models/*): treat local
-  // providers as status-unknown so the offline warning still renders instead
-  // of an empty dropdown with no explanation. Suppressed while loading.
-  const providersUnresolved = !providersLoading && providersError && !providersData
-
-  const [selectedProvider, setSelectedProvider] = useState('llama_cpp')
-  const [selectedModel, setSelectedModel] = useState('LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M')
-  // Single embedding engine (ONNX BGE from models.yaml) — no selector.
-  // The server default is the only valid value; KB pins are validated
-  // server-side and surfaced as a re-upload banner client-side.
-  const selectedEmbeddingModel = providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
-  // Publish the effective engine to the top telemetry bar (AppLayout reads the
-  // same localStorage key + event) so the navbar pills always show what the
-  // Playground will actually run — not just the server default.
-  // One-shot: once set — by the user or here — nothing overrides it.
-  const activeProviderDefault = providersData?.providers?.[selectedProvider]?.default_model
-  useEffect(() => {
-    if (!selectedModel && activeProviderDefault) {
-      setSelectedModel(activeProviderDefault)
-    }
-  }, [activeProviderDefault, selectedModel])
-
-  // Publish the effective engine to the top telemetry bar (AppLayout reads the
-  // same localStorage key + event) so the navbar pills always show what the
-  // Playground will actually run — not just the server default.
-  useEffect(() => {
-    try {
-      localStorage.setItem('trustrag.playground.engine', JSON.stringify({
-        provider: selectedProvider,
-        model: selectedModel,
-        embeddingModel: selectedEmbeddingModel,
-        ts: Date.now(),
-      }))
-      window.dispatchEvent(new CustomEvent('trustrag:engine-change'))
-    } catch {
-      // private-mode storage denial must never break the workbench
-    }
-  }, [selectedProvider, selectedModel, selectedEmbeddingModel])
-
-const activeProviderInfo = providersData?.providers?.[selectedProvider]
-  const availableModels = activeProviderInfo?.models?.length
-    ? [...new Set(activeProviderInfo.models)]
-    : []
-
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setQuery('')
     setAnalysis(null)
     setTraceEvents([])
     setErrorMsg('')
     setActiveTab('answer')
-  }
-
-  const handlePresetSelect = (presetText) => {
-    setQuery(presetText)
-  }
-
-  useEffect(() => {
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.close()
-      }
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current)
-      }
-    }
   }, [])
 
-  function startFallbackPolling(analysisId) {
-    if (pollTimerRef.current) clearInterval(pollTimerRef.current)
+  const handlePresetSelect = useCallback((presetText) => {
+    setQuery(presetText)
+  }, [])
 
-    pollTimerRef.current = setInterval(async () => {
-      try {
-        const snap = await analysisService.get(analysisId)
-        if (snap && (snap.status === 'completed' || snap.status === 'abstained' || snap.status === 'failed')) {
-          clearInterval(pollTimerRef.current)
-          pollTimerRef.current = null
-          if (!finalizedRef.current) {
-            await fetchFinalAnalysis(analysisId)
-          }
-        }
-      } catch {
-        // ignore background polling errors; progress continues via finished callbacks
-      }
-    }, 2000)
-  }
-
-  async function handleSubmit(e) {
+  const handleSubmit = useCallback(async (e) => {
     if (e && e.preventDefault) e.preventDefault()
     if (!query.trim() || !kbId || loading) return
 
@@ -158,147 +106,54 @@ const activeProviderInfo = providersData?.providers?.[selectedProvider]
     setTraceEvents([])
     setErrorMsg('')
     setActiveTab('answer')
+    finalizedRef.current = false
 
     try {
-      const analysisCreated = await analysisService.create({
-        knowledge_base_id: kbId,
-        query: query.trim(),
-        enable_web_search: enableWebSearch,
-        web_search_provider: webSearchProvider,
-        llm_provider: selectedProvider,
-        llm_model: selectedModel,
-      })
-
-      finalizedRef.current = false
-      streamRef.current = await openAnalysisStream(analysisCreated.id, {
-        onEvent: (eventData) => {
-          setTraceEvents(prev => [...prev, eventData])
+      await startAnalysis(
+        {
+          kbId,
+          query: query.trim(),
+          enableWebSearch,
+          webSearchProvider,
+          llmProvider: selectedProvider,
+          llmModel: selectedModel,
         },
-        onError: async () => {
-          if (!finalizedRef.current) {
-            await fetchFinalAnalysis(analysisCreated.id)
-          }
-        },
-        onComplete: async () => {
-          if (!finalizedRef.current) {
-            await fetchFinalAnalysis(analysisCreated.id)
-          }
-        }
-      })
-
-      startFallbackPolling(analysisCreated.id)
-    } catch (err) {
-      console.error("Failed to start analysis:", err)
-      setLoading(false)
-      // Backend error shape is { error: { code, message } } — surface the
-      // actionable message (e.g. LLM_UNAVAILABLE start instructions), not a
-      // generic axios status string.
-      const detail = err.response?.data?.error?.message || err.response?.data?.detail || err.message || "Failed to start analysis"
-      setErrorMsg(typeof detail === 'string' ? detail : JSON.stringify(detail))
-    }
-  }
-
-  async function fetchFinalAnalysis(analysisId, maxPollAttempts = 45) {
-    if (finalizedRef.current) return
-    finalizedRef.current = true
-    let attempts = 0
-    let lastFetched = null
-
-    try {
-      while (attempts < maxPollAttempts) {
-        attempts++
-        try {
-          const finalAnalysis = await analysisService.get(analysisId)
-          lastFetched = finalAnalysis
-
-          if (finalAnalysis.status === 'pending' || finalAnalysis.status === 'processing') {
-            try {
-              const traceList = await analysisService.trace(analysisId)
-              if (traceList && traceList.length > 0) {
-                setTraceEvents(traceList)
-              }
-            } catch {
-              // trace endpoint may 404 while still processing; continue polling
+        {
+          onEvent: (eventData) => {
+            setTraceEvents(prev => [...prev, eventData])
+          },
+          onComplete: (fullAnalysis) => {
+            if (!finalizedRef.current) {
+              finalizedRef.current = true
+              setAnalysis(fullAnalysis)
+              setActiveTab('answer')
+              setLoading(false)
             }
-            await new Promise((r) => setTimeout(r, 1500))
-            continue
-          }
-
-          // Single-round-trip finalize (1 ownership check server-side);
-          // fall back to the legacy 4-call flow on older backends.
-          let claims = []
-          let evidence = []
-          let trace = []
-          try {
-            const detail = await analysisService.detail(analysisId)
-            claims = detail.claims || []
-            evidence = detail.evidence || []
-            trace = detail.trace || []
-          } catch {
-            const [claimsRes, evidenceRes, traceRes] = await Promise.allSettled([
-              analysisService.claims(analysisId),
-              analysisService.evidence(analysisId),
-              analysisService.trace(analysisId),
-            ])
-            claims = claimsRes.status === 'fulfilled' ? claimsRes.value : []
-            evidence = evidenceRes.status === 'fulfilled' ? evidenceRes.value : []
-            trace = traceRes.status === 'fulfilled' ? traceRes.value : []
-          }
-
-          const fullAnalysis = {
-            ...finalAnalysis,
-            claims: claims || [],
-            evidence: evidence || [],
-            trace: (trace && trace.length > 0) ? trace : traceEventsRef.current,
-          }
-
-          setAnalysis(fullAnalysis)
-          setActiveTab('answer')
-          return
-        } catch (err) {
-          console.error("Polling error fetching analysis status:", err)
-          await new Promise((r) => setTimeout(r, 2000))
+          },
+          onError: (err) => {
+            if (!finalizedRef.current) {
+              finalizedRef.current = true
+              setLoading(false)
+              const detail = err.message
+              setErrorMsg(typeof detail === 'string' ? detail : JSON.stringify(detail))
+            }
+          },
         }
-      }
-
-      if (lastFetched) {
-        setAnalysis(lastFetched)
-        setActiveTab('answer')
-      } else {
-        setErrorMsg("Analysis execution timed out. Please check again in a few moments.")
-      }
+      )
     } catch (err) {
-      console.error("Failed to fetch final analysis data:", err)
-      const detail = err.response?.data?.error?.message || err.response?.data?.detail || err.message || "Failed to fetch analysis"
-      setErrorMsg(typeof detail === 'string' ? detail : JSON.stringify(detail))
-    } finally {
+      console.error('Failed to start analysis:', err)
       setLoading(false)
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current)
-        pollTimerRef.current = null
-      }
-      if (streamRef.current) {
-        try {
-          streamRef.current.close()
-        } catch {
-          // stream already closed; nothing to clean up
-        }
-        streamRef.current = null
-      }
+      const detail = err.response?.data?.error?.message || err.response?.data?.detail || err.message || 'Failed to start analysis'
+      setErrorMsg(typeof detail === 'string' ? detail : JSON.stringify(detail))
     }
-  }
+  }, [query, kbId, loading, enableWebSearch, selectedProvider, selectedModel, startAnalysis])
+
+  // KB embedding-space pin check
+  const kbEmbeddingPin = selectedKb?.embedding_model || null
+  const embeddingMismatch = !!kbEmbeddingPin && selectedEmbeddingModel !== kbEmbeddingPin
 
   const currentTraceEvents = loading ? traceEvents : (analysis?.trace || traceEvents)
-  // Recovery timeline shows strategy decisions only — wrapper lifecycle events
-  // (recovery.started/completed/...) are excluded so one attempt renders as one
-  // card instead of three identically-labeled ones.
-  const RECOVERY_STRATEGY_LABELS = {
-    [TraceEventType.RECOVERY_REWRITE]: 'Targeted Query Rewrite',
-    [TraceEventType.RECOVERY_RE_RETRIEVE]: 'Expanded Context Retrieval',
-    [TraceEventType.RECOVERY_REGENERATE]: 'Regeneration Retry (no new retrieval)',
-    [TraceEventType.RECOVERY_RE_RETRIEVE_SKIPPED]: 'Kept Narrow Retrieval',
-    [TraceEventType.RETRIEVAL_REUSED]: 'Reused Saved Evidence',
-  }
+
   const recoveryRuns = currentTraceEvents
     .filter(e => e.event && Object.hasOwn(RECOVERY_STRATEGY_LABELS, e.event))
     .map(e => ({
@@ -308,21 +163,14 @@ const activeProviderInfo = providersData?.providers?.[selectedProvider]
       success: true,
     }))
 
-  const selectedKb = knowledgeBases?.find(k => k.id === kbId)
-
-  // KB embedding-space pin: a KB's vectors live in exactly one embedding space
-  // (recorded at first ingest). Single-engine install: the server always runs
-  // the models.yaml default, so a pin mismatch means re-upload.
-  const kbEmbeddingPin = selectedKb?.embedding_model || null
-  const embeddingMismatch = !!kbEmbeddingPin && selectedEmbeddingModel !== kbEmbeddingPin
-
   return (
     <AppLayout>
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: 'spring', damping: 25, stiffness: 200, delay: 0.1 }}
-        className="flex flex-col md:flex-row h-full min-h-0 w-full overflow-hidden">
+        className="flex flex-col md:flex-row h-full min-h-0 w-full overflow-hidden"
+      >
         <QueryPanel
           query={query}
           setQuery={setQuery}
@@ -345,8 +193,8 @@ const activeProviderInfo = providersData?.providers?.[selectedProvider]
           elapsedSec={elapsedSec}
           activeProviderInfo={activeProviderInfo}
           availableModels={availableModels}
-          refetchProviders={refetchProviders}
-          providersUnresolved={providersUnresolved}
+          refetchProviders={refetchModels}
+          providersUnresolved={providersUnresolved || modelProvidersUnresolved}
           selectedKb={selectedKb}
           knowledgeBases={knowledgeBases}
           kbEmbeddingPin={kbEmbeddingPin}

@@ -1,20 +1,21 @@
 import { useState, useRef, useEffect, useReducer } from 'react'
-import { 
+import {
   Download, Copy, Sparkles, Check, Cpu, Globe, Clock
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
 import { SPRING_SNAPPY } from '@/lib/motionConfig'
-import { ReliabilityBadge } from './ReliabilityBadge'
-import { ClaimInspector } from './ClaimInspector'
-import { EvidenceViewer } from './EvidenceViewer'
-import { ExecutionTrace, RecoveryTimeline } from './ExecutionTrace'
-import { FormattedAnswer } from './FormattedAnswer'
-import { EmptyState } from './EmptyState'
-import { PipelineTelemetryHUD } from './PipelineTelemetryHUD'
+import { ReliabilityBadge } from '@/components/workbench/ReliabilityBadge'
+import { PipelineTelemetryHUD } from '@/components/workbench/PipelineTelemetryHUD'
+import { ExecutionTrace } from '@/components/workbench/ExecutionTrace'
+import { EmptyState } from '@/components/workbench/EmptyState'
 import { copyToClipboard } from '@/lib/clipboard'
 import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
-import { compactTraceEvents } from './traceEvents'
+import { compactTraceEvents } from '@/components/workbench/traceEvents'
 import api from '@/lib/api'
+import { AnswerTab } from './AnswerTab'
+import { EvidenceTab } from './EvidenceTab'
+import { ClaimsTab } from './ClaimsTab'
+import { TraceTab } from './TraceTab'
 
 function TabIndicator({ activeTab, tabRefs }) {
   const [, forceTick] = useReducer(x => x + 1, 0)
@@ -199,120 +200,28 @@ export function ResultsPanel({
       <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-5">
         <AnimatePresence mode="wait">
           {activeTab === 'answer' && (
-            <motion.div
-              key="answer"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={SPRING_SNAPPY}
-              className="space-y-5"
-            >
-            {(analysis.status === 'failed' || analysis.status === 'outage' || analysis.reliability?.status === 'FAILED') && (
-              <div className="rounded-xl border border-red-800/50 bg-red-950/30 p-4 shadow-glow-crimson animate-fade-in">
-                <p className="text-sm font-medium text-red-300">
-                  {analysis.status === 'failed' || analysis.status === 'outage'
-                    ? `Analysis failed: ${analysis.diagnosis?.failures?.[0] || 'Retrieval service is temporarily unavailable'}`
-                    : `Reliability check failed: ${analysis.diagnosis?.failures?.[0] || 'Thresholds not met'}`}
-                </p>
-              </div>
-            )}
-
-            {(analysis.status === 'abstained' || analysis.reliability?.status === 'ABSTAINED') && (
-              <div className="rounded-xl border border-amber-800/50 bg-amber-950/30 p-4 shadow-glow-amber animate-fade-in">
-                <p className="text-sm font-medium text-amber-300">
-                  ⊘ The agent abstained from answering because the retrieved document segments did not contain sufficient factual evidence to answer this question reliably without hallucinating.
-                </p>
-                <p className="text-xs text-amber-400/90 mt-1.5">
-                  Tip: Try phrasing your question using specific section names or verify that your uploaded documents cover this topic.
-                </p>
-              </div>
-            )}
-            
-            {analysis.answer && analysis.answer !== 'ABSTAIN' && (
-              <div className="glass-card p-5 sm:p-6 relative overflow-hidden border-slate-700/60 hover:border-cyan-500/40 transition-all shadow-lg">
-                <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800/80 flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="p-1.5 rounded-lg bg-cyan-950/80 border border-cyan-500/40 text-cyan-400">
-                      <Sparkles size={14} />
-                    </span>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-200">
-                      Grounded Synthesis
-                    </span>
-                    <span className="text-[11px] text-slate-500 font-mono flex items-center gap-1 ml-2">
-                      <Clock size={11} />{' '}
-                      {answerWordCount < 120
-                        ? `${selectedProvider || 'local'} · terse by design`
-                        : `~${estimatedReadTime} min read (${answerWordCount} words)`}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCopyAnswer}
-                    className="text-xs text-slate-400 hover:text-cyan-300 flex items-center gap-1.5 transition-all px-3 py-1.5 rounded-lg bg-surface-800/90 border border-slate-700/60 hover:border-cyan-500/50 shadow-sm"
-                    title="Copy answer to clipboard"
-                    aria-label="Copy answer to clipboard"
-                  >
-                    {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                    <span className={copied ? 'text-emerald-400 font-medium' : ''}>
-                      {copied ? 'Copied!' : 'Copy Answer'}
-                    </span>
-                  </button>
-                </div>
-                <FormattedAnswer content={analysis.answer} />
-              </div>
-            )}
-
-            {analysis.claims?.some(c => c.state === 'NEUTRAL' || c.state === 'CONTRADICTED') && (
-              <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 px-4 py-3">
-                <p className="text-xs text-amber-300">
-                  ⚠ Some claims could not be verified against the citation corpus. Inspect the Claims tab for proposition-level breakdown.
-                </p>
-              </div>
-            )}
-
-            <RecoveryTimeline recoveryRuns={recoveryRuns} />
-            </motion.div>
+            <AnswerTab
+              analysis={analysis}
+              selectedProvider={selectedProvider}
+              selectedModel={selectedModel}
+              selectedEmbeddingModel={selectedEmbeddingModel}
+              enableWebSearch={enableWebSearch}
+              recoveryRuns={recoveryRuns}
+              onExportDossier={handleExportDossier}
+              onCopyAnswer={handleCopyAnswer}
+            />
           )}
 
           {activeTab === 'evidence' && (
-            <motion.div
-              key="evidence"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={SPRING_SNAPPY}
-            >
-              <EvidenceViewer chunks={analysis.evidence || []} />
-            </motion.div>
+            <EvidenceTab analysis={analysis} />
           )}
 
           {activeTab === 'claims' && (
-            <motion.div
-              key="claims"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={SPRING_SNAPPY}
-            >
-              {analysis.status === 'abstained' || analysis.reliability?.status === 'ABSTAINED' ? (
-                <p className="mb-3 rounded-lg border border-amber-800/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-300">
-                  The generated draft was checked against the evidence, but the final answer was withheld. These claim verdicts apply to that draft, not the abstention message.
-                </p>
-              ) : null}
-              <ClaimInspector claims={analysis.claims || []} />
-            </motion.div>
+            <ClaimsTab analysis={analysis} />
           )}
 
           {activeTab === 'trace' && (
-            <motion.div
-              key="trace"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={SPRING_SNAPPY}
-            >
-              <ExecutionTrace events={currentTraceEvents} isLive={false} />
-            </motion.div>
+            <TraceTab currentTraceEvents={currentTraceEvents} />
           )}
         </AnimatePresence>
       </div>

@@ -1,0 +1,74 @@
+/* ── Landing Page Specific Styles ─────────────────────────────────────────── */
+/* Note: Common keyframes (fadeIn, slideUp, float, scanlineMove, rotateBeam, etc.)
+   are defined in animations.css. Only landing-specific overrides live here.      */
+
+/* Shimmer text effect — landing-only variant with different gradient */
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--cyan-400, #22d3ee) 0%,
+    var(--sky-300, #7dd3fc) 25%,
+    #fff 50%,
+    var(--sky-300, #7dd3fc) 75%,
+    var(--cyan-400, #22d3ee) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3s linear infinite;
+}
+
+/* Cyber grid background — landing variant with 60px grid */
+.bg-cyber-grid {
+  background-image:
+    linear-gradient(rgba(14, 165, 233, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(14, 165, 233, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+/* Laser scanline for simulation — slightly different from animations.css */
+.laser-scanline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--cyan-400, #22d3ee), transparent);
+  box-shadow: 0 0 12px 2px var(--cyan-500, #06b6d4);
+  z-index: 10;
+  animation: scanlineMove 2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Border beam — landing-only structural styles (keyframe in animations.css) */
+.border-beam {
+  position: relative;
+}
+
+.border-beam::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--beam-angle, 0deg) at 50% 50%,
+    transparent 0%,
+    #0284c7 15%,
+    #06b6d4 25%,
+    #38bdf8 35%,
+    transparent 50%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: rotateBeam 4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-text { animation: none; }
+  .laser-scanline { animation: none; opacity: 0; }
+  .border-beam::before { animation: none; }
+}

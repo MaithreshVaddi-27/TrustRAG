@@ -1,0 +1,87 @@
+/* ── TrustRAG Loader System (libraries.dev family) ────────────────────────────
+   Thinking orbs ("orbs that think while you wait"), layout-matching skeletons,
+   and a live stream-beam variant. One accent (cyan), transform/opacity-only
+   motion, full reduced-motion + reduced-transparency fallbacks (Apple §14).
+   Imported last in index.css so stream-beam overrides win over landing.css. */
+
+/* ── Thinking orbs ─────────────────────────────────────────────────────────── */
+.thinking-orbs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  font-size: 10px; /* base unit: sm */
+}
+
+.thinking-orbs--md { font-size: 13px; }
+.thinking-orbs--lg { font-size: 17px; }
+
+.thinking-orbs .orb {
+  width: 1em;
+  height: 1em;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 35%, #a5f3fc 0%, #22d3ee 45%, #0284c7 100%);
+  box-shadow: 0 0 0.9em rgba(34, 211, 238, 0.55);
+  opacity: 0.45;
+  transform: scale(0.72);
+  animation: orb-breathe 1.6s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.thinking-orbs .orb:nth-child(2) { animation-delay: 0.2s; }
+.thinking-orbs .orb:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes orb-breathe {
+  0%, 100% { transform: scale(0.72); opacity: 0.45; box-shadow: 0 0 0.4em rgba(34, 211, 238, 0.25); }
+  50%      { transform: scale(1.12); opacity: 1;    box-shadow: 0 0 1.1em rgba(34, 211, 238, 0.7); }
+}
+
+/* ── Skeleton shimmer (layout-matching placeholders) ───────────────────────── */
+.skel {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: rgba(30, 41, 59, 0.7); /* slate-800/70 */
+  border: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+.skel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(103, 232, 249, 0.09) 45%,
+    rgba(165, 243, 252, 0.16) 50%,
+    rgba(103, 232, 249, 0.09) 55%,
+    transparent 100%
+  );
+  animation: skel-sweep 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes skel-sweep {
+  0%   { transform: translateX(-100%); }
+  60%, 100% { transform: translateX(100%); }
+}
+
+/* ── Stream beam: border-beam at live tempo for the SSE stream card ──────────
+   Usage: className="border-beam stream-beam" (beam base lives in landing.css;
+   this file only quickens the ride while the stream is ACTIVE). */
+.stream-beam::before {
+  animation-duration: 2.2s;
+}
+
+/* ── Reduced motion: cross-fade/static only (Apple HIG §14) ────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .thinking-orbs .orb { animation: none; transform: scale(1); opacity: 0.9; box-shadow: none; }
+  .skel::after { animation: none; opacity: 0; }
+  .stream-beam::before { animation: none; }
+}
+
+/* ── Reduced transparency: solid fills, no glow ────────────────────────────── */
+@media (prefers-reduced-transparency: reduce) {
+  .thinking-orbs .orb { box-shadow: none; }
+  .skel { background: rgba(30, 41, 59, 1); }
+}

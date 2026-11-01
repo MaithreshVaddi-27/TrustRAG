@@ -31,6 +31,8 @@ def test_extract_citations_finds_refs_in_order():
     # Malformed refs are not citations.
     assert extract_citations("Segment 2 states this without brackets.") == []
     assert extract_citations("See [Segment x] for details.") == []
+    # Support both [N] and [Segment N] formats
+    assert extract_citations("First [1]. Second [Segment 2]. Third [3].") == [1, 2, 3]
 
 
 def test_strip_invalid_citations_keeps_valid_refs():

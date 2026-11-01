@@ -391,7 +391,8 @@ def _sanitize_label(value: str, max_len: int = 80) -> str:
     return sanitized[:max_len]
 
 
-# Inline provenance markers the generator is instructed to emit: "[Segment N]".
+# Inline provenance markers the generator is instructed to emit: "[Segment N]" or "[N]".
+# Both formats must be supported for backward compatibility with existing outputs.
 _CITATION_RE = re.compile(r"\[(?:Segment\s+)?(\d+)\]")
 
 
