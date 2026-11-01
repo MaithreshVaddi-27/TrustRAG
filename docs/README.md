@@ -71,6 +71,6 @@ docs/
 
 - **Tests**: backend 665 pytest green, frontend 33 Vitest green; `ruff check` + `ruff format --check` clean (CI pins `ruff==0.16.9`); ESLint clean; `vite build` green.
 - **CI**: Ubuntu jobs + `cross-platform` smoke (Windows + macOS: backend import/config smoke, frontend lint/test/build), all gated in `ci-gate`.
-- **Runtimes**: models run ONNX-only (`onnxruntime` + `transformers` tokenizer; reranker fails closed to RRF when `use_onnx=true`); torch lives in the `local-models` extra for one-time export only.
+- **Runtimes**: models run ONNX-only (`onnxruntime` + `transformers` tokenizer; reranker fails closed to RRF when `use_onnx=true`); torch lives in the `local-models` extra for one-time export only. Embedding engine is ONNX-only (no provider choice, no PyTorch at runtime).
 - **Stack**: Python 3.11–3.12 (`requires-python >=3.11,<3.13`), Node 22+ (`engines`), per-OS setup in `ONBOARDING-TROUBLESHOOTING.md`.
 - **Pending operator runs**: pre-IDF KBs need document re-upload; chunking/normalization change needs re-index; OCR models not pre-warmed; live-model verification (Gemini via `cloud` extra / MLX) + k6 + Playwright e2e — see `ONBOARDING-TROUBLESHOOTING.md §5`.

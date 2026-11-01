@@ -63,8 +63,7 @@ FastAPI (Python 3.11+, Default Port 8000)
             │       Ollama (Port 11434, LLM-only; default `gemma3:1b`)
             │       llama.cpp (Port 8080, LLM-only; default
             │             `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`)
-            │       HuggingFace: BAAI/bge-small-en-v1.5 (384d local embeddings,
-            │             torch `huggingface` provider or torch-free `onnx`)
+            │       BAAI/bge-small-en-v1.5 (384d local embeddings, ONNX Runtime — torch-free, sole embedding engine)
          │
          ├─── Cloud Engine, LLM-only (Optional, `cloud` extra):
           │       Google Gemini: gemini-2.5-flash family (embeddings: local BGE)

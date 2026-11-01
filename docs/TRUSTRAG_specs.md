@@ -66,14 +66,16 @@ The portfolio differentiator is the **reliability → diagnosis → recovery loo
 
 ### Frontend
 
-- React
-- Vite
+- React 18
+- Vite 6
 - JavaScript / JSX
-- Tailwind CSS
-- React Router
-- TanStack Query
+- Tailwind CSS 3
+- React Router v6
+- TanStack Query (React Query) v5
 - Recharts
 - Lucide React
+- motion (Framer Motion)
+- react-markdown + remark-gfm
 
 ### Backend
 
@@ -86,17 +88,21 @@ The portfolio differentiator is the **reliability → diagnosis → recovery loo
 ### AI
 
 - LangChain
-- LangGraph
-- Multi-provider LLMs: llama.cpp / Ollama (local, default) + `langchain-google-genai` (cloud, selectable)
-- Local embeddings (BGE-small-en-v1.5 via HuggingFace or torch-free ONNX Runtime) + RapidOCR-ONNX fallback
+- LangGraph (StateGraph for adaptive recovery loop)
+- Multi-provider LLMs: llama.cpp (port 8080, default `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`) / Ollama (port 11434, default `gemma3:1b`) / MLX (port 8090, Apple Silicon, optional) + `langchain-google-genai` (cloud, `cloud` extra)
+- Local embeddings: `BAAI/bge-small-en-v1.5` via ONNX Runtime only (torch-free, sole embedding engine, `onnxruntime` provider, no HuggingFace/sentence-transformers at runtime)
+- Reranker: `cross-encoder/ms-marco-MiniLM-L-6-v2` ONNX int8 (off by default, `reranker.enabled: false`)
+- OCR fallback: RapidOCR-ONNX (per-page, <50 native chars triggers)
 
 ### Retrieval
 
-- Qdrant (dense + `sparse-text` with server-side IDF)
-- Dense retrieval (BGE 384d, KB-pinned)
-- Sparse/BM25 retrieval (client TF-saturation + server IDF)
-- Hybrid fusion / RRF (`fusion_top_k` enforced) + deterministic query router (fan-out ≤3)
-- Optional reranking (off by default; depth-capped)
+- Qdrant (dense 384d + `sparse-text` with server-side `Modifier.IDF`, per-KB collections `kb_{kb_id}`)
+- Dense retrieval: `BAAI/bge-small-en-v1.5` 384d via ONNX Runtime, bounded query-vector LRU cache
+- Sparse/BM25 retrieval: client-side TF saturation + Qdrant server-side IDF (`Modifier.IDF`), `sparse_top_k: 20` (default 0 = disabled)
+- Hybrid fusion: Reciprocal Rank Fusion (RRF, `rrf_k: 60`), `fusion_top_k: 20` enforced post-RRF
+- Deterministic query router: SIMPLE / TEMPORAL / COMPARISON / COMPLEX (regex-based, no LLM, fan-out ≤3 via `max_sub_queries`)
+- Optional reranking: ONNX int8 CrossEncoder (`cross-encoder/ms-marco-MiniLM-L-6-v2`), batched with early termination, result cache, RRF fallback; depth cap `top_k: 20` floored at `fusion_top_k`
+- Per-branch timeouts: 45s dense / 45s sparse, 60s hybrid total; hard failure on any branch timeout (`RetrievalOutageError`)
 
 ### Persistence
 
@@ -142,55 +148,56 @@ Provider choice must be documented and verified at deployment time because free-
 
 **LangChain**
 
-- LLM abstraction
-- Gemini integration
-- embeddings
-- prompts
-- document abstractions
-- retriever abstractions
-- structured output
-- tool interfaces
+- LLM abstraction (`ChatGoogleGenerativeAI` for Gemini)
+- Cloud LLM integration only (local LLMs use direct clients)
+- Prompt templates
+- Document abstractions
+- Structured output parsing
+- Tool interfaces (for MCP/tools)
 
 **LangGraph**
 
-- stateful workflows
-- adaptive recovery
-- bounded retries
-- multi-hop Agentic-RAG
-- workflow state/checkpointing where useful
+- Stateful self-healing workflow (`StateGraph` in `app/rag/agent/graph.py`)
+- Adaptive recovery loop with bounded retries (`max_recovery_attempts: 2`)
+- Multi-hop Agentic-RAG (deterministic query router + bounded fan-out)
+- Workflow state/checkpointing (SSE recovery from MongoDB trace events)
 
-**Gemini / cloud LLMs (selectable, not default)**
+**Gemini / Cloud LLMs (selectable, not default, `cloud` extra)**
 
-- LLM generation / verification when the Gemini provider is selected
-- Embeddings are local-only (HuggingFace/ONNX, 384d) — no cloud embedding model
+- LLM generation / verification when `llm.provider: google_genai`
+- Embeddings are local-only (ONNX BGE, 384d) — no cloud embedding model ever
+
+**Local LLM Engines (default, no cloud keys required)**
+
+- llama.cpp (`llama-server` on port 8080): `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M` default
+- Ollama (port 11434): `gemma3:1b` default
+- MLX (port 8090, Apple Silicon only): `mlx-community/LFM2.5-1.2B-4bit` default
+- All use LangChain-compatible interfaces via `app/llm/local_llm.py`
+- Hardware auto-detection (`app/core/system/hardware.py`) generates optimal launch flags
 
 **Qdrant**
 
-- vector retrieval
-- dense/sparse/hybrid retrieval
-- retrieval ranking pipeline
+- Vector database: dense (384d only — 768d retired) + sparse-text (`Modifier.IDF`)
+- Collection per KB: `kb_{kb_id}` with dense + sparse vectors + payload
+- Hybrid search, INT8 on-disk quantization
+- Pre-IDF collections auto-recreate on init (re-upload those KBs)
 
-**MongoDB Atlas**
+**MongoDB**
 
-- users
-- knowledge-base metadata
-- document metadata
-- analyses
-- claims
-- evidence metadata
-- recovery runs
-- traces
-- experiments
+- Collections: `users`, `knowledge_bases`, `documents`, `document_chunks`, `analyses`, `claims`, `evidence`, `recovery_runs`, `trace_events`, `experiments`, `feedback`, `revoked_tokens`, `stream_tickets`
+- Source of truth: `Collections` in `app/db/mongodb.py`
+- Tracks ingestion status, analysis results, claim verification, recovery history
+- Evidence integrity audit: SHA-256 hash comparison of served chunks vs `document_chunks`
 
-**TRUSTRAG**
+**TRUSTRAG Core Logic (independent of LangChain/LangGraph)**
 
-- reliability signals
-- evidence integrity
-- claim verification policy
-- failure diagnosis
-- recovery policy
-- abstention policy
-- evaluation logic
+- Reliability signals & verdict computation (`app/rag/verification/verdict.py`)
+- Evidence integrity & provenance audit (`app/rag/verification/integrity.py`)
+- Claim decomposition & NLI verification (`app/rag/verification/verifier.py`)
+- Failure diagnosis taxonomy (`DiagnosisType`: RETRIEVAL_FAILURE / OUTAGE / EVIDENCE_CONFLICT / LOW_COVERAGE / NONE)
+- Recovery policy & strategy selection (`recovery_node` in graph.py)
+- Abstention policy & thresholds (`minimum_evidence_coverage`, `maximum_contradiction_rate`, `abstain_below`)
+- Evaluation harness & frozen dataset (`apps/api/tests/eval/`)
 
 Do not hide TRUSTRAG's core logic inside LangChain chains.
 
@@ -203,16 +210,21 @@ TRUSTRAG/
 ├── apps/
 │   ├── web/
 │   │   ├── src/
-│   │   │   ├── pages/          # 12 routes (Landing … Settings, Trace, 404)
+│   │   │   ├── pages/          # 12 routes (Landing, Login, Register, Dashboard, Playground, KnowledgeBases, Evidence, Claims, Conflicts, Experiments, Settings, Trace/:id, 404)
 │   │   │   ├── components/
-│   │   │   │   ├── landing/    # Landing page sections
-│   │   │   │   └── workbench/  # QueryPanel, ResultsPanel, ClaimInspector, …
-│   │   │   ├── services/       # Domain services (KB, analysis, auth, …)
-│   │   │   ├── lib/            # Central Axios client, labels, motion config
-│   │   │   ├── store/          # Auth session store
-│   │   │   ├── hooks/          # useBackendHealth, …
-│   │   │   ├── layouts/        # App / auth layouts
-│   │   │   └── styles/         # Per-page CSS
+│   │   │   │   ├── landing/    # Landing page sections (Hero, SimulationSandbox, ComparisonMatrix, Benchmarks, Capabilities, BentoArchitecture, Footer, Navbar)
+│   │   │   │   ├── layout/     # App shell (Navbar, Sidebar, MobileDrawer, EngineTelemetry, BackendBanner)
+│   │   │   │   ├── playground/ # QueryPanel, QueryInput, AIEngineSelector, EmbeddingModelDisplay, KnowledgeBaseSelector, WebSearchToggle, RunButton, ErrorDisplay
+│   │   │   │   ├── results/    # ResultsPanel, AnswerTab, ClaimsTab, EvidenceTab, TraceTab
+│   │   │   │   ├── dashboard/  # MetricsGrid, PipelineArchitecture, ClaimDistributionChart, ReliabilityChart, ObservabilityBar, HeroBanner, RecentAnalysesFeed
+│   │   │   │   ├── workbench/  # ClaimInspector, ExecutionTrace, FormattedAnswer, EvidenceViewer, EvidenceChunk, ReliabilityBadge, PipelineTelemetryHUD, ThinkingOrbs, Skeleton, EmptyState
+│   │   │   │   ├── ErrorBoundary.jsx, ConfirmDialog.jsx
+│   │   │   ├── services/       # Domain services: auth.js, api.js
+│   │   │   ├── lib/            # Central Axios client (api.js), modelLabels, clipboard, claimState, motionConfig, apiResponse
+│   │   │   ├── store/          # Auth session store (authStore.js, Zustand)
+│   │   │   ├── hooks/          # useBackendHealth, useSidebar, useCursorGlow, useKnowledgeBaseSelection, useModelSelection, useAnalysisStream
+│   │   │   ├── layouts/        # AppLayout.jsx, AuthLayout.jsx
+│   │   │   └── styles/         # Per-page CSS (landing.css, app-layout.css, typography.css, animations.css, materials.css, loaders.css)
 │   │   ├── public/
 │   │   ├── e2e/                # Playwright specs
 │   │   ├── package.json
@@ -220,22 +232,39 @@ TRUSTRAG/
 │   │
 │   └── api/
 │       ├── app/
-│       │   ├── api/v1/         # REST route handlers
-│       │   ├── core/           # config, security, logging, metrics, hardware, caches
-│       │   ├── db/             # MongoDB + Qdrant clients
-│       │   ├── llm/            # LLM clients, registry, ledger, ONNX engines
-│       │   ├── rag/            # RAG pipeline stages (each with sub-folders)
-│       │   │   ├── agent/          # LangGraph loop + deterministic router
-│       │   │   ├── generation/     # grounded answer generator
-│       │   │   ├── ingestion/      # parsers, chunkers, OCR fallback, pipeline
-│       │   │   ├── retrieval/      # hybrid retriever + reranker
-│       │   │   └── verification/   # decomposition + NLI + integrity audit
-│       │   ├── services/       # analysis, KB, auth, search
-│       │   ├── mcp/            # MCP server + client
-│       │   └── main.py
+│       │   ├── main.py                    # FastAPI app factory
+│       │   ├── api/v1/                    # REST route handlers (auth, KBs, analyses, claims, evidence, traces, conflicts, experiments, health)
+│       │   ├── core/
+│       │   │   ├── config/                # settings.py + model_config.py (models.yaml loader)
+│       │   │   ├── observability/         # logging + metrics + tracing
+│       │   │   ├── security/              # Auth primitives + exception hierarchy
+│       │   │   └── system/                # hardware + memory + concurrency
+│       │   ├── db/
+│       │   │   ├── qdrant.py              # Qdrant client + collection init
+│       │   │   └── mongodb.py             # MongoDB client + indexes (`Collections`)
+│       │   ├── llm/
+│       │   │   ├── model_registry.py      # Model factory (embedding, reranker, LLM)
+│       │   │   ├── onnx_embeddings.py     # ONNX BGE embedding engine
+│       │   │   ├── onnx_reranker.py       # ONNX cross-encoder reranker
+│       │   │   ├── onnx_runtime.py        # Shared ORT session options
+│       │   │   ├── local_llm.py           # Ollama + llama.cpp LangChain clients
+│       │   │   └── llm_ledger.py          # Per-analysis LLM call budget
+│       │   ├── rag/
+│       │   │   ├── agent/                 # LangGraph StateGraph + recovery loop (graph.py, router.py)
+│       │   │   ├── generation/            # Grounded answer generator (generator.py)
+│       │   │   ├── ingestion/             # Pipeline, parser, chunker, strategies, sparse_vector, OCR
+│       │   │   ├── retrieval/             # Hybrid retriever + reranker
+│       │   │   └── verification/          # Verifier (decomposition + NLI), verdict, integrity
+│       │   ├── services/
+│       │   │   ├── analysis_service.py    # Analysis lifecycle + SSE tickets
+│       │   │   ├── kb_service.py          # KB CRUD + snapshots + rollback
+│       │   │   ├── auth_service.py        # Auth + JTI revocation
+│       │   │   ├── experiment_service.py  # Experiment records
+│       │   │   └── search_service.py      # Web search orchestration (SSRF-guarded)
+│       │   └── mcp/                       # MCP server (trustrag_* tools) + client dispatcher
 │       ├── config/
-│       │   └── models.yaml
-│       ├── tests/              # Incl. tests/eval/ harness + frozen dataset
+│       │   └── models.yaml                # Model IDs, thresholds, tuning params (v1.28)
+│       ├── tests/                         # Backend suite incl. tests/eval/ harness
 │       ├── pyproject.toml
 │       └── Dockerfile
 │
@@ -317,50 +346,56 @@ LOG_LEVEL=INFO
 
 Never commit `.env`.
 
-### `config/models.yaml`
+### `config/models.yaml` (v1.28)
 
 Example structure:
 
 ```yaml
 llm:
-  framework: langchain
-  provider: google_genai
-  model: <configured-gemini-model>
+  provider: llama_cpp              # llama_cpp | ollama | mlx | google_genai
+  model_llama_cpp: "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
+  model_ollama: "gemma3:1b"
+  model_mlx: "mlx-community/LFM2.5-1.2B-4bit"
+  model_gemini: "gemini-2.5-flash"
   temperature: 0.2
   top_p: 0.9
   max_output_tokens: 2048
   timeout_seconds: 60
   max_retries: 2
+  context_window: 8192             # per-model context window
 
 embedding:
-  framework: onnxruntime           # ONNX-only since 2026-09-27; torch/HF branch removed
-  provider: onnx                   # local-only; cloud embeddings removed (D-19)
-  model: BAAI/bge-small-en-v1.5
-  output_dimensionality: 384      # versioned per KB; mismatches fail closed
+  provider: onnx                   # ONNX-only; sole embedding engine (no provider choice)
+  model: "BAAI/bge-small-en-v1.5"
+  output_dimensionality: 384
   version: "1"
-
-verification:
-  framework: langchain
-  provider: llama_cpp             # selectable per request (ollama/gemini)
-  model: <configured-verification-model>
-  temperature: 0.0
-  max_output_tokens: 512
+  onnx_path: ".model_cache/bge-small-en-v1.5.onnx"
+  lru_cache_size: 512              # query-vector LRU cache
 
 reranker:
-  enabled: false                  # off by default; needs the local-models extra
-  provider: cross_encoder
-  model: cross-encoder/ms-marco-MiniLM-L-6-v2
-  top_k: 20                       # scoring-depth cap, floored at fusion_top_k
+  enabled: false                   # off by default; needs local-models extra
+  provider: onnx
+  model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  top_k: 20                        # scoring-depth cap, floored at fusion_top_k
+  onnx_path: ".model_cache/reranker-ms-marco-MiniLM-L-6-v2_int8.onnx"
+  batch_size: 16
+  early_termination: true
+  cache_enabled: true
 
 retrieval:
   dense_top_k: 20
-  sparse_top_k: 20                # client BM25-TF + server-side Qdrant IDF
+  sparse_top_k: 0                  # 0 = disabled; set 20 for full hybrid
   fusion_method: rrf
-  fusion_top_k: 20                # enforced post-RRF
+  rrf_k: 60
+  fusion_top_k: 20                 # enforced post-RRF
   max_context_chunks: 8
   query_router:
-    enabled: true                 # deterministic; no LLM on this path
+    enabled: true                  # deterministic regex router; no LLM
     max_sub_queries: 3
+  timeouts:
+    dense_seconds: 45
+    sparse_seconds: 45
+    hybrid_total_seconds: 60
 
 reliability:
   minimum_evidence_coverage: 0.80
@@ -368,24 +403,28 @@ reliability:
   abstain_below: 0.50
 
 recovery:
-  max_recovery_attempts: 2        # diagnose-then-act, ≤2 attempts
-  max_recovery_tokens: 2000       # token budget across recovery rounds
-  max_recovery_latency_seconds: 180  # latency budget across recovery rounds
+  max_recovery_attempts: 2
+  max_recovery_tokens: 2000
+  max_recovery_latency_seconds: 180
+  strategy_priority:
+    - query_rewrite
+    - re_retrieve
+    - regenerate
 
 cost_controls:
-  max_input_tokens: 100000        # hard limit per LLM call + pre-request query budget
-  max_claim_retrievals: 3         # NEUTRAL-only targeted retrieval budget
+  max_input_tokens: 100000
+  max_claim_retrievals: 3          # NEUTRAL-only targeted retrieval budget
   claim_retrieval_top_k: 5
 
 observability:
-  metrics_enabled: true           # GET /api/v1/metrics Prometheus exposition
-  pre_request_budget_enforcement: true  # reject over-budget queries with 422
+  metrics_enabled: true
+  pre_request_budget_enforcement: true
 
 runtime:
-  config_version: "1.15"
+  config_version: "1.28"
 ```
 
-These are engineering defaults, not calibrated truth.
+These are engineering defaults, not calibrated truth. Version 1.28 (2026-10) added: embedding.onnx_path, reranker.onnx_path, llm.context_window, retrieval.timeouts, recovery.strategy_priority, cost_controls.claim_retrieval_top_k.
 
 ### Model registry
 

@@ -329,4 +329,4 @@ python scripts/run_baseline_eval.py --email ... --password ... \
 # 4. Copy the aggregate row into docs/evaluation/methodology.md. Never hand-edit JSON.
 ```
 
-> History note: superseded tuning advice lives in git (`git log -- docs/`). This guide reflects `models.yaml` v1.15 and the code at HEAD.
+> History note: superseded tuning advice lives in git (`git log -- docs/`). This guide reflects `models.yaml` v1.28 and the code at HEAD.

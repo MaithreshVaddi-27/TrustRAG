@@ -114,7 +114,7 @@ TrustRAG/
 │   │   │   ├── retrieval/      # hybrid retriever + reranker
 │   │   │   ├── services/       # analysis, KB, auth, experiment services
 │   │   │   └── verification/   # NLI verifier + SHA-256 integrity audit
-│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.23)
+│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.28)
 │   │   ├── tests/              # backend suite (mocked, no live services)
 │   │   └── pyproject.toml
 │   └── web/                    # React frontend (Node 22+)
@@ -567,7 +567,7 @@ Production checklist: `APP_ENV=production` (+ `QDRANT_API_KEY`), `CORS_ORIGINS` 
 
 ## Optimization
 
-TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.23**) with environment variable overrides.
+TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.28**) with environment variable overrides.
 
 ### Inference Acceleration
 

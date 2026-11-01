@@ -37,7 +37,7 @@ TrustRAG is a trustworthy Retrieval-Augmented Generation system. It goes beyond 
 | Agent orchestration | LangGraph (`StateGraph`) |
 | Vector database | Qdrant (dense + sparse vectors, 384d) |
 | Document store | MongoDB (async `motor`) |
-| Embeddings | Local-only `BAAI/bge-small-en-v1.5` — PyTorch (`huggingface`) or ONNX Runtime (`onnx`, torch-free) |
+| Embeddings | Local-only `BAAI/bge-small-en-v1.5` — ONNX Runtime (`onnx`, torch-free, sole embedding engine) |
 | Reranking | CrossEncoder (sentence-transformers, off by default) |
 | Generation | llama.cpp / Ollama / MLX (local, default) · Gemini (cloud, optional `cloud` extra) |
 | Frontend | React 18, Vite 6, Tailwind CSS 3, `motion` |
@@ -95,7 +95,7 @@ TrustRAG/
 │   │   │   │   └── search_service.py # Web-search orchestration (SSRF-guarded)
 │   │   │   └── mcp/                  # MCP server (`trustrag_*` tools) + client
 │   │   ├── config/
-│   │   │   └── models.yaml           # Model IDs, thresholds, tuning params (v1.26)
+│   │   │   └── models.yaml           # Model IDs, thresholds, tuning params (v1.28)
 │   │   ├── tests/                    # Backend suite incl. `tests/eval/` harness
 │   │   └── pyproject.toml
 │   └── web/                          # React frontend
@@ -189,7 +189,7 @@ Pipeline (`app/rag/ingestion/pipeline.py`) stages:
 
 1. **Parse** — file type handler extracts raw text (PDF, DOCX, CSV, JSON, HTML, HTM, TXT, MD; scanned pages via RapidOCR-ONNX fallback)
 2. **Chunk** — word-snapping windows; configurable `chunk_size` (default 512) and `chunk_overlap` (default 64); selectable `chunking_strategy`
-3. **Embed** — per-chunk: dense vector (local BGE, torch or ONNX) + BM25-style sparse weights
+3. **Embed** — per-chunk: dense vector (local BGE, ONNX Runtime, torch-free) + BM25-style sparse weights
 4. **Index** — upsert points to Qdrant collection `kb_{kb_id}`
 5. **Status update** — write `completed` / `failed` to MongoDB document record
 
@@ -327,7 +327,7 @@ Motion system: `motion` package with shared config (`lib/motionConfig.js`), entr
 **`.env`** — secrets and deployment-specific values:
 - `JWT_SECRET`, `MONGODB_URI`, `QDRANT_URL` (+ `QDRANT_API_KEY` for cloud)
 - `GEMINI_API_KEY` / `TAVILY_API_KEY` — only with the optional `cloud` extra installed (both send data off-box)
-- `LLM_PROVIDER` (`AI_PROVIDER` alias), model/endpoint overrides (env wins over `models.yaml`). Embeddings have no provider choice — single ONNX engine from `embedding.model`.
+- `LLM_PROVIDER` (`AI_PROVIDER` alias), model/endpoint overrides (env wins over `models.yaml`). Embeddings are ONNX-only with no provider choice — single engine from `embedding.model` in `models.yaml`.
 
 **`config/ports.yaml`** — canonical port registry for all services (Qdrant, MongoDB, Ollama, llama.cpp, frontend dev server).
 
