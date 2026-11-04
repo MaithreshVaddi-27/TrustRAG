@@ -3,9 +3,10 @@ import { motion } from 'motion/react'
 import { clsx } from 'clsx'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import {
-  LogOut, Swords, Zap, Menu,
+  LogOut, Zap, Menu,
   Cpu, Layers, RefreshCw, PanelLeft, PanelLeftOpen
 } from 'lucide-react'
+import { TrustRagEmblem } from '@/components/common/TrustRagLogo'
 import { useAuthStore } from '@/store/authStore'
 import { authService } from '@/services/auth'
 import { modelService } from '@/services/api'
@@ -83,13 +84,13 @@ export function Navbar({ isOnline, isChecking, recheck, setIsMobileOpen, isColla
           <motion.div
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-primary-950/60"
+            className="shrink-0"
           >
-            <Swords size={16} className="text-white" />
+            <TrustRagEmblem size={32} framed={true} glow={true} />
           </motion.div>
           <div className="flex flex-col">
             <span className="font-extrabold text-sm tracking-tight text-white flex items-center gap-1">
-              TRUST<span className="text-primary-400">RAG</span>
+              TRUST<span className="text-cyan-400">RAG</span>
             </span>
             <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest hidden sm:inline">
               Reliability Workbench

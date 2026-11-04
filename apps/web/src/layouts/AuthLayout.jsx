@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
-import { Swords, ArrowLeft } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
+import { TrustRagEmblem } from '@/components/common/TrustRagLogo'
 
 /**
  * AuthLayout — minimal centered layout for Login/Register pages.
@@ -24,11 +25,11 @@ export default function AuthLayout({ children, title, subtitle }) {
 
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <Link to="/" className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-primary-600 to-cyan-500 flex items-center justify-center shadow-xl shadow-primary-950/80 mb-4 border border-cyan-400/20 hover:scale-105 transition-transform group">
-            <Swords size={24} className="text-white" />
+          <Link to="/" className="hover:scale-105 transition-transform mb-4 shrink-0" aria-label="TrustRAG Home">
+            <TrustRagEmblem size={56} framed={true} glow={true} />
           </Link>
           <h1 className="text-2xl font-extrabold text-white tracking-tight">
-            TRUST<span className="text-primary-400">RAG</span>
+            TRUST<span className="text-cyan-400">RAG</span>
           </h1>
           <p className="text-slate-400 text-xs mt-1 text-center font-mono">Autonomous AI Reliability Workbench</p>
         </div>

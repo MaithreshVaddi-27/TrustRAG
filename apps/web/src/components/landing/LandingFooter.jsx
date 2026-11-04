@@ -1,14 +1,13 @@
 import { Link } from 'react-router-dom'
-import { Swords, ExternalLink } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
+import { TrustRagEmblem } from '@/components/common/TrustRagLogo'
 
 export default function LandingFooter() {
   return (
     <footer className="relative z-20 border-t border-slate-800/80 py-12 bg-surface-950/90 text-xs text-slate-500">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-primary-600 to-cyan-500 flex items-center justify-center text-white shadow-md">
-            <Swords size={13} />
-          </div>
+          <TrustRagEmblem size={28} framed={true} glow={false} />
           <span className="font-bold text-slate-200 text-sm">TrustRAG</span>
           <span className="text-slate-500">Autonomous AI Reliability Platform</span>
         </div>

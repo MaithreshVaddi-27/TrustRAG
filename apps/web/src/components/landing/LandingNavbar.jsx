@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Swords, ArrowRight, ChevronRight,
+  ArrowRight, ChevronRight,
   Sparkles, Cpu, RefreshCw, BarChart3, ShieldCheck,
   Menu, X
 } from 'lucide-react'
+import { TrustRagEmblem } from '@/components/common/TrustRagLogo'
 import { useAuthStore } from '@/store/authStore'
 
 export default function LandingNavbar() {
@@ -15,12 +16,12 @@ export default function LandingNavbar() {
     <header className="sticky top-0 z-50 backdrop-blur-2xl bg-surface-950/80 border-b border-slate-800/80">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2.5 group">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-primary-950/80 border border-cyan-400/30 group-hover:scale-105 transition-transform">
-            <Swords size={18} className="text-white" />
+          <div className="group-hover:scale-105 transition-transform shrink-0">
+            <TrustRagEmblem size={36} framed={true} glow={true} />
           </div>
           <div className="flex flex-col">
             <span className="font-extrabold text-base tracking-tight text-white flex items-center gap-1">
-              TRUST<span className="text-primary-400">RAG</span>
+              TRUST<span className="text-cyan-400">RAG</span>
             </span>
             <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest hidden sm:inline">
               Reliability Workbench
