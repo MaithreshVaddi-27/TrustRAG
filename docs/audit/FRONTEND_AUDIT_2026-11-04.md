@@ -71,6 +71,35 @@ After initial component extraction, orphaned imports, unused variables, and dest
   1. Refactored `MobileDrawer.jsx` to use smooth `<AnimatePresence>` slide-in transitions (`initial={{ x: -drawerWidth }} animate={{ x: 0 }}`) with interactive backdrop dismissal.
   2. Applied `gap-3` directly to the inner `<motion.div>` flex container across both `Sidebar.jsx` and `MobileDrawer.jsx`, ensuring an exact 12px visual gutter between icons and text.
 
+### 3.8 Bottom-Anchored Query Input & Horizontal Wrapping Prompt Chips
+- **Symptom:** Query input was previously placed at the top of the left column in Playground, forcing users to scroll past configuration controls after typing queries. Prompt presets were tall stacked blocks occupying excessive vertical real estate.
+- **Resolution:** Re-ordered `QueryPanel.jsx` so that `AIEngineSelector`, `KnowledgeBaseSelector`, `EmbeddingModelDisplay`, and `WebSearchToggle` sit comfortably at the top, while `QueryInput` anchors cleanly at the bottom. Converted vertical stacked preset cards into compact, horizontal wrapping pill chips with custom tooltips.
+
+### 3.9 Web Search Grounding (MCP) Toggle Redesign & Radius Blending
+- **Symptom:** Web Search Grounding toggle card had sharp rectangular borders and basic toggle switch styling that conflicted with the cyber-dark `.glass-card` (`rounded-2xl`) design language.
+- **Resolution:** Redesigned `WebSearchToggle.jsx`:
+  1. Outer container upgraded to `rounded-2xl border p-3.5` with gradient border glowing cyan when active (`border-cyan-500/50 bg-gradient-to-b from-cyan-950/25 to-surface-900/90`).
+  2. Custom accessible switch (`role="switch"`) sized to `h-6 w-11 rounded-full` with smooth `h-5 w-5` white thumb (`translate-x-5`) and ambient cyan glow shadow (`shadow-[0_0_12px_rgba(6,182,212,0.35)]`).
+  3. Inner provider and tool configuration cards elevated to `rounded-xl`, with pill badges (`rounded-full`) and tool chips (`rounded-md`).
+
+### 3.10 Architectural De-duplication of Workbench Page Views
+- **Symptom:** `EvidencePage.jsx` and `ClaimsPage.jsx` contained redundant outer search bars, method dropdowns, and status filter buttons that duplicated internal filters inside `EvidenceViewer.jsx` and `ClaimInspector.jsx`, creating awkward stacked duplicate search inputs and state divergence.
+- **Resolution:**
+  1. Cleaned `EvidencePage.jsx` and `ClaimsPage.jsx` to act as pure page containers with clean headers, delegating all search, category filtering, and count calculations directly to `EvidenceViewer.jsx` and `ClaimInspector.jsx`.
+  2. Integrated search inputs and filter pills seamlessly into the workbench component top metric bars, reducing DOM node complexity and net-deleting 40 redundant lines.
+
+### 3.11 Hero Section Floating Badge Collision Fix
+- **Symptom:** Floating status badges (`Entailment Guard`, `Self-Healing Loop`) overlapped with the primary hero headline on medium desktop screens (1280px–1440px).
+- **Resolution:** Pushed floating badges to `2xl:flex hidden` with outer positioning and disabled pointer events (`pointer-events-none`), ensuring headlines remain unhindered across all standard desktop viewports.
+
+### 3.12 Modernized SVG Pipeline Telemetry Icons
+- **Symptom:** Pipeline telemetry HUD used generic Lucide icons that lacked distinct technical character for an AI reliability pipeline.
+- **Resolution:** Designed custom high-fidelity SVG icons for each pipeline stage:
+  - Route: Crosshair target with radial tracking dot
+  - Retrieval: Multi-layer parallel vector database stack with upward query ray
+  - Generation: Core microprocessor logic unit with directional data buses
+  - Verification: Cryptographic diamond shield with verification nodes and entailment links
+
 ---
 
 ## 4. Design System, Typography, Colors & Iconography

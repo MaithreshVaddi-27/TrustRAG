@@ -76,7 +76,7 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 | **Reliability** | LangGraph self-heal loop with token/latency budgets; safe abstention; conflict detection |
 | **Auth & security** | JWT (HS256, `iss`/`aud`), bcrypt, JTI revocation, login lockout, rate limits, SSRF guards |
 | **Integrations** | MCP server (JSON-RPC 2.0) for Claude Desktop / Cursor / Windsurf; SSE live-progress streaming |
-| **Workbench UI** | Dashboard, Playground, knowledge bases, evidence, claims, conflicts, trace viewer |
+| **Workbench UI** | Cyber-dark developer workbench; decoupled React architecture; Model Context Protocol (MCP) live web search grounding switch; bottom query bar with prompt chips; NLI claim triples & SHA-256 evidence integrity viewers |
 | **Efficiency** | ONNX embedding runtime (torch-free, ~500–1000 MB RAM saved); Metal/CUDA auto-detection |
 | **Inference Acceleration** | KV cache quantization (q8_0 default), flash attention, prompt caching, context compression |
 | **Ops** | KB snapshots + rollback; Prometheus `/metrics` |
@@ -449,7 +449,14 @@ On Windows PowerShell, use `Invoke-RestMethod` / `Invoke-WebRequest` against the
 
 ### Via the Playground UI
 
-Open <http://localhost:5173/playground> → pick a knowledge base → ask a question → inspect the answer side-by-side with per-claim verdicts, evidence cards, reliability badges, conflict flags, and the full LangGraph trace. Other pages: `/dashboard`, `/knowledge-bases`, `/evidence`, `/claims`, `/conflicts`, `/traces/:id`, `/settings`.
+Open <http://localhost:5173/playground> to interact with the verified RAG pipeline:
+- **Engine & Knowledge Base Selection** — Choose local inference providers (`llama_cpp`, `ollama`, `mlx`) with zero-lag health detection or cloud models, paired with targeted knowledge bases.
+- **Web Search Grounding (MCP)** — Toggle live internet evidence via Model Context Protocol (Tavily AI search with autonomous fallback) vs. local-only isolated RAG.
+- **Query Input & Presets** — Ergonomic bottom-docked query panel with wrapping preset prompt chips and instant keyboard triggers.
+- **Pipeline Telemetry HUD** — Live 4-stage pipeline telemetry tracking Route, Retrieval, Generation, and NLI Verification in real time.
+- **Side-by-Side Verification** — Inspect answers alongside atomic proposition claims with Subject-Predicate-Object (SPO) triples, source citations, SHA-256 evidence integrity shields, and LangGraph execution traces.
+
+Other workbench views: `/dashboard`, `/knowledge-bases`, `/evidence`, `/claims`, `/conflicts`, `/traces/:id`, `/settings`.
 
 ---
 
@@ -546,7 +553,7 @@ Lint: `cd apps/api && ruff check app/ tests/ && ruff format --check app/ tests/`
 
 All bug/error/issue/dead-code findings from the latest engineering audit live in [`docs/AUDIT_2026-10-03.md`](docs/AUDIT_2026-10-03.md) — findings split into CRITICAL / NEEDED / LATER, plus improvements, dead code, and a remove/add list; constraint verification (NVIDIA-except-CUDA, ONNX-only embeddings/reranker, large-vs-small model parity, offline); and a measured test assessment. Earlier point-in-time audit reports were consolidated into it (history preserved in git).
 
-Frontend architecture, design system compliance, component decomposition, and responsive UI/UX audit results live in [`docs/audit/FRONTEND_AUDIT_2026-11-04.md`](docs/audit/FRONTEND_AUDIT_2026-11-04.md).
+Frontend architecture, design system compliance (cyber-dark palette, `.glass-card` material tokens, WCAG AA contrast), component decomposition, responsive validation, and Brave DevTools verification results live in [`docs/audit/FRONTEND_AUDIT_2026-11-04.md`](docs/audit/FRONTEND_AUDIT_2026-11-04.md).
 
 Test-coverage gaps for the analysis service (the lowest-covered core module) are mapped in [`docs/ANALYSIS_SERVICE_TEST_GAPS.md`](docs/ANALYSIS_SERVICE_TEST_GAPS.md) — uncovered regions with risk, and a prioritized 17-test plan to lift it from 54% to ~85%.
 

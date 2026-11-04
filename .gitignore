@@ -247,6 +247,10 @@ uv.lock
 test.txt
 test_*.txt
 .superpowers/
+# Root scratch / audit inspection output (DevTools MCP screenshots; apps/web/public/ is tracked)
+/public/
+audit-*.png
+*.screenshot.png
 
 # ─── Agent memory & machine-local dirs ────────────────────────────────────────
 .remember/

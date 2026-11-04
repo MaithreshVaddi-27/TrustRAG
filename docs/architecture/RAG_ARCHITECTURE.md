@@ -303,11 +303,12 @@ React 18 SPA with twelve routes:
 | `/settings` | SettingsPage | Provider, embedding, account preferences |
 
 Key components:
-- **QueryPanel** — input form with model/provider selector, streaming progress
-- **ResultsPanel** — formatted answer with collapsible sections
-- **ClaimInspector** — drill-down into individual verified claims with evidence links
-- **EvidenceViewer** — raw evidence segments with integrity status
-- **ExecutionTrace** — timeline of pipeline nodes executed, timings, recovery events
+- **QueryPanel** — decomposed query panel delegating to `AIEngineSelector`, `KnowledgeBaseSelector`, `EmbeddingModelDisplay`, `WebSearchToggle` (MCP grounding switch), and `QueryInput` (bottom-docked with prompt chips)
+- **ResultsPanel** — tabbed answer inspector with `AnswerTab`, `EvidenceTab`, `ClaimsTab`, `TraceTab`, and export actions
+- **ClaimInspector** — propositional claim inspection with Subject-Predicate-Object (SPO) triples, NLI entailment badges, search filter, and evidence citation links
+- **EvidenceViewer** — retrieved passage inspection with source filters (Local KB vs MCP Web), search filter, retrieval method badges, and SHA-256 integrity verification shields
+- **PipelineTelemetryHUD** — real-time 4-stage pipeline telemetry tracking Route, Retrieval, Generation, and Verification with custom technical SVG markers
+- **AppLayout** — decoupled application shell with `Sidebar`, `Navbar`, and `MobileDrawer`
 - **FormattedAnswer** — rendered markdown answer (citation markers are stripped server-side before this point)
 
 Motion system: `motion` package with shared config (`lib/motionConfig.js`), entrance/exit animations, layout transitions.
