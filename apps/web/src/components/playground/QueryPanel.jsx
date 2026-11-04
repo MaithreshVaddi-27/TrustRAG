@@ -1,7 +1,4 @@
-import { motion } from 'motion/react'
 import { Zap, RotateCcw } from 'lucide-react'
-import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
-import { SPRING_SNAPPY } from '@/lib/motionConfig'
 import { KnowledgeBaseSelector } from './KnowledgeBaseSelector'
 import { AIEngineSelector } from './AIEngineSelector'
 import { WebSearchToggle } from './WebSearchToggle'
@@ -109,8 +106,6 @@ export function QueryPanel({
             loading={loading}
             handleSubmit={handleSubmit}
             handlePresetSelect={handlePresetSelect}
-            errorMsg={errorMsg}
-            setErrorMsg={setErrorMsg}
           />
         </div>
 

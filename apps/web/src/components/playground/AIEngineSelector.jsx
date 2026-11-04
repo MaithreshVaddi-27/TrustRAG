@@ -1,18 +1,48 @@
-import { Cpu, Zap, ServerOff, RotateCcw } from 'lucide-react'
+import { Cpu, ServerOff, RotateCcw } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
 import { SPRING_SNAPPY } from '@/lib/motionConfig'
 
 const PROVIDER_BUTTONS = [
-  { key: 'ollama', label: 'Ollama', icon: ':11434', color: 'primary' },
-  { key: 'llama_cpp', label: 'llama.cpp', icon: ':8080', color: 'cyan' },
-  { key: 'mlx', label: 'MLX', icon: 'Mac', color: 'orange' },
-  { key: 'gemini', label: 'Gemini', icon: 'Cloud', color: 'indigo' },
+  {
+    key: 'ollama',
+    label: 'Ollama',
+    icon: ':11434',
+    activeBtn: 'bg-primary-950/80 text-primary-200 border-primary-500/60 shadow-sm shadow-primary-950/50',
+    activeBadge: 'text-primary-400 border-primary-700/60',
+  },
+  {
+    key: 'llama_cpp',
+    label: 'llama.cpp',
+    icon: ':8080',
+    activeBtn: 'bg-cyan-950/80 text-cyan-200 border-cyan-500/60 shadow-sm shadow-cyan-950/50',
+    activeBadge: 'text-cyan-400 border-cyan-700/60',
+  },
+  {
+    key: 'mlx',
+    label: 'MLX',
+    icon: 'Mac',
+    activeBtn: 'bg-amber-950/80 text-amber-200 border-amber-500/60 shadow-sm shadow-amber-950/50',
+    activeBadge: 'text-amber-400 border-amber-700/60',
+  },
+  {
+    key: 'gemini',
+    label: 'Gemini',
+    icon: 'Cloud',
+    activeBtn: 'bg-indigo-950/80 text-indigo-200 border-indigo-500/60 shadow-sm shadow-indigo-950/50',
+    activeBadge: 'text-indigo-400 border-indigo-700/60',
+  },
 ]
 
 const OFFLINE_MESSAGES = {
-  ollama: 'Run <code className="font-mono text-amber-100">ollama serve</code> in a terminal, then refresh.',
-  llama_cpp: 'Run <code className="font-mono text-amber-100">./scripts/start_local_llm.sh</code> in a terminal, then refresh.',
-  mlx: 'Run <code className="font-mono text-amber-100">mlx_lm.server --model mlx-community/Llama-3.2-1B-Instruct-4bit</code> in a terminal (Apple Silicon), then refresh.',
+  ollama: (
+    <>Run <code className="font-mono text-amber-100 bg-amber-900/60 px-1 py-0.5 rounded">ollama serve</code> in a terminal, then refresh.</>
+  ),
+  llama_cpp: (
+    <>Run <code className="font-mono text-amber-100 bg-amber-900/60 px-1 py-0.5 rounded">./scripts/start_local_llm.sh</code> in a terminal, then refresh.</>
+  ),
+  mlx: (
+    <>Run <code className="font-mono text-amber-100 bg-amber-900/60 px-1 py-0.5 rounded">mlx_lm.server</code> in a terminal (Apple Silicon), then refresh.</>
+  ),
 }
 
 export function AIEngineSelector({
@@ -78,25 +108,33 @@ export function AIEngineSelector({
       </AnimatePresence>
 
       <div className="grid grid-cols-2 gap-1.5 bg-surface-900 p-1 rounded-lg border border-slate-800">
-        {PROVIDER_BUTTONS.map(provider => (
-          <motion.button
-            key={provider.key}
-            type="button"
-            onClick={() => handleProviderChange(provider.key)}
-            disabled={loading}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.96, transition: SPRING_SNAPPY }}
-            className={`text-xs py-1.5 px-2 rounded-md font-medium flex items-center justify-between transition-all duration-150 ease-out ${
-              selectedProvider === provider.key
-                ? `bg-${provider.color}-600/30 text-${provider.color}-200 border border-${provider.color}-500/50 shadow-sm`
-                : 'text-slate-400 hover:text-slate-200 border border-transparent'
-            }`}>
-            <span>{provider.label}</span>
-            <span className={`text-[10px] px-1 py-[2px] rounded bg-surface-950 border border-slate-700/60 text-${provider.color}-400 font-mono`}>
-              {provider.icon}
-            </span>
-          </motion.button>
-        ))}
+        {PROVIDER_BUTTONS.map(provider => {
+          const isSelected = selectedProvider === provider.key
+          return (
+            <motion.button
+              key={provider.key}
+              type="button"
+              onClick={() => handleProviderChange(provider.key)}
+              disabled={loading}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.96, transition: SPRING_SNAPPY }}
+              className={`text-xs py-1.5 px-2.5 rounded-md font-medium flex items-center justify-between border transition-all duration-150 ease-out ${
+                isSelected
+                  ? provider.activeBtn
+                  : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-surface-800/60'
+              }`}
+            >
+              <span>{provider.label}</span>
+              <span className={`text-[10px] px-1 py-[2px] rounded bg-surface-950 font-mono border ${
+                isSelected
+                  ? provider.activeBadge
+                  : 'border-slate-800 text-slate-500'
+              }`}>
+                {provider.icon}
+              </span>
+            </motion.button>
+          )
+        })}
       </div>
 
       <div className="space-y-1 pt-1 border-t border-slate-800">

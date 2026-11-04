@@ -1,20 +1,18 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
 import { Sparkles, Clock, Copy, Check, Download } from 'lucide-react'
-import { clsx } from 'clsx'
 import { SPRING_SNAPPY } from '@/lib/motionConfig'
-import { ReliabilityBadge } from '@/components/workbench/ReliabilityBadge'
 import { FormattedAnswer } from '@/components/workbench/FormattedAnswer'
 import { RecoveryTimeline } from '@/components/workbench/ExecutionTrace'
 import { copyToClipboard } from '@/lib/clipboard'
-import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
 
-export function AnswerTab({ analysis, selectedProvider, selectedModel, selectedEmbeddingModel, enableWebSearch, recoveryRuns, onExportDossier, onCopyAnswer }) {
+export function AnswerTab({ analysis, selectedProvider, recoveryRuns, onExportDossier }) {
+  const [copied, setCopied] = useState(false)
+
   if (!analysis) return null
 
   const answerWordCount = analysis?.answer ? analysis.answer.trim().split(/\s+/).filter(Boolean).length : 0
   const estimatedReadTime = Math.max(1, Math.ceil(answerWordCount / 180))
-  const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
     if (!analysis?.answer) return

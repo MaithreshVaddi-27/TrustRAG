@@ -1,4 +1,4 @@
-import { Layers, AlertTriangle, Check } from 'lucide-react'
+import { Layers, AlertTriangle } from 'lucide-react'
 import { shortModelId } from '@/lib/modelLabels'
 
 export function EmbeddingModelDisplay({

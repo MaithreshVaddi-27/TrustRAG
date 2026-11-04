@@ -5,7 +5,7 @@
  */
 
 import api from '@/lib/api'
-import { withRetryAndResponse, withApiResponse, ERROR_CODES } from '@/lib/apiResponse'
+import { withRetryAndResponse, ERROR_CODES } from '@/lib/apiResponse'
 
 // ─── Helper: unwrap standardized response or throw ────────────────────────────
 function unwrap(response) {

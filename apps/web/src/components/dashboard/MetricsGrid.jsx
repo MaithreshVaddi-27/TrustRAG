@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 import { Brain, Database, Zap, ArrowRight, ShieldCheck, TrendingUp } from 'lucide-react'
-import { clsx } from 'clsx'
 
 /**
  * MetricsGrid - 4 hero metric cards
@@ -90,7 +89,7 @@ export function MetricsGrid({ stats, kbs, analyses, claims, conflicts }) {
           <p className="text-3xl font-extrabold text-white tracking-tight">{stats.totalClaimsCount || claims.length}</p>
           <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
             <span>Claims Decomposed</span>
-            <span className="font-mono text-emerald-400">{stats.supportedClaims} verified</span>
+            <span className="font-mono text-emerald-400">{stats.supportedClaims} verified{conflicts?.length ? ` · ${conflicts.length} flagged` : ''}</span>
           </div>
         </div>
       </Link>

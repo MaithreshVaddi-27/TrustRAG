@@ -48,7 +48,6 @@ export default function PlaygroundPage() {
     activeProviderInfo,
     availableModels,
     providersUnresolved: modelProvidersUnresolved,
-    refetchProviders: refetchModels,
   } = useModelSelection(providersData)
 
   const selectedEmbeddingModel = providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
@@ -58,9 +57,6 @@ export default function PlaygroundPage() {
     setKbId,
     knowledgeBases,
     selectedKb,
-    isLoading: kbLoading,
-    error: kbError,
-    refetch: refetchKBs,
   } = useKnowledgeBaseSelection()
 
   const {
@@ -193,7 +189,7 @@ export default function PlaygroundPage() {
           elapsedSec={elapsedSec}
           activeProviderInfo={activeProviderInfo}
           availableModels={availableModels}
-          refetchProviders={refetchModels}
+          refetchProviders={refetchProviders}
           providersUnresolved={providersUnresolved || modelProvidersUnresolved}
           selectedKb={selectedKb}
           knowledgeBases={knowledgeBases}

@@ -49,8 +49,9 @@ export default function useBackendHealth(intervalMs = POLL_MS) {
     }
   }, [])
 
-  // Start polling after the first render — skip the initial tick
+  // Probe immediately on mount, then poll periodically
   useEffect(() => {
+    probe()
     timerRef.current = setInterval(probe, intervalMs)
     return () => {
       clearInterval(timerRef.current)

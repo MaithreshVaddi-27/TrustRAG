@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { motion } from 'motion/react'
 import { Activity } from 'lucide-react'
 import {
   ResponsiveContainer, AreaChart, Area,

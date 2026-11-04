@@ -1,6 +1,4 @@
 import { useState, useEffect, useCallback } from 'react'
-import { modelService } from '@/services/api'
-import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
 
 const LOCAL_PROVIDERS = ['ollama', 'llama_cpp', 'mlx']
 

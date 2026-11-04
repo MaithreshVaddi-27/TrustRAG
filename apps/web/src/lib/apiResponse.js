@@ -7,8 +7,6 @@
  * User instruction: "continue and Use asynchronous methods for better working with async and await"
  */
 
-import api from './api'
-
 // ─── Error Codes ───────────────────────────────────────────────────────────────
 export const ERROR_CODES = {
   // Network / connectivity
@@ -80,7 +78,7 @@ const DEFAULT_RETRY_CONFIG = {
 /**
  * Normalize any error into a standard ApiError shape
  */
-export function normalizeError(err, context = '') {
+export function normalizeError(err) {
   // Already normalized
   if (err?.code && ERROR_CODES[err.code]) {
     return err

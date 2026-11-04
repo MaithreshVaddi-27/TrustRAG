@@ -1,6 +1,5 @@
 import { motion } from 'motion/react'
 import { ShieldCheck } from 'lucide-react'
-import { clsx } from 'clsx'
 import {
   ResponsiveContainer, BarChart, Bar,
   XAxis, YAxis, Tooltip, Cell

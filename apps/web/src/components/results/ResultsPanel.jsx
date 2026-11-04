@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useReducer } from 'react'
+import { useRef, useEffect, useReducer } from 'react'
 import {
-  Download, Copy, Sparkles, Check, Cpu, Globe, Clock
+  Download, Cpu, Globe
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
 import { SPRING_SNAPPY } from '@/lib/motionConfig'
@@ -8,7 +8,6 @@ import { ReliabilityBadge } from '@/components/workbench/ReliabilityBadge'
 import { PipelineTelemetryHUD } from '@/components/workbench/PipelineTelemetryHUD'
 import { ExecutionTrace } from '@/components/workbench/ExecutionTrace'
 import { EmptyState } from '@/components/workbench/EmptyState'
-import { copyToClipboard } from '@/lib/clipboard'
 import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
 import { compactTraceEvents } from '@/components/workbench/traceEvents'
 import api from '@/lib/api'
@@ -57,19 +56,7 @@ export function ResultsPanel({
   selectedEmbeddingModel,
   analysisStatus,
 }) {
-  const [copied, setCopied] = useState(false)
   const tabRefs = useRef({})
-
-  const answerWordCount = analysis?.answer ? analysis.answer.trim().split(/\s+/).filter(Boolean).length : 0
-  const estimatedReadTime = Math.max(1, Math.ceil(answerWordCount / 180))
-
-  const handleCopyAnswer = async () => {
-    if (!analysis?.answer) return
-    const ok = await copyToClipboard(analysis.answer)
-    if (!ok) return
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
 
   const handleExportDossier = async () => {
     if (!analysis?.id) return
@@ -146,10 +133,10 @@ export function ResultsPanel({
         <div className="flex items-center gap-2.5 shrink-0">
           {analysis.llm_provider && (
             <span
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-950/80 text-purple-300 border border-purple-700/50 text-[10px] font-mono max-w-[260px]"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary-950/80 text-primary-300 border border-primary-700/50 text-[10px] font-mono max-w-[260px]"
               title={analysis.llm_model ? `${providerShortLabel(analysis.llm_provider)}: ${analysis.llm_model}` : providerShortLabel(analysis.llm_provider)}
             >
-              <Cpu size={11} className="text-purple-400 shrink-0" />
+              <Cpu size={11} className="text-primary-400 shrink-0" />
               <span className="truncate tracking-tight">{providerShortLabel(analysis.llm_provider)}: {shortModelId(analysis.llm_model) || 'DEFAULT'}</span>
             </span>
           )}
@@ -203,12 +190,8 @@ export function ResultsPanel({
             <AnswerTab
               analysis={analysis}
               selectedProvider={selectedProvider}
-              selectedModel={selectedModel}
-              selectedEmbeddingModel={selectedEmbeddingModel}
-              enableWebSearch={enableWebSearch}
               recoveryRuns={recoveryRuns}
               onExportDossier={handleExportDossier}
-              onCopyAnswer={handleCopyAnswer}
             />
           )}
 

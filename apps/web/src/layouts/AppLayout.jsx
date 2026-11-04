@@ -1,19 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { clsx } from 'clsx'
-import { motion, useReducedMotion, useMotionValue, useSpring, AnimatePresence } from 'motion/react'
-import { useQuery } from '@tanstack/react-query'
-import {
-  Brain, Database, FileSearch,
-  GitMerge, LayoutDashboard, LogOut,
-  Settings, Swords, Zap, Menu, X, ChevronLeft, ChevronRight,
-  ShieldCheck, Cpu, Layers, RefreshCw
-} from 'lucide-react'
-import { useAuthStore } from '@/store/authStore'
-import { authService } from '@/services/auth'
-import { modelService } from '@/services/api'
-import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
-import { SPRING_SNAPPY, SPRING_GENTLE } from '@/lib/motionConfig'
+import { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
+import { motion, useReducedMotion } from 'motion/react'
 import useBackendHealth from '@/hooks/useBackendHealth'
 import { useSidebar } from '@/hooks/useSidebar'
 import { useCursorGlow } from '@/hooks/useCursorGlow'
@@ -23,29 +10,12 @@ import { MobileDrawer } from '@/components/layout/MobileDrawer'
 import { EngineTelemetry } from '@/components/layout/EngineTelemetry'
 import { BackendBanner } from '@/components/layout/BackendBanner'
 
-const NAV = [
-  { label: 'Dashboard',       to: '/dashboard',       icon: LayoutDashboard, badge: null },
-  { label: 'Playground',      to: '/playground',      icon: Zap,             badge: 'Live' },
-  null,
-  { label: 'Knowledge Bases', to: '/knowledge-bases', icon: Database,        badge: null },
-  { label: 'Evidence',        to: '/evidence',        icon: FileSearch,      badge: null },
-  { label: 'Claims',          to: '/claims',          icon: Brain,           badge: null },
-  { label: 'Conflicts',       to: '/conflicts',       icon: GitMerge,        badge: null },
-  null,
-  { label: 'Settings',        to: '/settings',        icon: Settings,        badge: null },
-]
-
 /**
  * AppLayout - Main application layout with sidebar, navbar, and mobile drawer
- * Replaces: Original AppLayout.jsx (637 lines)
- * Called by: App.jsx (line 43)
- * Reads: localStorage 'trustrag_sidebar_collapsed', 'trustrag.playground.engine'
- * User instruction: "continue and Use asynchronous methods for better working with async and await"
+ * Provides the application shell, skip navigation, cursor glow, and responsive containers.
  */
 export default function AppLayout({ children }) {
-  const navigate = useNavigate()
   const location = useLocation()
-  const { user } = useAuthStore()
   const reducedMotion = useReducedMotion()
   const { isOnline, isChecking, recheck } = useBackendHealth()
 
@@ -62,11 +32,6 @@ export default function AppLayout({ children }) {
   useEffect(() => {
     setIsMobileOpen(false)
   }, [location.pathname])
-
-  async function handleLogout() {
-    await authService.logout()
-    navigate('/login')
-  }
 
   return (
     <div className="flex flex-col h-screen supports-[height:100dvh]:h-dvh bg-surface-950 text-slate-100 overflow-hidden">
@@ -92,7 +57,6 @@ export default function AppLayout({ children }) {
         isOnline={isOnline}
         isChecking={isChecking}
         recheck={recheck}
-        isCollapsed={isCollapsed}
         setIsMobileOpen={setIsMobileOpen}
       />
 

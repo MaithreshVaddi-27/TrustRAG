@@ -90,10 +90,10 @@ export function PipelineTelemetryHUD({
 
         <div className="flex items-center gap-2 text-[11px] font-mono shrink-0 min-w-0">
           <span
-            className="px-2 py-0.5 rounded-md bg-purple-950/80 border border-purple-800/50 text-purple-300 flex items-center gap-1 max-w-[240px]"
+            className="px-2 py-0.5 rounded-md bg-primary-950/80 border border-primary-800/50 text-primary-300 flex items-center gap-1 max-w-[240px]"
             title={model ? `${providerLabel}: ${model}` : providerLabel}
           >
-            <Cpu size={11} className="text-purple-400 shrink-0" />
+            <Cpu size={11} className="text-primary-400 shrink-0" />
             <span className="truncate tracking-tight">{providerLabel}: {modelShort || 'DEFAULT'}</span>
           </span>
           {embeddingModel && (

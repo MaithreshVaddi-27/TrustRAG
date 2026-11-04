@@ -250,6 +250,8 @@ test_*.txt
 
 # ─── Agent memory & machine-local dirs ────────────────────────────────────────
 .remember/
+.codegraph/
+.playwright-mcp/
 # Project-id/credential scratch dirs written by external CLIs into the repo root.
 .freebuff/
 

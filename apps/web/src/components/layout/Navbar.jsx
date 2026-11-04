@@ -1,20 +1,17 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'motion/react'
 import { clsx } from 'clsx'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
-  Brain, Database, FileSearch,
-  GitMerge, LayoutDashboard, LogOut,
-  Settings, Swords, Zap, Menu, X, ChevronLeft, ChevronRight,
-  ShieldCheck, Cpu, Layers, RefreshCw
+  LogOut, Swords, Zap, Menu,
+  Cpu, Layers, RefreshCw
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { authService } from '@/services/auth'
 import { modelService } from '@/services/api'
 import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
-import { SPRING_SNAPPY, SPRING_GENTLE } from '@/lib/motionConfig'
+import { SPRING_GENTLE } from '@/lib/motionConfig'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
 
 function readPlaygroundEngine() {
   try {
@@ -28,11 +25,9 @@ function readPlaygroundEngine() {
 /**
  * Navbar - Top header with brand, telemetry pills, and user menu
  * Called by: AppLayout.jsx
- * No existing file serves this purpose - extracted from AppLayout
  * Reads: localStorage 'trustrag.playground.engine', model providers from API, backend health
- * User instruction: "continue and Use asynchronous methods for better working with async and await"
  */
-export function Navbar({ isOnline, isChecking, recheck, isCollapsed, setIsMobileOpen }) {
+export function Navbar({ isOnline, isChecking, recheck, setIsMobileOpen }) {
   const navigate = useNavigate()
   const { user } = useAuthStore()
 

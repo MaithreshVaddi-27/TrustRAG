@@ -5,7 +5,7 @@ const SAMPLE_PRESETS = [
   { text: "What are the important details I should know?", icon: "💡" },
 ]
 
-export function QueryInput({ query, setQuery, loading, handleSubmit, handlePresetSelect, errorMsg, setErrorMsg }) {
+export function QueryInput({ query, setQuery, loading, handleSubmit, handlePresetSelect }) {
   const handleKeyDown = (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault()

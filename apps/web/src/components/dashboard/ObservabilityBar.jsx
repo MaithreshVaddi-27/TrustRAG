@@ -1,16 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { motion } from 'motion/react'
-import { clsx } from 'clsx'
-import { RefreshCw, Activity, ShieldCheck } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import { SPRING_SNAPPY } from '@/lib/motionConfig'
 
 /**
  * ObservabilityBar - Live observability control bar
- * Called by: DashboardPage.jsx (line 268-320)
- * No existing file serves this purpose - extracted from DashboardPage
- * Reads/writes: localStorage not used, receives props from parent
- * User instruction: "continue and Use asynchronous methods for better working with async and await"
+ * Called by: DashboardPage.jsx
  */
 export function ObservabilityBar({
   autoRefresh,

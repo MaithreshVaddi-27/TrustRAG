@@ -32,25 +32,6 @@ export function useAnalysisStream() {
     }
   }, [])
 
-  const startFallbackPolling = useCallback((analysisId) => {
-    if (pollTimerRef.current) clearInterval(pollTimerRef.current)
-
-    pollTimerRef.current = setInterval(async () => {
-      try {
-        const snap = await analysisService.get(analysisId)
-        if (snap && ['completed', 'abstained', 'failed'].includes(snap.status)) {
-          clearInterval(pollTimerRef.current)
-          pollTimerRef.current = null
-          if (!finalizedRef.current) {
-            await fetchFinalAnalysis(analysisId)
-          }
-        }
-      } catch {
-        // ignore background polling errors
-      }
-    }, 2000)
-  }, [])
-
   const fetchFinalAnalysis = useCallback(async (analysisId, onTraceUpdate, onComplete, onError) => {
     if (finalizedRef.current) return
     finalizedRef.current = true
@@ -126,6 +107,25 @@ export function useAnalysisStream() {
     }
   }, [cleanup])
 
+  const startFallbackPolling = useCallback((analysisId, onTraceUpdate, onComplete, onError) => {
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current)
+
+    pollTimerRef.current = setInterval(async () => {
+      try {
+        const snap = await analysisService.get(analysisId)
+        if (snap && ['completed', 'abstained', 'failed'].includes(snap.status)) {
+          clearInterval(pollTimerRef.current)
+          pollTimerRef.current = null
+          if (!finalizedRef.current) {
+            await fetchFinalAnalysis(analysisId, onTraceUpdate, onComplete, onError)
+          }
+        }
+      } catch {
+        // ignore background polling errors
+      }
+    }, 2000)
+  }, [fetchFinalAnalysis])
+
   const startAnalysis = useCallback(async (params, { onEvent, onComplete, onError }) => {
     const { kbId, query, enableWebSearch, webSearchProvider, llmProvider, llmModel } = params
 
@@ -165,7 +165,7 @@ export function useAnalysisStream() {
         },
       })
 
-      startFallbackPolling(analysisCreated.id)
+      startFallbackPolling(analysisCreated.id, onEvent, onComplete, onError)
 
       return analysisCreated
     } catch (err) {

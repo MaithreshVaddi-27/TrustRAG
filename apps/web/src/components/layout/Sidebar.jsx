@@ -1,16 +1,12 @@
-import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { motion, AnimatePresence } from 'motion/react'
 import {
   Brain, Database, FileSearch,
   GitMerge, LayoutDashboard,
-  Settings, Swords, Zap, ShieldCheck,
+  Settings, Zap, ShieldCheck,
   ChevronLeft, ChevronRight,
 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
-import { modelService } from '@/services/api'
-import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
 import { SPRING_SNAPPY, SPRING_GENTLE } from '@/lib/motionConfig'
 
 const NAV = [
@@ -34,49 +30,11 @@ const STATUS_ITEM = {
   color: 'text-emerald-400',
 }
 
-function readPlaygroundEngine() {
-  try {
-    const raw = localStorage.getItem('trustrag.playground.engine')
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
-
 /**
  * Sidebar - Desktop navigation sidebar
  * Called by: AppLayout.jsx
- * No existing file serves this purpose - extracted from AppLayout
- * Reads: localStorage 'trustrag.playground.engine', model providers from API
- * User instruction: "continue and Use asynchronous methods for better working with async and await"
  */
 export function Sidebar({ isCollapsed, sidebarWidth, toggleSidebar }) {
-  // Playground engine override for top pills
-  const [playgroundEngine, setPlaygroundEngine] = useState(readPlaygroundEngine)
-  useEffect(() => {
-    const sync = () => setPlaygroundEngine(readPlaygroundEngine())
-    window.addEventListener('trustrag:engine-change', sync)
-    window.addEventListener('storage', sync)
-    return () => {
-      window.removeEventListener('trustrag:engine-change', sync)
-      window.removeEventListener('storage', sync)
-    }
-  }, [])
-
-  // Dynamic model telemetry query
-  const { data: providersData } = useQuery({
-    queryKey: ['model-providers'],
-    queryFn: modelService.getProviders,
-    staleTime: 30000,
-  })
-
-  const serverProvider = providersData?.active_provider
-  const serverModel = providersData?.active_model
-  const effProvider = playgroundEngine?.provider || serverProvider
-  const effModel = playgroundEngine?.model || serverModel
-  const isEngineOverride = !!playgroundEngine?.model && playgroundEngine.model !== serverModel
-  const effEmbeddingModel = providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
-
   return (
     <motion.aside
       style={{
@@ -197,7 +155,7 @@ function SidebarLink({ to, label, icon: Icon, badge, isCollapsed }) {
         <motion.div
           whileTap={{ scale: isCollapsed ? 0.9 : 0.98 }}
           transition={SPRING_SNAPPY}
-          className="w-full flex items-center"
+          className={clsx('w-full flex items-center', isCollapsed ? 'justify-center' : 'gap-3')}
         >
           {/* Active cyan indicator bar */}
           <AnimatePresence>
