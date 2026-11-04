@@ -122,17 +122,15 @@ export const ClaimInspector = memo(function ClaimInspector({ claims = [] }) {
             >
               Supported ({counts.supported})
             </button>
-            {counts.contradicted > 0 && (
-              <button
-                type="button"
-                onClick={() => setFilter('CONTRADICTED')}
-                className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
-                  filter === 'CONTRADICTED' ? 'bg-red-950/80 text-red-300 border border-red-700/60 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-surface-800'
-                }`}
-              >
-                Contradicted ({counts.contradicted})
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setFilter('CONTRADICTED')}
+              className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+                filter === 'CONTRADICTED' ? 'bg-red-950/80 text-red-300 border border-red-700/60 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-surface-800'
+              }`}
+            >
+              Contradicted ({counts.contradicted})
+            </button>
             <button
               type="button"
               onClick={() => setFilter('NEUTRAL')}
@@ -158,16 +156,38 @@ export const ClaimInspector = memo(function ClaimInspector({ claims = [] }) {
 
       {/* Claim Rows List */}
       <div className="space-y-2.5">
-        {filteredClaims.map((claim, i) => (
-          <ClaimRow
-            key={claim.id ?? i}
-            claim={claim}
-            index={i + 1}
-            isForceExpanded={allExpanded}
-            onCopy={() => handleCopy(claim.text, claim.id ?? i)}
-            isCopied={copiedId === (claim.id ?? i)}
-          />
-        ))}
+        {filteredClaims.length === 0 ? (
+          <div className="p-8 rounded-xl border border-slate-800 bg-surface-900/40 text-center space-y-2">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center mx-auto mb-2 ${
+              filter === 'CONTRADICTED'
+                ? 'bg-emerald-950/60 border border-emerald-800/40 text-emerald-400'
+                : 'bg-surface-800 border border-slate-700 text-slate-400'
+            }`}>
+              {filter === 'CONTRADICTED' ? <Check size={18} /> : <FileText size={18} />}
+            </div>
+            <p className="text-sm font-semibold text-slate-200">
+              {filter === 'CONTRADICTED'
+                ? 'Zero Contradicted Claims'
+                : 'No claims match your filter criteria'}
+            </p>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              {filter === 'CONTRADICTED'
+                ? 'No assertions directly conflict with retrieved source evidence in this view. When a contradiction is flagged by the NLI entailment model, it will appear here in red with refutation citations and trigger closed-loop healing.'
+                : 'Try adjusting your search query or selecting a different status filter tab.'}
+            </p>
+          </div>
+        ) : (
+          filteredClaims.map((claim, i) => (
+            <ClaimRow
+              key={claim.id ?? i}
+              claim={claim}
+              index={i + 1}
+              isForceExpanded={allExpanded}
+              onCopy={() => handleCopy(claim.text, claim.id ?? i)}
+              isCopied={copiedId === (claim.id ?? i)}
+            />
+          ))
+        )}
       </div>
     </div>
   )

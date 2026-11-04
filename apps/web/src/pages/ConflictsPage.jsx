@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import AppLayout from '@/layouts/AppLayout'
 import { conflictService } from '@/services/api'
-import { AlertTriangle, ShieldAlert, CheckCircle } from 'lucide-react'
+import { AlertTriangle, ShieldAlert, CheckCircle, ArrowRight, ShieldCheck, Scale, RefreshCw } from 'lucide-react'
 import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 export default function ConflictsPage() {
@@ -15,10 +16,16 @@ export default function ConflictsPage() {
       <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6 animate-fade-in stagger-children">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-xs font-mono bg-amber-950/80 text-amber-300 border border-amber-800/60 shadow-sm">
+              <ShieldAlert size={12} />
+              <span>Contradiction Engine</span>
+            </div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-white tracking-tight">Source & Claim Conflicts</h1>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+              <h1 className="text-2xl font-bold text-white tracking-tight">
+                Source & Claim <span className="text-amber-400">Conflicts</span>
+              </h1>
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border font-mono ${
                 conflicts.length > 0
                   ? 'bg-amber-950/80 text-amber-400 border-amber-800/60'
                   : 'bg-emerald-950/80 text-emerald-400 border-emerald-800/60'
@@ -26,10 +33,18 @@ export default function ConflictsPage() {
                 {conflicts.length} {conflicts.length === 1 ? 'Conflict' : 'Conflicts'}
               </span>
             </div>
-            <p className="text-slate-400 text-sm mt-1">
+            <p className="text-slate-400 text-sm">
               Detected evidence contradictions and integrity flags across document versions and queries.
             </p>
           </div>
+
+          <Link
+            to="/playground"
+            className="self-start sm:self-auto inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-md shadow-primary-950/50 transition-all cursor-pointer"
+          >
+            <span>Run New Query</span>
+            <ArrowRight size={13} />
+          </Link>
         </div>
 
         {/* Informational Banner */}
@@ -55,14 +70,56 @@ export default function ConflictsPage() {
             Failed to load conflicts: {error.message || 'An unexpected error occurred'}
           </div>
         ) : conflicts.length === 0 ? (
-          <div className="glass-card p-12 text-center text-slate-500 space-y-3">
-            <div className="w-12 h-12 rounded-full bg-emerald-950/40 border border-emerald-800/40 flex items-center justify-center mx-auto text-emerald-400">
-              <CheckCircle size={22} />
+          <div className="space-y-6">
+            <div className="glass-card p-10 sm:p-14 text-center space-y-4 border-slate-800">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-400 shadow-inner">
+                <CheckCircle size={28} />
+              </div>
+              <div className="space-y-1.5 max-w-md mx-auto">
+                <h3 className="text-base font-semibold text-white tracking-tight">No active conflicts detected</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  All processed evidence and claims across your active analyses are coherent and free of contradictory assertions or integrity violations.
+                </p>
+              </div>
+              <div className="pt-2">
+                <Link
+                  to="/playground"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-surface-800 hover:bg-surface-750 border border-slate-700 text-slate-200 text-xs font-semibold shadow-sm transition-all cursor-pointer"
+                >
+                  <RefreshCw size={12} className="text-emerald-400" />
+                  <span>Test Adversarial Prompts in Playground</span>
+                  <ArrowRight size={12} />
+                </Link>
+              </div>
             </div>
-            <p className="font-semibold text-slate-200">No active conflicts detected</p>
-            <p className="text-xs text-slate-400 max-w-md mx-auto">
-              All processed evidence and claims across your active analyses are coherent and free of contradictory assertions or integrity violations.
-            </p>
+
+            {/* Conflict Resolution Architecture Explainer */}
+            <div className="p-5 rounded-2xl bg-surface-900/60 border border-slate-800/80 space-y-3.5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+                <Scale size={14} className="text-amber-400" />
+                <span>Conflict Resolution & Self-Healing Protocol</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3.5 rounded-xl bg-surface-850/60 border border-slate-800/80 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-amber-300">
+                    <ShieldAlert size={13} />
+                    <span>Cross-Document Divergence</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Identifies semantic conflicts between distinct files within the same knowledge base partition, preventing synthesis from silently hallucinating a synthesis.
+                  </p>
+                </div>
+                <div className="p-3.5 rounded-xl bg-surface-850/60 border border-slate-800/80 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-cyan-300">
+                    <ShieldCheck size={13} />
+                    <span>Entailment Refutation Guard</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    NLI refutation scores exceeding 0.70 automatically trigger query reformulation, retrieving corroborating citations to resolve factual ambiguities.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">
@@ -103,3 +160,4 @@ export default function ConflictsPage() {
     </AppLayout>
   )
 }
+

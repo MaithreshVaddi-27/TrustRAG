@@ -85,23 +85,27 @@ export function AIEngineSelector({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -6 }}
           transition={SPRING_SNAPPY}
-          className="p-2.5 rounded-xl bg-amber-950/60 border border-amber-700/50 shadow-sm"
+          className="p-2.5 rounded-xl bg-amber-950/50 border border-amber-700/50 shadow-sm flex items-start justify-between gap-2"
         >
-          <div className="flex items-center gap-1.5 text-amber-300 text-[11px] font-semibold tracking-tight">
-            <ServerOff size={13} className="shrink-0" />
-            <span>Inference server offline</span>
+          <div className="space-y-0.5 min-w-0">
+            <div className="flex items-center gap-1.5 text-amber-300 text-[11px] font-semibold tracking-tight">
+              <ServerOff size={13} className="shrink-0" />
+              <span>Inference server offline</span>
+            </div>
+            <p className="text-[10px] leading-snug text-amber-200/80">
+              {OFFLINE_MESSAGES[selectedProvider] || 'Start the inference server, then refresh.'}
+            </p>
           </div>
-          <p className="mt-1 text-[10px] leading-relaxed text-amber-200/80">
-            {OFFLINE_MESSAGES[selectedProvider] || 'Start the inference server, then refresh.'}
-          </p>
           <button
             type="button"
             onClick={refetchProviders}
             disabled={loading}
-            className="mt-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium text-amber-200 bg-amber-900/50 border border-amber-700/50 hover:bg-amber-900/80 transition-colors"
+            title="Recheck inference server"
+            aria-label="Recheck inference server"
+            className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium text-amber-200 bg-amber-900/60 border border-amber-700/50 hover:bg-amber-900/90 transition-colors cursor-pointer"
           >
             <RotateCcw size={10} />
-            Recheck server
+            <span>Recheck</span>
           </button>
         </motion.div>
       )}

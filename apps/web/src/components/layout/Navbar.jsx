@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'motion/react'
 import { clsx } from 'clsx'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import {
   LogOut, Swords, Zap, Menu,
   Cpu, Layers, RefreshCw, PanelLeft, PanelLeftOpen
@@ -29,6 +29,8 @@ function readPlaygroundEngine() {
  */
 export function Navbar({ isOnline, isChecking, recheck, setIsMobileOpen, isCollapsed, toggleSidebar }) {
   const navigate = useNavigate()
+  const location = useLocation()
+  const isPlayground = location.pathname === '/playground'
   const { user } = useAuthStore()
 
   // Playground engine override
@@ -197,15 +199,17 @@ export function Navbar({ isOnline, isChecking, recheck, setIsMobileOpen, isColla
 
       {/* Right: Quick Action & User Profile */}
       <div className="flex items-center gap-3">
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => navigate('/playground')}
-          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-md shadow-primary-950/50 transition-all"
-        >
-          <Zap size={13} />
-          <span>Run Analysis</span>
-        </motion.button>
+        {!isPlayground && (
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => navigate('/playground')}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-md shadow-primary-950/50 transition-all cursor-pointer"
+          >
+            <Zap size={13} />
+            <span>Run Analysis</span>
+          </motion.button>
+        )}
 
         {/* User initials & logout */}
         <div className="flex items-center gap-2 pl-2 border-l border-slate-800">

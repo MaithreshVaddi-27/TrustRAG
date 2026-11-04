@@ -45,7 +45,7 @@ export function Sidebar({ isCollapsed, sidebarWidth, toggleSidebar }) {
       transition={SPRING_SNAPPY}
     >
       {/* Navigation Links */}
-      <nav className="flex-1 min-h-0 overflow-y-auto py-3 px-2 space-y-1">
+      <nav className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-3 px-2 space-y-1 custom-scrollbar">
         {NAV.map((item, i) =>
           item === null ? (
             <motion.div

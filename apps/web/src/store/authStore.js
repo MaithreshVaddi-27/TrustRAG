@@ -66,6 +66,11 @@ function notify() {
 
 export const authStore = {
   getState: () => {
+    // Re-sync from localStorage if token in memory was lost
+    if (!_token) {
+      _token = localStorage.getItem(TOKEN_KEY)
+      _user  = loadUser()
+    }
     // Lazily evict expired tokens so any part of the app calling getState()
     // always sees a consistent, non-expired auth state.
     if (isTokenExpired(_token)) {

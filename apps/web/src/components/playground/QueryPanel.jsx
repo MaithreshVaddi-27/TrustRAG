@@ -63,7 +63,8 @@ export function QueryPanel({
       </div>
 
       <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        <div className="p-4 space-y-4 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+        {/* Top: Scrollable Model & Context Configuration */}
+        <div className="p-3.5 space-y-3 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
           <ErrorDisplay errorMsg={errorMsg} setErrorMsg={setErrorMsg} />
 
           <KnowledgeBaseSelector
@@ -99,7 +100,10 @@ export function QueryPanel({
             loading={loading}
             selectedProvider={selectedProvider}
           />
+        </div>
 
+        {/* Bottom: Anchored Query Input & Execution CTA */}
+        <div className="p-3.5 border-t border-slate-800/90 bg-surface-900/95 backdrop-blur-md shrink-0 space-y-3 shadow-lg shadow-black/20">
           <QueryInput
             query={query}
             setQuery={setQuery}
@@ -107,9 +111,7 @@ export function QueryPanel({
             handleSubmit={handleSubmit}
             handlePresetSelect={handlePresetSelect}
           />
-        </div>
 
-        <div className="p-4 border-t border-slate-800/80 bg-surface-900/95 backdrop-blur-md shrink-0 space-y-1.5">
           <RunButton
             loading={loading}
             elapsedSec={elapsedSec}
