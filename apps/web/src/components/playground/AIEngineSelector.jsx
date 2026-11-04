@@ -21,8 +21,8 @@ const PROVIDER_BUTTONS = [
     key: 'mlx',
     label: 'MLX',
     icon: 'Mac',
-    activeBtn: 'bg-amber-950/80 text-amber-200 border-amber-500/60 shadow-sm shadow-amber-950/50',
-    activeBadge: 'text-amber-400 border-amber-700/60',
+    activeBtn: 'bg-primary-950/80 text-primary-200 border-primary-500/60 shadow-sm shadow-primary-950/50',
+    activeBadge: 'text-primary-400 border-primary-700/60',
   },
   {
     key: 'gemini',

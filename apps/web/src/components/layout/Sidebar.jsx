@@ -5,7 +5,7 @@ import {
   Brain, Database, FileSearch,
   GitMerge, LayoutDashboard,
   Settings, Zap, ShieldCheck,
-  ChevronLeft, ChevronRight,
+  PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
 import { SPRING_SNAPPY, SPRING_GENTLE } from '@/lib/motionConfig'
 
@@ -41,11 +41,11 @@ export function Sidebar({ isCollapsed, sidebarWidth, toggleSidebar }) {
         width: sidebarWidth,
         flexShrink: 0,
       }}
-      className="flex flex-col glass-sidebar z-50 shrink-0 hidden md:flex"
+      className="flex flex-col justify-between glass-sidebar z-50 shrink-0 hidden md:flex h-full min-h-0"
       transition={SPRING_SNAPPY}
     >
       {/* Navigation Links */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
+      <nav className="flex-1 min-h-0 overflow-y-auto py-3 px-2 space-y-1">
         {NAV.map((item, i) =>
           item === null ? (
             <motion.div
@@ -71,67 +71,39 @@ export function Sidebar({ isCollapsed, sidebarWidth, toggleSidebar }) {
         )}
       </nav>
 
-      {/* Status Divider */}
-      <div className="mx-2 border-t border-slate-800/60" />
+      {/* Pinned Footer: Status Widget + Toggle Button */}
+      <div className="shrink-0 p-2.5 space-y-2 border-t border-slate-800/80 bg-surface-900/60 backdrop-blur-md">
+        <SidebarStatus
+          {...STATUS_ITEM}
+          isCollapsed={isCollapsed}
+        />
 
-      {/* Self-Healing Status - fixed at bottom of nav area */}
-      <AnimatePresence mode="wait">
-        {!isCollapsed ? (
-          <motion.div
-            key="expanded-status"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={SPRING_SNAPPY}
-            className="mx-2 mb-2"
-          >
-            <SidebarStatus
-              {...STATUS_ITEM}
-              isCollapsed={isCollapsed}
-            />
-          </motion.div>
-        ) : (
-          <motion.div
-            key="collapsed-status"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            transition={SPRING_SNAPPY}
-            className="mx-2 mb-2 flex justify-center"
-          >
-            <SidebarStatus
-              {...STATUS_ITEM}
-              isCollapsed={isCollapsed}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Collapse/Expand Toggle Button - inline at bottom of sidebar */}
-      <motion.button
-        onClick={toggleSidebar}
-        whileTap={{ scale: 0.9 }}
-        whileHover={{ scale: 1.02 }}
-        className="mx-2 mb-3 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-surface-800/90 border border-slate-800 transition-all self-center"
-        title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-      >
-        {isCollapsed ? (
-          <motion.div
-            animate={{ rotate: [0, 180] }}
-            transition={{ duration: 0.3 }}
-          >
-            <ChevronRight size={16} />
-          </motion.div>
-        ) : (
-          <motion.div
-            animate={{ rotate: [180, 0] }}
-            transition={{ duration: 0.3 }}
-          >
-            <ChevronLeft size={16} />
-          </motion.div>
-        )}
-      </motion.button>
+        <motion.button
+          onClick={toggleSidebar}
+          whileTap={{ scale: 0.95 }}
+          whileHover={{ scale: 1.01 }}
+          className={clsx(
+            'w-full flex items-center rounded-xl p-2 text-xs font-medium text-slate-400 hover:text-white hover:bg-surface-800/90 border border-slate-800/80 hover:border-cyan-500/30 transition-all cursor-pointer',
+            isCollapsed ? 'justify-center' : 'justify-between px-3'
+          )}
+          title={isCollapsed ? 'Expand sidebar (⌘B)' : 'Collapse sidebar (⌘B)'}
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isCollapsed ? (
+            <PanelLeftOpen size={16} className="text-cyan-400" />
+          ) : (
+            <>
+              <span className="flex items-center gap-2">
+                <PanelLeftClose size={15} className="text-slate-400" />
+                <span className="text-slate-300">Collapse</span>
+              </span>
+              <kbd className="text-[10px] font-mono text-slate-400 bg-surface-800 px-1.5 py-0.5 rounded border border-slate-700/60">
+                ⌘B
+              </kbd>
+            </>
+          )}
+        </motion.button>
+      </div>
     </motion.aside>
   )
 }
@@ -219,19 +191,14 @@ function SidebarLink({ to, label, icon: Icon, badge, isCollapsed }) {
           </AnimatePresence>
 
           {/* Floating Tooltip in Collapsed Mode */}
-          <AnimatePresence>
-            {isCollapsed && (
-              <motion.div
-                initial={{ opacity: 0, x: -8, scale: 0.95 }}
-                animate={{ opacity: 1, x: 0, scale: 1 }}
-                exit={{ opacity: 0, x: -8, scale: 0.95 }}
-                transition={SPRING_GENTLE}
-                className="sidebar-tooltip opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-              >
-                {label}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {isCollapsed && (
+            <div
+              role="tooltip"
+              className="sidebar-tooltip opacity-0 pointer-events-none group-hover:opacity-100 group-focus-within:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-150"
+            >
+              {label}
+            </div>
+          )}
         </motion.div>
       )}
     </NavLink>
@@ -272,21 +239,15 @@ function SidebarStatus({ label, subtitle, icon: Icon, color, isCollapsed }) {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {isCollapsed && (
-          <motion.div
-            key="collapsed"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={SPRING_GENTLE}
-            className="sidebar-tooltip opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-          >
-            <div className="text-[11px] font-semibold text-slate-300">{label}</div>
-            <div className="text-[10px] text-slate-500">{subtitle}</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {isCollapsed && (
+        <div
+          role="tooltip"
+          className="sidebar-tooltip opacity-0 pointer-events-none group-hover:opacity-100 group-focus-within:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-150"
+        >
+          <div className="text-[11px] font-semibold text-slate-300">{label}</div>
+          <div className="text-[10px] text-slate-500">{subtitle}</div>
+        </div>
+      )}
     </div>
   )
 }

@@ -15,6 +15,7 @@ import { isWebSource } from '@/lib/claimState'
 export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [sourceFilter, setSourceFilter] = useState('ALL') // 'ALL' | 'KB' | 'WEB'
+  const [methodFilter, setMethodFilter] = useState('ALL') // 'ALL' | 'hybrid' | 'dense' | 'sparse'
   const [copiedIndex, setCopiedIndex] = useState(null)
 
   const counts = useMemo(() => {
@@ -36,13 +37,17 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
       if (sourceFilter === 'KB' && isWeb) return false
       if (sourceFilter === 'WEB' && !isWeb) return false
 
+      if (methodFilter !== 'ALL' && c.method?.toLowerCase() !== methodFilter.toLowerCase()) {
+        return false
+      }
+
       if (!searchTerm.trim()) return true
       const term = searchTerm.toLowerCase()
       const textMatch = (c.text || '').toLowerCase().includes(term)
       const fileMatch = (c.filename || c.document_id || '').toLowerCase().includes(term)
       return textMatch || fileMatch
     })
-  }, [chunks, searchTerm, sourceFilter])
+  }, [chunks, searchTerm, sourceFilter, methodFilter])
 
   const handleCopy = async (text, rank) => {
     const ok = await copyToClipboard(text)
@@ -80,45 +85,60 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
           />
         </div>
 
-        {/* Source Pills */}
-        <div className="flex items-center gap-1.5 w-full sm:w-auto">
-          <button
-            type="button"
-            onClick={() => setSourceFilter('ALL')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-              sourceFilter === 'ALL'
-                ? 'bg-primary-600/30 text-primary-200 border border-primary-500/40 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+        {/* Source Pills & Method Filter */}
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {/* Method selector */}
+          <select
+            value={methodFilter}
+            onChange={e => setMethodFilter(e.target.value)}
+            className="bg-surface-800 border border-slate-700/80 rounded-lg px-2 py-1 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 cursor-pointer"
+            aria-label="Filter by retrieval method"
           >
-            All ({counts.all})
-          </button>
-          <button
-            type="button"
-            onClick={() => setSourceFilter('KB')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
-              sourceFilter === 'KB'
-                ? 'bg-primary-600/30 text-primary-200 border border-primary-500/40 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Database size={12} className="text-primary-400" />
-            <span>Local KB ({counts.kb})</span>
-          </button>
-          {counts.web > 0 && (
+            <option value="ALL">All Methods</option>
+            <option value="hybrid">Hybrid</option>
+            <option value="dense">Dense</option>
+            <option value="sparse">Sparse</option>
+          </select>
+
+          <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => setSourceFilter('WEB')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
-                sourceFilter === 'WEB'
-                  ? 'bg-cyan-600/30 text-cyan-200 border border-cyan-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+              onClick={() => setSourceFilter('ALL')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                sourceFilter === 'ALL'
+                  ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-surface-800'
               }`}
             >
-              <Globe size={12} className="text-cyan-400" />
-              <span>MCP Web ({counts.web})</span>
+              All ({counts.all})
             </button>
-          )}
+            <button
+              type="button"
+              onClick={() => setSourceFilter('KB')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1 cursor-pointer ${
+                sourceFilter === 'KB'
+                  ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-surface-800'
+              }`}
+            >
+              <Database size={12} className="text-cyan-400" />
+              <span>Local KB ({counts.kb})</span>
+            </button>
+            {counts.web > 0 && (
+              <button
+                type="button"
+                onClick={() => setSourceFilter('WEB')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1 cursor-pointer ${
+                  sourceFilter === 'WEB'
+                    ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/40 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-surface-800'
+                }`}
+              >
+                <Globe size={12} className="text-cyan-400" />
+                <span>MCP Web ({counts.web})</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

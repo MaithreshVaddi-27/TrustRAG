@@ -8,8 +8,8 @@ export default function HeroSection() {
 
   return (
     <section className="relative z-20 pt-20 pb-16 sm:pt-28 sm:pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-      {/* Floating Card Left (Desktop) */}
-      <div className="hidden xl:flex absolute left-4 top-32 items-center gap-3 p-3.5 rounded-2xl bg-surface-900/90 border border-slate-700/80 backdrop-blur-xl shadow-2xl shadow-cyan-950/50 animate-float hover:scale-105 transition-transform group cursor-default">
+      {/* Floating Card Left (Only on ultra-wide screens to prevent text collision) */}
+      <div className="hidden 2xl:flex absolute left-0 top-20 items-center gap-3 p-3.5 rounded-2xl bg-surface-900/90 border border-slate-700/80 backdrop-blur-xl shadow-2xl shadow-cyan-950/50 animate-float hover:scale-105 transition-transform group cursor-default z-10 pointer-events-none">
         <div className="w-10 h-10 rounded-xl bg-emerald-950/80 border border-emerald-500/40 flex items-center justify-center text-emerald-400 group-hover:rotate-6 transition-transform">
           <ShieldCheck size={20} />
         </div>
@@ -22,8 +22,8 @@ export default function HeroSection() {
         </div>
       </div>
 
-      {/* Floating Card Right (Desktop) */}
-      <div className="hidden xl:flex absolute right-4 top-36 items-center gap-3 p-3.5 rounded-2xl bg-surface-900/90 border border-slate-700/80 backdrop-blur-xl shadow-2xl shadow-cyan-950/50 animate-float hover:scale-105 transition-transform group cursor-default" style={{ animationDelay: '2.5s' }}>
+      {/* Floating Card Right (Only on ultra-wide screens to prevent text collision) */}
+      <div className="hidden 2xl:flex absolute right-0 top-24 items-center gap-3 p-3.5 rounded-2xl bg-surface-900/90 border border-slate-700/80 backdrop-blur-xl shadow-2xl shadow-cyan-950/50 animate-float hover:scale-105 transition-transform group cursor-default z-10 pointer-events-none" style={{ animationDelay: '2.5s' }}>
         <div className="w-10 h-10 rounded-xl bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center text-cyan-400 group-hover:rotate-180 transition-transform duration-700">
           <RefreshCw size={18} className="animate-spin-slow" />
         </div>

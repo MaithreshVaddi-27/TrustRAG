@@ -21,7 +21,7 @@ export default function ConflictsPage() {
               <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
                 conflicts.length > 0
                   ? 'bg-amber-950/80 text-amber-400 border-amber-800/60'
-                  : 'bg-green-950/80 text-green-400 border-green-800/60'
+                  : 'bg-emerald-950/80 text-emerald-400 border-emerald-800/60'
               }`}>
                 {conflicts.length} {conflicts.length === 1 ? 'Conflict' : 'Conflicts'}
               </span>
@@ -56,7 +56,7 @@ export default function ConflictsPage() {
           </div>
         ) : conflicts.length === 0 ? (
           <div className="glass-card p-12 text-center text-slate-500 space-y-3">
-            <div className="w-12 h-12 rounded-full bg-green-950/40 border border-green-800/40 flex items-center justify-center mx-auto text-green-400">
+            <div className="w-12 h-12 rounded-full bg-emerald-950/40 border border-emerald-800/40 flex items-center justify-center mx-auto text-emerald-400">
               <CheckCircle size={22} />
             </div>
             <p className="font-semibold text-slate-200">No active conflicts detected</p>

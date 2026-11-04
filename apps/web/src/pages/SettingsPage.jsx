@@ -225,7 +225,7 @@ export default function SettingsPage() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2 text-slate-300 font-medium text-sm">
-                    <Clock size={15} className="text-blue-400" /> Version
+                    <Clock size={15} className="text-cyan-400" /> Version
                   </div>
                 </div>
                 <p className="text-xs text-slate-400">Platform release and ontology specification</p>

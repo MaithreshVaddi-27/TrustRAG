@@ -1,18 +1,19 @@
 import { clsx } from 'clsx'
-import { ChevronDown, ChevronRight, FileText, Quote, Check, Copy, Sparkles } from 'lucide-react'
+import { ChevronDown, ChevronRight, FileText, Quote, Check, Copy, Sparkles, Search } from 'lucide-react'
 import { memo, useState, useMemo } from 'react'
 import { ClaimStateBadge } from './ReliabilityBadge'
 import { copyToClipboard } from '@/lib/clipboard'
 
 /**
  * ClaimInspector — Ultra-refined expandable claim inspector with filter tabs,
- * triple decomposition chips, citation references, and one-click copy.
+ * triple decomposition chips, citation references, search filter, and one-click copy.
  *
  * Memoized (FE-M3): this subtree re-renders only when the claims array
  * reference changes — not on every parent tick (e.g. SSE trace updates).
  */
 export const ClaimInspector = memo(function ClaimInspector({ claims = [] }) {
   const [filter, setFilter] = useState('ALL')
+  const [searchTerm, setSearchTerm] = useState('')
   const [allExpanded, setAllExpanded] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
 
@@ -28,12 +29,17 @@ export const ClaimInspector = memo(function ClaimInspector({ claims = [] }) {
   }, [claims])
 
   const filteredClaims = useMemo(() => {
-    if (filter === 'ALL') return claims
     return claims.filter(c => {
       const s = (c.state || c.status || c.verification_status || '').toUpperCase()
-      return s === filter
+      if (filter !== 'ALL' && s !== filter) return false
+      if (!searchTerm.trim()) return true
+      const term = searchTerm.toLowerCase()
+      const textMatch = (c.text || '').toLowerCase().includes(term)
+      const expMatch = (c.explanation || '').toLowerCase().includes(term)
+      const subjMatch = (c.subject || '').toLowerCase().includes(term)
+      return textMatch || expMatch || subjMatch
     })
-  }, [claims, filter])
+  }, [claims, filter, searchTerm])
 
   const handleCopy = async (claimText, id) => {
     const ok = await copyToClipboard(claimText)
@@ -59,7 +65,7 @@ export const ClaimInspector = memo(function ClaimInspector({ claims = [] }) {
   return (
     <div className="space-y-4">
       {/* Top Header Summary & Action Bar */}
-      <div className="p-3.5 rounded-xl border border-slate-800 bg-surface-900/60 backdrop-blur-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+      <div className="p-3.5 rounded-xl border border-slate-800 bg-surface-900/60 backdrop-blur-sm flex flex-col lg:flex-row lg:items-center justify-between gap-3 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cyan-950/80 border border-cyan-700/50 text-cyan-400 shrink-0">
             <Sparkles size={16} />
@@ -81,56 +87,70 @@ export const ClaimInspector = memo(function ClaimInspector({ claims = [] }) {
           </div>
         </div>
 
-        {/* Filter Pills & Expand Toggle */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setFilter('ALL')}
-            className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-all ${
-              filter === 'ALL' ? 'bg-primary-600/40 text-primary-200 border border-primary-500/50 shadow-sm' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            All ({counts.all})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter('SUPPORTED')}
-            className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-all ${
-              filter === 'SUPPORTED' ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 shadow-sm' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Supported ({counts.supported})
-          </button>
-          {counts.contradicted > 0 && (
+        {/* Filter Pills, Search & Expand Toggle */}
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <div className="relative w-full sm:w-56">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Search claims or explanation…"
+              aria-label="Filter claims or explanations"
+              className="w-full bg-surface-800 border border-slate-700/80 rounded-lg pl-7 pr-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
+            />
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
-              onClick={() => setFilter('CONTRADICTED')}
-              className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-all ${
-                filter === 'CONTRADICTED' ? 'bg-red-950/80 text-red-300 border border-red-700/60 shadow-sm' : 'text-slate-400 hover:text-slate-200'
+              onClick={() => setFilter('ALL')}
+              className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+                filter === 'ALL' ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/40 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-surface-800'
               }`}
             >
-              Contradicted ({counts.contradicted})
+              All ({counts.all})
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setFilter('NEUTRAL')}
-            className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-all ${
-              filter === 'NEUTRAL' ? 'bg-amber-950/80 text-amber-300 border border-amber-700/60 shadow-sm' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Neutral ({counts.neutral})
-          </button>
+            <button
+              type="button"
+              onClick={() => setFilter('SUPPORTED')}
+              className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+                filter === 'SUPPORTED' ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-surface-800'
+              }`}
+            >
+              Supported ({counts.supported})
+            </button>
+            {counts.contradicted > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilter('CONTRADICTED')}
+                className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+                  filter === 'CONTRADICTED' ? 'bg-red-950/80 text-red-300 border border-red-700/60 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-surface-800'
+                }`}
+              >
+                Contradicted ({counts.contradicted})
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setFilter('NEUTRAL')}
+              className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
+                filter === 'NEUTRAL' ? 'bg-amber-950/80 text-amber-300 border border-amber-700/60 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-surface-800'
+              }`}
+            >
+              Neutral ({counts.neutral})
+            </button>
 
-          <div className="h-4 w-px bg-slate-800 mx-1 hidden sm:block" />
+            <div className="h-4 w-px bg-slate-800 mx-0.5 hidden sm:block" />
 
-          <button
-            type="button"
-            onClick={() => setAllExpanded(v => !v)}
-            className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 px-2 py-1 rounded bg-surface-950/80 border border-slate-800 hover:border-slate-700 transition-colors"
-          >
-            {allExpanded ? 'Collapse All' : 'Expand All'}
-          </button>
+            <button
+              type="button"
+              onClick={() => setAllExpanded(v => !v)}
+              className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 px-2 py-1 rounded bg-surface-950/80 border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
+            >
+              {allExpanded ? 'Collapse' : 'Expand All'}
+            </button>
+          </div>
         </div>
       </div>
 

@@ -4,7 +4,7 @@ import { clsx } from 'clsx'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   LogOut, Swords, Zap, Menu,
-  Cpu, Layers, RefreshCw
+  Cpu, Layers, RefreshCw, PanelLeft, PanelLeftOpen
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { authService } from '@/services/auth'
@@ -27,7 +27,7 @@ function readPlaygroundEngine() {
  * Called by: AppLayout.jsx
  * Reads: localStorage 'trustrag.playground.engine', model providers from API, backend health
  */
-export function Navbar({ isOnline, isChecking, recheck, setIsMobileOpen }) {
+export function Navbar({ isOnline, isChecking, recheck, setIsMobileOpen, isCollapsed, toggleSidebar }) {
   const navigate = useNavigate()
   const { user } = useAuthStore()
 
@@ -95,7 +95,24 @@ export function Navbar({ isOnline, isChecking, recheck, setIsMobileOpen }) {
           </div>
         </Link>
 
-              </div>
+        {/* Desktop Sidebar Toggle Button */}
+        {toggleSidebar && (
+          <motion.button
+            onClick={toggleSidebar}
+            whileTap={{ scale: 0.92 }}
+            whileHover={{ scale: 1.05 }}
+            className="hidden md:flex items-center justify-center p-2 rounded-xl text-slate-400 hover:text-white hover:bg-surface-800 border border-slate-800 hover:border-slate-700 transition-colors ml-1"
+            title={isCollapsed ? 'Expand sidebar (⌘B)' : 'Collapse sidebar (⌘B)'}
+            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isCollapsed ? (
+              <PanelLeftOpen size={16} className="text-cyan-400" />
+            ) : (
+              <PanelLeft size={16} className="text-slate-400" />
+            )}
+          </motion.button>
+        )}
+      </div>
 
       {/* Center: Live Engine Telemetry Badges (Desktop) */}
       <div className="hidden lg:flex items-center gap-2.5">

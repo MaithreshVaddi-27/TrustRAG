@@ -11,6 +11,15 @@ import { ReliabilityBadge } from '@/components/workbench/ReliabilityBadge'
  * Reads/writes: Receives analyses, isInitialLoad as props
  * User instruction: "continue and Use asynchronous methods for better working with async and await"
  */
+function cleanSnippet(text) {
+  if (!text) return ''
+  return text
+    .replace(/[*_#`~[\]]/g, '')
+    .replace(/-\s+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function RecentAnalysesFeed({ analyses, isInitialLoad }) {
   return (
     <div className="space-y-4">
@@ -64,8 +73,8 @@ export function RecentAnalysesFeed({ analyses, isInitialLoad }) {
                   </h4>
                 </div>
 
-                <p className="text-xs text-slate-400 line-clamp-1 pl-1">
-                  {a.answer || (a.status === 'abstained' ? 'System abstained due to insufficient verified evidence.' : 'Analysis in progress...')}
+                <p className="text-xs text-slate-300 line-clamp-1 pl-1 font-normal">
+                  {cleanSnippet(a.answer) || (a.status === 'abstained' ? 'System abstained due to insufficient verified evidence.' : 'Analysis in progress...')}
                 </p>
 
                 <div className="flex items-center gap-4 text-[11px] font-mono text-slate-500 pt-1 pl-1">

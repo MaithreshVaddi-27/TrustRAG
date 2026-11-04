@@ -58,6 +58,8 @@ export default function AppLayout({ children }) {
         isChecking={isChecking}
         recheck={recheck}
         setIsMobileOpen={setIsMobileOpen}
+        isCollapsed={isCollapsed}
+        toggleSidebar={toggleSidebar}
       />
 
       {/* ── BACKEND-DOWN BANNER ─────────────────────────────────────────── */}

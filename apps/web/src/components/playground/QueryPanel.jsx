@@ -63,7 +63,7 @@ export function QueryPanel({
       </div>
 
       <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        <div className="p-4 space-y-4 flex-1 min-h-0 overflow-y-auto">
+        <div className="p-4 space-y-4 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
           <ErrorDisplay errorMsg={errorMsg} setErrorMsg={setErrorMsg} />
 
           <KnowledgeBaseSelector
@@ -86,18 +86,18 @@ export function QueryPanel({
             refetchProviders={refetchProviders}
           />
 
-          <WebSearchToggle
-            enableWebSearch={enableWebSearch}
-            setEnableWebSearch={setEnableWebSearch}
-            loading={loading}
-            selectedProvider={selectedProvider}
-          />
-
           <EmbeddingModelDisplay
             selectedEmbeddingModel={selectedEmbeddingModel}
             selectedKb={selectedKb}
             kbEmbeddingPin={kbEmbeddingPin}
             embeddingMismatch={embeddingMismatch}
+          />
+
+          <WebSearchToggle
+            enableWebSearch={enableWebSearch}
+            setEnableWebSearch={setEnableWebSearch}
+            loading={loading}
+            selectedProvider={selectedProvider}
           />
 
           <QueryInput
