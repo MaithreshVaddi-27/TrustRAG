@@ -28,7 +28,7 @@ export function FormattedAnswer({ content, className = '' }) {
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="text-sm font-semibold text-sky-200 tracking-tight mt-4 mb-2">
+            <h3 className="text-sm font-semibold text-cyan-200 tracking-tight mt-4 mb-2">
               {children}
             </h3>
           ),

@@ -98,11 +98,11 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
             onClick={() => setSourceFilter('KB')}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${
               sourceFilter === 'KB'
-                ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/40 shadow-sm'
+                ? 'bg-primary-600/30 text-primary-200 border border-primary-500/40 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Database size={12} className="text-indigo-400" />
+            <Database size={12} className="text-primary-400" />
             <span>Local KB ({counts.kb})</span>
           </button>
           {counts.web > 0 && (

@@ -59,7 +59,7 @@ export default function HeroSection() {
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
         <button
           onClick={() => navigate('/register')}
-          className="w-full sm:w-auto px-9 py-4 rounded-xl bg-gradient-to-r from-primary-600 via-sky-500 to-cyan-500 hover:from-primary-500 hover:to-cyan-400 text-white font-bold text-sm shadow-2xl shadow-cyan-950/80 border border-cyan-400/50 flex items-center justify-center gap-2.5 transition-all hover:scale-[1.04] active:scale-[0.98] group cursor-pointer relative overflow-hidden"
+          className="w-full sm:w-auto px-9 py-4 rounded-xl bg-gradient-to-r from-primary-600 via-primary-500 to-cyan-500 hover:from-primary-500 hover:to-cyan-400 text-white font-bold text-sm shadow-2xl shadow-cyan-950/80 border border-cyan-400/50 flex items-center justify-center gap-2.5 transition-all hover:scale-[1.04] active:scale-[0.98] group cursor-pointer relative overflow-hidden"
         >
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full duration-700 transition-transform pointer-events-none" />
           <span>Get Started Free</span>
@@ -90,9 +90,9 @@ export default function HeroSection() {
           <div className="text-2xl sm:text-3xl font-extrabold text-cyan-400 font-mono group-hover:scale-105 transition-transform origin-left">&lt;120ms</div>
           <div className="text-xs text-slate-400 mt-1">Hybrid RRF Retrieval</div>
         </div>
-        <div className="p-5 rounded-2xl bg-surface-900/50 border border-slate-800/80 backdrop-blur-md hover:border-sky-400/60 hover:bg-surface-850/90 hover:-translate-y-2 hover:shadow-2xl hover:shadow-sky-950/50 transition-all duration-300 group cursor-default relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-sky-400 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="text-2xl sm:text-3xl font-extrabold text-sky-400 font-mono group-hover:scale-105 transition-transform origin-left">0 bytes</div>
+        <div className="p-5 rounded-2xl bg-surface-900/50 border border-slate-800/80 backdrop-blur-md hover:border-cyan-400/60 hover:bg-surface-850/90 hover:-translate-y-2 hover:shadow-2xl hover:shadow-cyan-950/50 transition-all duration-300 group cursor-default relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="text-2xl sm:text-3xl font-extrabold text-cyan-400 font-mono group-hover:scale-105 transition-transform origin-left">0 bytes</div>
           <div className="text-xs text-slate-400 mt-1">Leave your network (local-first)</div>
         </div>
       </div>

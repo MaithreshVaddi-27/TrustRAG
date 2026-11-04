@@ -35,14 +35,14 @@ export function MetricsGrid({ stats, kbs, analyses, claims, conflicts }) {
       {/* Analyses Run */}
       <Link
         to="/playground"
-        className="glass-card-hover p-5 flex flex-col justify-between group relative overflow-hidden hover:-translate-y-1 hover:border-sky-400/60 hover:shadow-xl hover:shadow-sky-950/40 transition-all duration-300"
+        className="glass-card-hover p-5 flex flex-col justify-between group relative overflow-hidden hover:-translate-y-1 hover:border-primary-400/60 hover:shadow-xl hover:shadow-primary-950/40 transition-all duration-300"
       >
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-sky-400 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary-400 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
         <div className="flex items-center justify-between">
-          <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform">
+          <div className="w-10 h-10 rounded-xl bg-primary-500/10 border border-primary-500/20 flex items-center justify-center text-primary-400 group-hover:scale-110 transition-transform">
             <Zap size={20} />
           </div>
-          <ArrowRight size={14} className="text-slate-600 group-hover:text-sky-400 group-hover:translate-x-0.5 transition-all" />
+          <ArrowRight size={14} className="text-slate-600 group-hover:text-primary-400 group-hover:translate-x-0.5 transition-all" />
         </div>
         <div className="mt-4">
           <p className="text-3xl font-extrabold text-white tracking-tight">{analyses.length}</p>

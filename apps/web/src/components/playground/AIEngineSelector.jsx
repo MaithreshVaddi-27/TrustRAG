@@ -28,8 +28,8 @@ const PROVIDER_BUTTONS = [
     key: 'gemini',
     label: 'Gemini',
     icon: 'Cloud',
-    activeBtn: 'bg-indigo-950/80 text-indigo-200 border-indigo-500/60 shadow-sm shadow-indigo-950/50',
-    activeBadge: 'text-indigo-400 border-indigo-700/60',
+    activeBtn: 'bg-primary-950/80 text-primary-200 border-primary-500/60 shadow-sm shadow-primary-950/50',
+    activeBadge: 'text-primary-400 border-primary-700/60',
   },
 ]
 
