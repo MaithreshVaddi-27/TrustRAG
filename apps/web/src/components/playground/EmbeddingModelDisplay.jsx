@@ -10,10 +10,10 @@ export function EmbeddingModelDisplay({
   return (
     <div className="rounded-xl border border-slate-800 bg-surface-850/60 p-3 space-y-2.5 transition-colors hover:border-slate-700/80 shadow-sm">
       <div className="flex items-center justify-between">
-        <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
           <Layers className="w-3.5 h-3.5 text-cyan-400" />
           <span>Dense Embedding Model</span>
-        </label>
+        </div>
         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-950/80 text-cyan-400 border border-cyan-800/40">
           <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
           ONNX Runtime

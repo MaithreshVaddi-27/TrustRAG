@@ -77,6 +77,7 @@ export default function RegisterPage() {
           </label>
           <input
             id="reg-name"
+            name="fullName"
             type="text"
             autoComplete="name"
             required
@@ -93,6 +94,7 @@ export default function RegisterPage() {
           </label>
           <input
             id="reg-email"
+            name="email"
             type="email"
             autoComplete="email"
             required
@@ -111,6 +113,7 @@ export default function RegisterPage() {
           <div className="relative">
             <input
               id="reg-password"
+              name="password"
               type={showPw ? 'text' : 'password'}
               autoComplete="new-password"
               required

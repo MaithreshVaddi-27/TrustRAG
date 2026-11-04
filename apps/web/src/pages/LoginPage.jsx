@@ -49,6 +49,7 @@ export default function LoginPage() {
           </label>
           <input
             id="login-email"
+            name="email"
             type="email"
             autoComplete="email"
             required
@@ -66,6 +67,7 @@ export default function LoginPage() {
           <div className="relative">
             <input
               id="login-password"
+              name="password"
               type={showPw ? 'text' : 'password'}
               autoComplete="current-password"
               required

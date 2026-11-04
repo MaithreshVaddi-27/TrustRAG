@@ -25,12 +25,13 @@ export function WebSearchToggle({ enableWebSearch, setEnableWebSearch, loading, 
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
-              <label
-                htmlFor="web-search-toggle"
+              <span
+                id="web-search-grounding-label"
+                onClick={() => !loading && setEnableWebSearch(!enableWebSearch)}
                 className="text-xs font-semibold text-slate-200 cursor-pointer select-none truncate"
               >
                 Web Search Grounding
-              </label>
+              </span>
               <span className="font-mono text-[9px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider bg-surface-900 text-cyan-400 border border-cyan-500/30 shrink-0">
                 MCP
               </span>
@@ -49,6 +50,7 @@ export function WebSearchToggle({ enableWebSearch, setEnableWebSearch, loading, 
           role="switch"
           id="web-search-toggle"
           aria-checked={enableWebSearch}
+          aria-labelledby="web-search-grounding-label"
           aria-label="Toggle Web Search Grounding via MCP"
           disabled={loading}
           onClick={() => setEnableWebSearch(!enableWebSearch)}

@@ -76,6 +76,8 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
         <div className="relative w-full sm:w-72">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
+            id="evidence-search-input"
+            name="evidence-search"
             type="text"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
@@ -89,6 +91,8 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           {/* Method selector */}
           <select
+            id="evidence-method-filter"
+            name="evidence-method"
             value={methodFilter}
             onChange={e => setMethodFilter(e.target.value)}
             className="bg-surface-800 border border-slate-700/80 rounded-lg px-2 py-1 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 cursor-pointer"

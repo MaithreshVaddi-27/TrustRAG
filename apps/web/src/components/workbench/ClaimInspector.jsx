@@ -92,6 +92,8 @@ export const ClaimInspector = memo(function ClaimInspector({ claims = [] }) {
           <div className="relative w-full sm:w-56">
             <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
             <input
+              id="claims-search-input"
+              name="claims-search"
               type="text"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}

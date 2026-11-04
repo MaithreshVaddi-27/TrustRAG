@@ -91,6 +91,8 @@ export default function KnowledgeBasesPage() {
             <div className="relative flex-1 max-w-md">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
+                id="kb-search-filter"
+                name="kb-search"
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -230,10 +232,12 @@ function CreateKbModal({
           )}
 
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <label htmlFor="create-kb-name" className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
               Knowledge Base Name *
             </label>
             <input
+              id="create-kb-name"
+              name="kbName"
               ref={inputRef}
               type="text"
               required
@@ -245,10 +249,12 @@ function CreateKbModal({
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <label htmlFor="create-kb-desc" className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
               Description
             </label>
             <textarea
+              id="create-kb-desc"
+              name="kbDesc"
               value={newKbDesc}
               onChange={(e) => setNewKbDesc(e.target.value)}
               placeholder="Purpose, domain context, and expected document types..."
@@ -381,11 +387,14 @@ function KnowledgeBaseCard({ kb }) {
             )}
           </button>
           <input
+            id={`file-upload-${kb.id}`}
+            name="document-file"
             type="file"
             ref={fileInputRef}
             className="hidden"
             accept=".pdf,.txt,.md,.docx,.csv,.json,.html,.htm"
             onChange={handleFileChange}
+            aria-label={`Upload document to ${kb.name}`}
           />
 
           <button

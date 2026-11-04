@@ -63,10 +63,10 @@ export function AIEngineSelector({
   return (
     <div className="rounded-xl border border-slate-800 bg-surface-850/60 p-3 space-y-3 transition-colors hover:border-slate-700/80 shadow-sm">
       <div className="flex items-center justify-between">
-        <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
           <Cpu className="w-3.5 h-3.5 text-primary-400" />
           <span>AI Engine</span>
-        </label>
+        </div>
         <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono ${
           activeProviderInfo?.connected
             ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/40'
@@ -139,7 +139,7 @@ export function AIEngineSelector({
 
       <div className="space-y-1 pt-1 border-t border-slate-800">
         <div className="flex items-center justify-between text-[11px] text-slate-400">
-          <span className="font-medium">Model:</span>
+          <label htmlFor="ai-engine-model-select" className="font-medium cursor-pointer">Model:</label>
           <span className="flex items-center gap-2">
             <span className="font-mono text-[10px] text-slate-500">
               {selectedProvider === 'ollama' ? ':11434' : ((selectedProvider === 'llama_cpp' || selectedProvider === 'mlx') ? ':8080' : '')}
@@ -157,6 +157,9 @@ export function AIEngineSelector({
         </div>
         <div className="relative">
           <select
+            id="ai-engine-model-select"
+            name="selectedModel"
+            aria-label="Select AI Engine Model"
             value={selectedModel}
             onChange={e => setSelectedModel(e.target.value)}
             disabled={loading}

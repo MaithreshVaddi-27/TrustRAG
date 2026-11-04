@@ -100,6 +100,14 @@ After initial component extraction, orphaned imports, unused variables, and dest
   - Generation: Core microprocessor logic unit with directional data buses
   - Verification: Cryptographic diamond shield with verification nodes and entailment links
 
+### 3.13 Form Control Semantics & Accessibility Eradication
+- **Symptom:** Live Brave DevTools console inspection flagged `A form field element should have an id or name attribute` and `No label associated with a form field`.
+- **Root Cause:**
+  1. `<label>` tags were used as presentational containers without `htmlFor` or nested controls in `AIEngineSelector.jsx` and `EmbeddingModelDisplay.jsx`.
+  2. Input, select, and textarea fields across `KnowledgeBasesPage.jsx`, `LoginPage.jsx`, `RegisterPage.jsx`, `ClaimInspector.jsx`, `EvidenceViewer.jsx`, `KnowledgeBaseSelector.jsx`, and `QueryInput.jsx` lacked explicit `id`, `name`, `htmlFor`, or `aria-label` associations.
+  3. Hidden file input elements lacked name/id attributes.
+- **Resolution:** Standardized all inputs, selects, textareas, and labels with explicit IDs, names, matching `htmlFor` attributes, and ARIA labels. Eliminated presentational `<label>` wrappers in favor of accessible headings, bringing console errors and accessibility issues to zero.
+
 ---
 
 ## 4. Design System, Typography, Colors & Iconography

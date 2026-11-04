@@ -26,6 +26,8 @@ export function QueryInput({ query, setQuery, loading, handleSubmit, handlePrese
 
       <textarea
         id="query-input"
+        name="query"
+        aria-label="Query or prompt input"
         value={query}
         onChange={e => setQuery(e.target.value)}
         onKeyDown={handleKeyDown}

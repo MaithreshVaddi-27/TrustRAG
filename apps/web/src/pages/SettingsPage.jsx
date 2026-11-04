@@ -426,10 +426,10 @@ export default function SettingsPage() {
             <div className="bg-surface-800/60 border border-cyan-500/30 rounded-xl p-3.5 flex flex-col justify-between space-y-2">
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-slate-200 font-semibold text-xs">HuggingFace BGE</span>
+                  <span className="text-slate-200 font-semibold text-xs">Local BGE (ONNX)</span>
                   <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-950/80 text-cyan-400 border border-cyan-800/40">384d · offline</span>
                 </div>
-                <p className="text-[11px] text-slate-400">Local PyTorch / CPU. Zero API cost, zero keys.</p>
+                <p className="text-[11px] text-slate-400">Local ONNX Runtime / CPU. Zero API cost, torch-free.</p>
               </div>
               <div className="pt-2 border-t border-slate-700/40 text-[10px] text-cyan-300 font-mono truncate" title="BAAI/bge-small-en-v1.5">
                 bge-small-en-v1.5
