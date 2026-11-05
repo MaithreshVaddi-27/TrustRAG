@@ -652,7 +652,8 @@ async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 
     elif norm == "mlx":
         probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
         start_hint = (
-            "Start it with './scripts/start_mlx_server.sh' or 'mlx_lm.server --model <mlx-community/...-4bit> --port 8080' "
+            "Start it with './scripts/start_mlx_server.sh' or "
+            "'mlx_lm.server --model <mlx-community/...-4bit> --port 8080' "
             "(Apple Silicon only; pip install mlx-lm)."
         )
     else:
