@@ -44,6 +44,16 @@ model instead of a hardcoded id.
 
 ## 2. Per-OS prerequisites
 
+### OS Compatibility Matrix
+
+| Operating System | Architecture | Acceleration | Memory Telemetry & Trimming | Tested Status |
+|------------------|--------------|--------------|-----------------------------|---------------|
+| **macOS 14+** | Apple Silicon (`arm64`) | Metal (MLX & llama-server) | `getrusage` / `vm_stat` | **Validated** (Dev host) |
+| **macOS 12+** | Intel (`x86_64`) | CPU (llama-server / Ollama) | `getrusage` / `vm_stat` | **Validated** (CI/Fallback) |
+| **Linux (Ubuntu/Debian)** | `x86_64` / `aarch64` | CUDA / CPU (llama-server / Ollama) | `sysconf`, `/proc/meminfo`, `malloc_trim` | **Validated** (CI & Docker) |
+| **Windows 10/11** | `x86_64` | CUDA / CPU (Ollama / llama-server) | `GlobalMemoryStatusEx`, `EmptyWorkingSet` via `ctypes` | **Validated** (Unit/Simulated) |
+| **Windows on ARM** | `aarch64` | N/A | Untested | *Untested* |
+
 ### macOS (Apple Silicon recommended)
 
 ```bash

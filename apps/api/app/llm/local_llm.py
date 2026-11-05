@@ -347,8 +347,7 @@ class ChatOllamaClient(BaseChatModel):
         if stop:
             _ollama_stops.extend(stop)
         if _ollama_stops:
-            seen = set()
-            options["stop"] = [s for s in _ollama_stops if not (s in seen or seen.add(s))]
+            options["stop"] = list(dict.fromkeys(_ollama_stops))
 
         requested_model = kwargs.get("model", self.model)
         target_model = requested_model
@@ -404,7 +403,7 @@ class ChatOllamaClient(BaseChatModel):
                 f"Ollama generation failed for model '{self.model}'", detail=str(exc)
             ) from exc
 
-    def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:
+    def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:  # type: ignore[override]
         """Prompt for structured JSON and parse into the Pydantic schema."""
         from app.llm.llm_utils import build_structured_output_runnable
 
@@ -435,6 +434,7 @@ class ChatLlamaCppClient(BaseChatModel):
     temperature: float = Field(default=0.2)
     top_p: float = Field(default=0.9)
     max_tokens: int = Field(default=1024)  # PERF 2026-09-06: lean cap (was 2048)
+    max_completion_tokens: int | None = Field(default=None)
     timeout: float = Field(default=120.0)
     # Stronger than Ollama's: sub-2B reasoning models readily fall into
     # repeat-until-cap loops on scaffolded prompts.
@@ -558,7 +558,7 @@ class ChatLlamaCppClient(BaseChatModel):
                 f"llama.cpp generation failed for model '{self.model}'", detail=str(exc)
             ) from exc
 
-    def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:
+    def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:  # type: ignore[override]
         """Return a Runnable prompting llama.cpp for structured JSON, parsed into Pydantic."""
         from app.llm.llm_utils import build_structured_output_runnable
 

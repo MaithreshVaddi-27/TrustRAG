@@ -73,8 +73,8 @@ class ONNXCrossEncoder:
             )
         self.tokenizer_name = tokenizer_name
         self.max_seq_length = int(max_seq_length)
-        self._session = None
-        self._tokenizer = None
+        self._session: Any = None
+        self._tokenizer: Any = None
         self._initialize()
 
     def _initialize(self) -> None:

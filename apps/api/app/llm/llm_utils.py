@@ -228,7 +228,8 @@ def build_structured_output_runnable(
             augmented_messages.append(HumanMessage(content=instruction))
 
         result = await generate_fn(augmented_messages, **merged_kwargs)
-        raw_text = result.generations[0].message.content
+        raw_content = result.generations[0].message.content
+        raw_text: str = raw_content if isinstance(raw_content, str) else str(raw_content)
         cleaned_json = extract_json_substring(raw_text)
 
         try:

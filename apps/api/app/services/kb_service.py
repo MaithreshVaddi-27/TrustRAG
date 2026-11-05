@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import pymongo.errors
 from bson import ObjectId
@@ -128,7 +128,7 @@ async def list_kbs(user_id_str: str, limit: int = 200, skip: int = 0) -> list[KB
 
     # Batch-fetch document counts using a single aggregation (avoids N+1 per-KB count queries)
     kb_ids = [kb["_id"] for kb in kbs_raw]
-    count_pipeline = [
+    count_pipeline: list[dict[str, Any]] = [
         {"$match": {"knowledge_base_id": {"$in": kb_ids}}},
         {"$group": {"_id": "$knowledge_base_id", "count": {"$sum": 1}}},
     ]
@@ -393,7 +393,7 @@ async def _copy_kb_vectors(source_kb_id: str, dest_kb_id: str, doc_id_map: dict[
     await init_kb_collection(dest_kb_id)
     dest_name = get_collection_name(dest_kb_id)
 
-    offset: object = None
+    offset: Any = None
     total = 0
     while True:
         points, offset = await client.scroll(
@@ -416,7 +416,7 @@ async def _copy_kb_vectors(source_kb_id: str, dest_kb_id: str, doc_id_map: dict[
             batch.append(
                 models.PointStruct(
                     id=hashlib_qdrant_id(new_doc_id, chunk_index),
-                    vector=pt.vector,
+                    vector=cast(Any, pt.vector),
                     payload=payload,
                 )
             )

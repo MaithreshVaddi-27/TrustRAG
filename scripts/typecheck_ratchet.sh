@@ -15,7 +15,11 @@ else
 fi
 
 PY="${PYTHON:-.venv/bin/python}"
-if [ ! -x "$PY" ]; then
+if [ ! -x "$PY" ] && [ -x ".venv/Scripts/python.exe" ]; then
+  PY=".venv/Scripts/python.exe"
+elif [ ! -x "$PY" ] && [ -x ".venv/Scripts/python" ]; then
+  PY=".venv/Scripts/python"
+elif [ ! -x "$PY" ]; then
   PY="python3"
 fi
 

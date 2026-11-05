@@ -10,8 +10,9 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from bson import ObjectId
 from langgraph.graph import END, StateGraph
@@ -137,7 +138,7 @@ def _analysis_deadline(cfg) -> float | None:
 async def _execute_with_fallback(
     state: AgentState,
     node_name: str,
-    operation: callable,
+    operation: Callable[[], Any],
     fallback_state: AgentState | None = None,
     timeout_seconds: int | None = None,
 ) -> AgentState:
@@ -215,7 +216,7 @@ async def _execute_with_fallback(
                 "latency_ms": int((time.monotonic() - started_at) * 1000),
             },
         )
-        return result
+        return cast(AgentState, result)
 
     except TimeoutError:
         logger.warning(f"{node_name} node timed out", timeout_seconds=timeout_seconds)
@@ -836,14 +837,17 @@ async def retrieval_node(state: AgentState) -> AgentState:
         return state
 
     # Fallback state for retrieval failure
-    fallback_state = {
-        **state,
-        "chunks": [],
-        "evidence_ids": [],
-        "verdict_status": "FAIL",
-        "diagnosis_type": "RETRIEVAL_ERROR",
-        "diagnosis_failures": ["Retrieval failed due to internal error"],
-    }
+    fallback_state: AgentState = cast(
+        AgentState,
+        {
+            **state,
+            "chunks": [],
+            "evidence_ids": [],
+            "verdict_status": "FAIL",
+            "diagnosis_type": "RETRIEVAL_ERROR",
+            "diagnosis_failures": ["Retrieval failed due to internal error"],
+        },
+    )
 
     return await _execute_with_fallback(
         state=state,
@@ -910,13 +914,16 @@ async def generation_node(state: AgentState) -> AgentState:
         return state
 
     # Fallback state for generation failure
-    fallback_state = {
-        **state,
-        "answer": "ABSTAIN",
-        "verdict_status": "FAIL",
-        "diagnosis_type": "GENERATION_ERROR",
-        "diagnosis_failures": ["Generation failed due to internal error"],
-    }
+    fallback_state: AgentState = cast(
+        AgentState,
+        {
+            **state,
+            "answer": "ABSTAIN",
+            "verdict_status": "FAIL",
+            "diagnosis_type": "GENERATION_ERROR",
+            "diagnosis_failures": ["Generation failed due to internal error"],
+        },
+    )
 
     return await _execute_with_fallback(
         state=state,
@@ -1275,13 +1282,16 @@ async def recovery_node(state: AgentState) -> AgentState:
         return state
 
     # Fallback state for recovery failure
-    fallback_state = {
-        **state,
-        "recovery_strategy": None,
-        "verdict_status": "FAIL",
-        "diagnosis_type": "RECOVERY_ERROR",
-        "diagnosis_failures": ["Recovery failed due to internal error"],
-    }
+    fallback_state: AgentState = cast(
+        AgentState,
+        {
+            **state,
+            "recovery_strategy": None,
+            "verdict_status": "FAIL",
+            "diagnosis_type": "RECOVERY_ERROR",
+            "diagnosis_failures": ["Recovery failed due to internal error"],
+        },
+    )
 
     return await _execute_with_fallback(
         state=state,
@@ -1315,7 +1325,7 @@ def _select_recovery_strategy(state: AgentState, cfg) -> str:
     # Fallback: round-robin from config priority
     priority = cfg.recovery_strategy_priority
     idx = (state["attempts"] - 1) % len(priority)
-    return priority[idx]
+    return str(priority[idx])
 
 
 async def _execute_query_rewrite(
@@ -1612,7 +1622,7 @@ async def execute_agentic_rag_flow(
                 budget_ms=budget * 1000,
             )
 
-        return final_state
+        return cast(dict[str, Any], final_state)
     finally:
         # Close out the per-analysis LLM ledger before releasing memory.
         ledger = current_ledger()

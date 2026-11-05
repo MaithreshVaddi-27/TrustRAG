@@ -53,6 +53,7 @@ async def get_qdrant_client() -> AsyncQdrantClient:
         try:
             # Support embedded local Qdrant directly via pip qdrant-client rust engine
             if is_embedded:
+                storage_path: Path | str
                 if raw_url == "local":
                     storage_path = API_ROOT / "data" / "qdrant"
                 elif raw_url == ":memory:":
@@ -74,6 +75,18 @@ async def get_qdrant_client() -> AsyncQdrantClient:
                 "Failed to initialize async Qdrant client", detail=str(exc)
             ) from exc
     return _client
+
+
+async def close_qdrant_client() -> None:
+    """Close the async Qdrant client connection and reset the singleton."""
+    global _client
+    if _client is not None:
+        try:
+            await _client.close()
+        except Exception as exc:
+            logger.warning("Error closing async Qdrant client", error=str(exc))
+        finally:
+            _client = None
 
 
 def get_collection_name(kb_id: str) -> str:

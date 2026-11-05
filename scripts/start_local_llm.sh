@@ -15,6 +15,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_DIR="$ROOT_DIR/apps/api"
 PY="$API_DIR/.venv/bin/python"
+if [ ! -x "$PY" ] && [ -x "$API_DIR/.venv/Scripts/python.exe" ]; then
+  PY="$API_DIR/.venv/Scripts/python.exe"
+elif [ ! -x "$PY" ] && [ -x "$API_DIR/.venv/Scripts/python" ]; then
+  PY="$API_DIR/.venv/Scripts/python"
+fi
 if [ ! -x "$PY" ]; then
   echo "ERROR: API venv not found at $PY — run 'cd apps/api && python -m venv .venv && pip install -e .' first." >&2
   exit 1

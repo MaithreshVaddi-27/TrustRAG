@@ -46,14 +46,19 @@ else
 fi
 
 echo "─ Backend venv ─"
-if [ -x "$ROOT_DIR/apps/api/.venv/bin/python" ]; then
-  ok "apps/api/.venv present"
+VPY="$ROOT_DIR/apps/api/.venv/bin/python"
+if [ ! -x "$VPY" ] && [ -x "$ROOT_DIR/apps/api/.venv/Scripts/python.exe" ]; then
+  VPY="$ROOT_DIR/apps/api/.venv/Scripts/python.exe"
+elif [ ! -x "$VPY" ] && [ -x "$ROOT_DIR/apps/api/.venv/Scripts/python" ]; then
+  VPY="$ROOT_DIR/apps/api/.venv/Scripts/python"
+fi
+if [ -x "$VPY" ]; then
+  ok "apps/api/.venv present ($VPY)"
 else
-  warn "apps/api/.venv missing" "Run: cd apps/api && python3 -m venv .venv && source .venv/bin/activate && pip install -e \".[dev,local-models]\""
+  warn "apps/api/.venv missing" "Run: cd apps/api && python3 -m venv .venv && source .venv/bin/activate (Windows: .venv\\Scripts\\activate) && pip install -e \".[dev,local-models]\""
 fi
 
 echo "─ Embeddings (default provider: onnx, torch-free) ─"
-VPY="$ROOT_DIR/apps/api/.venv/bin/python"
 if [ -f "$ROOT_DIR/apps/api/.model_cache/bge-small-en-v1.5.onnx" ]; then
   ok "ONNX embedding model present (onnx provider ready, torch-free)"
 elif [ -x "$VPY" ] && "$VPY" -c "import sentence_transformers" 2>/dev/null; then

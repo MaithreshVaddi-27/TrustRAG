@@ -321,7 +321,7 @@ class ModelConfig:
 
     @property
     def reranker_model(self) -> str:
-        return self._get("reranker", "model")
+        return str(self._get("reranker", "model"))
 
     @property
     def reranker_top_k(self) -> int:
@@ -452,7 +452,7 @@ class ModelConfig:
 
     @property
     def fusion_method(self) -> str:
-        return self._get("retrieval", "fusion_method")
+        return str(self._get("retrieval", "fusion_method"))
 
     @property
     def rrf_k(self) -> int:

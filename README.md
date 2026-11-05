@@ -146,6 +146,16 @@ via `scripts/bootstrap.py` (see [Installation](#installation)).
 | Git | latest | Clone |
 | Disk / RAM | ~8 GB free · 8 GB RAM min (16 GB recommended) | Models: embeddings ~120 MB, LLM ~1–5 GB |
 
+### OS Compatibility Matrix
+
+| Operating System | Architecture | Acceleration | Memory Telemetry & Trimming | Tested Status |
+|------------------|--------------|--------------|-----------------------------|---------------|
+| **macOS 14+** | Apple Silicon (`arm64`) | Metal (MLX & llama-server) | `getrusage` / `vm_stat` | **Validated** (Dev host) |
+| **macOS 12+** | Intel (`x86_64`) | CPU (llama-server / Ollama) | `getrusage` / `vm_stat` | **Validated** (CI/Fallback) |
+| **Linux (Ubuntu/Debian)** | `x86_64` / `aarch64` | CUDA / CPU (llama-server / Ollama) | `sysconf`, `/proc/meminfo`, `malloc_trim` | **Validated** (CI & Docker) |
+| **Windows 10/11** | `x86_64` | CUDA / CPU (Ollama / llama-server) | `GlobalMemoryStatusEx`, `EmptyWorkingSet` via `ctypes` | **Validated** (Unit/Simulated) |
+| **Windows on ARM** | `aarch64` | N/A | Untested | *Untested* |
+
 ---
 
 ## Installation

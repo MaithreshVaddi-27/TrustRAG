@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from langchain_core.embeddings import Embeddings
 
@@ -130,19 +130,18 @@ def _create_llm(
     if provider == "ollama":
         from app.llm.local_llm import ChatOllamaClient
 
-        llm = ChatOllamaClient(
+        return ChatOllamaClient(
             base_url=settings.ollama_base_url,
             model=model,
             temperature=temperature,
             top_p=top_p if top_p is not None else cfg.llm_top_p,
             timeout=timeout,
         )
-        return llm
 
     if provider in ("llama_cpp", "llamacpp"):
         from app.llm.local_llm import ChatLlamaCppClient
 
-        llm = ChatLlamaCppClient(
+        return ChatLlamaCppClient(
             base_url=settings.llamacpp_base_url,
             model=model,
             temperature=temperature,
@@ -151,12 +150,11 @@ def _create_llm(
             max_completion_tokens=max_completion_tokens,
             timeout=timeout,
         )
-        return llm
 
     if provider == "mlx":
         from app.llm.local_llm import ChatLlamaCppClient
 
-        llm = ChatLlamaCppClient(
+        return ChatLlamaCppClient(
             base_url=settings.mlx_base_url,
             model=model,
             temperature=temperature,
@@ -165,7 +163,6 @@ def _create_llm(
             max_completion_tokens=max_completion_tokens,
             timeout=timeout,
         )
-        return llm
 
     if provider != "gemini":
         # Without this, ANY unknown provider fell through to the Gemini branch
@@ -205,7 +202,7 @@ def _create_llm(
             f"Failed to initialize Google Gemini client for model '{model}'. "
             "The API key may be invalid, revoked, or not permitted for this model."
         ) from exc
-    return llm
+    return cast(BaseChatModel, llm)
 
 
 def get_llm(provider: str | None = None, model: str | None = None) -> BaseChatModel:

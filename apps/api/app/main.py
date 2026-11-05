@@ -20,6 +20,7 @@ import re
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -54,6 +55,7 @@ from app.core.security.exceptions import (
 from app.core.system.hardware import get_cached_hardware_profile
 from app.core.system.memory import get_memory_usage_mb
 from app.db.mongodb import connect_db, create_indexes, disconnect_db
+from app.db.qdrant import close_qdrant_client
 from app.llm.local_llm import (
     close_local_llm_clients,
     load_discovery_snapshot,
@@ -276,6 +278,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         warmup_task.cancel()
     logger.info("TRUSTRAG API shutting down")
     await close_local_llm_clients()
+    await close_qdrant_client()
     await disconnect_db()
 
 
@@ -501,7 +504,7 @@ def create_app() -> FastAPI:
     # ── CORS ───────────────────────────────────────────────────────────────
     # SEC-H-A: In production, only explicit CORS_ORIGINS allowed.
     # Wildcard platform regex (vercel.app, netlify.app, pages.dev) only for dev/staging.
-    cors_kwargs = {
+    cors_kwargs: dict[str, Any] = {
         "allow_origins": settings.cors_origins_list,
         "allow_credentials": True,
         "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

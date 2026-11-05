@@ -11,7 +11,7 @@ import asyncio
 import os
 import threading
 from collections import OrderedDict
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import structlog
@@ -224,14 +224,14 @@ class ONNXBGEEmbeddings(Embeddings):
     def embed_query(self, text: str) -> list[float]:
         """Embed a single query text."""
         emb = self._encode_batch([text], is_query=True)
-        return emb[0].astype(np.float32).tolist()
+        return cast(list[float], emb[0].astype(np.float32).tolist())
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed a batch of document texts."""
         if not texts:
             return []
         emb = self._encode_batch(texts, is_query=False)
-        return emb.astype(np.float32).tolist()
+        return cast(list[list[float]], emb.astype(np.float32).tolist())
 
     async def aembed_query(self, text: str) -> list[float]:
         """Async embed query (runs in thread pool)."""
@@ -242,7 +242,7 @@ class ONNXBGEEmbeddings(Embeddings):
         return await asyncio.to_thread(self.embed_documents, texts)
 
 
-class ONNXBGEEmbeddingsWrapper:
+class ONNXBGEEmbeddingsWrapper(Embeddings):
     """
     Two-tier cache wrapper for ONNX BGE embeddings.
 

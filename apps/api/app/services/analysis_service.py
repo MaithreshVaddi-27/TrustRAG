@@ -806,7 +806,8 @@ async def run_analysis_pipeline(
             # and the baseline-eval provenance check, which must still be able
             # to see which segments the model actually cited.
             answer_cited = stored_answer
-            stored_answer = strip_citation_markers(stored_answer)
+            if stored_answer:
+                stored_answer = strip_citation_markers(stored_answer)
             # Update database first, then publish trace event with answer
             await analyses_coll.update_one(
                 {"_id": analysis_id},

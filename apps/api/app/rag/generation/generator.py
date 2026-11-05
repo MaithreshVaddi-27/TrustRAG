@@ -695,7 +695,7 @@ def format_context_with_chunk_indices(
     if not chunks:
         return "No context segments available.", []
 
-    formatted = []
+    formatted: list[str] = []
     chunk_indices: list[int] = []
     seen_prefixes: set[str] = set()
     indexed_chunks = sorted(enumerate(chunks), key=lambda item: _chunk_order_key(item[1]))

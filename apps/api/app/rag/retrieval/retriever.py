@@ -350,8 +350,9 @@ async def apply_temporal_filtering(
 
     filtered_results = []
     for r in results:
-        doc_id_str = r.get("document_id")
-        doc_meta = docs_map.get(doc_id_str)
+        doc_id_val = r.get("document_id")
+        doc_id_str = str(doc_id_val) if doc_id_val is not None else None
+        doc_meta = docs_map.get(doc_id_str) if doc_id_str is not None else None
 
         if doc_meta is None and doc_id_str is not None:
             # Retrieval-time stale-evidence guard (historical note): the

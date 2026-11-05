@@ -5,7 +5,7 @@ TRUSTRAG API — Model discovery & local provider status endpoints.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends
 
@@ -34,7 +34,7 @@ async def _safe_provider_status(check_fn, base_url: str, provider: str) -> dict[
     as a broken UI. Degrade to an explicit disconnected stub instead.
     """
     try:
-        return await check_fn(base_url)
+        return cast(dict[str, Any], await check_fn(base_url))
     except Exception:
         logger.warning("Provider status check failed; degrading to stub", provider=provider)
         return {

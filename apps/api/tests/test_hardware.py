@@ -303,3 +303,24 @@ def test_tiers_recommend_different_llm_weights(monkeypatch):
     assert lean != standard, f"8GB tier recommends same weights as 16GB: {lean}"
     assert "1b" in lean.lower(), f"8GB tier should recommend 1B-class weights, got: {lean}"
     assert standard == high == "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
+
+
+def test_windows_memory_telemetry(monkeypatch):
+    """Verify Windows ctypes memory branch works seamlessly without psutil."""
+    import app.core.system.hardware as hw
+    import app.core.system.memory as mem
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(mem, "_PSUTIL_AVAILABLE", False)
+
+    # Test trim_memory doesn't raise
+    mem.trim_memory()
+
+    # Test get_memory_usage_mb fallback
+    rss = mem.get_memory_usage_mb()
+    assert isinstance(rss, float)
+
+    # Test get_system_memory_info under win32
+    info = hw.get_system_memory_info()
+    assert "total_gb" in info
+    assert info["total_gb"] > 0

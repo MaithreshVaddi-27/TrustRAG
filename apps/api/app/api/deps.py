@@ -5,7 +5,7 @@ TRUSTRAG API — dependency injection helpers.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from bson import ObjectId
 from fastapi import Depends, Header, HTTPException, status
@@ -64,7 +64,7 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> Mappin
     if not user.get("is_active", True):
         raise AuthenticationError("Inactive account", detail="Your account has been deactivated")
 
-    return user
+    return cast(Mapping[str, Any], user)
 
 
 # ─── Service-to-Service Authentication ────────────────────────────────────────

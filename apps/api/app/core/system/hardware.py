@@ -195,46 +195,75 @@ def get_system_memory_info() -> dict[str, Any]:
     total_bytes = 0
     free_bytes = 0
 
-    try:
-        # Standard POSIX memory sizing
-        page_size = os.sysconf("SC_PAGE_SIZE")
-        phys_pages = os.sysconf("SC_PHYS_PAGES")
-        total_bytes = page_size * phys_pages
-    except Exception:
-        total_bytes = 8 * (1024**3)  # Safe default 8GB
+    if sys.platform == "win32":
+        try:
+            import ctypes
 
-    # macOS free memory calculation via vm_stat
-    if sys.platform == "darwin":
-        try:
-            vm = subprocess.check_output(
-                ["/usr/sbin/vm_stat"], stderr=subprocess.DEVNULL, timeout=5
-            ).decode()
-            v_page_size = 4096
-            free_pages = 0
-            speculative_pages = 0
-            for line in vm.splitlines():
-                if "page size of" in line:
-                    v_page_size = int(line.split()[7])
-                elif "Pages free:" in line:
-                    free_pages = int(line.split(":")[1].strip().rstrip("."))
-                elif "Pages speculative:" in line:
-                    speculative_pages = int(line.split(":")[1].strip().rstrip("."))
-            free_bytes = (free_pages + speculative_pages) * v_page_size
+            class _MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            stat = _MEMORYSTATUSEX()
+            stat.dwLength = ctypes.sizeof(_MEMORYSTATUSEX)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+                total_bytes = stat.ullTotalPhys
+                free_bytes = stat.ullAvailPhys
         except Exception:
-            logger.debug("vm_stat failed, estimating free memory as 25% of total")
-            free_bytes = int(total_bytes * 0.25)
-    # Linux free memory via /proc/meminfo
-    elif sys.platform.startswith("linux") and os.path.exists("/proc/meminfo"):
-        try:
-            with open("/proc/meminfo") as f:
-                for line in f:
-                    if line.startswith("MemAvailable:"):
-                        free_bytes = int(line.split()[1]) * 1024
-                        break
-        except Exception:
-            logger.debug("/proc/meminfo read failed, estimating free memory as 25% of total")
-            free_bytes = int(total_bytes * 0.25)
+            logger.debug("GlobalMemoryStatusEx failed, falling back to estimation")
     else:
+        try:
+            # Standard POSIX memory sizing
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            phys_pages = os.sysconf("SC_PHYS_PAGES")
+            total_bytes = page_size * phys_pages
+        except Exception:
+            total_bytes = 8 * (1024**3)  # Safe default 8GB
+
+        # macOS free memory calculation via vm_stat
+        if sys.platform == "darwin":
+            try:
+                vm = subprocess.check_output(
+                    ["/usr/sbin/vm_stat"], stderr=subprocess.DEVNULL, timeout=5
+                ).decode()
+                v_page_size = 4096
+                free_pages = 0
+                speculative_pages = 0
+                for line in vm.splitlines():
+                    if "page size of" in line:
+                        v_page_size = int(line.split()[7])
+                    elif "Pages free:" in line:
+                        free_pages = int(line.split(":")[1].strip().rstrip("."))
+                    elif "Pages speculative:" in line:
+                        speculative_pages = int(line.split(":")[1].strip().rstrip("."))
+                free_bytes = (free_pages + speculative_pages) * v_page_size
+            except Exception:
+                logger.debug("vm_stat failed, estimating free memory as 25% of total")
+                free_bytes = int(total_bytes * 0.25)
+        # Linux free memory via /proc/meminfo
+        elif sys.platform.startswith("linux") and os.path.exists("/proc/meminfo"):
+            try:
+                with open("/proc/meminfo") as f:
+                    for line in f:
+                        if line.startswith("MemAvailable:"):
+                            free_bytes = int(line.split()[1]) * 1024
+                            break
+            except Exception:
+                logger.debug("/proc/meminfo read failed, estimating free memory as 25% of total")
+                free_bytes = int(total_bytes * 0.25)
+        else:
+            free_bytes = int(total_bytes * 0.3)
+
+    if total_bytes <= 0:
+        total_bytes = 8 * (1024**3)
         free_bytes = int(total_bytes * 0.3)
 
     total_gb = round(total_bytes / (1024**3), 2)

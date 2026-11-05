@@ -15,6 +15,7 @@ import re
 import threading
 import unicodedata
 from enum import StrEnum
+from typing import cast
 
 # ─── Contraction Mapping ──────────────────────────────────────────────────────
 
@@ -732,7 +733,7 @@ def _get_stemmer() -> PorterStemmer:
     """Return the current thread's PorterStemmer, creating it on first use."""
     if not hasattr(_local, "stemmer"):
         _local.stemmer = PorterStemmer()
-    return _local.stemmer
+    return cast(PorterStemmer, _local.stemmer)
 
 
 def stem_word(word: str) -> str:

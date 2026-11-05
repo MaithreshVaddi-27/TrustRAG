@@ -93,7 +93,7 @@ async def _is_locked_out(email: str, client_ip: str | None = None) -> bool:
     if doc.get("window_expires") and doc["window_expires"] < now_dt:
         await coll.delete_one({"_id": doc["_id"]})
         return False
-    return doc.get("count", 0) >= settings.login_max_attempts
+    return bool(doc.get("count", 0) >= settings.login_max_attempts)
 
 
 async def _record_failed_login(email: str, client_ip: str | None = None) -> None:

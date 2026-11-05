@@ -359,8 +359,7 @@ def _coerce_segment_list(value: Any) -> list[int]:
                 except ValueError:
                     continue
     # De-duplicate, preserve order.
-    seen: set[int] = set()
-    deduped = [n for n in out if not (n in seen or seen.add(n))]
+    deduped = list(dict.fromkeys(out))
     if isinstance(value, list) and deduped != list(value):
         logger.debug("Coerced NLI supporting_segments", raw=value, coerced=deduped)
     return deduped

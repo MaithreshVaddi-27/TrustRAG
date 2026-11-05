@@ -37,10 +37,8 @@ def trim_memory() -> None:
     """
     Force Python garbage collection and release freed memory back to the OS.
 
-    On Linux containers (such as Render 512MB free tier), glibc's memory allocator
-    often retains freed pages in the process arena instead of returning them to the kernel.
-    Invoking malloc_trim(0) forces glibc to release unused heap memory back to the OS,
-    preventing artificial memory creep and OOM kills.
+    - Linux: glibc malloc_trim(0) forces releasing heap pages.
+    - Windows: psapi.EmptyWorkingSet trims unreferenced working set pages.
     """
     gc.collect()
     if sys.platform.startswith("linux"):
@@ -51,32 +49,73 @@ def trim_memory() -> None:
             libc.malloc_trim(0)
         except Exception as exc:
             logger.debug("malloc_trim skipped", error=str(exc))
+    elif sys.platform == "win32":
+        try:
+            import ctypes
+
+            handle = ctypes.windll.kernel32.GetCurrentProcess()
+            ctypes.windll.psapi.EmptyWorkingSet(handle)
+        except Exception as exc:
+            logger.debug("EmptyWorkingSet skipped", error=str(exc))
 
 
 def get_memory_usage_mb() -> float:
     """Return the CURRENT resident set size (RSS) memory in megabytes.
 
-    Uses psutil when available (accurate current RSS). Falls back to resource.ru_maxrss
-    which reports PEAK RSS, not current — less accurate for guard decisions.
+    Uses psutil when available (accurate current RSS). Falls back to native OS
+    telemetry (psapi.GetProcessMemoryInfo on Windows, resource.ru_maxrss on POSIX).
     """
     if _PSUTIL_AVAILABLE:
         try:
             process = psutil.Process()
             rss_bytes = process.memory_info().rss
-            return round(rss_bytes / (1024 * 1024), 2)
+            return float(round(rss_bytes / (1024 * 1024), 2))
         except Exception as exc:
-            logger.debug("psutil RSS read failed; falling back to resource", error=str(exc))
+            logger.debug("psutil RSS read failed; falling back to native telemetry", error=str(exc))
+
+    # Windows native fallback via psapi.GetProcessMemoryInfo
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+                _fields_ = [
+                    ("cb", wintypes.DWORD),
+                    ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
+                ]
+
+            counters = _PROCESS_MEMORY_COUNTERS()
+            counters.cb = ctypes.sizeof(_PROCESS_MEMORY_COUNTERS)
+            handle = ctypes.windll.kernel32.GetCurrentProcess()
+            if ctypes.windll.psapi.GetProcessMemoryInfo(
+                handle, ctypes.byref(counters), counters.cb
+            ):
+                return round(counters.WorkingSetSize / (1024 * 1024), 2)
+        except Exception:
+            return 0.0
 
     # Fallback: resource.ru_maxrss (PEAK RSS, not current)
-    try:
-        usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        # On macOS ru_maxrss is in bytes, on Linux it is in kilobytes
-        if sys.platform == "darwin":
-            return round(usage / (1024 * 1024), 2)
-        return round(usage / 1024, 2)
-    except Exception:
-        logger.debug("psutil RSS read failed; falling back to resource")
-        return 0.0
+    if resource is not None:
+        try:
+            usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            # On macOS ru_maxrss is in bytes, on Linux it is in kilobytes
+            if sys.platform == "darwin":
+                return round(usage / (1024 * 1024), 2)
+            return round(usage / 1024, 2)
+        except Exception:
+            logger.debug("resource.getrusage read failed")
+            return 0.0
+
+    return 0.0
 
 
 def check_and_enforce_memory_guard(max_rss_mb: float = 3000.0) -> dict[str, Any]:

@@ -191,7 +191,7 @@ async def fanout_retrieve(
     succeeded: list[list[dict[str, Any]]] = []
     failed = 0
     for result in branch_results:
-        if isinstance(result, Exception):
+        if isinstance(result, BaseException):
             failed += 1
             logger.warning("Fan-out retrieval branch failed", error=str(result))
         else:

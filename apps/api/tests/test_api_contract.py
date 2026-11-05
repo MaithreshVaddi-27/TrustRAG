@@ -252,7 +252,7 @@ def test_readme_quickstart_reads_the_token_from_login_not_register():
     """
     import re
 
-    text = _readme().read_text()
+    text = _readme().read_text(encoding="utf-8")
     # Find whichever endpoint the TOKEN=$( curl ... ) line is pointed at.
     token_lines = [
         line for line in text.splitlines() if "access_token" in line and "curl" not in line
@@ -277,7 +277,7 @@ def test_readme_registration_payload_matches_the_schema(openapi):
     """The README sent {"email","password","name"}; the schema requires
     full_name. That mismatch is a guaranteed 422 for every new user."""
     readme = _readme()
-    text = readme.read_text()
+    text = readme.read_text(encoding="utf-8")
 
     fields = set(openapi["components"]["schemas"]["UserRegister"]["properties"])
     assert "full_name" in fields, f"schema no longer has full_name: {fields}"
@@ -305,7 +305,7 @@ def test_readme_example_password_satisfies_complexity():
 
     from app.api.v1.schemas.auth import _validate_password_complexity
 
-    text = _readme().read_text()
+    text = _readme().read_text(encoding="utf-8")
     passwords = set(re.findall(r'"password"\s*:\s*"([^"]+)"', text))
     assert passwords, "no example password found in README"
     for pwd in passwords:
@@ -327,7 +327,7 @@ def test_readme_documented_endpoints_all_exist(openapi):
 
     from fastapi.testclient import TestClient
 
-    text = _readme().read_text()
+    text = _readme().read_text(encoding="utf-8")
     schema_paths = set(openapi["paths"])
 
     def _normalise(p: str) -> str:
@@ -383,7 +383,13 @@ def test_analysis_status_vocabulary_matches_what_is_actually_written():
 
     from app.api.v1.schemas.analysis import AnalysisResponse
 
-    service_src = pathlib.Path("app/services/analysis_service.py").read_text()
+    service_path = (
+        pathlib.Path(__file__).resolve().parent.parent
+        / "app"
+        / "services"
+        / "analysis_service.py"
+    )
+    service_src = service_path.read_text(encoding="utf-8")
     written = set(re.findall(r'"status":\s*"([a-z_]+)"', service_src))
     written |= set(re.findall(r'stored_status = "([a-z_]+)"', service_src))
     assert written, "could not find any status values written by the service"
