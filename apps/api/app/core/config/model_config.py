@@ -188,6 +188,22 @@ class ModelConfig:
     def llm_max_retries(self) -> int:
         return int(self._get("llm", "max_retries"))
 
+    @property
+    def deep_reasoning_mode(self) -> bool:
+        env_val = os.environ.get("DEEP_REASONING_MODE")
+        if env_val is not None:
+            return _parse_bool(env_val)
+        val = self._get("llm", "deep_reasoning_mode", required=False)
+        return _parse_bool(val, False)
+
+    @property
+    def deep_reasoning_model(self) -> str:
+        env_val = os.environ.get("DEEP_REASONING_MODEL")
+        if env_val:
+            return env_val
+        val = self._get("llm", "deep_reasoning_model", required=False)
+        return str(val or "qwen3:1.7b")
+
     # ── Embedding ─────────────────────────────────────────────────────────
     # Single embedding engine: ONNX BGE (torch-free). `embedding.model` in
     # models.yaml is the sole source of truth — there is no provider choice,
@@ -318,7 +334,11 @@ class ModelConfig:
     # ── Reranker ─────────────────────────────────────────────────────────
     @property
     def reranker_enabled(self) -> bool:
-        return bool(self._get("reranker", "enabled"))
+        env_val = os.environ.get("RERANKER_ENABLED")
+        if env_val is not None:
+            return _parse_bool(env_val)
+        val = self._get("reranker", "enabled", required=False)
+        return _parse_bool(val, False)
 
     @property
     def reranker_model(self) -> str:

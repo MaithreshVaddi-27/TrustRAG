@@ -108,9 +108,14 @@ class ONNXCrossEncoder:
 
             settings = get_settings()
             _offline = os.environ.get("HF_HUB_OFFLINE", "").strip() == "1"
+            _rev = (
+                settings.hf_reranker_tokenizer_revision
+                if "ms-marco-MiniLM" in self.tokenizer_name
+                else settings.hf_tokenizer_revision
+            )
             self._tokenizer = AutoTokenizer.from_pretrained(
                 self.tokenizer_name,
-                revision=settings.hf_tokenizer_revision,
+                revision=_rev,
                 use_fast=True,
                 local_files_only=_offline,
             )

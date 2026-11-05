@@ -53,6 +53,9 @@ def normalize_llm_content(raw: Any) -> str:
 def extract_json_substring(text: str) -> str:
     """Safely extract valid JSON payload from an LLM output string."""
     cleaned = text.strip()
+    # Strip reasoning/scratchpad blocks from thinking models before extracting JSON
+    if "<think>" in cleaned.lower():
+        cleaned = re.sub(r"<think>[\s\S]*?</think>", "", cleaned, flags=re.IGNORECASE).strip()
     if "```" in cleaned:
         match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, re.IGNORECASE)
         if match:

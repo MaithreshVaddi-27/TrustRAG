@@ -221,6 +221,7 @@ def serialize_analysis(doc: Mapping[str, Any]) -> AnalysisResponse:
         query=doc.get("query", ""),
         status=doc.get("status", "pending"),
         answer=doc.get("answer"),
+        answer_cited=doc.get("answer_cited"),
         reliability=ReliabilitySummary(
             score=rel.get("score"),
             status=rel.get("status", "PENDING"),

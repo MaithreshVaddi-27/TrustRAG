@@ -282,10 +282,17 @@ ABSTAIN
 </action>
 <format>
 Short markdown bullets. Cite every sentence. No preamble.
-Example:
-Premise says tokens expire after 30 days. Question: retention period?
+Example 1:
+Premise: Backups expire after 7 days. [Segment 1]
+Question: How long do backups remain?
 Answer:
-- Tokens expire after 30 days. [Segment 1]
+- Backups expire after 7 days. [Segment 1]
+
+Example 2:
+Premise: Employees receive 6 months parental leave. [Segment 1]
+Question: How much parental leave do contractors receive?
+Answer:
+ABSTAIN
 </format>
 <tone>
 Plain and direct.

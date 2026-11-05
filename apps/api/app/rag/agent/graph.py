@@ -1109,6 +1109,10 @@ _REWRITE_META_PREFIXES = (
     "rewritten search query:",
     "search query:",
     "expanded query:",
+    "expand:",
+    "rewrite:",
+    "query:",
+    "search:",
 )
 
 
@@ -1123,6 +1127,16 @@ def _sanitize_rewritten_query(raw: str | None) -> str:
     if _looks_like_instruction_echo(text):
         return ""
     return text
+
+
+def _normalize_query_tokens(text: str) -> set[str]:
+    return set(re.findall(r"\b\w+\b", (text or "").lower()))
+
+
+def _is_effectively_identical_query(original: str, rewritten: str) -> bool:
+    orig_tokens = _normalize_query_tokens(original)
+    rewritten_tokens = _normalize_query_tokens(rewritten)
+    return not (rewritten_tokens - orig_tokens)
 
 
 # Small local models sometimes echo the rewrite *instructions* instead of a
@@ -1214,6 +1228,7 @@ async def recovery_node(state: AgentState) -> AgentState:
         # Snapshot the refused answer too: the empty-rewrite guard below needs
         # to know the model already abstained on these chunks.
         prior_answer = state.get("answer")
+        prior_diagnosis = state.get("diagnosis_type")
 
         # Clear prior failed/abstained answer and claims so recovery generates and verifies freshly
         state["answer"] = None
@@ -1227,13 +1242,13 @@ async def recovery_node(state: AgentState) -> AgentState:
         state["reliability_score"] = None
 
         # DIAGNOSE: Map diagnosis_type to recovery strategy
-        strategy = _select_recovery_strategy(state, cfg)
+        strategy = _select_recovery_strategy(state, cfg, diagnosis=prior_diagnosis)
 
         logger.info(
             "Triggering adaptive recovery loop",
             attempt=state["attempts"],
             strategy=strategy,
-            diagnosis=state.get("diagnosis_type"),
+            diagnosis=prior_diagnosis,
         )
 
         # Track start time for latency budget
@@ -1302,7 +1317,7 @@ async def recovery_node(state: AgentState) -> AgentState:
     )
 
 
-def _select_recovery_strategy(state: AgentState, cfg) -> str:
+def _select_recovery_strategy(state: AgentState, cfg, diagnosis: str | None = None) -> str:
     """Select recovery strategy based on diagnosis type.
 
     Mapping per UPGRADE_PLAN §8:
@@ -1312,7 +1327,8 @@ def _select_recovery_strategy(state: AgentState, cfg) -> str:
     - GENERATION_ERROR → regenerate
     - Fallback to config priority for undiagnosed failures
     """
-    diagnosis = state.get("diagnosis_type")
+    if diagnosis is None:
+        diagnosis = state.get("diagnosis_type")
 
     # Direct mapping from diagnosis to strategy
     if diagnosis in ("RETRIEVAL_FAILURE", "RETRIEVAL_OUTAGE", "RETRIEVAL_ERROR"):
@@ -1396,13 +1412,14 @@ against the newly served segments.</loop>
         new_query = normalize_llm_content(response.content)
         new_query = _sanitize_rewritten_query(str(new_query))
 
-        if not new_query or len(new_query) < 3:
-            # Small local models sometimes return an empty rewrite.
-            # An empty query would waste a full retrieval+generation
-            # round on unranked content — keep the original instead.
+        if not new_query or len(new_query) < 3 or _is_effectively_identical_query(state["query"], new_query):
+            # Small local models sometimes return an empty rewrite or token-equivalent text.
+            # An empty or identical query would waste a full retrieval+generation
+            # round on identical content — keep the original instead.
             logger.warning(
-                "Query rewrite returned empty text, keeping original query",
+                "Query rewrite returned empty or uninformative text, keeping original query",
                 original=state["query"],
+                rewritten=new_query,
             )
             if is_refusal_answer(prior_answer) and state.get("chunks"):
                 # ...and the model already refused these exact chunks:
@@ -1420,7 +1437,7 @@ against the newly served segments.</loop>
                     state["analysis_id"],
                     "recovery.regenerate",
                     {
-                        "message": "Empty rewrite on already-refused evidence — "
+                        "message": "Empty or identical rewrite on already-refused evidence — "
                         "reusing saved segments without new retrieval spend",
                     },
                 )
@@ -1461,6 +1478,8 @@ async def _execute_re_retrieve(state: AgentState, prior_answer: str | None, cfg)
     max_context_chunks = caps["max_context_chunks"]
     if len(state.get("chunks") or []) >= max_context_chunks:
         state["recovery_strategy"] = "regenerate"
+        if is_refusal_answer(prior_answer):
+            state["answer"] = prior_answer
         logger.info(
             "Recovery downgraded re_retrieve → regenerate (evidence sufficient)",
             chunks=len(state.get("chunks") or []),
