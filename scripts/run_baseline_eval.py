@@ -313,6 +313,14 @@ def run_query(args: argparse.Namespace, token: str, row: dict, eval_profile: dic
     scored["outcome_match"] = status == row.get("expected_outcome")
     scored["claims_with_evidence_rate"] = (linked / len(claims)) if claims else None
     scored["evidence_count"] = len(evidence)
+    # Keep the actual model answer and served evidence in the benchmark artifact.
+    # RAGAS must score this run, not the dataset's gold proxy fields.
+    scored["evaluation_sample"] = {
+        "user_input": row["query"],
+        "response": answer_text,
+        "retrieved_contexts": evidence_texts,
+        "reference": " ".join(row.get("gold_answer_keywords", [])),
+    }
     scored["wall_ms"] = wall_ms
     scored["trace_span_ms"] = trace_span_ms
     scored["timed_out"] = timed_out

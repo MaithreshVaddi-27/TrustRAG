@@ -55,11 +55,13 @@ docs/
 - [**System Architecture (`architecture/architecture.md`)**](architecture/architecture.md): LangGraph agent loop, MCP tools, hybrid retrieval (dense + sparse RRF), claim decomposition → NLI verification → verdict pipeline.
 - [**RAG Reference (`architecture/RAG_ARCHITECTURE.md`)**](architecture/RAG_ARCHITECTURE.md): pipeline flow, LangGraph state, ingestion/retrieval/generation/verification internals, data stores, frontend architecture.
 - [**Decision Log (`architecture/decision-log.md`)**](architecture/decision-log.md): ADRs covering providers, storage, ports, embeddings (local-only BGE, ONNX), NLI parsing, BM25+IDF, reranker cap, RapidOCR, chunking, citations, claim retrieval, router, lifecycle, recovery, security, observability.
+- [**Laya ROI Assessment (`architecture/LAYA_ROI_AUDIT_REPORT.md`)**](architecture/LAYA_ROI_AUDIT_REPORT.md): read-only assessment of typed-decision models for retrieval and recovery.
 
 ### 3. Security
 
 - [**Security Controls (`security/security-controls.md`)**](security/security-controls.md): JWT, bcrypt, JTI revocation, service-token KB/user binding, login lockout (5/900s), EICAR + best-effort clamd upload AV, 24-test red-team suite.
 - [**Threat Model (`security/threat-model.md`)**](security/threat-model.md): assets, STRIDE threats T-01…T-11, mitigations, residual risks, out-of-scope items.
+- [**Guardrail Options Review (`security/ONNX_GUARDRAIL_OPTIONS_REVIEW.md`)**](security/ONNX_GUARDRAIL_OPTIONS_REVIEW.md): evidence-gated choice of deterministic defenses now and a future ONNX classifier pilot.
 
 ### 4. Evaluation
 

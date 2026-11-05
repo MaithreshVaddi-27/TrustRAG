@@ -680,3 +680,169 @@ async def test_finalize_keeps_trusted_answer(monkeypatch):
     assert "30 days" in set_arg["answer"]
     assert "[Segment" not in set_arg["answer"]
     assert "[Segment 1]" in set_arg["answer_cited"]
+
+
+@pytest.mark.parametrize(
+    ("failure", "provider", "model", "expected"),
+    [
+        (
+            "connection refused: internal topology detail",
+            "llama_cpp",
+            "test.gguf",
+            "Inference server connection error. Ensure llama_cpp server is running and accessible.",
+        ),
+        (
+            "model not found: internal registry detail",
+            "ollama",
+            "missing-model",
+            (
+                "Model 'missing-model' not found on ollama server. "
+                "Please ensure the model is pulled or loaded."
+            ),
+        ),
+        (
+            "request timed out after internal retry detail",
+            "mlx",
+            "test-model",
+            (
+                "Inference timed out. The local model may still be loading "
+                "or system is under heavy load."
+            ),
+        ),
+        (
+            "credential=secret-internal-detail",
+            None,
+            None,
+            "Pipeline execution error (RuntimeError). Check server logs.",
+        ),
+    ],
+)
+async def test_pipeline_failure_persists_safe_message(
+    monkeypatch, failure, provider, model, expected
+):
+    """Pipeline failures expose a stable operator-safe message, never exception text."""
+    from app.services import analysis_service as svc
+
+    async def _failing_flow(**_kwargs):
+        raise RuntimeError(failure)
+
+    coll = MagicMock()
+    coll.update_one = AsyncMock()
+    trace = AsyncMock()
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _failing_flow)
+    monkeypatch.setattr(svc, "get_collection", lambda _name: coll)
+    monkeypatch.setattr(svc, "add_trace_event", trace)
+    monkeypatch.setattr(svc.memory_mod, "trim_memory", lambda: None)
+    monkeypatch.setattr(
+        "app.core.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
+    )
+
+    await svc.run_analysis_pipeline(
+        analysis_id_str="507f1f77bcf86cd799439011",
+        kb_id_str="507f1f77bcf86cd799439012",
+        query="What is the retention policy?",
+        llm_provider=provider,
+        llm_model=model,
+    )
+
+    set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]
+    assert set_arg["status"] == "failed"
+    assert set_arg["error_message"] == expected
+    assert failure not in set_arg["error_message"]
+    assert trace.await_args_list[-1].args[1] == "analysis.failed"
+    assert trace.await_args_list[-1].args[2]["message"] == expected
+
+
+async def test_finalize_abstained_replaces_bare_token(monkeypatch):
+    """A bare abstention token is never persisted as user-facing prose."""
+    from app.services import analysis_service as svc
+
+    async def _fake_flow(**_kwargs):
+        return {
+            "answer": "ABSTAIN",
+            "claims": [],
+            "diagnosis_type": "LOW_COVERAGE",
+            "diagnosis_failures": ["Insufficient evidence"],
+            "reliability_score": 0.2,
+        }
+
+    coll = MagicMock()
+    coll.update_one = AsyncMock()
+    trace = AsyncMock()
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr(svc, "get_collection", lambda _name: coll)
+    monkeypatch.setattr(svc, "add_trace_event", trace)
+    monkeypatch.setattr(svc, "memory_mod", SimpleNamespace(trim_memory=lambda: None))
+    monkeypatch.setattr(
+        svc,
+        "verdict_from_state",
+        lambda _state, _thresholds: SimpleNamespace(
+            reliability_status=ReliabilityStatus.ABSTAINED,
+            reliability_score=0.2,
+            diagnosis_type=DiagnosisType.LOW_COVERAGE,
+            diagnosis_failures=["Insufficient evidence"],
+        ),
+    )
+    monkeypatch.setattr(
+        "app.core.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
+    )
+
+    await svc.run_analysis_pipeline(
+        analysis_id_str="507f1f77bcf86cd799439011",
+        kb_id_str="507f1f77bcf86cd799439012",
+        query="What is the retention policy?",
+    )
+
+    set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]
+    assert set_arg["status"] == "abstained"
+    assert set_arg["answer"] == svc._UNVERIFIED_ANSWER
+    assert set_arg["reliability"] == {"score": 0.2, "status": "ABSTAINED"}
+    assert trace.await_args_list[-1].args[1] == "analysis.abstained"
+    assert trace.await_args_list[-1].args[2] == {
+        "message": "Agent reasoning resulted in abstention"
+    }
+
+
+async def test_finalize_retrieval_outage_marks_analysis_failed(monkeypatch):
+    """A retrieval outage is distinct from an evidence-based abstention."""
+    from app.services import analysis_service as svc
+
+    async def _fake_flow(**_kwargs):
+        return {
+            "answer": "",
+            "diagnosis_type": "RETRIEVAL_OUTAGE",
+            "diagnosis_failures": ["Qdrant connection unavailable"],
+        }
+
+    coll = MagicMock()
+    coll.update_one = AsyncMock()
+    trace = AsyncMock()
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr(svc, "get_collection", lambda _name: coll)
+    monkeypatch.setattr(svc, "add_trace_event", trace)
+    monkeypatch.setattr(svc, "memory_mod", SimpleNamespace(trim_memory=lambda: None))
+    monkeypatch.setattr(
+        "app.core.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
+    )
+
+    await svc.run_analysis_pipeline(
+        analysis_id_str="507f1f77bcf86cd799439011",
+        kb_id_str="507f1f77bcf86cd799439012",
+        query="What is the retention policy?",
+    )
+
+    set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]
+    assert set_arg["status"] == "failed"
+    assert set_arg["answer"] == (
+        "The knowledge base search service is temporarily unavailable, "
+        "so I could not search for evidence. Please wait a few minutes "
+        "and try again — this is not a finding of 'no evidence'."
+    )
+    assert set_arg["error_message"] == "Qdrant connection unavailable"
+    assert set_arg["reliability"] == {"score": 0.0, "status": "FAILED"}
+    assert set_arg["diagnosis"] == {
+        "type": "RETRIEVAL_OUTAGE",
+        "failures": ["Qdrant connection unavailable"],
+    }
+    assert trace.await_args_list[-1].args[1] == "analysis.outage"
+    assert trace.await_args_list[-1].args[2] == {"message": "Qdrant connection unavailable"}

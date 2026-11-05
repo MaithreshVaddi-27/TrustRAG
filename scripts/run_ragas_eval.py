@@ -13,37 +13,42 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 PROFILE_PATH = ROOT / "apps" / "api" / "config" / "evaluation" / "local-providers.yaml"
-DATASET_DEFAULT = ROOT / "apps" / "api" / "tests" / "eval" / "datasets" / "baseline_v1.jsonl"
 
 
-async def run_metrics(rows: list[dict], judge: object) -> list[dict]:
-    eligible = [
-        row
-        for row in rows
-        if row.get("gold_evidence") and row.get("gold_answer_keywords")
-    ]
-    if not eligible:
-        return [
-            {"query_id": row["id"], "faithfulness": None, "context_recall": None}
-            for row in rows
-        ]
+def load_samples(results_path: Path) -> tuple[dict, list[dict]]:
+    """Load actual answers and contexts captured by run_baseline_eval.py."""
+    results = json.loads(results_path.read_text(encoding="utf-8"))
+    queries = results.get("queries")
+    if not isinstance(queries, list):
+        raise ValueError("Baseline result must contain a queries array")
+
+    samples = []
+    required = {"user_input", "response", "retrieved_contexts", "reference"}
+    for row in queries:
+        sample = row.get("evaluation_sample")
+        if not isinstance(sample, dict) or not required <= sample.keys():
+            raise ValueError(
+                "Baseline result lacks a complete evaluation_sample; rerun "
+                "scripts/run_baseline_eval.py to capture actual answers and retrieved contexts."
+            )
+        samples.append({"query_id": row.get("query_id", "unknown"), **sample})
+    return results, samples
+
+
+async def run_metrics(samples: list[dict], judge: object) -> list[dict]:
     from ragas.metrics.collections import ContextRecall, Faithfulness
 
     faithfulness = Faithfulness(llm=judge)
     context_recall = ContextRecall(llm=judge)
     scores = []
-    for row in rows:
-        contexts = [item["snippet"] for item in row.get("gold_evidence", [])]
-        reference = " ".join(row.get("gold_answer_keywords", []))
-        if not contexts or not reference:
-            scores.append({"query_id": row["id"], "faithfulness": None, "context_recall": None})
+    for sample in samples:
+        query_id = sample["query_id"]
+        response = sample.get("response")
+        contexts = sample.get("retrieved_contexts")
+        reference = sample.get("reference")
+        if not response or not isinstance(contexts, list) or not contexts or not reference:
+            scores.append({"query_id": query_id, "faithfulness": None, "context_recall": None})
             continue
-        sample = {
-            "user_input": row["query"],
-            "response": reference,
-            "retrieved_contexts": contexts,
-            "reference": reference,
-        }
         faith = await faithfulness.ascore(
             user_input=sample["user_input"],
             response=sample["response"],
@@ -55,19 +60,28 @@ async def run_metrics(rows: list[dict], judge: object) -> list[dict]:
             reference=sample["reference"],
         )
         scores.append(
-            {"query_id": row["id"], "faithfulness": faith.value, "context_recall": recall.value}
+            {"query_id": query_id, "faithfulness": faith.value, "context_recall": recall.value}
         )
-        print(f"{row['id']}: faithfulness={faith.value} context_recall={recall.value}")
+        print(f"{query_id}: faithfulness={faith.value} context_recall={recall.value}")
     return scores
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", default=str(DATASET_DEFAULT))
+    parser.add_argument(
+        "--baseline-result",
+        required=True,
+        help="JSON artifact produced by scripts/run_baseline_eval.py",
+    )
     parser.add_argument("--out", required=True, help="Output JSON path")
     parser.add_argument("--base-url", help="Override the local OpenAI-compatible judge URL")
     parser.add_argument("--model", help="Override the local judge model name")
     args = parser.parse_args()
+
+    try:
+        baseline, samples = load_samples(Path(args.baseline_result))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        parser.error(str(exc))
 
     os.environ["RAGAS_DO_NOT_TRACK"] = "true"
     try:
@@ -92,15 +106,13 @@ def main() -> int:
     model_name = args.model or profile["model"]
     client = AsyncOpenAI(api_key="local-only", base_url=base_url)
     judge = llm_factory(model_name, provider="openai", client=client)
-    rows = [
-        json.loads(line)
-        for line in Path(args.dataset).read_text(encoding="utf-8").splitlines()
-    ]
-    scores = asyncio.run(run_metrics(rows, judge))
+    scores = asyncio.run(run_metrics(samples, judge))
 
     valid = [row for row in scores if row["faithfulness"] is not None]
     output = {
-        "dataset": Path(args.dataset).name,
+        "baseline_result": str(Path(args.baseline_result)),
+        "dataset": baseline.get("dataset"),
+        "config_version": baseline.get("config_version"),
         "judge": {"provider": "local OpenAI-compatible", "model": model_name, "base_url": base_url},
         "metrics": {
             "faithfulness": (
@@ -114,8 +126,8 @@ def main() -> int:
         },
         "queries": scores,
         "limitations": (
-            "Gold snippets and keywords are proxies; validate Ragas scores "
-            "on a human-labeled set."
+            "References are gold keywords rather than full human-authored answers; "
+            "validate Ragas scores on a human-labeled set."
         ),
     }
     output_path = Path(args.out)
