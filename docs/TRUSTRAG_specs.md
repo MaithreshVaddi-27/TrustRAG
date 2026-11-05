@@ -89,7 +89,7 @@ The portfolio differentiator is the **reliability → diagnosis → recovery loo
 
 - LangChain
 - LangGraph (StateGraph for adaptive recovery loop)
-- Multi-provider LLMs: llama.cpp (port 8080, default `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`) / Ollama (port 11434, default `gemma3:1b`) / MLX (port 8090, Apple Silicon, optional) + `langchain-google-genai` (cloud, `cloud` extra)
+- Multi-provider LLMs: llama.cpp (port 9931, default `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`) / Ollama (port 11434, default `gemma3:1b`) / MLX (port 8080, Apple Silicon, optional) + `langchain-google-genai` (cloud, `cloud` extra)
 - Local embeddings: `BAAI/bge-small-en-v1.5` via ONNX Runtime only (torch-free, sole embedding engine, `onnxruntime` provider, no HuggingFace/sentence-transformers at runtime)
 - Reranker: `cross-encoder/ms-marco-MiniLM-L-6-v2` ONNX int8 (off by default, `reranker.enabled: false`)
 - OCR fallback: RapidOCR-ONNX (per-page, <50 native chars triggers)
@@ -169,9 +169,9 @@ Provider choice must be documented and verified at deployment time because free-
 
 **Local LLM Engines (default, no cloud keys required)**
 
-- llama.cpp (`llama-server` on port 8080): `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M` default
+- llama.cpp (`llama-server` on port 9931): `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M` default
 - Ollama (port 11434): `gemma3:1b` default
-- MLX (port 8090, Apple Silicon only): `mlx-community/LFM2.5-1.2B-4bit` default
+- MLX (port 8080, Apple Silicon only): `mlx-community/LFM2.5-1.2B-4bit` default
 - All use LangChain-compatible interfaces via `app/llm/local_llm.py`
 - Hardware auto-detection (`app/core/system/hardware.py`) generates optimal launch flags
 

@@ -27,6 +27,7 @@ from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field
 
 from app.core.config.model_config import get_model_config
+from app.core.config.settings import _DEFAULT_LLAMACPP_BASE_URL, _DEFAULT_MLX_BASE_URL
 from app.core.observability.logging import get_logger
 from app.core.security.exceptions import ConfigurationError, LLMUnavailableError
 from app.core.system.concurrency import get_global_semaphore
@@ -429,7 +430,7 @@ class ChatLlamaCppClient(BaseChatModel):
     # NOTE: Field defaults mirror models.yaml (llm.model_llamacpp,
     # llm.temperature, llm.top_p, llm.max_output_tokens). Production code must
     # pass model explicitly from get_model_config().llm_model_for("llama_cpp").
-    base_url: str = Field(default="http://127.0.0.1:8080/v1")
+    base_url: str = Field(default=_DEFAULT_LLAMACPP_BASE_URL)
     model: str = Field(default="LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M")
     temperature: float = Field(default=0.2)
     top_p: float = Field(default=0.9)
@@ -548,7 +549,7 @@ class ChatLlamaCppClient(BaseChatModel):
         except httpx.ConnectError as exc:
             raise ConfigurationError(
                 f"Cannot connect to llama.cpp server at '{self.base_url}'. "
-                f"Ensure 'llama-server' is running on port 8080 or your configured URL.",
+                f"Ensure 'llama-server' is running on port 9931 or your configured URL.",
                 detail=str(exc),
             ) from exc
         except Exception as exc:
@@ -651,12 +652,12 @@ async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 
     elif norm == "mlx":
         probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
         start_hint = (
-            "Start it with 'mlx_lm.server --model <mlx-community/...-4bit>' "
+            "Start it with './scripts/start_mlx_server.sh' or 'mlx_lm.server --model <mlx-community/...-4bit> --port 8080' "
             "(Apple Silicon only; pip install mlx-lm)."
         )
     else:
         probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
-        start_hint = "Start it with './scripts/start_local_llm.sh' (llama-server on :8080)."
+        start_hint = "Start it with './scripts/start_local_llm.sh' (llama-server on :9931)."
     try:
         res = await _fetch_json_with_retry(probe_url, timeout=timeout)
         if res.status_code >= 500:
@@ -1077,7 +1078,9 @@ async def check_ollama_status(base_url: str = "http://localhost:11434") -> dict[
     }
 
 
-async def check_llamacpp_status(base_url: str = "http://127.0.0.1:8080/v1") -> dict[str, Any]:
+async def check_llamacpp_status(
+    base_url: str = _DEFAULT_LLAMACPP_BASE_URL,
+) -> dict[str, Any]:
     """
     Discover llama.cpp status and GENERATIVE models via 'llama-server --cache-list',
     HTTP /v1/models endpoint, and local HuggingFace cache. Embedding GGUFs excluded.
@@ -1144,7 +1147,7 @@ async def check_llamacpp_status(base_url: str = "http://127.0.0.1:8080/v1") -> d
 
 
 async def check_mlx_status(
-    base_url: str = "http://127.0.0.1:8090/v1", max_ports: int = 5
+    base_url: str = _DEFAULT_MLX_BASE_URL, max_ports: int = 5
 ) -> dict[str, Any]:
     """
     Discover MLX status and GENERATIVE models by checking multiple MLX server ports.
@@ -1158,7 +1161,7 @@ async def check_mlx_status(
 
     # Check consecutive ports starting from base_url port
     base_port_match = re.search(r":(\d+)", base_url)
-    start_port = int(base_port_match.group(1)) if base_port_match else 8090
+    start_port = int(base_port_match.group(1)) if base_port_match else 8080
 
     for port_offset in range(max_ports):
         port = start_port + port_offset

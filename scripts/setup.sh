@@ -92,23 +92,19 @@ fi
 if (echo > /dev/tcp/localhost/11434) 2>/dev/null; then
   echo "  • Ollama detected on :11434 (optional)"
 fi
+if (echo > /dev/tcp/127.0.0.1/9931) 2>/dev/null; then
+  echo "  • llama-server detected on :9931 (optional)"
+else
+  echo "  • No local LLM on :9931"
+fi
 if (echo > /dev/tcp/127.0.0.1/8080) 2>/dev/null; then
   if curl -sf http://127.0.0.1:8080/v1/models 2>/dev/null | grep -qi "mlx"; then
-    echo "  • MLX server detected on :8080 (should run on :8090 instead)"
+    echo "  • MLX server detected on :8080 (Apple Silicon, optional)"
   else
-    echo "  • llama-server detected on :8080 (optional)"
+    echo "  • Server detected on :8080"
   fi
 else
-  echo "  • No local LLM on :8080"
-fi
-if (echo > /dev/tcp/127.0.0.1/8090) 2>/dev/null; then
-  if curl -sf http://127.0.0.1:8090/v1/models 2>/dev/null | grep -qi "mlx"; then
-    echo "  • MLX server detected on :8090 (Apple Silicon, optional)"
-  else
-    echo "  • Unknown server on :8090"
-  fi
-else
-  echo "  • No MLX server on :8090 — start it with:"
+  echo "  • No MLX server on :8080 — start it with:"
   echo "      ./scripts/start_mlx_server.sh   # reads the model + port from config"
 fi
 if command -v mlx_lm.server >/dev/null 2>&1; then
@@ -122,7 +118,7 @@ fi
 echo "─ Ports ─"
 # Read from config/ports.yaml (single source of truth) so this script cannot
 # drift from `python3 scripts/apply_ports.py`.
-_PORTS=$(python3 - "$ROOT_DIR/config/ports.yaml" <<'PYEOF' 2>/dev/null || echo "8000 5173 8080 8090"
+_PORTS=$(python3 - "$ROOT_DIR/config/ports.yaml" <<'PYEOF' 2>/dev/null || echo "8000 5173 9931 8080"
 import sys, yaml
 d = yaml.safe_load(open(sys.argv[1]))["ports"]
 print(d["backend"], d["frontend"], d["llamacpp"], d["mlx"])

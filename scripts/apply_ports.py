@@ -69,7 +69,7 @@ def build_rules(p: dict[str, int]) -> dict[str, list[tuple[str, str]]]:
     ol = p["ollama"]
     ll = p["llamacpp"]
     mg = p["mongodb"]
-    mx = p.get("mlx", 8090)
+    mx = p.get("mlx", 8080)
     rules: dict[str, list[tuple[str, str]]] = {
         "apps/api/Dockerfile": [
             (r"ENV PORT=\d+", f"ENV PORT={b}"),
@@ -174,6 +174,7 @@ def apply(check: bool = False) -> int:
 
 def _sync_compose(path: Path, p: dict[str, int], check: bool, failed: list[str]) -> None:
     b, f, ll = p["backend"], p["frontend"], p["llamacpp"]
+    mx = p.get("mlx", 8080)
     qhh, qhc, qgh, qgc = (
         p["qdrant_http_host"],
         p["qdrant_http_container"],
@@ -190,6 +191,11 @@ def _sync_compose(path: Path, p: dict[str, int], check: bool, failed: list[str])
     t = re.sub(
         r"LLAMACPP_BASE_URL: http://host\.docker\.internal:\d+/v1",
         f"LLAMACPP_BASE_URL: http://host.docker.internal:{ll}/v1",
+        t,
+    )
+    t = re.sub(
+        r"MLX_BASE_URL: http://host\.docker\.internal:\d+/v1",
+        f"MLX_BASE_URL: http://host.docker.internal:{mx}/v1",
         t,
     )
     # Structural port mappings (order-sensitive, service-aware)

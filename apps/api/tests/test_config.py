@@ -167,12 +167,12 @@ class TestModelConfig:
         assert cfg.verification_model_for("mlx") == "mlx-community/LFM2.5-1.2B-Instruct-4bit"
 
     def test_mlx_base_url_default_and_env(self, monkeypatch) -> None:
-        """MLX uses dedicated port 8090; env overrides it."""
+        """MLX uses dedicated port 8080; env overrides it."""
         from app.core.config.settings import get_settings
 
         # Fresh read per call: no reload dance needed between env states.
         monkeypatch.delenv("MLX_BASE_URL", raising=False)
-        assert get_settings().mlx_base_url == "http://127.0.0.1:8090/v1"
+        assert get_settings().mlx_base_url == "http://127.0.0.1:8080/v1"
         monkeypatch.setenv("MLX_BASE_URL", "http://127.0.0.1:8091/v1")
         assert get_settings().mlx_base_url == "http://127.0.0.1:8091/v1"
 

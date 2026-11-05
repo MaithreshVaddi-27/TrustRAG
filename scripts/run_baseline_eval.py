@@ -195,12 +195,17 @@ def repo_config_version() -> str:
 
 def run_query(args: argparse.Namespace, token: str, row: dict, eval_profile: dict | None) -> dict:
     started = time.monotonic()
+    payload = {"knowledge_base_id": args.kb_id, "query": row["query"]}
+    if getattr(args, "llm_provider", None):
+        payload["llm_provider"] = args.llm_provider
+    if getattr(args, "llm_model", None):
+        payload["llm_model"] = args.llm_model
     created = api_request(
         "POST",
         args.api_url,
         "/api/v1/analyses",
         token,
-        {"knowledge_base_id": args.kb_id, "query": row["query"]},
+        payload,
     )
     analysis_id = created["id"]
     deadline = time.monotonic() + args.poll_timeout
@@ -217,6 +222,7 @@ def run_query(args: argparse.Namespace, token: str, row: dict, eval_profile: dic
     claims: list[dict] = []
     evidence: list[dict] = []
     trace: list[dict] = []
+    detail: dict = {}
     if not timed_out:
         detail = api_request(
             "GET", args.api_url, f"/api/v1/analyses/{analysis_id}/detail", token, None
@@ -338,8 +344,11 @@ def print_table(agg: dict) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the frozen Phase-0 baseline evaluation.")
     parser.add_argument("--api-url", default="http://localhost:8000")
-    parser.add_argument("--email", required=True)
-    parser.add_argument("--password", required=True)
+    parser.add_argument("--token", default=None, help="Direct access token (bypasses login)")
+    parser.add_argument("--email", default=None, help="User email for login")
+    parser.add_argument("--password", default=None, help="User password for login")
+    parser.add_argument("--llm-provider", default=None, help="Provider override: ollama | llama_cpp | mlx | gemini")
+    parser.add_argument("--llm-model", default=None, help="Model override")
     parser.add_argument("--kb-id", required=True, help="KB containing the fixture corpus")
     parser.add_argument("--dataset", default=str(DATASET_DEFAULT))
     parser.add_argument("--out-dir", default=str(RESULTS_DIR_DEFAULT))
@@ -373,18 +382,23 @@ def main() -> int:
         except (ApiError, ValueError, urllib.error.URLError, json.JSONDecodeError) as exc:
             parser.error(f"local judge preflight failed: {exc}")
 
-    try:
-        login = api_request(
-            "POST",
-            args.api_url,
-            "/api/v1/auth/login",
-            None,
-            {"email": args.email, "password": args.password},
-        )
-    except ApiError as exc:
-        print(f"Login failed: {exc}", file=sys.stderr)
-        return 1
-    token = login["access_token"]
+    if args.token:
+        token = args.token
+    elif args.email and args.password:
+        try:
+            login = api_request(
+                "POST",
+                args.api_url,
+                "/api/v1/auth/login",
+                None,
+                {"email": args.email, "password": args.password},
+            )
+        except ApiError as exc:
+            print(f"Login failed: {exc}", file=sys.stderr)
+            return 1
+        token = login["access_token"]
+    else:
+        parser.error("Either --token or both --email and --password are required.")
 
     query_scores: list[dict] = []
     server_versions: set[str] = set()

@@ -93,8 +93,8 @@ def _parse_bool(value: Any, default: bool = False) -> bool:
 # (pydantic env > Field default), and models.yaml stays the ID source.
 _PORTS_FALLBACK = _load_ports_yaml()
 _DEFAULT_OLLAMA_BASE_URL = f"http://localhost:{_PORTS_FALLBACK.get('ollama', 11434)}"
-_DEFAULT_LLAMACPP_BASE_URL = f"http://127.0.0.1:{_PORTS_FALLBACK.get('llamacpp', 8080)}/v1"
-_DEFAULT_MLX_BASE_URL = f"http://127.0.0.1:{_PORTS_FALLBACK.get('mlx', 8090)}/v1"
+_DEFAULT_LLAMACPP_BASE_URL = f"http://127.0.0.1:{_PORTS_FALLBACK.get('llamacpp', 9931)}/v1"
+_DEFAULT_MLX_BASE_URL = f"http://127.0.0.1:{_PORTS_FALLBACK.get('mlx', 8080)}/v1"
 
 
 class Settings(BaseSettings):

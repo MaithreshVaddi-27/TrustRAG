@@ -14,9 +14,9 @@
 #   .env         → secrets + local overrides (env vars win over everything)
 #
 # Reserved allocation (do NOT overlap):
-#   8000 = FastAPI backend   (was 8080 — moved so llama-server owns 8080)
-#   8080 = llama-server (llama.cpp OpenAI-compatible API)
-#   8090 = MLX server (mlx_lm.server default port, Apple Silicon)
+#   8000 = FastAPI backend
+#   9931 = llama-server (llama.cpp OpenAI-compatible API)
+#   8080 = MLX server (mlx_lm.server default port, Apple Silicon)
 #   5173 = Vite frontend dev server
 #   11434 = Ollama daemon
 #   27017 = MongoDB
@@ -29,8 +29,8 @@ ports:
   backend: 8000
   frontend: 5173
   ollama: 11434
-  llamacpp: 8080
-  mlx: 8090
+  llamacpp: 9931
+  mlx: 8080
   mongodb: 27017
   qdrant_http_host: 6335
   qdrant_http_container: 6333

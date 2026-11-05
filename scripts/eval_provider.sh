@@ -85,7 +85,9 @@ echo "base url   : ${BASE_URL:-<cloud / n/a>}"
 # Preflight: a provider that cannot answer will burn the whole dataset at
 # --delay-seconds per query and produce an all-error report.
 if [ "$PROVIDER" != "gemini" ] && [ -n "$BASE_URL" ]; then
-  if curl -sf --max-time 5 "${BASE_URL%/}/models" >/dev/null 2>&1; then
+  if curl -sf --max-time 5 "${BASE_URL%/}/models" >/dev/null 2>&1 || \
+     curl -sf --max-time 5 "${BASE_URL%/}/v1/models" >/dev/null 2>&1 || \
+     curl -sf --max-time 5 "${BASE_URL%/}/api/tags" >/dev/null 2>&1; then
     echo "preflight  : OK"
   else
     echo "WARNING: no server answering at $BASE_URL — start it first:" >&2
@@ -102,8 +104,17 @@ mkdir -p "$OUT_DIR"
 
 # Small models need a leaner tier (models.yaml lean_tier) — already automatic.
 # The only thing the caller must supply is credentials and the KB id.
+EXTRA_ARGS=()
+if [ -n "${PROVIDER:-}" ]; then
+  EXTRA_ARGS+=(--llm-provider "$PROVIDER")
+fi
+if [ -n "${EFFECTIVE_MODEL:-}" ]; then
+  EXTRA_ARGS+=(--llm-model "$EFFECTIVE_MODEL")
+fi
+
 exec "$PY" "$ROOT_DIR/scripts/run_baseline_eval.py" \
   --out-dir "$OUT_DIR" \
   --config-name "trustrag_baseline_${PROVIDER}" \
   --description "Frozen baseline (baseline_v1) on ${PROVIDER}: ${EFFECTIVE_MODEL:-server default}" \
+  "${EXTRA_ARGS[@]}" \
   "$@"

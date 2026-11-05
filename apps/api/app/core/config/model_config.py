@@ -154,7 +154,7 @@ class ModelConfig:
         if port:
             return f"http://127.0.0.1:{port}/v1"
         return str(
-            self._get("llm", "llamacpp_base_url", required=False) or "http://127.0.0.1:8080/v1"
+            self._get("llm", "llamacpp_base_url", required=False) or "http://127.0.0.1:9931/v1"
         )
 
     @property
@@ -162,8 +162,9 @@ class ModelConfig:
         env_url = os.environ.get("MLX_BASE_URL")
         if env_url:
             return env_url
-        # Separate port (:8080) so llama-server (:8081) and mlx_lm.server (:8080)
-        # can run side-by-side. pydantic env > Field default > _DEFAULT_MLX_BASE_URL.
+        port = get_ports().get("mlx")
+        if port:
+            return f"http://127.0.0.1:{port}/v1"
         return str(self._get("llm", "mlx_base_url", required=False) or _DEFAULT_MLX_BASE_URL)
 
     @property

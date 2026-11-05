@@ -6,7 +6,7 @@
 #   - React Frontend Workbench (Port 5173, Vite)
 #   - Qdrant vector store (Port 6335 host / 6333 container, local storage)
 #
-# Connects seamlessly to host-running Ollama (:11434), llama-server (:8080),
+# Connects seamlessly to host-running Ollama (:11434), llama-server (:9931),
 # and local MongoDB (:27017) via host.docker.internal.
 #
 # Usage:
@@ -85,8 +85,8 @@ services:
       # source of truth for the DB name — never encode it in the URI.
       MONGODB_URI: mongodb://host.docker.internal:27017
       OLLAMA_BASE_URL: http://host.docker.internal:11434
-      LLAMACPP_BASE_URL: http://host.docker.internal:8080/v1
-      MLX_BASE_URL: http://host.docker.internal:8090/v1
+      LLAMACPP_BASE_URL: http://host.docker.internal:9931/v1
+      MLX_BASE_URL: http://host.docker.internal:8080/v1
     depends_on:
       qdrant:
         condition: service_healthy

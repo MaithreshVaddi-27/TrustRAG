@@ -79,7 +79,7 @@ def get_memory_usage_mb() -> float:
             import ctypes
             from ctypes import wintypes
 
-            class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+            class _PROCESS_MEMORY_COUNTERS(ctypes.Structure):  # noqa: N801
                 _fields_ = [
                     ("cb", wintypes.DWORD),
                     ("PageFaultCount", wintypes.DWORD),

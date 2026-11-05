@@ -183,16 +183,16 @@ brew services start mongodb-community
 ollama serve &
 ollama pull gemma3:1b        # lightweight default (or: ollama pull llama3)
 
-# llama.cpp (local GGUF models) — hardware-aware launcher, serves on :8080
+# llama.cpp (local GGUF models) — hardware-aware launcher, serves on :9931
 brew install llama.cpp   # provides the `llama-server` binary used below
 ./scripts/start_local_llm.sh   # auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
 
-# MLX (Apple Silicon only, optional) — serves on :8090
+# MLX (Apple Silicon only, optional) — serves on :8080
 # See [MLX on Mac](docs/PERFORMANCE-GUIDE.md#4-mlx-on-mac-apple-silicon-free-fastest-toks-per-watt)
 pipx install mlx-lm
 ./scripts/start_mlx_server.sh              # model + port come from config/ports.yaml
-./scripts/start_mlx_server.sh --check      # scan :8090-:8094, list what is up
-./scripts/start_mlx_server.sh --port 8091  # extra model on the next port (1 model/process)
+./scripts/start_mlx_server.sh --check      # scan :8080-:8084, list what is up
+./scripts/start_mlx_server.sh --port 8081  # extra model on the next port (1 model/process)
 
 # Backend (terminal 1)
 cd apps/api
@@ -341,10 +341,10 @@ curl http://localhost:8000/api/v1/health   # → {"status":"ok"}
 
 > **Run both llama.cpp and MLX simultaneously (Apple Silicon):**
 > ```bash
-> # Terminal 1: llama.cpp on :8080
+> # Terminal 1: llama.cpp on :9931
 > ./scripts/start_local_llm.sh
 >
-> # Terminal 2: MLX on :8090 (id must match MLX_MODEL in .env / model_mlx in models.yaml)
+> # Terminal 2: MLX on :8080 (id must match MLX_MODEL in .env / model_mlx in models.yaml)
 > ./scripts/start_mlx_server.sh mlx-community/Llama-3.2-3B-Instruct-4bit
 >
 > # Terminal 3: Backend (auto-detects both)
@@ -382,7 +382,7 @@ APP_ENV=production                # production requires QDRANT_API_KEY
 CORS_ORIGINS=https://your-domain.com
 ```
 
-Default ports: API `8000` · Vite `5173` · llama-server `8080` · **MLX server `8090`** · Ollama `11434` · MongoDB `27017` · Qdrant `6335→6333`. Change ports in `config/ports.yaml`, then run `python3 scripts/apply_ports.py` (enforced in CI with `--check`).
+Default ports: API `8000` · Vite `5173` · llama-server `9931` · **MLX server `8080`** · Ollama `11434` · MongoDB `27017` · Qdrant `6335→6333`. Change ports in `config/ports.yaml`, then run `python3 scripts/apply_ports.py` (enforced in CI with `--check`).
 
 ### Optional cloud extras
 
@@ -478,7 +478,7 @@ TrustRAG supports multiple LLM providers interchangeably. Switch via `LLM_PROVID
 |----------|--------|-----|-------|
 | **llama_cpp** | LFM2.5-1.2B, Granite-4.2-3B, SmolLM3-3B, EXAONE-2.4B, SmolLM2-1.7B | 2–4 GB | Default. Hardware-aware `scripts/start_local_llm.sh` auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 concurrent model on 8 GB |
 | **ollama** | gemma3:1b, qwen3:1.7b, llama3 | 1–3 GB | `ollama serve` + `ollama pull <model>`. Set `OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1` for 8 GB RAM |
-| **mlx** | Llama-3.2-1B-4bit, Llama-3.2-3B-4bit, LFM2.5-1.2B-4bit | 1–3 GB | Apple Silicon only. `./scripts/start_mlx_server.sh [id]` on :8090. Runs alongside llama.cpp on :8080 |
+| **mlx** | Llama-3.2-1B-4bit, Llama-3.2-3B-4bit, LFM2.5-1.2B-4bit | 1–3 GB | Apple Silicon only. `./scripts/start_mlx_server.sh [id]` on :8080. Runs alongside llama.cpp on :9931 |
 
 #### Small vs large models
 
@@ -655,7 +655,7 @@ Full per-OS field guide (20-row failure table): [docs/ONBOARDING-TROUBLESHOOTING
 
 | Issue | Fix |
 |-------|-----|
-| `LLM_UNAVAILABLE` (llama.cpp) | Start `./scripts/start_local_llm.sh --max 1` (serves on :8080) |
+| `LLM_UNAVAILABLE` (llama.cpp) | Start `./scripts/start_local_llm.sh --max 1` (serves on :9931) |
 | `LLM_UNAVAILABLE` (ollama) | `ollama serve` + `ollama pull <model>` |
 | `LLM_UNAVAILABLE` (gemini) | Check API key, retry, or switch provider |
 | `LLM_UNAVAILABLE` (MLX) | `./scripts/start_mlx_server.sh` (Apple Silicon); `--check` to see which ports are up |

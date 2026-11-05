@@ -372,6 +372,6 @@ def test_ports_registry_includes_mlx():
         from apply_ports import load_ports
 
         ports = load_ports()
-        assert ports["mlx"] == 8090
+        assert ports["mlx"] == 8080
     finally:
         sys.path.remove(str(Path(__file__).resolve().parents[3] / "scripts"))

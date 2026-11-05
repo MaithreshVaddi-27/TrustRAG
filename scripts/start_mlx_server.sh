@@ -2,14 +2,14 @@
 # TRUSTRAG — MLX local LLM launcher (Apple Silicon).
 #
 # Starts mlx_lm.server on the port reserved for MLX in config/ports.yaml
-# (currently 8090). MLX serves ONE model per process, so run additional
-# instances on consecutive ports (8091, 8092, …) to offer more models;
+# (currently 8080). MLX serves ONE model per process, so run additional
+# instances on consecutive ports (8081, 8082, …) to offer more models;
 # check_mlx_status() scans a range and aggregates what it finds.
 #
 # Usage:
 #   ./scripts/start_mlx_server.sh [MODEL] [--port PORT] [--dry-run] [--check]
 #   MODEL : HF repo id (default: models.yaml `llm.model_mlx`)
-#   --port PORT  : override (default: ports.yaml `mlx`, currently 8090)
+#   --port PORT  : override (default: ports.yaml `mlx`, currently 8080)
 #   --dry-run     : print the command, don't start
 #   --check       : report status of the MLX port range, then exit
 set -euo pipefail
@@ -32,7 +32,7 @@ try:
     model = cfg.llm_model_for('mlx') or model
 except Exception:
     pass
-print(model, get_ports().get('mlx', 8090))
+print(model, get_ports().get('mlx', 8080))
 " | tail -n 1)"
 
 MODEL="$DEFAULT_MODEL"

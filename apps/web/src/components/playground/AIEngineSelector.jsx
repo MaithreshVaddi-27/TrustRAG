@@ -13,14 +13,14 @@ const PROVIDER_BUTTONS = [
   {
     key: 'llama_cpp',
     label: 'llama.cpp',
-    icon: ':8080',
+    icon: ':9931',
     activeBtn: 'bg-cyan-950/80 text-cyan-200 border-cyan-500/60 shadow-sm shadow-cyan-950/50',
     activeBadge: 'text-cyan-400 border-cyan-700/60',
   },
   {
     key: 'mlx',
     label: 'MLX',
-    icon: 'Mac',
+    icon: ':8080',
     activeBtn: 'bg-primary-950/80 text-primary-200 border-primary-500/60 shadow-sm shadow-primary-950/50',
     activeBadge: 'text-primary-400 border-primary-700/60',
   },
@@ -146,7 +146,7 @@ export function AIEngineSelector({
           <label htmlFor="ai-engine-model-select" className="font-medium cursor-pointer">Model:</label>
           <span className="flex items-center gap-2">
             <span className="font-mono text-[10px] text-slate-500">
-              {selectedProvider === 'ollama' ? ':11434' : ((selectedProvider === 'llama_cpp' || selectedProvider === 'mlx') ? ':8080' : '')}
+              {selectedProvider === 'ollama' ? ':11434' : selectedProvider === 'llama_cpp' ? ':9931' : selectedProvider === 'mlx' ? ':8080' : ''}
             </span>
             <button
               type="button"

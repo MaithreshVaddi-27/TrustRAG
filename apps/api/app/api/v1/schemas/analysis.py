@@ -92,7 +92,7 @@ class AnalysisCreate(BaseModel):
                 "ollama": "'ollama pull granite4.2:3b-q4_K_M' + 'ollama serve'",
                 "llama_cpp": "place a GGUF and run ./scripts/start_local_llm.sh",
                 "mlx": "'pip install mlx-lm' then 'mlx_lm.server --model "
-                "mlx-community/Llama-3.2-1B-Instruct-4bit' (Apple Silicon only)",
+                "mlx-community/Llama-3.2-1B-Instruct-4bit --port 8080' (Apple Silicon only)",
             }
             raise ValueError(
                 f"No {provider} models discovered on this host. Install one "

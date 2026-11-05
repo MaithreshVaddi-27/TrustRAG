@@ -27,11 +27,13 @@ def test_ports_yaml_loads_with_required_keys() -> None:
 
 
 def test_ports_reserved_allocation() -> None:
-    """8080 belongs to llama-server; the backend must never claim it."""
+    """9931 belongs to llama-server, 8080 to MLX; the backend must never claim them."""
     from app.core.config.settings import get_ports
 
     ports = get_ports()
-    assert ports["llamacpp"] == 8080
+    assert ports["llamacpp"] == 9931
+    assert ports["mlx"] == 8080
+    assert ports["backend"] != 9931
     assert ports["backend"] != 8080
     assert ports["backend"] == 8000
 

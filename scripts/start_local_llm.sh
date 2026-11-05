@@ -8,7 +8,7 @@
 #   ./scripts/start_local_llm.sh [--max N] [--port PORT]
 #   --max N : maximum concurrent loaded models (default: RAM-aware — 1 on
 #             ≤8 GB hosts, 2 on ≤16 GB, 4 above; an explicit --max always wins)
-#   --port PORT : port to serve on (default: ports.yaml `llamacpp`, currently 8080)
+#   --port PORT : port to serve on (default: ports.yaml `llamacpp`, currently 9931)
 #   Default: serves all cached GGUF models from HuggingFace cache.
 set -euo pipefail
 
@@ -44,12 +44,15 @@ MAX_MODELS=""
 # `python3 scripts/apply_ports.py` propagates it everywhere. Overridable.
 PORT=$(cd "$API_DIR" && "$PY" -c "
 from app.core.config.settings import get_ports
-print(get_ports().get('llamacpp', 8080))
+print(get_ports().get('llamacpp', 9931))
 " | tail -n 1)
+DRY_RUN=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --max) MAX_MODELS="${2:-4}"; shift 2 ;;
-    --port) PORT="${2:-8080}"; shift 2 ;;
+    --port) PORT="${2:-9931}"; shift 2 ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help) sed -n '7,13p' "$0"; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -90,6 +93,11 @@ fi
 echo "[start_local_llm] router mode: serving from $MODELS_DIR"
 echo "[start_local_llm] max concurrent models: $MAX_MODELS"
 echo "[start_local_llm] port : $PORT"
+
+if [ "$DRY_RUN" = "1" ]; then
+  echo "[start_local_llm] would run: llama-server --models-dir $MODELS_DIR --models-max $MAX_MODELS --models-autoload --port $PORT ${LAUNCH_FLAGS[*]}"
+  exit 0
+fi
 
 exec llama-server \
   --models-dir "$MODELS_DIR" \

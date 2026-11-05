@@ -27,8 +27,8 @@ llm:
   # Provider options: ollama, llama_cpp, mlx (Apple Silicon), gemini
   provider: llama_cpp
   ollama_base_url: "http://localhost:11434"
-  llamacpp_base_url: "http://127.0.0.1:8080/v1"
-  mlx_base_url: "http://127.0.0.1:8090/v1"
+  llamacpp_base_url: "http://127.0.0.1:9931/v1"
+  mlx_base_url: "http://127.0.0.1:8080/v1"
 
   # Supported local models (exactly what is installed):
   #   ollama (`ollama list`):

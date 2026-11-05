@@ -457,8 +457,8 @@ The repository also includes two local-LLM launchers and a setup flow:
 
 | Script | Serves | Port | Notes |
 |---|---|---|---|
-| `scripts/start_local_llm.sh` | llama.cpp `llama-server` (router mode) | **:8080** | Hardware-aware flags (Metal/CUDA, KV q8_0, flash-attn, RAM-tiered `--max`) |
-| `scripts/start_mlx_server.sh` | MLX `mlx_lm.server` | **:8090** | Apple Silicon only; one model per process — use `--port 8091` for more. `--check` scans the range |
+| `scripts/start_local_llm.sh` | llama.cpp `llama-server` (router mode) | **:9931** | Hardware-aware flags (Metal/CUDA, KV q8_0, flash-attn, RAM-tiered `--max`) |
+| `scripts/start_mlx_server.sh` | MLX `mlx_lm.server` | **:8080** | Apple Silicon only; one model per process — use `--port 8081` for more. `--check` scans the range |
 | `scripts/setup.sh` | — | — | Verifier: prints copy-paste fixes for a misconfigured host |
 
 Both launchers read their port from `config/ports.yaml` and their model id from

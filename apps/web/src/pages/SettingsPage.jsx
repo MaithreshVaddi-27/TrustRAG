@@ -327,7 +327,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Local LLM Infrastructure (Ollama & llama.cpp) */}
+        {/* Local LLM Infrastructure (Ollama, llama.cpp & MLX) */}
         <div className="glass-card p-5 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
             <div className="flex items-center gap-2.5">
@@ -336,10 +336,10 @@ export default function SettingsPage() {
                 Local LLM Infrastructure (Private & Offline)
               </h2>
             </div>
-            <span className="text-xs text-slate-500 font-mono">localhost:11434 / 127.0.0.1:8080</span>
+            <span className="text-xs text-slate-500 font-mono">:11434 (Ollama) / :9931 (llama.cpp) / :8080 (MLX)</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Ollama Engine */}
             <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-4 flex flex-col justify-between space-y-3">
               <div>
@@ -362,7 +362,7 @@ export default function SettingsPage() {
                 <div className="mt-2 text-[11px] text-slate-400 space-y-1">
                   <div>Endpoint: <code className="text-slate-300 font-mono">http://localhost:11434</code></div>
                   <div>Discovery Command: <code className="text-emerald-400 font-mono">ollama list</code></div>
-                  <div>Configured LLMs (<code className="text-slate-500 font-mono">ollama list</code>): <span className="text-slate-300 font-mono">{providersData?.providers?.ollama?.models?.join(', ') || ''}</span></div>
+                  <div>Configured LLMs: <span className="text-slate-300 font-mono">{providersData?.providers?.ollama?.models?.join(', ') || ''}</span></div>
                 </div>
               </div>
 
@@ -390,19 +390,51 @@ export default function SettingsPage() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-400">
-                  OpenAI-compatible server. Active model: <code className="text-cyan-300 font-mono">{providersData?.providers?.llama_cpp?.default_model || ''}</code>
+                  Router-mode GGUF server. Active model: <code className="text-cyan-300 font-mono">{providersData?.providers?.llama_cpp?.default_model || ''}</code>
                 </p>
                 <div className="mt-2 text-[11px] text-slate-400 space-y-1">
-                  <div>Endpoint: <code className="text-slate-300 font-mono">http://127.0.0.1:8080/v1</code></div>
+                  <div>Endpoint: <code className="text-slate-300 font-mono">http://127.0.0.1:9931/v1</code></div>
                   <div>Discovery Command: <code className="text-cyan-400 font-mono">llama-server --cache-list</code></div>
-                  <div>Cache GGUF Models: <span className="text-slate-300 font-mono">{providersData?.providers?.llama_cpp?.cache_models?.join(', ') || ''}</span></div>
                   <div>Configured LLMs: <span className="text-cyan-300 font-mono">{providersData?.providers?.llama_cpp?.models?.join(', ') || ''}</span></div>
                 </div>
               </div>
 
               {!providersData?.providers?.llama_cpp?.connected && (
                 <div className="p-2.5 bg-surface-900/60 border border-slate-700/50 rounded-lg text-[11px] text-slate-400">
-                  💡 Start server: <code className="bg-surface-950 px-1 py-0.5 rounded text-cyan-300 font-mono">llama-server -hf ibm-granite/granite-4.2-3b-GGUF:Q4_K_M --port 8080</code>
+                  💡 Start server: <code className="bg-surface-950 px-1 py-0.5 rounded text-cyan-300 font-mono">./scripts/start_local_llm.sh --port 9931</code>
+                </div>
+              )}
+            </div>
+
+            {/* MLX Engine */}
+            <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-4 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2 text-slate-200 font-semibold text-sm">
+                    <Zap size={15} className="text-amber-400" /> Apple MLX
+                  </div>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono ${
+                    providersData?.providers?.mlx?.connected
+                      ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/40'
+                      : 'bg-amber-950/80 text-amber-400 border border-amber-800/40'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${providersData?.providers?.mlx?.connected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                    {providersData?.providers?.mlx?.connected ? 'Online' : 'Standby'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Apple Silicon native framework. Active model: <code className="text-amber-300 font-mono">{providersData?.providers?.mlx?.default_model || ''}</code>
+                </p>
+                <div className="mt-2 text-[11px] text-slate-400 space-y-1">
+                  <div>Endpoint: <code className="text-slate-300 font-mono">http://127.0.0.1:8080/v1</code></div>
+                  <div>Discovery: <code className="text-amber-400 font-mono">mlx_lm / HuggingFace</code></div>
+                  <div>Configured LLMs: <span className="text-amber-300 font-mono">{providersData?.providers?.mlx?.models?.join(', ') || ''}</span></div>
+                </div>
+              </div>
+
+              {!providersData?.providers?.mlx?.connected && (
+                <div className="p-2.5 bg-surface-900/60 border border-slate-700/50 rounded-lg text-[11px] text-slate-400">
+                  💡 Start server: <code className="bg-surface-950 px-1 py-0.5 rounded text-amber-300 font-mono">./scripts/start_mlx_server.sh --port 8080</code>
                 </div>
               )}
             </div>

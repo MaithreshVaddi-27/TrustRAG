@@ -105,7 +105,7 @@ LOG_LEVEL=WARNING
 
 Rules that apply to **every** server:
 
-- **Separate ports for local servers:** `llama-server` on **:8080**, MLX on **:8090** — they can run simultaneously. Ollama on :11434 coexists with both. Ports live in `config/ports.yaml`; both launchers read them, so `python3 scripts/apply_ports.py` keeps everything in sync.
+- **Separate ports for local servers:** `llama-server` on **:9931**, MLX on **:8080** — they can run simultaneously. Ollama on :11434 coexists with both. Ports live in `config/ports.yaml`; both launchers read them, so `python3 scripts/apply_ports.py` keeps everything in sync.
 - **Keep `LOCAL_LLM_MAX_CONCURRENCY=1`.** Local servers are serial (llama-server `-np 2`, Ollama queue, MLX single model). The backend serializes generations with a semaphore (`app/core/local_llm.py`); raising this without a parallel-capable server buys timeout cascades, not throughput.
 - **Ollama on ≤8 GB** (shell env, before `ollama serve`):
   ```bash
@@ -146,25 +146,25 @@ uvx --python 3.12 --isolated --from mlx-lm mlx_lm.server --help
 
 Any `mlx-community/*-Instruct-4bit` model works — instruct-tuned and 4-bit are the two properties that matter for this pipeline (verification needs instruction-following; 4-bit keeps it resident).
 
-### 4.4 Serve it (on :8090, alongside llama-server on :8080)
+### 4.4 Serve it (on :8080, alongside llama-server on :9931)
 
 Use the launcher — it resolves the model and the port from `config/ports.yaml`
 and `config/models.yaml`, so it cannot drift from the backend's expectations:
 
 ```bash
 # Terminal 1 — start the OpenAI-compatible server (model downloads once, then cached)
-./scripts/start_mlx_server.sh                              # default model from models.yaml, :8090
+./scripts/start_mlx_server.sh                              # default model from models.yaml, :8080
 ./scripts/start_mlx_server.sh mlx-community/Llama-3.2-3B-Instruct-4bit   # explicit model
 
 # MLX serves ONE model per process. Add more on consecutive ports:
-./scripts/start_mlx_server.sh --port 8091 --model mlx-community/Qwen3-4B-Instruct-4bit
+./scripts/start_mlx_server.sh --port 8081 --model mlx-community/Qwen3-4B-Instruct-4bit
 
 # Scan the range and see what is actually serving
 ./scripts/start_mlx_server.sh --check
 
 # Verify (the model name must match what the server was started with)
-curl http://127.0.0.1:8090/health
-curl http://127.0.0.1:8090/v1/chat/completions \
+curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"mlx-community/Llama-3.2-3B-Instruct-4bit","max_tokens":50,
        "messages":[{"role":"user","content":"Say: MLX online."}]}'
@@ -183,10 +183,10 @@ curl http://127.0.0.1:8090/v1/chat/completions \
 Because the MLX server is protocol-compatible, reuse the `llama_cpp` provider slot on its dedicated port. Task-sized output caps, the serial semaphore, and all budgets then apply automatically (`LOCAL_LLM_PROVIDERS` in `app/llm/local_llm.py`).
 
 ```bash
-# .env — MLX runs on :8090, llama-server on :8080; both can run simultaneously
-LLM_PROVIDER=llama_cpp
-LLAMACPP_BASE_URL=http://127.0.0.1:8090/v1
-LLAMACPP_MODEL=mlx-community/Llama-3.2-3B-Instruct-4bit   # EXACT id from --model
+# .env — MLX runs on :8080, llama-server on :9931; both can run simultaneously
+LLM_PROVIDER=mlx
+MLX_BASE_URL=http://127.0.0.1:8080/v1
+MLX_MODEL=mlx-community/Llama-3.2-3B-Instruct-4bit   # EXACT id from --model
 ```
 
 ```bash
@@ -211,11 +211,11 @@ Do this if you want MLX and llama-server side by side (e.g. MLX for generation, 
 | # | File | Change |
 |---|---|---|
 | 1 | `apps/api/app/llm/model_registry.py` | Add `"mlx"` to `LOCAL_LLM_PROVIDERS`; add `mlx` branches in `get_llm()` / `get_verification_model()` constructing the existing `ChatLlamaCppClient` with `base_url=settings.mlx_base_url` (protocol-compatible — no new client class) |
-| 2 | `apps/api/app/core/config/settings.py` | Add `MLX_BASE_URL` (default `http://127.0.0.1:8090/v1`), `MLX_MODEL` settings + `llm_model_for("mlx")` / `verification_model_for("mlx")` wiring |
+| 2 | `apps/api/app/core/config/settings.py` | Add `MLX_BASE_URL` (default `http://127.0.0.1:8080/v1`), `MLX_MODEL` settings + `llm_model_for("mlx")` / `verification_model_for("mlx")` wiring |
 | 3 | `apps/api/config/models.yaml` | Add `model_mlx` defaults under `llm:` and `verification:` (mirroring `model_llamacpp`) |
-| 4 | `.env.example` | Document `MLX_BASE_URL` / `MLX_MODEL` + the :8080 conflict note |
+| 4 | `.env.example` | Document `MLX_BASE_URL` / `MLX_MODEL` + dedicated port 8080 note |
 | 5 | `apps/api/tests/test_config.py`, `test_local_llm.py` | Cover the new provider key, URL default, and cap application |
-| 6 | `scripts/setup.sh` | Probe `:8080/health` shape for MLX vs llama-server in the services check (optional nicety) |
+| 6 | `scripts/setup.sh` | Probe `:8080/health` shape for MLX and `:9931` for llama-server in the services check |
 
 Estimated: ~60 lines + tests. No new dependencies (`httpx` path is reused).
 
@@ -316,11 +316,11 @@ TOKENIZERS_PARALLELISM=false
 LOCAL_LLM_MAX_CONCURRENCY=1
 
 # 2. Mac only: MLX instead of llama-server (see §4).
-#    MLX is :8090 — NOT :8080, which belongs to llama.cpp.
+#    MLX is :8080 — llama.cpp is :9931. Both can run simultaneously.
 ./scripts/start_mlx_server.sh mlx-community/Llama-3.2-3B-Instruct-4bit
-# .env: LLM_PROVIDER=mlx, MLX_BASE_URL=http://127.0.0.1:8090/v1,
+# .env: LLM_PROVIDER=mlx, MLX_BASE_URL=http://127.0.0.1:8080/v1,
 #       MLX_MODEL=<exact id passed above>
-#    (Or keep LLM_PROVIDER=llama_cpp and point LLAMACPP_BASE_URL at :8090 to reuse
+#    (Or keep LLM_PROVIDER=llama_cpp and point LLAMACPP_BASE_URL at :8080 to reuse
 #     the llama_cpp code path — the server protocol is identical.)
 
 # 3. models.yaml: touch ONE knob at a time (§5 table), then:
