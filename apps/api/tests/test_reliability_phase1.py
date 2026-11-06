@@ -164,8 +164,8 @@ async def test_recovery_round_still_verifies_via_individual_fallback(
             attempt=2,  # recovery round — the case that used to auto-NEUTRAL
         )
 
-    assert mock_batch_verify.call_count == 2  # one retry, as designed
-    assert mock_individual.call_count == 2  # <-- was 0 before the fix
+    assert mock_batch_verify.call_count == 2  # one retry, by design
+    assert mock_individual.call_count == 2  # was 0 before the fix
     assert [c["state"] for c in claims] == ["SUPPORTED", "SUPPORTED"]
     assert all(c["state"] != UNCHECKED_CLAIM_STATE for c in claims)
 
@@ -194,7 +194,9 @@ async def test_exhausted_fallback_budget_marks_claims_unchecked_not_neutral(
 
     mock_collection = MagicMock()
     mock_collection.insert_many = AsyncMock(
-        return_value=MagicMock(inserted_ids=[ObjectId("64ee39d09c6292376e191986")] * expected_claims)
+        return_value=MagicMock(
+            inserted_ids=[ObjectId("64ee39d09c6292376e191986")] * expected_claims
+        )
     )
 
     token = begin_analysis()
@@ -354,7 +356,10 @@ def test_batch_nli_still_coerces_real_aliases_and_string_ids():
             ]
         }
     )
-    assert [(v.claim_id, v.verdict) for v in parsed.verdicts] == [(1, "SUPPORTED"), (2, "SUPPORTED")]
+    assert [(v.claim_id, v.verdict) for v in parsed.verdicts] == [
+        (1, "SUPPORTED"),
+        (2, "SUPPORTED"),
+    ]
     assert isinstance(parsed.verdicts[0], ClaimVerdict)
 
 
@@ -418,8 +423,8 @@ async def test_batch_failure_on_recovery_round_is_verified_not_assumed(
     answer withheld). With the bounded fallback restored, those claims are
     actually verified, so the verdict reflects evidence instead of a failure.
     """
-    from app.rag.verification.verdict import Thresholds as T
     from app.core.config.model_config import get_model_config
+    from app.rag.verification.verdict import Thresholds as T
 
     cfg = get_model_config()
     mock_decompose.return_value = [
@@ -455,9 +460,7 @@ async def test_batch_failure_on_recovery_round_is_verified_not_assumed(
         supported=sum(1 for c in claims if c["state"] == "SUPPORTED"),
         contradicted=sum(1 for c in claims if c["state"] == "CONTRADICTED"),
         neutral=sum(1 for c in claims if c["state"] == "NEUTRAL"),
-        total=sum(
-            1 for c in claims if c["state"] in ("SUPPORTED", "CONTRADICTED", "NEUTRAL")
-        ),
+        total=sum(1 for c in claims if c["state"] in ("SUPPORTED", "CONTRADICTED", "NEUTRAL")),
         thresholds=thresholds,
         answer="Records under a legal hold are exempt from all deletion.",
         unchecked=sum(1 for c in claims if c["state"] == UNCHECKED_CLAIM_STATE),
