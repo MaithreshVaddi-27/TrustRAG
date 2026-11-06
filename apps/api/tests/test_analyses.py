@@ -122,9 +122,15 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeyp
             assert data["query"] == "Is there a 45 days policy?"
             assert data["status"] == "pending"
             assert data["reliability"]["status"] == "PENDING"
-            # Provenance: doc records the effective engine, never blanks.
-            assert data["llm_provider"] == "llama_cpp"
-            assert data["llm_model"] == "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
+            # Provenance: doc records the effective engine, never blanks. The
+            # expected engine is whatever this deployment defaults to — do not
+            # hard-code a provider (v1.28 defaulted to llama_cpp, v1.29 to
+            # ollama), or the test fails on a config-only change.
+            from app.core.config.model_config import get_model_config
+
+            expected_provider = get_model_config().llm_provider
+            assert data["llm_provider"] == expected_provider
+            assert data["llm_model"]
             call_kwargs = mock_add_trace.call_args.kwargs
             assert call_kwargs["analysis_id_str"] == "64ee39d09c6292376e191983"
             assert call_kwargs["event"] == "analysis.started"

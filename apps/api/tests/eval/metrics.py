@@ -102,16 +102,23 @@ def claim_summary(states: list[str]) -> dict[str, Any]:
     """Aggregate SUPPORTED/CONTRADICTED/NEUTRAL claim states.
 
     Unknown states are counted as NEUTRAL (fail-safe: unverified claims must
-    not inflate coverage). Reliability mirrors verdict.py:
+    not inflate coverage), EXCEPT the explicit UNCHECKED state, which means
+    "never verified" (batch NLI unusable and the per-claim fallback exhausted).
+    UNCHECKED is reported separately and excluded from coverage: it is an
+    unknown, not an unsupported claim, and mixing the two is what turned a
+    verifier outage into a false "insufficient evidence" abstention.
+    Reliability mirrors verdict.py:
     score = coverage * (1 - contradiction_rate).
     """
-    supported = contradicted = neutral = 0
+    supported = contradicted = neutral = unchecked = 0
     for raw in states:
         state = (raw or "").upper()
         if state == "SUPPORTED":
             supported += 1
         elif state == "CONTRADICTED":
             contradicted += 1
+        elif state == "UNCHECKED":
+            unchecked += 1
         else:
             neutral += 1
     total = supported + contradicted + neutral
@@ -121,6 +128,7 @@ def claim_summary(states: list[str]) -> dict[str, Any]:
         "supported": supported,
         "contradicted": contradicted,
         "neutral": neutral,
+        "unchecked": unchecked,
         "total": total,
         "coverage": coverage,
         "contradiction_rate": contradiction_rate,
@@ -218,7 +226,11 @@ def score_query(
         "claim_supported": claims["supported"],
         "claim_contradicted": claims["contradicted"],
         "claim_neutral": claims["neutral"],
+        "claim_unchecked": claims["unchecked"],
         "claim_total": claims["total"],
+        # Denominator for support that INCLUDES unchecked claims, so a run can
+        # report how much of its answer was never verified.
+        "claim_support_denominator_total": claims["total"] + claims["unchecked"],
         "evidence_coverage": claims["coverage"],
         "contradiction_rate": claims["contradiction_rate"],
         "reliability_score": claims["reliability_score"],
@@ -256,6 +268,16 @@ def aggregate_scores(query_scores: list[dict[str, Any]]) -> dict[str, Any]:
         "evidence_coverage": _mean([s["evidence_coverage"] for s in query_scores]),
         "claim_support_rate": (
             sum(s["claim_supported"] for s in query_scores) / total_claims if total_claims else 0.0
+        ),
+        "claim_unchecked_total": sum(s.get("claim_unchecked", 0) for s in query_scores),
+        "claim_verification_availability": (
+            1.0
+            - (
+                sum(s.get("claim_unchecked", 0) for s in query_scores)
+                / max(1, total_claims + sum(s.get("claim_unchecked", 0) for s in query_scores))
+            )
+            if (total_claims or any(s.get("claim_unchecked") for s in query_scores))
+            else None
         ),
         "contradiction_rate": (
             sum(s["claim_contradicted"] for s in query_scores) / total_claims

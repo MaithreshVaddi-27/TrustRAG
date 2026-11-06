@@ -413,6 +413,10 @@ def test_effective_cloud_model_is_validated_even_when_request_omits_it():
         supported_gemini_models: ClassVar[list[str]] = ["gemini-allowed-only"]
         embedding_dimensionality = real.embedding_dimensionality
         embedding_model = real.embedding_model
+        # enforce_server_model_policy compares the requested model against the
+        # deep-reasoning id; the stub must carry it or the validator raises
+        # AttributeError instead of the ValidationError under test.
+        deep_reasoning_model = "qwen3:1.7b"
 
         def __init__(self, resolved: str):
             self._resolved = resolved
@@ -495,6 +499,10 @@ def test_verification_model_allowlist_rejects_unbudgeted_cloud_model(monkeypatch
         supported_gemini_models: ClassVar[list[str]] = ["gemini-allowed-only"]
         embedding_dimensionality = real.embedding_dimensionality
         embedding_model = real.embedding_model
+        # enforce_server_model_policy compares the requested model against the
+        # deep-reasoning id; the stub must carry it or the validator raises
+        # AttributeError instead of the ValidationError under test.
+        deep_reasoning_model = "qwen3:1.7b"
 
         def __init__(self, resolved: str):
             self._resolved = resolved
@@ -534,6 +542,10 @@ def test_verification_model_allowlist_allows_env_operator_override(monkeypatch):
         supported_gemini_models: ClassVar[list[str]] = ["gemini-allowed-only"]
         embedding_dimensionality = real.embedding_dimensionality
         embedding_model = real.embedding_model
+        # enforce_server_model_policy compares the requested model against the
+        # deep-reasoning id; the stub must carry it or the validator raises
+        # AttributeError instead of the ValidationError under test.
+        deep_reasoning_model = "qwen3:1.7b"
 
         def llm_model_for(self, provider: str) -> str:
             return "gemini-allowed-only"

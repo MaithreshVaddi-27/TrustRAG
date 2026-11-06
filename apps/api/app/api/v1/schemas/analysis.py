@@ -204,7 +204,7 @@ class ClaimResponse(BaseModel):
     subject: str | None = None
     predicate: str | None = None
     object: str | None = None
-    state: str  # SUPPORTED, CONTRADICTED, NEUTRAL
+    state: str  # SUPPORTED, CONTRADICTED, NEUTRAL, UNCHECKED (never verified)
     explanation: str | None = None
     evidence_ids: list[str] = []
     created_at: datetime

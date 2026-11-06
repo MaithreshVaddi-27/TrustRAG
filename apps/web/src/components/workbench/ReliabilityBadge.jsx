@@ -55,7 +55,8 @@ export function ReliabilityBadge({ score, status, size = 'md' }) {
 }
 
 /**
- * ClaimStateBadge — SUPPORTED | CONTRADICTED | NEUTRAL (backend claim states)
+ * ClaimStateBadge — SUPPORTED | CONTRADICTED | NEUTRAL | UNCHECKED
+ * (UNCHECKED = the claim was never NLI-verified, so it is not support)
  *
  * VerdictBadge is the canonical name (F-6); ClaimStateBadge stays as an alias
  * so existing imports keep working.
@@ -66,6 +67,7 @@ export function VerdictBadge({ state }) {
     SUPPORTED:    { cls: 'badge-supported',    label: 'Supported',    icon: '✓' },
     CONTRADICTED: { cls: 'badge-contradicted',  label: 'Contradicted', icon: '✗' },
     NEUTRAL:      { cls: 'badge-neutral',       label: 'Neutral',      icon: '~' },
+    UNCHECKED:    { cls: 'badge-unknown',       label: 'Unverified',   icon: '?' },
   }
   const { cls, label, icon } = map[norm] ?? { cls: 'badge-unknown', label: state ?? 'Unknown', icon: '?' }
   return (

@@ -106,7 +106,13 @@ async def test_verify_claim_contradicted(mock_get_model):
 async def test_execute_claim_verification(
     mock_create_indexes, mock_connect, mock_decompose, mock_batch_verify
 ):
-    mock_decompose.return_value = ["Claim 1", "Claim 2"]
+    # Realistic claim sentences: two-word title-case placeholders ("Claim 1")
+    # are exactly the document-scaffolding shape _filter_degenerate_claims now
+    # drops, so the fixture must use assertion-shaped text.
+    mock_decompose.return_value = [
+        "Bearer tokens remain valid for 30 days after they are issued",
+        "Deletion requests are completed within 5 business days",
+    ]
     mock_batch_verify.return_value = {
         1: {"verdict": "SUPPORTED", "supporting_segments": [1], "explanation": "Ok"},
         2: {"verdict": "NEUTRAL", "supporting_segments": [], "explanation": "Missing"},
@@ -123,7 +129,8 @@ async def test_execute_claim_verification(
 
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
-            answer="Claim 1. Claim 2.",
+            answer="Bearer tokens remain valid for 30 days after they are issued. "
+            "Deletion requests are completed within 5 business days.",
             chunks=chunks,
             evidence_ids=evidence_ids,
         )

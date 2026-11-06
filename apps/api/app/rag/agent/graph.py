@@ -45,7 +45,11 @@ from app.rag.retrieval.reranker import rerank_candidate_chunks
 from app.rag.retrieval.retriever import retrieve_hybrid_chunks
 from app.rag.verification.integrity import audit_evidence_integrity
 from app.rag.verification.verdict import Thresholds, compute_verdict
-from app.rag.verification.verifier import execute_claim_verification, is_refusal_answer
+from app.rag.verification.verifier import (
+    UNCHECKED_CLAIM_STATE,
+    execute_claim_verification,
+    is_refusal_answer,
+)
 from app.services.analysis_service import add_trace_event
 from app.services.search_service import sanitize_url
 
@@ -1052,13 +1056,23 @@ async def verification_node(state: AgentState) -> AgentState:
     supported = sum(1 for c in claims if c["state"] == "SUPPORTED")
     contradicted = sum(1 for c in claims if c["state"] == "CONTRADICTED")
     neutral = sum(1 for c in claims if c["state"] == "NEUTRAL")
+    # Claims the verifier could not check (batch unusable and the per-claim
+    # fallback budget exhausted). They force VERIFICATION_UNAVAILABLE and can
+    # never let a run pass as TRUSTED, so a verifier outage is never reported as
+    # "insufficient evidence" (Phase-1 false-abstention fix).
+    unchecked = sum(1 for c in claims if c["state"] == UNCHECKED_CLAIM_STATE)
 
     await add_trace_event(
         state["analysis_id"],
         "claims.verified",
         {
             "message": f"Verified {total} atomic claims",
-            "stats": {"supported": supported, "contradicted": contradicted, "neutral": neutral},
+            "stats": {
+                "supported": supported,
+                "contradicted": contradicted,
+                "neutral": neutral,
+                "unchecked": unchecked,
+            },
         },
     )
 
@@ -1073,9 +1087,10 @@ async def verification_node(state: AgentState) -> AgentState:
         supported=supported,
         contradicted=contradicted,
         neutral=neutral,
-        total=total,
+        total=supported + contradicted + neutral,
         thresholds=thresholds,
         answer=state.get("answer"),
+        unchecked=unchecked,
     )
 
     state["verdict_status"] = verdict.verdict_status.value

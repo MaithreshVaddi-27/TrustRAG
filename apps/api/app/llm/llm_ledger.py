@@ -40,6 +40,10 @@ class LLMCallLedger:
     output_tokens: int = 0
     # Per-model breakdown, for diagnosing which stage is expensive.
     by_model: dict[str, int] = field(default_factory=dict)
+    # Individual per-claim NLI fallback calls only. One batch call is one LLM
+    # call; the fallback multiplies that by up to max_verification_claims per
+    # round, so it needs its own bound independent of the call counter above.
+    nli_fallback_calls: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -47,6 +51,7 @@ class LLMCallLedger:
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
             "by_model": dict(self.by_model),
+            "nli_fallback_calls": self.nli_fallback_calls,
         }
 
 
@@ -92,6 +97,43 @@ def calls_remaining() -> int | None:
     if cap is None:
         return None
     return max(0, cap - ledger.calls)
+
+
+def max_nli_fallback_calls() -> int:
+    """Whole-analysis ceiling on individual per-claim NLI fallback calls.
+
+    Derived from config so no new knob is needed: the per-round cap
+    (`cost_controls.max_individual_nli_fallback`) times the number of rounds a
+    run can reach (`recovery.max_recovery_attempts` + 1). With the shipped
+    values that is 8 x 3 = 24 local calls worst case, ~1 s each. The per-round
+    cap already applied on the first round, so a run can never exceed this.
+    """
+    cfg = get_model_config()
+    per_round = int(getattr(cfg, "max_individual_nli_fallback", 0) or 0)
+    rounds = int(getattr(cfg, "max_recovery_attempts", 0) or 0) + 1
+    return max(0, per_round * rounds)
+
+
+def record_nli_fallback_call() -> None:
+    """Count one individual per-claim NLI fallback call against the ledger."""
+    ledger = _LEDGER.get()
+    if ledger is None:
+        return
+    ledger.nli_fallback_calls += 1
+
+
+def nli_fallback_exhausted() -> bool:
+    """True only when the whole-analysis fallback ceiling has been reached.
+
+    Inert outside an analysis (no ledger), matching llm_budget_exhausted. Applies
+    to local tiers too: this is a call-count bound against runaway verification
+    loops, not a spend guard.
+    """
+    ledger = _LEDGER.get()
+    if ledger is None:
+        return False
+    cap = max_nli_fallback_calls()
+    return cap > 0 and ledger.nli_fallback_calls >= cap
 
 
 def llm_budget_exhausted() -> bool:

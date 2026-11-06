@@ -21,7 +21,12 @@ from app.core import config as config_mod
 from app.core.config.model_config import get_model_config, normalize_provider
 from app.core.observability.logging import get_logger
 from app.db.mongodb import Collections, get_collection
-from app.llm.llm_ledger import invoke_counted, llm_budget_exhausted
+from app.llm.llm_ledger import (
+    invoke_counted,
+    llm_budget_exhausted,
+    nli_fallback_exhausted,
+    record_nli_fallback_call,
+)
 from app.llm.local_llm import is_reasoning_model, verification_cap_kwargs
 from app.llm.model_registry import get_verification_model
 from app.rag.generation.generator import (
@@ -212,9 +217,22 @@ def _filter_degenerate_claims(claims: list[str]) -> list[str]:
     """Drop degenerate claims that small models emit instead of facts:
     - questions (end with "?" — usually the model echoed the query)
     - single-word heading-like claims (< 15 chars, title case, no period,
-      e.g. "Eligibility")
+      e.g. "Eligibility"), and any single-token claim with no sentence
+      punctuation ("Deletions")
+    - label fragments that end mid-thought with a colon ("Effective from:",
+      "Maximum payload size:") — these are document labels, not assertions
+    - title-case heading lines ("The Account Service API", "Data Retention
+      Policy"): 2-6 words, no terminal punctuation, every word
+      capitalised-initial, and NO predicate verb — a real assertion carries one
+      ("Bearer Tokens Are Valid For 30 Days" survives; a document title does
+      not). The verb test, not a digit ban, is what separates the two, so
+      numeric facts are never dropped.
     - section-numbered lines ("1. Eligibility")
     Returns stripped, non-empty claim texts.
+
+    A dropped claim is never verified and never delivered as support, so the
+    answer it came from loses coverage and fails the grounding gate rather than
+    laundering document scaffolding into a trusted answer.
     """
     filtered: list[str] = []
     for c in claims:
@@ -236,6 +254,20 @@ def _filter_degenerate_claims(claims: list[str]) -> list[str]:
             and c_stripped == c_stripped.capitalize()
         ):
             logger.debug("Dropping heading-like claim", claim=c_stripped[:60])
+            continue
+        if len(words) == 1 and not c_stripped.endswith((".", "!", "?")):
+            logger.debug("Dropping single-token claim", claim=c_stripped[:60])
+            continue
+        if c_stripped.endswith(":") and len(words) <= 8:
+            logger.debug("Dropping label-fragment claim", claim=c_stripped[:60])
+            continue
+        if (
+            2 <= len(words) <= 6
+            and not c_stripped.endswith((".", "!", "?", ";"))
+            and all(w[0].isupper() or not w[0].isalpha() for w in words)
+            and not any(w.lower().strip(",;:") in _PREDICATE_VERBS for w in words)
+        ):
+            logger.debug("Dropping title-case heading claim", claim=c_stripped[:60])
             continue
         filtered.append(c_stripped)
     return filtered
@@ -310,6 +342,52 @@ _VERDICT_ALIASES = {
 }
 
 _CANONICAL_VERDICTS = ("SUPPORTED", "CONTRADICTED", "NEUTRAL")
+
+# Claim state for a decomposed claim that could NOT be NLI-checked (batch call
+# unusable and the per-claim fallback budget exhausted). Distinct from NEUTRAL
+# ("checked, insufficient evidence") so the verdict engine can refuse to call it
+# unsupported and the diagnosis can say VERIFICATION_UNAVAILABLE instead of
+# LOW_COVERAGE. Never counted as support; never allowed to reach TRUSTED.
+UNCHECKED_CLAIM_STATE = "UNCHECKED"
+
+# Top-level container keys small models emit instead of "verdicts" (gemma3:1b
+# was observed returning "vericits" on 8/8 batch calls).
+_BATCH_NLI_KEY_ALIASES = (
+    "vericits",
+    "verdict",
+    "results",
+    "items",
+    "statements",
+    "claims",
+    "data",
+)
+
+
+def _usable_batch_verdict_item(item: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the row only if it maps to a real claim with a real verdict.
+
+    Template echoes ("VERDICT_1", "<array>") and rows with no claim id are
+    dropped rather than coerced: coercing them would mark a claim NEUTRAL and
+    suppress the individual fallback that would otherwise verify it, which is
+    exactly how a malformed batch response became a false abstention.
+    """
+    claim_id = _coerce_claim_id(item.get("claim_id", item.get("id")))
+    if claim_id <= 0:
+        logger.debug("Dropped batch NLI row without a claim id", row=str(item)[:80])
+        return None
+    raw_verdict = item.get("verdict")
+    if not isinstance(raw_verdict, str):
+        logger.debug("Dropped batch NLI row without a verdict", claim_id=claim_id)
+        return None
+    bare = raw_verdict.strip().upper().rstrip(".:;!,")
+    if bare in _CANONICAL_VERDICTS or bare in _VERDICT_ALIASES:
+        return item
+    logger.debug(
+        "Dropped batch NLI row with an unusable verdict",
+        claim_id=claim_id,
+        verdict=raw_verdict,
+    )
+    return None
 
 
 def _normalize_verdict_value(value: Any) -> Any:
@@ -584,10 +662,17 @@ class BatchNLIVerdict(BaseModel):
         description="List of verification verdicts for each numbered claim."
     )
 
+    # Small models rename the top-level key (observed 8/8 with gemma3:1b:
+    # "vericits") or hand back the shape template with placeholders
+    # ("VERDICT_1"). Both used to raise, which — with the per-claim fallback
+    # disabled on recovery rounds — silently marked every claim NEUTRAL and
+    # turned a malformed response into a false "insufficient evidence"
+    # abstention. Tolerate the rename, drop the unusable rows, and let missing
+    # claim ids fall back to individual NLI upstream.
     @model_validator(mode="before")
     @classmethod
     def _drop_unrecoverable_items(cls, data: Any) -> Any:
-        """Drop batch items that carry no claim mapping (bare ints/strings).
+        """Normalize the batch container and drop rows no verifier can use.
 
         Small models sometimes emit {"verdicts": [1]}. A bare int cannot be
         mapped to a verdict, so keeping it would either raise (losing valid
@@ -595,26 +680,40 @@ class BatchNLIVerdict(BaseModel):
         fallback). Dropping lets valid items count and missing ids fall back
         per-claim upstream.
         """
-        if isinstance(data, dict):
-            raw = data.get("verdicts")
-            if isinstance(raw, list):
-                kept: list[Any] = []
-                for item in raw:
-                    if isinstance(item, dict):
-                        kept.append(item)
-                    elif isinstance(item, str):
-                        try:
-                            parsed = json.loads(item)
-                        except (ValueError, TypeError):
-                            parsed = None
-                        if isinstance(parsed, dict):
-                            kept.append(parsed)
-                        else:
-                            logger.debug("Dropped unrecoverable batch NLI item", item=item)
+        if not isinstance(data, dict):
+            return data
+
+        raw = data.get("verdicts")
+        if not isinstance(raw, list):
+            for alias in _BATCH_NLI_KEY_ALIASES:
+                candidate = data.get(alias)
+                if isinstance(candidate, list):
+                    logger.debug("Renamed batch NLI container key", alias=alias)
+                    raw = candidate
+                    break
+
+        kept: list[Any] = []
+        if isinstance(raw, list):
+            for item in raw:
+                if isinstance(item, dict):
+                    usable = _usable_batch_verdict_item(item)
+                    if usable is not None:
+                        kept.append(usable)
+                elif isinstance(item, str):
+                    try:
+                        parsed = json.loads(item)
+                    except (ValueError, TypeError):
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        usable = _usable_batch_verdict_item(parsed)
+                        if usable is not None:
+                            kept.append(usable)
                     else:
                         logger.debug("Dropped unrecoverable batch NLI item", item=item)
-                data = {**data, "verdicts": kept}
-        return data
+                else:
+                    logger.debug("Dropped unrecoverable batch NLI item", item=item)
+
+        return {**data, "verdicts": kept}
 
 
 class FusedClaimVerdict(BaseModel):
@@ -1430,19 +1529,15 @@ async def execute_claim_verification(
 
     # 3. Process each claim and persist to MongoDB (Batch Optimized)
     # Bound the per-claim fallback: each miss costs a full LLM call, so cap it
-    # and mark the remainder NEUTRAL (conservative — never inflates trust).
-    # OPT (local-LLM load): early-exit — if the batch already proves the
-    # contradiction rate is over the threshold, skip all individual fallbacks.
+    # per round (`max_individual_nli_fallback`) AND across the whole analysis
+    # (`nli_fallback_exhausted`, derived from config), marking the remainder
+    # UNCHECKED (conservative — never counted as support, never TRUSTED).
     fallback_budget = max(0, int(cfg.max_individual_nli_fallback or 0))
-    if attempt > 0 and fallback_budget:
-        # Recovery rounds already spend two batch calls. Avoid multiplying a
-        # slow recovery round into several serial local calls.
-        logger.info(
-            "Skipping individual-NLI fallback after failed recovery batches",
-            attempt=attempt,
-            saved_calls=fallback_budget,
-        )
-        fallback_budget = 0
+    # The blanket "attempt > 0" disable that used to sit here was the Phase-1
+    # false-abstention bug: on a recovery round a failed batch call left every
+    # claim auto-NEUTRAL, so 0/N coverage was reported as "insufficient
+    # evidence". Recovery rounds keep the fallback now; the cost is bounded by
+    # the per-round cap plus the whole-analysis cap above.
     try:
         _threshold = float(getattr(cfg, "maximum_contradiction_rate", 0.2) or 0.2)
         _contra = sum(
@@ -1461,12 +1556,13 @@ async def execute_claim_verification(
     for i, text in enumerate(claims_texts, start=1):
         if i in results_map:
             nli_res = results_map[i]
-        elif fallback_budget > 0:
+        elif fallback_budget > 0 and not nli_fallback_exhausted():
             # Spend guard (audit B-4): this loop is the biggest single
             # multiplier in the pipeline — up to max_individual_nli_fallback
-            # serial calls per round, times the recovery rounds. Stop rather
-            # than bill past the per-analysis cap; remaining claims stay
-            # NEUTRAL, which is the pre-existing safe default.
+            # serial calls per round, times the recovery rounds. Two bounds
+            # stop it: the cloud call budget and the whole-analysis NLI
+            # fallback ceiling. Remaining claims stay UNCHECKED, which fails
+            # the run honestly instead of pretending they were checked.
             if llm_budget_exhausted():
                 logger.warning(
                     "Skipping per-claim NLI fallback: LLM call budget exhausted",
@@ -1475,6 +1571,7 @@ async def execute_claim_verification(
                 fallback_budget = 0
             else:
                 fallback_budget -= 1
+                record_nli_fallback_call()
                 # Fallback to individual claim verification (same provider/model —
                 # cfg defaults would silently switch engines mid-analysis otherwise)
                 try:
@@ -1490,7 +1587,7 @@ async def execute_claim_verification(
                     )
                 except TimeoutError:
                     nli_res = {
-                        "verdict": "NEUTRAL",
+                        "verdict": UNCHECKED_CLAIM_STATE,
                         "supporting_segments": [],
                         "explanation": (
                             "Verification skipped: per-call NLI timeout "
@@ -1499,7 +1596,7 @@ async def execute_claim_verification(
                     }
         else:
             nli_res = {
-                "verdict": "NEUTRAL",
+                "verdict": UNCHECKED_CLAIM_STATE,
                 "supporting_segments": [],
                 "explanation": (
                     "Verification skipped: batch NLI unavailable and the "
@@ -1540,14 +1637,17 @@ async def execute_claim_verification(
                 supporting_evidence_ids.append(extra_id)
 
         # Inline provenance markers surviving in the claim text
-        # "[Segment N]" citations) link their segments too.
-        for cited_num in extract_citations(text):
-            if 1 <= cited_num <= len(context_chunk_indices):
-                chunk_idx = context_chunk_indices[cited_num - 1]
-                if 0 <= chunk_idx < len(evidence_ids):
-                    cited_id = evidence_ids[chunk_idx]
-                    if cited_id not in supporting_evidence_ids:
-                        supporting_evidence_ids.append(cited_id)
+        # "[Segment N]" citations) link their segments too. Only for states that
+        # were actually verified — an UNCHECKED claim must not display evidence
+        # linkage that looks like support.
+        if nli_res.get("verdict") in ("SUPPORTED", "CONTRADICTED", "NEUTRAL"):
+            for cited_num in extract_citations(text):
+                if 1 <= cited_num <= len(context_chunk_indices):
+                    chunk_idx = context_chunk_indices[cited_num - 1]
+                    if 0 <= chunk_idx < len(evidence_ids):
+                        cited_id = evidence_ids[chunk_idx]
+                        if cited_id not in supporting_evidence_ids:
+                            supporting_evidence_ids.append(cited_id)
 
         subj, pred, obj = extract_claim_triple_heuristic(text)
         claim_doc = {

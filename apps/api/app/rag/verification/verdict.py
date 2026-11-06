@@ -66,6 +66,13 @@ class DiagnosisType(StrEnum):
     RETRIEVAL_OUTAGE = "RETRIEVAL_OUTAGE"
     EVIDENCE_CONFLICT = "EVIDENCE_CONFLICT"
     LOW_COVERAGE = "LOW_COVERAGE"
+    # Verification itself could not run (structured batch call unusable AND the
+    # per-claim fallback budget exhausted). Kept separate from LOW_COVERAGE so a
+    # verifier outage is never reported as "the evidence was insufficient" —
+    # that false attribution is what produced the Phase-1 false abstentions
+    # (q022/q024: 12 claims stored with "Verification skipped" explanations were
+    # scored as unsupported evidence).
+    VERIFICATION_UNAVAILABLE = "VERIFICATION_UNAVAILABLE"
     NONE = "NONE"
 
 
@@ -96,6 +103,7 @@ def compute_verdict(
     total: int,
     thresholds: Thresholds,
     answer: str | None = None,
+    unchecked: int = 0,
 ) -> VerdictResult:
     """
     Compute the unified trust verdict from claim verification counts.
@@ -107,10 +115,34 @@ def compute_verdict(
         total: Total number of claims verified
         thresholds: Reliability thresholds from config
         answer: Optional answer text (used to detect explicit ABSTAIN)
+        unchecked: Number of claims that could NOT be verified (batch call
+            unusable and the per-claim fallback budget exhausted). Excluded from
+            the coverage ratio, but a run with any unchecked claim can never be
+            TRUSTED: an unverified sentence is an unknown, not trust. Reported as
+            VERIFICATION_UNAVAILABLE, never LOW_COVERAGE, so a verifier outage is
+            never misattributed to insufficient evidence.
 
     Returns:
         VerdictResult with all computed fields
     """
+    if unchecked > 0:
+        # Never TRUSTED while any claim is unverified, however good the
+        # verified subset looks. The unchecked sentence may be the hallucination.
+        return VerdictResult(
+            verdict_status=VerdictStatus.FAIL,
+            reliability_status=(
+                ReliabilityStatus.ABSTAINED
+                if is_refusal_answer(answer)
+                else ReliabilityStatus.FAILED
+            ),
+            reliability_score=0.0,
+            diagnosis_type=DiagnosisType.VERIFICATION_UNAVAILABLE,
+            diagnosis_failures=[
+                f"{unchecked} claim(s) could not be verified against evidence "
+                "(verification unavailable); answer withheld"
+            ],
+        )
+
     if total == 0:
         # No claims verified. An explicit model ABSTAIN is correct behavior
         # (abstained), not a failure — only a non-empty unverifiable answer fails.
@@ -186,13 +218,17 @@ def verdict_from_state(
     """
     Compute verdict from graph state dict.
 
-    Extracts claim counts and answer from LangGraph state.
+    Extracts claim counts and answer from LangGraph state. Claims persisted as
+    UNCHECKED (batch call unusable and per-claim fallback exhausted) are counted
+    separately and force VERIFICATION_UNAVAILABLE, so the trust decision and the
+    diagnosis stay honest about what was actually verified.
     """
     claims = state.get("claims", [])
     supported = sum(1 for c in claims if c.get("state") == "SUPPORTED")
     contradicted = sum(1 for c in claims if c.get("state") == "CONTRADICTED")
     neutral = sum(1 for c in claims if c.get("state") == "NEUTRAL")
-    total = len(claims)
+    unchecked = sum(1 for c in claims if c.get("state") == "UNCHECKED")
+    total = supported + contradicted + neutral
     answer = state.get("answer")
 
     return compute_verdict(
@@ -202,4 +238,5 @@ def verdict_from_state(
         total=total,
         thresholds=thresholds,
         answer=answer,
+        unchecked=unchecked,
     )
