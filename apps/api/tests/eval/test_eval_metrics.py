@@ -182,3 +182,25 @@ def test_aggregate_scores_skips_missing_citations():
     assert agg["claim_support_rate"] == 1.0  # 1 supported of 1 total claim
     assert agg["latency"]["count"] == 2
     assert metrics.aggregate_scores([])["n_queries"] == 0
+
+
+def test_score_query_abstained_ignores_discarded_draft_claims():
+    # If a query abstained (e.g. via grounding gate), any discarded candidate
+    # draft claims must not be evaluated as delivered answer claims.
+    result = metrics.score_query(
+        query_id="q022",
+        query_class="adversarial",
+        retrieved_ids=["e1"],
+        gold_ids={"e1"},
+        evidence_texts=["some text"],
+        gold_snippets=["text"],
+        claim_states=["NEUTRAL", "NEUTRAL", "NEUTRAL"],
+        citation_supporting=[],
+        status="abstained",
+        latency_ms=100.0,
+    )
+    assert result["abstained"] is True
+    assert result["claim_total"] == 0
+    assert result["claim_supported"] == 0
+    assert result["claim_neutral"] == 0
+    assert result["claim_contradicted"] == 0

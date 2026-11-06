@@ -201,7 +201,11 @@ def score_query(
 ) -> dict[str, Any]:
     """Score one evaluated query. All inputs are plain data; no I/O."""
     resolved = resolve_snippets(evidence_texts, gold_snippets)
-    claims = claim_summary(claim_states)
+    # When an analysis outcome is abstained, the answer was withheld or declined.
+    # Discarded candidate claims from pre-abstention draft attempts must not be
+    # scored as claims made by the final answer.
+    effective_claim_states = [] if is_abstained(status) else claim_states
+    claims = claim_summary(effective_claim_states)
     return {
         "query_id": query_id,
         "query_class": query_class,
