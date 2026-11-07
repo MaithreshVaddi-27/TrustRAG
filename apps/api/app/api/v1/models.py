@@ -76,7 +76,7 @@ async def get_providers_endpoint(
     # Serve from short TTL cache when fresh.
     now = time.monotonic()
     cached = _PROVIDERS_CACHE.get("data")
-    if cached is not None and (now - float(_PROVIDERS_CACHE.get("ts", 0.0))) < _PROVIDERS_CACHE_TTL:
+    if isinstance(cached, dict) and (now - float(_PROVIDERS_CACHE.get("ts", 0.0))) < _PROVIDERS_CACHE_TTL:
         return cached
 
     settings = get_settings()
