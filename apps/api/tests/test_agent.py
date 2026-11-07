@@ -222,7 +222,7 @@ async def test_verification_node_fail(mock_execute):
 async def test_recovery_node_rewrite(mock_model, mock_collection):
     # Mock LLM query rewrite (local providers go through a token-capped bind)
     mock_response = MagicMock()
-    mock_response.content = "rewritten search query"
+    mock_response.content = "expanded search for original information"
     mock_llm = MagicMock()
     mock_llm.ainvoke = AsyncMock(return_value=mock_response)
     mock_llm.bind = MagicMock(return_value=mock_llm)
@@ -244,7 +244,7 @@ async def test_recovery_node_rewrite(mock_model, mock_collection):
 
     res = await recovery_node(state)
     assert res["attempts"] == 1
-    assert res["current_query"] == "rewritten search query"
+    assert res["current_query"] == "expanded search for original information"
     assert res["recovery_strategy"] == "query_rewrite"
     mock_db.insert_one.assert_called_once()
     # Rewrite reserves a small output budget on local inference (RAM saving).
@@ -1064,7 +1064,7 @@ async def test_recovery_node_diagnosis_based_strategy(mock_get_model, mock_colle
     mock_model = MagicMock()
     mock_model.bind.return_value = mock_model
     mock_model.ainvoke = AsyncMock()
-    mock_model.ainvoke.return_value.content = "expanded query"
+    mock_model.ainvoke.return_value.content = "expanded information about the topic"
     mock_get_model.return_value = mock_model
 
     # Mock DB

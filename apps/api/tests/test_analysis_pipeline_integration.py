@@ -32,7 +32,7 @@ ANALYSIS_ID = "64ee39d09c6292376e191983"
 KB_ID = "64ee39d09c6292376e191982"
 USER_ID = "64ee39d09c6292376e191981"
 
-ANSWER = "Records are retained for 30 days after closure [Segment 1]."
+ANSWER = "Tokens are retained for 30 days after closure [Segment 1]."
 CHUNKS = [
     {
         "chunk_id": "c1",
@@ -72,7 +72,7 @@ def _fused_response() -> FusedDecomposeVerify:
     return FusedDecomposeVerify(
         items=[
             {
-                "claim": "Records are retained for 30 days after closure.",
+                "claim": "Tokens are retained for 30 days after closure.",
                 "verdict": "SUPPORTED",
                 "supporting_segments": [1],
                 "explanation": "Segment 1 states the 30-day token lifetime.",
@@ -248,7 +248,7 @@ def _verification_model_contradicting() -> MagicMock:
     response = FusedDecomposeVerify(
         items=[
             {
-                "claim": "Records are retained for 30 days after closure.",
+                "claim": "Tokens are retained for 30 days after closure.",
                 "verdict": "CONTRADICTED",
                 "supporting_segments": [],
                 "explanation": "Evidence does not support this.",

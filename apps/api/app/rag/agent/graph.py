@@ -1091,6 +1091,7 @@ async def verification_node(state: AgentState) -> AgentState:
         thresholds=thresholds,
         answer=state.get("answer"),
         unchecked=unchecked,
+        query=state.get("query"),
     )
 
     state["verdict_status"] = verdict.verdict_status.value
@@ -1120,10 +1121,12 @@ async def verification_node(state: AgentState) -> AgentState:
 # and collapsed whitespace before the rewrite is used or traced.
 _REWRITE_META_PREFIXES = (
     "expanded search query:",
-    "rewritten query:",
     "rewritten search query:",
+    "rewritten query:",
     "search query:",
     "expanded query:",
+    "expand query:",
+    "xml query:",
     "expand:",
     "rewrite:",
     "query:",
@@ -1132,12 +1135,17 @@ _REWRITE_META_PREFIXES = (
 
 
 def _sanitize_rewritten_query(raw: str | None) -> str:
-    text = (raw or "").strip().strip("\"'`")
-    lowered = text.lower()
-    for prefix in _REWRITE_META_PREFIXES:
-        if lowered.startswith(prefix):
-            text = text[len(prefix) :].strip().strip("\"'`")
-            lowered = text.lower()
+    text = (raw or "").strip().strip("\"'`*")
+    changed = True
+    while changed:
+        changed = False
+        text = text.strip().strip("\"'`*")
+        lowered = text.lower()
+        for prefix in _REWRITE_META_PREFIXES:
+            if lowered.startswith(prefix):
+                text = text[len(prefix) :].strip().strip("\"'`*")
+                changed = True
+                break
     text = re.sub(r"\s+", " ", text).strip()
     if _looks_like_instruction_echo(text):
         return ""
@@ -1148,10 +1156,16 @@ def _normalize_query_tokens(text: str) -> set[str]:
     return set(re.findall(r"\b\w+\b", (text or "").lower()))
 
 
+_REWRITE_META_TOKENS = frozenset(
+    {"expand", "expanded", "query", "queries", "search", "rewrite", "rewritten", "xml"}
+)
+
+
 def _is_effectively_identical_query(original: str, rewritten: str) -> bool:
     orig_tokens = _normalize_query_tokens(original)
     rewritten_tokens = _normalize_query_tokens(rewritten)
-    return not (rewritten_tokens - orig_tokens)
+    new_tokens = rewritten_tokens - orig_tokens
+    return not (new_tokens - _REWRITE_META_TOKENS)
 
 
 # Small local models sometimes echo the rewrite *instructions* instead of a
@@ -1427,7 +1441,11 @@ against the newly served segments.</loop>
         new_query = normalize_llm_content(response.content)
         new_query = _sanitize_rewritten_query(str(new_query))
 
-        if not new_query or len(new_query) < 3 or _is_effectively_identical_query(state["query"], new_query):
+        if (
+            not new_query
+            or len(new_query) < 3
+            or _is_effectively_identical_query(state["query"], new_query)
+        ):
             # Small local models sometimes return an empty rewrite or token-equivalent text.
             # An empty or identical query would waste a full retrieval+generation
             # round on identical content — keep the original instead.

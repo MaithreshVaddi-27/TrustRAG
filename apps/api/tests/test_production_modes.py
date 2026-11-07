@@ -22,13 +22,11 @@ Validates the two serving profiles and operational guardrails:
 from __future__ import annotations
 
 import json
-import os
-from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
 
-from app.core.config.model_config import ModelConfig, get_model_config
+from app.core.config.model_config import get_model_config
 from app.llm.llm_utils import extract_json_substring
 from app.rag.agent.graph import (
     _is_effectively_identical_query,
@@ -98,7 +96,9 @@ class TestDeepReasoningModeGating:
         monkeypatch.delenv("DEEP_REASONING_MODE", raising=False)
         monkeypatch.setattr(
             "app.llm.local_llm.get_discovered_llms",
-            lambda provider: frozenset(["gemma3:1b", "qwen3:1.7b"]) if provider == "ollama" else frozenset(),
+            lambda provider: (
+                frozenset(["gemma3:1b", "qwen3:1.7b"]) if provider == "ollama" else frozenset()
+            ),
         )
 
         with pytest.raises(ValidationError, match=r"deep-reasoning mode to be enabled"):
@@ -117,7 +117,9 @@ class TestDeepReasoningModeGating:
         monkeypatch.setenv("DEEP_REASONING_MODE", "true")
         monkeypatch.setattr(
             "app.llm.local_llm.get_discovered_llms",
-            lambda provider: frozenset(["gemma3:1b", "qwen3:1.7b"]) if provider == "ollama" else frozenset(),
+            lambda provider: (
+                frozenset(["gemma3:1b", "qwen3:1.7b"]) if provider == "ollama" else frozenset()
+            ),
         )
 
         request = AnalysisCreate(
@@ -153,7 +155,10 @@ class TestRecoveryAndQueryRewritingHardening:
     """Verifies prevention of recovery leakage and adversarial answering loops."""
 
     def test_clean_rewritten_query_meta_prefixes(self) -> None:
-        assert _sanitize_rewritten_query("Expand: flibbertygibbet zzzwarranty") == "flibbertygibbet zzzwarranty"
+        assert (
+            _sanitize_rewritten_query("Expand: flibbertygibbet zzzwarranty")
+            == "flibbertygibbet zzzwarranty"
+        )
         assert _sanitize_rewritten_query("expand: foo bar") == "foo bar"
         assert _sanitize_rewritten_query("rewrite: query terms") == "query terms"
         assert _sanitize_rewritten_query("Query: search terms") == "search terms"

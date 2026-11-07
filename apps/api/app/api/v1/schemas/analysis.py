@@ -110,8 +110,8 @@ class AnalysisCreate(BaseModel):
         ):
             raise ValueError(
                 f"Model '{requested_llm_model}' requires deep-reasoning mode to be enabled "
-                "(DEEP_REASONING_MODE=true). Deep-reasoning models are reserved for batch/analytical "
-                "tasks and not permitted in interactive mode."
+                "(DEEP_REASONING_MODE=true). Deep-reasoning models are reserved for "
+                "batch/analytical tasks and not permitted in interactive mode."
             )
         if requested_llm_model and requested_llm_model not in allowed_llms[provider]:
             raise ValueError(f"Model is not enabled for provider '{provider}'")
@@ -183,6 +183,7 @@ class AnalysisResponse(BaseModel):
     status: str
     answer: str | None = None
     answer_cited: str | None = None
+    answer_withheld: str | None = None
     reliability: ReliabilitySummary
     diagnosis: DiagnosisSummary
     created_at: datetime

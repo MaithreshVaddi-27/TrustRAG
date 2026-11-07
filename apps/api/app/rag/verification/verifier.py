@@ -1609,9 +1609,7 @@ async def execute_claim_verification(
         # not safe here and previously linked claims to the wrong evidence.
         # Small models (gemma3:1b, LFM2.5-1.2B) routinely hallucinate segment
         # numbers outside the served range (e.g. "3" when only 2 segments exist).
-        # Those out-of-range indices are rejected below; when a claim is judged
-        # SUPPORTED/CONTRADICTED but no segment maps cleanly, fall back to
-        # linking every evidence chunk so the claim is not orphaned.
+        # Those out-of-range indices are rejected below.
         raw_segments = nli_res.get("supporting_segments", [])
         supporting_evidence_ids = []
         for idx in raw_segments:
@@ -1621,25 +1619,10 @@ async def execute_claim_verification(
             if 0 <= chunk_idx < len(evidence_ids):
                 supporting_evidence_ids.append(evidence_ids[chunk_idx])
 
-        if (
-            not supporting_evidence_ids
-            and evidence_ids
-            and nli_res.get("verdict") in ("SUPPORTED", "CONTRADICTED")
-            # Targeted retrieval already mapped this claim's evidence via
-            # claim_evidence_ids; don't clobber it with the original evidence.
-            and i not in claim_evidence_ids
-        ):
-            supporting_evidence_ids = list(evidence_ids)
-
-        # Targeted-retrieval linkage from targeted retrieval (freshly persisted evidence).
-        for extra_id in claim_evidence_ids.get(i, []):
-            if extra_id not in supporting_evidence_ids:
-                supporting_evidence_ids.append(extra_id)
-
-        # Inline provenance markers surviving in the claim text
-        # "[Segment N]" citations) link their segments too. Only for states that
-        # were actually verified — an UNCHECKED claim must not display evidence
-        # linkage that looks like support.
+        # Inline provenance markers surviving in the claim text (e.g. "[Segment N]"
+        # citations) link their specific segments too. Prioritizing this before the
+        # full-evidence fallback prevents claiming every chunk when a specific segment
+        # citation exists.
         if nli_res.get("verdict") in ("SUPPORTED", "CONTRADICTED", "NEUTRAL"):
             for cited_num in extract_citations(text):
                 if 1 <= cited_num <= len(context_chunk_indices):
@@ -1648,6 +1631,21 @@ async def execute_claim_verification(
                         cited_id = evidence_ids[chunk_idx]
                         if cited_id not in supporting_evidence_ids:
                             supporting_evidence_ids.append(cited_id)
+
+        # Targeted-retrieval linkage from targeted retrieval (freshly persisted evidence).
+        for extra_id in claim_evidence_ids.get(i, []):
+            if extra_id not in supporting_evidence_ids:
+                supporting_evidence_ids.append(extra_id)
+
+        # Fallback: only when no segment or targeted evidence mapped cleanly, fall
+        # back to linking every evidence chunk so the verified claim is not orphaned.
+        if (
+            not supporting_evidence_ids
+            and evidence_ids
+            and nli_res.get("verdict") in ("SUPPORTED", "CONTRADICTED")
+            and i not in claim_evidence_ids
+        ):
+            supporting_evidence_ids = list(evidence_ids)
 
         subj, pred, obj = extract_claim_triple_heuristic(text)
         claim_doc = {

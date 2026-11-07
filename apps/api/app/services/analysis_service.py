@@ -222,6 +222,7 @@ def serialize_analysis(doc: Mapping[str, Any]) -> AnalysisResponse:
         status=doc.get("status", "pending"),
         answer=doc.get("answer"),
         answer_cited=doc.get("answer_cited"),
+        answer_withheld=doc.get("answer_withheld"),
         reliability=ReliabilitySummary(
             score=rel.get("score"),
             status=rel.get("status", "PENDING"),
@@ -817,6 +818,7 @@ async def run_analysis_pipeline(
                         "status": stored_status,
                         "answer": stored_answer,
                         "answer_cited": answer_cited,
+                        "answer_withheld": answer if (gated or scaffold_echo) else None,
                         "reliability": {
                             "score": verdict.reliability_score,
                             "status": verdict.reliability_status.value,

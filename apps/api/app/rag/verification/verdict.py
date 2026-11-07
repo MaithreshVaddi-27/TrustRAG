@@ -43,6 +43,86 @@ def is_refusal_answer(answer: str | None) -> bool:
     return any(rx.search(lowered) for rx in _REFUSAL_REGEXES)
 
 
+# Stopwords that frequently appear in questions but carry no topical content
+_QUESTION_STOPWORDS = frozenset(
+    {
+        "a", "about", "above", "after", "again", "against", "all", "am", "an",
+        "and", "any", "are", "as", "at", "be", "because", "been", "before",
+        "being", "below", "between", "both", "but", "by", "can", "could",
+        "did", "do", "does", "doing", "down", "during", "each", "few", "for",
+        "from", "further", "had", "has", "have", "having", "he", "her",
+        "here", "hers", "herself", "him", "himself", "his", "how", "if",
+        "in", "into", "is", "it", "its", "itself", "just", "long", "many",
+        "may", "me", "might", "more", "most", "much", "must", "my", "myself",
+        "no", "nor", "not", "now", "of", "off", "on", "once", "only", "or",
+        "other", "our", "ours", "ourselves", "out", "over", "own", "same",
+        "shall", "she", "should", "so", "some", "such", "than", "that", "the",
+        "their", "theirs", "them", "themselves", "then", "there", "these",
+        "they", "this", "those", "through", "to", "too", "under", "until",
+        "up", "very", "was", "we", "were", "what", "when", "where", "which",
+        "while", "who", "whom", "why", "will", "with", "would", "you", "your",
+        "yours", "yourself", "yourselves",
+        # Generic query verbs
+        "confirm", "state", "find", "tell", "show", "describe", "explain", "give", "list",
+    }
+)
+
+
+def extract_content_tokens(text: str) -> set[str]:
+    """Extract lowercased alphanumeric content tokens (length >= 2 or numbers), excluding stopwords."""
+    if not text:
+        return set()
+    tokens = set(re.findall(r"\b[a-z0-9_-]{2,}\b", text.lower()))
+    return {t for t in tokens if t not in _QUESTION_STOPWORDS}
+
+
+def is_responsive_answer(query: str | None, answer: str | None) -> bool:
+    """Determine whether an answer responds to the topic of the query.
+
+    Gemma 3 1B and other small models sometimes emit an unrelated fact from a
+    served document (e.g. answering 'Backups expire after 7 days' when asked
+    'How long are bearer tokens valid?'). Because that fact appears in the
+    served document, NLI verifies it as SUPPORTED, which would otherwise
+    produce a 100% reliability score for a completely wrong answer.
+
+    Returns True if:
+    - Query is absent or contains no substantive content words.
+    - Answer is an explicit refusal/abstention.
+    - Answer shares at least one content token (or simple stem) with the query.
+    """
+    if not query or not query.strip():
+        return True
+    if not answer or not answer.strip():
+        return False
+    if is_refusal_answer(answer):
+        return True
+
+    query_tokens = extract_content_tokens(query)
+    if not query_tokens:
+        return True
+
+    answer_lower = answer.lower()
+    answer_tokens = set(re.findall(r"\b[a-z0-9_-]{2,}\b", answer_lower))
+
+    # Direct token intersection
+    if query_tokens & answer_tokens:
+        return True
+
+    # Stem / substring match: e.g. "tokens" in query vs "token" in answer,
+    # "retention" vs "retained"
+    for q_tok in query_tokens:
+        if len(q_tok) >= 4:
+            if q_tok.endswith("s") and q_tok[:-1] in answer_tokens:
+                return True
+            stem = q_tok[:4]
+            if any(a_tok.startswith(stem) for a_tok in answer_tokens if len(a_tok) >= 4):
+                return True
+        elif q_tok in answer_tokens:
+            return True
+
+    return False
+
+
 class VerdictStatus(StrEnum):
     """Normalized verdict outcomes from the reliability engine."""
 
@@ -104,6 +184,7 @@ def compute_verdict(
     thresholds: Thresholds,
     answer: str | None = None,
     unchecked: int = 0,
+    query: str | None = None,
 ) -> VerdictResult:
     """
     Compute the unified trust verdict from claim verification counts.
@@ -121,10 +202,26 @@ def compute_verdict(
             TRUSTED: an unverified sentence is an unknown, not trust. Reported as
             VERIFICATION_UNAVAILABLE, never LOW_COVERAGE, so a verifier outage is
             never misattributed to insufficient evidence.
+        query: Optional user query string. If provided, answers that are completely
+            non-responsive to the query topic (e.g. answering about backups when
+            asked about deletion requests) are downgraded to UNCERTAIN / LOW_COVERAGE
+            so the grounding gate withholds them.
 
     Returns:
         VerdictResult with all computed fields
     """
+    if query and answer and not is_responsive_answer(query, answer):
+        return VerdictResult(
+            verdict_status=VerdictStatus.FAIL,
+            reliability_status=ReliabilityStatus.UNCERTAIN,
+            reliability_score=0.0,
+            diagnosis_type=DiagnosisType.LOW_COVERAGE,
+            diagnosis_failures=[
+                "Answer is non-responsive: addresses an unrelated fact from the "
+                "context rather than the question asked"
+            ],
+        )
+
     if unchecked > 0:
         # Never TRUSTED while any claim is unverified, however good the
         # verified subset looks. The unchecked sentence may be the hallucination.
@@ -230,6 +327,7 @@ def verdict_from_state(
     unchecked = sum(1 for c in claims if c.get("state") == "UNCHECKED")
     total = supported + contradicted + neutral
     answer = state.get("answer")
+    query = state.get("query")
 
     return compute_verdict(
         supported=supported,
@@ -239,4 +337,5 @@ def verdict_from_state(
         thresholds=thresholds,
         answer=answer,
         unchecked=unchecked,
+        query=query,
     )

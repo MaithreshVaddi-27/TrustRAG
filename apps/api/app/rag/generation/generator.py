@@ -274,23 +274,22 @@ Segments are numbered; those numbers are the only valid citation keys.
 Answer only from the premise. Do not use outside knowledge.
 </role>
 <action>
-1. Answer only what the premise states. Never guess.
-2. If the premise does not answer the question, reply with exactly:
+1. Answer only what the premise states. Answer the question actually asked. Do not state an unrelated fact from the premise; if the specific fact asked about is absent, reply with exactly:
 ABSTAIN
-3. End every sentence with its segment number, like: The limit is 30 days. [Segment 2]
-4. Use the Context's own words and labels.
+2. End every sentence with its segment number, like: The limit is 30 days. [Segment 2]
+3. Use the Context's own words and labels.
 </action>
 <format>
 Short markdown bullets. Cite every sentence. No preamble.
 Example 1:
-Premise: Backups expire after 7 days. [Segment 1]
-Question: How long do backups remain?
+Premise: Alpha Protocol requires 4 handshakes per cycle. [Segment 1]
+Question: How many handshakes does Alpha Protocol require per cycle?
 Answer:
-- Backups expire after 7 days. [Segment 1]
+- Alpha Protocol requires 4 handshakes per cycle. [Segment 1]
 
 Example 2:
-Premise: Employees receive 6 months parental leave. [Segment 1]
-Question: How much parental leave do contractors receive?
+Premise: Orbit Station maintains 6 auxiliary thrusters. [Segment 1]
+Question: What is the primary communication frequency of Orbit Station?
 Answer:
 ABSTAIN
 </format>
@@ -450,24 +449,68 @@ def strip_stray_abstain(answer: str) -> str:
     return text
 
 
-def strip_invalid_citations(answer: str, valid_segments: int) -> tuple[str, list[int]]:
-    """Remove [Segment N] refs with N outside 1..valid_segments.
+def strip_invalid_citations(
+    answer: str,
+    valid_segments: int,
+    context_chunks: list[str] | None = None,
+) -> tuple[str, list[int]]:
+    """Remove [Segment N] refs with N outside 1..valid_segments or where segment lacks claim text.
 
-    A cited segment that was never served is hallucinated provenance: the ref
-    is stripped (never the sentence — entailment is the verifier's job) and
-    reported in the returned dropped list. Answers without refs, and fully
-    valid answers, return byte-identical.
+    A cited segment that was never served or that lacks supporting content from
+    the cited clause is hallucinated provenance: the ref is stripped (never the
+    sentence — entailment is the verifier's job) and reported in the returned
+    dropped list. Answers without refs, and fully valid answers, return byte-identical.
     """
     if not answer:
         return answer, []
     dropped: list[int] = []
 
+    _FILLER_WORDS = {
+        "this", "that", "these", "those", "from", "with", "have", "been",
+        "under", "after", "before", "shall", "will", "would", "could", "should",
+        "their", "there", "which", "where", "about", "above", "below", "between",
+        "into", "through", "during", "other", "some", "such", "only", "also",
+    }
+
+    def _clause_matches_segment(clause: str, segment_text: str) -> bool:
+        if not clause or not segment_text:
+            return True
+        seg_lower = segment_text.lower()
+        words = re.findall(r"\b[a-z0-9_-]{3,}\b", clause.lower())
+        content = [w for w in words if w not in _FILLER_WORDS and not w.startswith("segment")]
+        if not content:
+            return True
+        for w in content:
+            if w in seg_lower:
+                return True
+            if w.endswith("s") and len(w) > 4 and w[:-1] in seg_lower:
+                return True
+            if w.endswith("ed") and len(w) > 5 and w[:-2] in seg_lower:
+                return True
+        return False
+
     def _replace(match: re.Match[str]) -> str:
         number = int(match.group(1))
-        if 1 <= number <= valid_segments:
-            return match.group(0)
-        dropped.append(number)
-        return ""
+        if not (1 <= number <= valid_segments):
+            dropped.append(number)
+            return ""
+
+        if context_chunks is not None and 1 <= number <= len(context_chunks):
+            prefix = answer[: match.start()]
+            last_boundary = max(
+                prefix.rfind("\n"),
+                prefix.rfind(". "),
+                prefix.rfind("; "),
+                prefix.rfind("- "),
+                0,
+            )
+            clause = prefix[last_boundary:].strip().lstrip("-*# ")
+            seg_text = context_chunks[number - 1]
+            if not _clause_matches_segment(clause, seg_text):
+                dropped.append(number)
+                return ""
+
+        return match.group(0)
 
     cleaned = _CITATION_RE.sub(_replace, answer)
     if dropped:
