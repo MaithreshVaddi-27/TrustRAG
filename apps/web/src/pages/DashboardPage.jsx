@@ -1,12 +1,12 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, lazy, Suspense } from 'react'
 import { motion } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/layouts/AppLayout'
 import { HeroBanner } from '@/components/dashboard/HeroBanner'
 import { ObservabilityBar } from '@/components/dashboard/ObservabilityBar'
 import { MetricsGrid } from '@/components/dashboard/MetricsGrid'
-import { ReliabilityChart } from '@/components/dashboard/ReliabilityChart'
-import { ClaimDistributionChart } from '@/components/dashboard/ClaimDistributionChart'
+const ReliabilityChart = lazy(() => import('@/components/dashboard/ReliabilityChart'))
+const ClaimDistributionChart = lazy(() => import('@/components/dashboard/ClaimDistributionChart'))
 import { RecentAnalysesFeed } from '@/components/dashboard/RecentAnalysesFeed'
 import { PipelineArchitecture } from '@/components/dashboard/PipelineArchitecture'
 import { kbService, analysisService, claimService, conflictService } from '@/services/api'
@@ -192,14 +192,18 @@ export default function DashboardPage() {
         {/* ── ANALYTICS VISUALIZATIONS ────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Reliability Score History AreaChart */}
-          <ReliabilityChart
-            analyses={analyses}
-            historyWindow={historyWindow}
-            setHistoryWindow={setHistoryWindow}
-          />
+          <Suspense fallback={<div className="col-span-1 h-64 animate-pulse bg-surface-800/40 rounded-xl" />}>
+            <ReliabilityChart
+              analyses={analyses}
+              historyWindow={historyWindow}
+              setHistoryWindow={setHistoryWindow}
+            />
+          </Suspense>
 
           {/* Claim Verification Breakdown BarChart */}
-          <ClaimDistributionChart stats={stats} />
+          <Suspense fallback={<div className="h-64 animate-pulse bg-surface-800/40 rounded-xl" />}>
+            <ClaimDistributionChart stats={stats} />
+          </Suspense>
         </div>
 
         {/* ── RECENT EXECUTION FEED ───────────────────────────────────── */}
