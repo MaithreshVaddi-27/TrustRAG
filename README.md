@@ -567,6 +567,8 @@ Frontend architecture, design system compliance (cyber-dark palette, `.glass-car
 
 Test-coverage gaps for the analysis service (the lowest-covered core module) are mapped in [`docs/ANALYSIS_SERVICE_TEST_GAPS.md`](docs/ANALYSIS_SERVICE_TEST_GAPS.md) — uncovered regions with risk, and a prioritized 17-test plan to lift it from 54% to ~85%.
 
+Latest model benchmark, full-stack QA, and engineering audit reports live under [`docs/evaluation/`](docs/evaluation/): `MODEL_BENCHMARK_REPORT.md`, `FULLSTACK_QA_AND_FIXES.md`, `SECOND_PASS_ENGINEERING_AUDIT.md`, `SECOND_PASS_FIXES_AND_VALIDATION.md`, `FUTURE_IMPROVEMENTS.md`.
+
 ---
 
 ## Deployment
