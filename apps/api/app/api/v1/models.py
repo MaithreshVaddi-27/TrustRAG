@@ -5,6 +5,7 @@ TRUSTRAG API — Model discovery & local provider status endpoints.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends
@@ -24,6 +25,12 @@ from app.llm.local_llm import (
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/models", tags=["models"])
+
+# Short TTL cache for the 8s-polled /providers endpoint. Avoids hammering local
+# inference servers (ollama/llama.cpp/mlx) on every poll while keeping status
+# reasonably fresh (5 s staleness is acceptable for a status badge).
+_PROVIDERS_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
+_PROVIDERS_CACHE_TTL = 5.0
 
 
 async def _safe_provider_status(check_fn, base_url: str, provider: str) -> dict[str, Any]:
@@ -66,6 +73,12 @@ async def get_providers_endpoint(
     Requires authentication — the response includes internal base URLs
     (ollama_base_url, llamacpp_base_url) which must not be publicly exposed.
     """
+    # Serve from short TTL cache when fresh.
+    now = time.monotonic()
+    cached = _PROVIDERS_CACHE.get("data")
+    if cached is not None and (now - float(_PROVIDERS_CACHE.get("ts", 0.0))) < _PROVIDERS_CACHE_TTL:
+        return cached
+
     settings = get_settings()
     cfg = get_model_config()
 
@@ -91,7 +104,7 @@ async def get_providers_endpoint(
         "dim": cfg.embedding_dimensionality,
     }
 
-    return {
+    result = {
         "active_provider": cfg.llm_provider,
         "active_model": cfg.llm_model,
         "active_embedding_provider": "onnx",
@@ -143,6 +156,9 @@ async def get_providers_endpoint(
         "embedding": embedding_info,
         "hardware": _safe_hardware_profile(),
     }
+    _PROVIDERS_CACHE["ts"] = time.monotonic()
+    _PROVIDERS_CACHE["data"] = result
+    return result
 
 
 @router.get("/hardware", summary="Hardware acceleration and resource health profile")
