@@ -11,3 +11,5 @@
 ## Known follow-ups
 - The `_is_effectively_identical_query` meta-token guard may over-reject short rewrites that happen to consist only of meta-vocabulary; consider requiring the rewrite to preserve original subject tokens.
 - Responsiveness guard (`is_responsive_answer`) is token-overlap based; could be strengthened with embedding similarity for paraphrased answers.
+- Deep browser QA of upload/indexing/chat/citations flows (requires authenticated seeded data).
+- Per-source benchmark harness with measured latency/memory numbers.

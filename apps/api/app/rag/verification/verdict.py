@@ -69,7 +69,7 @@ _QUESTION_STOPWORDS = frozenset(
 
 
 def extract_content_tokens(text: str) -> set[str]:
-    """Extract lowercased alphanumeric content tokens (length >= 2 or numbers), excluding stopwords."""
+    """Extract lowercased alphanumeric content tokens, excluding stopwords."""
     if not text:
         return set()
     tokens = set(re.findall(r"\b[a-z0-9_-]{2,}\b", text.lower()))
