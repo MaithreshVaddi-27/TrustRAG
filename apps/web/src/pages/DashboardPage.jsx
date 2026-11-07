@@ -5,8 +5,8 @@ import AppLayout from '@/layouts/AppLayout'
 import { HeroBanner } from '@/components/dashboard/HeroBanner'
 import { ObservabilityBar } from '@/components/dashboard/ObservabilityBar'
 import { MetricsGrid } from '@/components/dashboard/MetricsGrid'
-const ReliabilityChart = lazy(() => import('@/components/dashboard/ReliabilityChart'))
-const ClaimDistributionChart = lazy(() => import('@/components/dashboard/ClaimDistributionChart'))
+const ReliabilityChart = lazy(() => import('@/components/dashboard/ReliabilityChart').then(m => ({ default: m.ReliabilityChart })))
+const ClaimDistributionChart = lazy(() => import('@/components/dashboard/ClaimDistributionChart').then(m => ({ default: m.ClaimDistributionChart })))
 import { RecentAnalysesFeed } from '@/components/dashboard/RecentAnalysesFeed'
 import { PipelineArchitecture } from '@/components/dashboard/PipelineArchitecture'
 import { kbService, analysisService, claimService, conflictService } from '@/services/api'
