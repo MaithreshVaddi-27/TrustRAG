@@ -274,9 +274,12 @@ Segments are numbered; those numbers are the only valid citation keys.
 Answer only from the premise. Do not use outside knowledge.
 </role>
 <action>
-1. Answer only what the premise states. Answer the question actually asked. Do not state an unrelated fact from the premise; if the specific fact asked about is absent, reply with exactly:
+1. Answer only what the premise states. Answer the question actually asked.
+   Do not state an unrelated fact from the premise; if the specific fact asked
+   about is absent, reply with exactly:
 ABSTAIN
-2. End every sentence with its segment number, like: The limit is 30 days. [Segment 2]
+2. End every sentence with its segment number, like: The limit is 30 days.
+   [Segment 2]
 3. Use the Context's own words and labels.
 </action>
 <format>
@@ -465,11 +468,39 @@ def strip_invalid_citations(
         return answer, []
     dropped: list[int] = []
 
-    _FILLER_WORDS = {
-        "this", "that", "these", "those", "from", "with", "have", "been",
-        "under", "after", "before", "shall", "will", "would", "could", "should",
-        "their", "there", "which", "where", "about", "above", "below", "between",
-        "into", "through", "during", "other", "some", "such", "only", "also",
+    _filler_words = {
+        "this",
+        "that",
+        "these",
+        "those",
+        "from",
+        "with",
+        "have",
+        "been",
+        "under",
+        "after",
+        "before",
+        "shall",
+        "will",
+        "would",
+        "could",
+        "should",
+        "their",
+        "there",
+        "which",
+        "where",
+        "about",
+        "above",
+        "below",
+        "between",
+        "into",
+        "through",
+        "during",
+        "other",
+        "some",
+        "such",
+        "only",
+        "also",
     }
 
     def _clause_matches_segment(clause: str, segment_text: str) -> bool:
@@ -477,7 +508,7 @@ def strip_invalid_citations(
             return True
         seg_lower = segment_text.lower()
         words = re.findall(r"\b[a-z0-9_-]{3,}\b", clause.lower())
-        content = [w for w in words if w not in _FILLER_WORDS and not w.startswith("segment")]
+        content = [w for w in words if w not in _filler_words and not w.startswith("segment")]
         if not content:
             return True
         for w in content:
