@@ -104,10 +104,7 @@ class AnalysisCreate(BaseModel):
             or operator_llm_overrides.get(provider)
             or (cfg.llm_model_for(provider) if provider in ("ollama", "llama_cpp", "mlx") else None)
         )
-        if (
-            requested_llm_model == cfg.deep_reasoning_model
-            and not cfg.deep_reasoning_mode
-        ):
+        if requested_llm_model == cfg.deep_reasoning_model and not cfg.deep_reasoning_mode:
             raise ValueError(
                 f"Model '{requested_llm_model}' requires deep-reasoning mode to be enabled "
                 "(DEEP_REASONING_MODE=true). Deep-reasoning models are reserved for "

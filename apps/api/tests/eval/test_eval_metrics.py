@@ -206,7 +206,6 @@ def test_score_query_abstained_ignores_discarded_draft_claims():
     assert result["claim_contradicted"] == 0
 
 
-
 def test_metrics_count_unchecked_separately_from_neutral():
     """A verifier outage must not lower the claim-support rate as if the
     evidence were insufficient (the Phase-1 metric artifact)."""

@@ -384,10 +384,7 @@ def test_analysis_status_vocabulary_matches_what_is_actually_written():
     from app.api.v1.schemas.analysis import AnalysisResponse
 
     service_path = (
-        pathlib.Path(__file__).resolve().parent.parent
-        / "app"
-        / "services"
-        / "analysis_service.py"
+        pathlib.Path(__file__).resolve().parent.parent / "app" / "services" / "analysis_service.py"
     )
     service_src = service_path.read_text(encoding="utf-8")
     written = set(re.findall(r'"status":\s*"([a-z_]+)"', service_src))
