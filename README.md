@@ -586,7 +586,7 @@ Production checklist: `APP_ENV=production` (+ `QDRANT_API_KEY`), `CORS_ORIGINS` 
 
 ## Optimization
 
-TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.28**) with environment variable overrides.
+TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.29**) with environment variable overrides.
 
 ### Inference Acceleration
 
@@ -598,6 +598,15 @@ TrustRAG implements extensive inference acceleration and memory optimization tec
 | **Sampling Knobs** | Min-p / top-k sampling (disabled by default: `0.0`/`0` = off) + early EOS exit for faster generation | `local_llm.min_p`, `local_llm.top_k`, `local_llm.early_exit_eos` | `0.0`, `0`, `true` |
 | **Batch Prompt Processing** | `n_batch` controls prompt encoding parallelism | `local_llm.num_batch` | `512` |
 | **Connection Pooling** | HTTP keep-alive (30s) with connection limits for local servers | Internal | `5 keepalive / 10 max` |
+
+### Frontend Optimization
+
+| Feature | Description | Benefit |
+|---------|-------------|---------|
+| **Route-based code splitting** | `React.lazy` + `Suspense` on all 11 pages | Initial JS bundle only includes auth/landing; each route loads on demand |
+| **Vendor chunk splitting** | Vite `manualChunks` for react, recharts, motion, tanstack-query, lucide, axios | Vendors cached separately; app changes don't invalidate vendor cache |
+| **Component memoization** | `React.memo` on `ClaimInspector`, `EvidenceViewer`, `TrustRagLogo`, `TrustRagEmblem` | List subtrees skip re-renders on parent SSE/trace ticks |
+| **Hidden sourcemaps** | `build.sourcemap = 'hidden'` | Stack traces debuggable via uploaded maps; no source shipped to visitors |
 
 ### Memory Optimization
 
@@ -686,3 +695,23 @@ cd apps/web && npm run lint && npm test
 - For **Windows**, PowerShell execution policy may need adjustment; using WSL2 is recommended for a native Linux-like experience.
 - Docker setup simplifies evaluation but expects MongoDB and LLM on the host; adjust `.env` for production secrets and external services.
 - MLX is Apple‑Silicon only; ensure you have the appropriate hardware and follow the [MLX on Mac guide](docs/PERFORMANCE-GUIDE.md#4-mlx-on-mac-apple-silicon-free-fastest-toks-per-watt) if you wish to use it alongside Ollama or llama.cpp.
+
+---
+
+## Repository Cleanup (Phase 1)
+
+Completed `chore(cleanup): Phase 1 repository deep clean` (commit `c39f573`):
+
+| Removed | Count | Rationale |
+|---------|-------|-----------|
+| `apps/web/public/audit-*.png` | 11 (~5.4 MB) | Unreferenced audit screenshots |
+| `apps/web/public/styles/*.css` | 6 | Unreferenced legacy stylesheets |
+| `dompurify`, `htmlparser2` | 2 npm deps | Zero imports; removed from `package.json` |
+| `scripts/calibrate_local_judge.py` | 1 | Orphan script, zero repo-wide references |
+| `scripts/prune_llm_cache.py` | 1 | Orphan script, zero repo-wide references |
+
+**Added:** `docs/cleanup/PHASE_1_REPOSITORY_AUDIT.md`, `docs/cleanup/PHASE_1_CLEANUP_REPORT.md`, `docs/cleanup/REMAINING_TECHNICAL_DEBT.md`.
+
+**Preserved:** API contracts, auth, DB, RAG algorithms, eval contracts, migrations, fixtures, model weights, user data, and all user in-progress branch work (`docs/design/`, `docs/engineering/`, `screenshots/`, untracked landing + UI components).
+
+No behavior, contract, or test change resulted from cleanup — 757 backend tests and 33 frontend tests all pass against baseline.
