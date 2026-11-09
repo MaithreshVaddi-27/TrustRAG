@@ -26,6 +26,7 @@ __all__ = [
     "_is_embedding_model_name",
     "discover_llamacpp_cache_models",
     "discover_mlx_cache_models",
+    "discover_hf_hub_gguf_models",
     "discover_ollama_cli_models",
     "load_discovery_snapshot",
     "merge_discovered_llms",
@@ -192,6 +193,18 @@ def discover_mlx_cache_models() -> list[str]:
             if "mlx" in dir_name.lower() and "gguf" not in dir_name.lower():
                 mlx_models.append(dir_name)
     return sorted(set(mlx_models))
+
+
+def discover_hf_hub_gguf_models() -> list[str]:
+    """Scan local HuggingFace cache for any downloaded GGUF blobs or models."""
+    gguf_models: list[str] = []
+    hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
+    if hf_cache.exists():
+        for model_dir in hf_cache.glob("models--*"):
+            dir_name = model_dir.name.replace("models--", "").replace("--", "/")
+            if "gguf" in dir_name.lower():
+                gguf_models.append(dir_name)
+    return gguf_models
 
 
 async def seed_local_model_discovery() -> dict[str, list[str]]:

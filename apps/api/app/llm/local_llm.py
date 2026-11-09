@@ -59,12 +59,12 @@ from app.llm.providers.health import (
     check_ollama_status,
     probe_cloud_llm,
 )
-from app.llm.providers.local_llm_legacy import probe_local_llm_server
+from app.llm.providers.discovery import discover_hf_hub_gguf_models
 from app.core.system.concurrency import get_global_semaphore
 
 # Names that tests patch directly on app.llm.local_llm (the flat module
 # surface from the legacy graph.py) must resolve here at call time.
-from app.llm.providers.local_llm_legacy import discover_hf_hub_gguf_models
+from app.llm.providers.health import probe_local_llm_server
 
 # Module-level state for discovery (backward-compat: tests patch these)
 _DISCOVERED_LLMS: dict[str, set[str]] = {}

@@ -31,6 +31,13 @@ from app.llm.providers.discovery import (
 
 logger = get_logger(__name__)
 
+# Local-server probe tuning. A single 3 s sample on a busy 8 GB host is a coin
+# flip: the server can be alive yet miss one probe (cold model, full accept
+# backlog), so every probe retries once, and connection-refused (server down)
+# stays distinct from timeout (server slow).
+PROBE_TIMEOUT_SECONDS = 3.0
+PROBE_ATTEMPTS = 2
+
 __all__ = [
     "_classify_cloud_probe_error",
     "_record_probe_success",
@@ -39,6 +46,7 @@ __all__ = [
     "check_mlx_status",
     "check_ollama_status",
     "probe_cloud_llm",
+    "probe_local_llm_server",
 ]
 
 
@@ -238,6 +246,59 @@ async def check_mlx_status(
         "cache_models": cache_models,
         "default_model": default_model,
     }
+
+
+async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 3.0) -> None:
+    """Fail fast when a local inference server is not running.
+
+    Raises LLMUnavailableError with copy-paste start instructions instead of
+    letting an analysis burn minutes of timeouts before abstaining. Only the
+    configured base URL is echoed (no secrets); transport details stay in logs.
+    Connection-refused means down (start it); timeout means slow/overloaded
+    (wait and retry) — conflating them sent users restarting a live server.
+    """
+    norm = (provider or "").strip().lower()
+    base = (base_url or "").rstrip("/")
+    if norm == "ollama":
+        probe_url = f"{base}/api/tags"
+        start_hint = "Start it with 'ollama serve' (then 'ollama pull <model>' if needed)."
+    elif norm == "mlx":
+        probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
+        start_hint = (
+            "Start it with './scripts/start_mlx_server.sh' or "
+            "'mlx_lm.server --model <mlx-community/...-4bit> --port 8080' "
+            "(Apple Silicon only; pip install mlx-lm)."
+        )
+    else:
+        probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
+        start_hint = "Start it with './scripts/start_local_llm.sh' (llama-server on :9931)."
+    last_exc: Exception | None = None
+    for _ in range(max(1, PROBE_ATTEMPTS)):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                res = await client.get(probe_url)
+            break
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            last_exc = exc
+            logger.debug("Local-server HTTP attempt failed, retrying", url=probe_url)
+    else:
+        assert last_exc is not None
+        if isinstance(last_exc, httpx.ConnectError):
+            logger.warning("Local LLM server probe failed", provider=norm, base_url=base)
+            raise LLMUnavailableError(
+                f"Local LLM server '{norm}' is not reachable at {base}. {start_hint}"
+            ) from last_exc
+        logger.warning("Local LLM server probe timed out", provider=norm, base_url=base)
+        raise LLMUnavailableError(
+            f"Local LLM server '{norm}' at {base} is not answering "
+            f"(timed out after {PROBE_ATTEMPTS} attempts). It may be starting "
+            f"up or overloaded — wait a few seconds and retry. {start_hint}"
+        ) from last_exc
+
+    if res.status_code >= 500:
+        raise LLMUnavailableError(
+            f"Local LLM server '{norm}' at {base} returned HTTP {res.status_code}. {start_hint}"
+        )
 
 
 async def probe_cloud_llm(

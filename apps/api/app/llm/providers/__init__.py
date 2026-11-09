@@ -33,6 +33,7 @@ from app.llm.providers.discovery import (
     _DISCOVERED_LLMS,
     _DISCOVERED_LLMS_LOCK,
     _DISCOVERY_SNAPSHOT_PATH,
+    discover_hf_hub_gguf_models,
     discover_llamacpp_cache_models,
     discover_mlx_cache_models,
     discover_ollama_cli_models,
@@ -50,6 +51,7 @@ from app.llm.providers.health import (  # noqa: F401
     check_mlx_status,
     check_ollama_status,
     probe_cloud_llm,
+    probe_local_llm_server,
 )
 from app.llm.providers.llama_cpp import (
     ChatLlamaCppClient,
@@ -75,6 +77,7 @@ __all__ = [
     "_shared_http_client",
     "_status_code_of",
     "close_local_llm_clients",
+    "discover_hf_hub_gguf_models",
     "discover_llamacpp_cache_models",
     "discover_mlx_cache_models",
     "discover_ollama_cli_models",
@@ -85,6 +88,7 @@ __all__ = [
     "local_cap_kwargs",
     "merge_discovered_llms",
     "probe_cloud_llm",
+    "probe_local_llm_server",
     "save_discovery_snapshot",
     "seed_local_model_discovery",
     "verification_cap_kwargs",

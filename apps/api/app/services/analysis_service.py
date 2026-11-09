@@ -29,22 +29,16 @@ from app.services.claims_evidence import (
     list_analysis_claims,
     list_analysis_evidence,
 )
-from app.services.degenerate import (
-    _SCAFFOLD_MARKERS,
-)
-from app.services.degenerate import (
-    _UNVERIFIED_ANSWER as _UNVERIFIED_ANSWER_DEGENERATE,
-)
-from app.services.degenerate import (
-    _looks_like_scaffold_echo as _looks_like_scaffold_echo_degenerate,
-)
 from app.services.kb_service import get_kb
 from app.services.pipeline import (
+    _SCAFFOLD_MARKERS,
     _UNVERIFIED_ANSWER,
+    _UNVERIFIED_ANSWER as _UNVERIFIED_ANSWER_DEGENERATE,
     _fetch_claims,
     _fetch_evidence,
     _fetch_trace,
     _looks_like_scaffold_echo,
+    _looks_like_scaffold_echo as _looks_like_scaffold_echo_degenerate,
     _presentable_answer,
     _record_completed,
     add_trace_event,
