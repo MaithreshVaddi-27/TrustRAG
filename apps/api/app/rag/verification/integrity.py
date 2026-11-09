@@ -12,8 +12,8 @@ from typing import Any
 
 from bson import ObjectId
 
-from app.core.observability.logging import get_logger
-from app.db.mongodb import Collections, get_collection
+from app.observability.logging import get_logger
+from app.persistence.mongodb import Collections, get_collection
 
 logger = get_logger(__name__)
 

@@ -20,7 +20,7 @@ import os
 import threading
 import weakref
 
-from app.core.observability.logging import get_logger
+from app.observability.logging import get_logger
 from app.core.system.hardware import get_system_memory_info
 
 logger = get_logger(__name__)

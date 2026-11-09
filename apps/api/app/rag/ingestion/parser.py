@@ -18,9 +18,9 @@ from typing import Any, BinaryIO
 
 import pymupdf as fitz
 
-from app.core.config.model_config import get_model_config
-from app.core.observability.logging import get_logger
-from app.core.security.exceptions import IngestionError, UnsupportedFormatError
+from app.config import get_model_config
+from app.observability.logging import get_logger
+from app.security.exceptions import IngestionError, UnsupportedFormatError
 from app.rag.ingestion import ocr as ocr_module
 
 logger = get_logger(__name__)
@@ -509,6 +509,16 @@ def parse_document(
     eff_from, eff_until = extract_dates(full_text)
 
     return pages, eff_from, eff_until
+
+
+def parse_document_bytes(
+    filename: str, content: bytes
+) -> tuple[list[dict[str, Any]], datetime | None, datetime | None]:
+    """Parse document from raw bytes (for internal use)."""
+    import io
+
+    stream = io.BytesIO(content)
+    return parse_document(filename, stream)
 
 
 EICAR_TEST_STRING = b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"

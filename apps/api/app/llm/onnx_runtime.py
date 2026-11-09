@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from app.core.config.model_config import get_model_config
+from app.config import get_model_config
 
 
 def _graph_optimization_level(name: str) -> Any:

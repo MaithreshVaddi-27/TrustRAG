@@ -14,11 +14,11 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from qdrant_client.http import models
 
-from app.core.config.model_config import get_model_config
-from app.core.observability.logging import get_logger
-from app.core.security.exceptions import RetrievalOutageError
-from app.db.mongodb import Collections, get_collection
-from app.db.qdrant import get_collection_name, get_qdrant_client
+from app.config import get_model_config
+from app.observability.logging import get_logger
+from app.security.exceptions import RetrievalOutageError
+from app.persistence.mongodb import Collections, get_collection
+from app.persistence.qdrant import get_collection_name, get_qdrant_client
 from app.llm.model_registry import get_embedding_model
 from app.rag.ingestion.sparse_vector import generate_sparse_vector
 

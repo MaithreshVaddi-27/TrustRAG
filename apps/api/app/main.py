@@ -32,11 +32,11 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.api.router import api_router
-from app.core.config.model_config import get_model_config
-from app.core.config.settings import get_settings
-from app.core.observability.logging import configure_logging, get_logger
-from app.core.observability.tracing import init_tracing, tracing_middleware
-from app.core.security.exceptions import (
+from app.config.model_config import get_model_config
+from app.config.settings import get_settings
+from app.observability.logging import configure_logging, get_logger
+from app.observability.tracing import init_tracing, tracing_middleware
+from app.security.exceptions import (
     AnalysisNotFoundError,
     AuthenticationError,
     AuthorizationError,
@@ -54,8 +54,8 @@ from app.core.security.exceptions import (
 )
 from app.core.system.hardware import get_cached_hardware_profile
 from app.core.system.memory import get_memory_usage_mb
-from app.db.mongodb import connect_db, create_indexes, disconnect_db
-from app.db.qdrant import close_qdrant_client
+from app.persistence.mongodb import connect_db, create_indexes, disconnect_db
+from app.persistence.qdrant import close_qdrant_client
 from app.llm.local_llm import (
     close_local_llm_clients,
     load_discovery_snapshot,
@@ -201,8 +201,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from datetime import UTC as _UTC
         from datetime import datetime as _dt
 
-        from app.db.mongodb import Collections as _Colls
-        from app.db.mongodb import get_collection as _get_coll
+        from app.persistence.mongodb import Collections as _Colls
+        from app.persistence.mongodb import get_collection as _get_coll
 
         _analyses = _get_coll(_Colls.ANALYSES)
         _reaped = await _analyses.update_many(

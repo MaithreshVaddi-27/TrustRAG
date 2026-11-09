@@ -28,7 +28,7 @@ USER_ID = "64ee39d09c6292376e191981"
 
 
 def _cfg_stub(**overrides) -> MagicMock:
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     real = get_model_config()
     stub = MagicMock()

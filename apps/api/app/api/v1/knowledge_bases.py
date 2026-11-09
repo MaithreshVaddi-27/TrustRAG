@@ -22,8 +22,8 @@ from fastapi import (
 
 from app.api.deps import get_current_user
 from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
-from app.core.config.model_config import get_model_config
-from app.core.security.exceptions import FileTooLargeError, UnsupportedFormatError
+from app.config import get_model_config
+from app.security.exceptions import FileTooLargeError, UnsupportedFormatError
 from app.rag.ingestion.chunking_strategies import get_chunking_strategy
 from app.rag.ingestion.parser import parse_document
 from app.rag.ingestion.pipeline import index_parsed_chunks
@@ -169,8 +169,8 @@ async def _ingest_content(
     try:
         from bson import ObjectId as _ObjectId
 
-        from app.db.mongodb import Collections as _Collections
-        from app.db.mongodb import get_collection as _get_collection
+        from app.persistence.mongodb import Collections as _Collections
+        from app.persistence.mongodb import get_collection as _get_collection
 
         ocr_attempted = sum(1 for p in pages if p.get("ocr_attempted"))
         ocr_failed = sum(1 for p in pages if p.get("ocr_failed"))

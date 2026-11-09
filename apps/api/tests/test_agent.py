@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from app.core.security.exceptions import RetrievalOutageError
+from app.security.exceptions import RetrievalOutageError
 from app.rag.agent.graph import (
     _execute_with_fallback,
     generation_node,
@@ -44,7 +44,7 @@ async def test_execute_with_fallback_records_node_latency():
 def test_should_recover_router():
     # Ceilings follow live config (max_recovery_attempts), not a hardcoded
     # value, so the router test stays valid when the budget is retuned.
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     max_recovery = get_model_config().max_recovery_attempts
 
@@ -466,7 +466,7 @@ async def test_recovery_empty_rewrite_with_real_answer_retries(mock_model, mock_
 
 @pytest.mark.asyncio
 async def test_verification_error_at_recovery_limit_remains_failed():
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     state = {
         "analysis_id": "64ee39d09c6292376e191983",
@@ -536,7 +536,7 @@ async def test_verification_node_abstain_max_attempts_passes():
 async def test_retrieval_node_outage_is_distinct_from_no_evidence(
     mock_collection, mock_retrieve, mock_rerank, mock_audit
 ):
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     mock_retrieve.side_effect = RetrievalOutageError("Vector store unavailable: down")
     state = {
@@ -552,7 +552,7 @@ async def test_retrieval_node_outage_is_distinct_from_no_evidence(
         "recovery_strategy": None,
     }
     with patch(
-        "app.db.qdrant.get_qdrant_client",
+        "app.persistence.qdrant.get_qdrant_client",
         AsyncMock(return_value=MagicMock(collection_exists=AsyncMock(return_value=True))),
     ):
         res = await retrieval_node(state)
@@ -602,8 +602,8 @@ async def test_retrieval_node_self_heals_missing_qdrant_collection(
     }
 
     with (
-        patch("app.db.qdrant.get_qdrant_client", AsyncMock(return_value=qdrant)),
-        patch("app.db.qdrant.init_kb_collection", AsyncMock()),
+        patch("app.persistence.qdrant.get_qdrant_client", AsyncMock(return_value=qdrant)),
+        patch("app.persistence.qdrant.init_kb_collection", AsyncMock()),
     ):
         result = await retrieval_node(state)
 
@@ -703,8 +703,8 @@ async def test_retrieval_node_self_heal_batches_doc_lookup(
     mock_embed.embed_documents = MagicMock(return_value=[[0.1] * 8, [0.1] * 8])
 
     with (
-        patch("app.db.qdrant.get_qdrant_client", AsyncMock(return_value=mock_qdrant)),
-        patch("app.db.qdrant.init_kb_collection", AsyncMock()),
+        patch("app.persistence.qdrant.get_qdrant_client", AsyncMock(return_value=mock_qdrant)),
+        patch("app.persistence.qdrant.init_kb_collection", AsyncMock()),
         patch("app.llm.model_registry.get_embedding_model", return_value=mock_embed),
         patch(
             "app.rag.ingestion.sparse_vector.generate_sparse_vector",
@@ -826,8 +826,8 @@ async def test_retrieval_node_self_heal_embeds_upserts_in_batches(
 
     trace_mock = AsyncMock()
     with (
-        patch("app.db.qdrant.get_qdrant_client", AsyncMock(return_value=mock_qdrant)),
-        patch("app.db.qdrant.init_kb_collection", AsyncMock()),
+        patch("app.persistence.qdrant.get_qdrant_client", AsyncMock(return_value=mock_qdrant)),
+        patch("app.persistence.qdrant.init_kb_collection", AsyncMock()),
         patch("app.llm.model_registry.get_embedding_model", return_value=mock_embed),
         patch(
             "app.rag.ingestion.sparse_vector.generate_sparse_vector",
@@ -890,7 +890,7 @@ async def test_generation_node_preserves_outage_answer(mock_generate):
 @patch("app.rag.agent.graph.execute_claim_verification")
 @pytest.mark.asyncio
 async def test_verification_node_outage_fast_path_skips_verification(mock_execute):
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     outage_msg = (
         "The knowledge base search service is temporarily unavailable, "
@@ -920,7 +920,7 @@ async def test_verification_node_outage_fast_path_skips_verification(mock_execut
 
 def test_select_recovery_strategy_diagnosis_mapping():
     """Test that diagnosis types map to correct recovery strategies."""
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
     from app.rag.agent.graph import _select_recovery_strategy
 
     cfg = get_model_config()
@@ -970,7 +970,7 @@ def test_should_recover_budget_exhaustion_ends_graph():
 
 def test_should_recover_still_respects_attempts_and_pass():
     """should_recover still respects PASS verdict and max attempts."""
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     max_recovery = get_model_config().max_recovery_attempts
 
@@ -993,7 +993,7 @@ def test_should_recover_still_respects_attempts_and_pass():
 @pytest.mark.asyncio
 async def test_recovery_node_budget_enforcement(mock_get_model, mock_collection):
     """Recovery node should track budget and force abstention when exhausted."""
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
     from app.rag.agent.graph import recovery_node
 
     cfg = get_model_config()

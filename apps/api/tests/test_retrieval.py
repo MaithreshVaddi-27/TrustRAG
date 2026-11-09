@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.security.exceptions import RetrievalOutageError
+from app.security.exceptions import RetrievalOutageError
 from app.rag.retrieval.retriever import (
     apply_temporal_filtering,
     dense_search,
@@ -411,7 +411,7 @@ async def test_hybrid_both_branches_timeout_is_outage(monkeypatch):
 @pytest.mark.asyncio
 async def test_hybrid_enforces_fusion_top_k():
     """Fused candidates are truncated to retrieval.fusion_top_k (default 20)."""
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     fusion_top_k = get_model_config().fusion_top_k
     assert fusion_top_k == 20

@@ -142,3 +142,7 @@ def delete_kb_page_images(kb_id: str) -> int:
     except Exception as exc:
         logger.warning("Page-image KB purge failed", kb_id=kb_id, error=str(exc))
         return 0
+
+def extract_page_images(kb_id: str, doc_id: str, page: int, png_bytes: bytes) -> str:
+    """Extract and persist a page image; return its relative ref."""
+    return save_page_image(kb_id, doc_id, page, png_bytes)

@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from app.core.security.exceptions import IngestionError
+from app.security.exceptions import IngestionError
 from app.rag.ingestion.parser import (
     _ENCODING_DETECT_SLICE,
     EICAR_TEST_STRING,
@@ -115,7 +115,7 @@ async def test_mcp_external_still_needs_token():
 
 
 async def test_mcp_search_rejects_wrong_bound_kb():
-    from app.core.security.exceptions import AuthenticationError
+    from app.security.exceptions import AuthenticationError
     from app.core.security.security import create_service_token
     from app.mcp.server import handle_tool_call
 
@@ -138,7 +138,7 @@ async def test_mcp_search_rejects_wrong_bound_kb():
 async def test_mcp_search_rejects_foreign_bound_user():
     from unittest.mock import AsyncMock, patch
 
-    from app.core.security.exceptions import AuthenticationError, AuthorizationError
+    from app.security.exceptions import AuthenticationError, AuthorizationError
     from app.core.security.security import create_service_token
     from app.mcp.server import handle_tool_call
 
@@ -228,7 +228,7 @@ def test_onnx_missing_model_points_at_bootstrap():
     # fails loudly with the bootstrap fix (not silent). No model cache
     # exists: every call loads fresh, so no clearing needed.
     import app.llm.model_registry as _reg
-    from app.core.security.exceptions import ConfigurationError
+    from app.security.exceptions import ConfigurationError
     from app.llm.model_registry import get_embedding_model
 
     orig = _reg._resolve_embedding_onnx_path
@@ -266,7 +266,7 @@ def test_export_fn_accepts_model_name():
 def test_parse_document_rejects_eicar():
     import io
 
-    from app.core.security.exceptions import IngestionError
+    from app.security.exceptions import IngestionError
     from app.rag.ingestion.parser import EICAR_TEST_STRING, parse_document
 
     stream = io.BytesIO(b"clean header " + EICAR_TEST_STRING + b" trailer")
@@ -277,7 +277,7 @@ def test_parse_document_rejects_eicar():
 def test_parse_document_rejects_signature_mismatch():
     import io
 
-    from app.core.security.exceptions import IngestionError
+    from app.security.exceptions import IngestionError
     from app.rag.ingestion.parser import parse_document
 
     with pytest.raises(IngestionError, match=r"[Ss]ignature|mismatch|format"):
@@ -288,7 +288,7 @@ def test_parse_docx_rejects_zip_bomb():
     import io
     import zipfile
 
-    from app.core.security.exceptions import IngestionError
+    from app.security.exceptions import IngestionError
     from app.rag.ingestion.parser import parse_document
 
     buf = io.BytesIO()
@@ -303,7 +303,7 @@ def test_parse_docx_rejects_xxe():
     import io
     import zipfile
 
-    from app.core.security.exceptions import IngestionError
+    from app.security.exceptions import IngestionError
     from app.rag.ingestion.parser import parse_document
 
     evil_xml = (
@@ -322,7 +322,7 @@ def test_parse_docx_rejects_xxe():
 def test_parse_pdf_rejects_oversize():
     import io
 
-    from app.core.security.exceptions import IngestionError
+    from app.security.exceptions import IngestionError
     from app.rag.ingestion.parser import parse_document
 
     # Size guard trips before any PDF parsing (fast: no fitz work).
@@ -337,7 +337,7 @@ async def test_qdrant_rejects_schemeless_url_without_mkdir(tmp_path):
     from unittest.mock import patch
 
     import app.db.qdrant as qdrant_module
-    from app.core.security.exceptions import VectorStoreError
+    from app.security.exceptions import VectorStoreError
 
     saved = qdrant_module._client
     qdrant_module._client = None

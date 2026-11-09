@@ -21,7 +21,7 @@ from app.api.v1.schemas.analysis import (
     EvidenceResponse,
     TraceEventResponse,
 )
-from app.db.mongodb import Collections, get_collection
+from app.persistence.mongodb import Collections, get_collection
 from app.services import analysis_service
 
 router = APIRouter(prefix="/analyses", tags=["analyses"])

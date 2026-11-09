@@ -36,11 +36,11 @@ from app.rag.verification.verdict import (
 )
 from app.rag.verification.verifier import (
     UNCHECKED_CLAIM_STATE,
-    BatchNLIVerdict,
     ClaimVerdict,
     _filter_degenerate_claims,
     execute_claim_verification,
 )
+from app.rag.verification.schemas import BatchNLIVerdict
 
 _THRESHOLDS = Thresholds(
     minimum_evidence_coverage=0.80,
@@ -180,7 +180,7 @@ async def test_exhausted_fallback_budget_marks_claims_unchecked_not_neutral(
 ):
     """When the fallback really cannot run, claims are UNCHECKED (an unknown),
     never NEUTRAL (a false claim of insufficient evidence)."""
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
     from app.llm.llm_ledger import begin_analysis, end_analysis, record_nli_fallback_call
 
     # The local tier caps verifiable claims (5); the batch then fails, so every
@@ -423,7 +423,7 @@ async def test_batch_failure_on_recovery_round_is_verified_not_assumed(
     answer withheld). With the bounded fallback restored, those claims are
     actually verified, so the verdict reflects evidence instead of a failure.
     """
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
     from app.rag.verification.verdict import Thresholds as T
 
     cfg = get_model_config()

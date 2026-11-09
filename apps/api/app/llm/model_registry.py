@@ -19,14 +19,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from langchain_core.embeddings import Embeddings
+from langchain_core.language_models import BaseChatModel
 
-from app.core.config.model_config import ModelConfig, get_model_config
-from app.core.config.settings import get_settings
-from app.core.observability.logging import get_logger
-from app.core.security.exceptions import ConfigurationError
-
-if TYPE_CHECKING:
-    from langchain_core.language_models import BaseChatModel
+from app.config import ModelConfig, get_model_config
+from app.config.settings import get_settings
+from app.observability.logging import get_logger
+from app.security.exceptions import ConfigurationError
 
 logger = get_logger(__name__)
 
@@ -172,7 +170,7 @@ def _create_llm(
         # normalize_provider documents that unknown names pass through
         # "so the caller can reject them with a useful message"; this is that
         # rejection. Fail loud instead of answering as a different provider.
-        from app.core.config.model_config import SUPPORTED_LLM_PROVIDERS
+        from app.config import SUPPORTED_LLM_PROVIDERS
 
         raise ConfigurationError(
             f"Unknown LLM provider '{provider}'. "
@@ -406,7 +404,7 @@ def get_reranker():  # type: ignore[return]
     # Check if ONNX quantization is requested
     if cfg.reranker_use_onnx:
         try:
-            from app.llm.onnx_reranker import ONNXCrossEncoder
+            from app.rag.retrieval.onnx_reranker import ONNXCrossEncoder
 
             logger.info("Initializing ONNX reranker", model=cfg.reranker_model)
 

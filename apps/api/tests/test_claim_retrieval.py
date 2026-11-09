@@ -51,14 +51,14 @@ def _no_fused_two_step(neutral_claims: list[str]):
     }
     return (
         patch(
-            "app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None)
+            "app.rag.verification.pipeline.orchestrator.fused_decompose_verify", new=AsyncMock(return_value=None)
         ),
         patch(
-            "app.rag.verification.verifier.decompose_answer_to_claims",
+            "app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims",
             new=AsyncMock(return_value=list(neutral_claims)),
         ),
         patch(
-            "app.rag.verification.verifier.batch_verify_claims_nli",
+            "app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli",
             new=AsyncMock(return_value=batch_map),
         ),
     )
@@ -111,16 +111,15 @@ async def test_neutral_claim_flips_supported_with_new_evidence_linkage():
             "app.rag.retrieval.retriever.retrieve_hybrid_chunks",
             new=AsyncMock(return_value=[fresh]),
         ),
-        patch(
-            "app.rag.verification.verifier.verify_claim_nli", new=AsyncMock(return_value=reverify)
-        ),
+        patch("app.rag.verification.pipeline.orchestrator.verify_claim_nli", new=AsyncMock(return_value=reverify)),
         patch(
             "app.rag.verification.integrity.audit_evidence_integrity",
             new=AsyncMock(
                 side_effect=lambda chunks: [{**c, "integrity_status": "VERIFIED"} for c in chunks]
             ),
         ),
-        patch("app.rag.verification.verifier.get_collection", return_value=_mock_collections()),
+        patch("app.rag.verification.pipeline.orchestrator.get_collection", return_value=_mock_collections()),
+        patch("app.rag.verification.pipeline.retrieval.get_collection", return_value=_mock_collections()),
     ):
         claims = await execute_claim_verification(
             analysis_id_str=ANALYSIS_ID,
@@ -145,7 +144,7 @@ async def test_claim_retrieval_budget_caps_hybrid_calls():
         p2,
         p3,
         patch("app.rag.retrieval.retriever.retrieve_hybrid_chunks", new=hybrid_mock),
-        patch("app.rag.verification.verifier.get_collection", return_value=_mock_collections()),
+        patch("app.rag.verification.pipeline.orchestrator.get_collection", return_value=_mock_collections()),
     ):
         claims = await execute_claim_verification(
             analysis_id_str=ANALYSIS_ID,
@@ -159,7 +158,7 @@ async def test_claim_retrieval_budget_caps_hybrid_calls():
     # Budget is tier-aware (tier_caps override cost_controls.max_claim_retrievals:
     # lean local tier == 2, balanced/cloud == 3) — 5 neutral claims must still
     # be capped, never re-retrieved one-by-one.
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     expected_budget = get_model_config().tier_caps()["max_claim_retrievals"]
     assert hybrid_mock.await_count == expected_budget
@@ -169,14 +168,14 @@ async def test_claim_retrieval_budget_caps_hybrid_calls():
 @pytest.mark.asyncio
 async def test_contradicted_claims_are_never_re_retrieved():
     p1 = patch(
-        "app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None)
+        "app.rag.verification.pipeline.orchestrator.fused_decompose_verify", new=AsyncMock(return_value=None)
     )
     p2 = patch(
-        "app.rag.verification.verifier.decompose_answer_to_claims",
+        "app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims",
         new=AsyncMock(return_value=["Bad claim here."]),
     )
     p3 = patch(
-        "app.rag.verification.verifier.batch_verify_claims_nli",
+        "app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli",
         new=AsyncMock(
             return_value={
                 1: {"verdict": "CONTRADICTED", "supporting_segments": [], "explanation": "No"}
@@ -189,7 +188,7 @@ async def test_contradicted_claims_are_never_re_retrieved():
         p2,
         p3,
         patch("app.rag.retrieval.retriever.retrieve_hybrid_chunks", new=hybrid_mock),
-        patch("app.rag.verification.verifier.get_collection", return_value=_mock_collections()),
+        patch("app.rag.verification.pipeline.orchestrator.get_collection", return_value=_mock_collections()),
     ):
         claims = await execute_claim_verification(
             analysis_id_str=ANALYSIS_ID,
@@ -211,7 +210,7 @@ async def test_no_kb_id_skips_claim_retrieval_entirely():
         p2,
         p3,
         patch("app.rag.retrieval.retriever.retrieve_hybrid_chunks", new=hybrid_mock),
-        patch("app.rag.verification.verifier.get_collection", return_value=_mock_collections()),
+        patch("app.rag.verification.pipeline.orchestrator.get_collection", return_value=_mock_collections()),
     ):
         claims = await execute_claim_verification(
             analysis_id_str=ANALYSIS_ID,
@@ -227,14 +226,14 @@ async def test_no_kb_id_skips_claim_retrieval_entirely():
 async def test_inline_answer_citations_union_into_evidence_ids():
     """Phase-4 deferral: [Segment N] markers surviving in claim text link evidence."""
     p1 = patch(
-        "app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None)
+        "app.rag.verification.pipeline.orchestrator.fused_decompose_verify", new=AsyncMock(return_value=None)
     )
     p2 = patch(
-        "app.rag.verification.verifier.decompose_answer_to_claims",
+        "app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims",
         new=AsyncMock(return_value=["Revocations are fast [Segment 1]."]),
     )
     p3 = patch(
-        "app.rag.verification.verifier.batch_verify_claims_nli",
+        "app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli",
         new=AsyncMock(
             return_value={
                 1: {"verdict": "SUPPORTED", "supporting_segments": [], "explanation": "Ok"}
@@ -246,7 +245,7 @@ async def test_inline_answer_citations_union_into_evidence_ids():
         p1,
         p2,
         p3,
-        patch("app.rag.verification.verifier.get_collection", return_value=_mock_collections()),
+        patch("app.rag.verification.pipeline.orchestrator.get_collection", return_value=_mock_collections()),
     ):
         claims = await execute_claim_verification(
             analysis_id_str=ANALYSIS_ID,

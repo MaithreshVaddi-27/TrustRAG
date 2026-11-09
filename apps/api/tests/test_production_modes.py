@@ -26,7 +26,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from app.core.config.model_config import get_model_config
+from app.config import get_model_config
 from app.llm.llm_utils import extract_json_substring
 from app.rag.agent.graph import (
     _is_effectively_identical_query,
@@ -132,7 +132,7 @@ class TestDeepReasoningModeGating:
 
     def test_default_model_remains_gemma(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from app.api.v1.schemas.analysis import AnalysisCreate
-        from app.core.config.model_config import get_model_config
+        from app.config import get_model_config
 
         monkeypatch.setattr(
             "app.llm.local_llm.get_discovered_llms",

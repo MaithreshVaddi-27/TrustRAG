@@ -1,195 +1,25 @@
 """
-TRUSTRAG — Lightweight Prometheus-style metrics (no new dependencies).
+TRUSTRAG — lightweight metrics (backward-compatible re-export shim).
 
-In-memory counters + latency accumulators, rendered in Prometheus text
-exposition format at GET /metrics. Thread-safe via a single lock.
-Keeps the torch-free Docker runtime dependency-free (no prometheus_client).
-
-Tracked:
-  - http_requests_total{method,path,status}
-  - http_request_duration_ms_sum / _count (avg computable; P50/P95 come from k6/eval, not here)
-  - analyses_created_total
-  - analyses_completed_total{status}
-  - recovery_attempts_total{strategy}
-  - verification_claims_total{verdict}
-  - tokens_estimated_total
-  - budget_rejections_total{reason}
+`app.core.observability.metrics` is the legacy import path.  The canonical
+module now lives at ``app.observability.metrics``; both names must share the
+same in-memory counters, so this shim imports and re-exports everything from
+the canonical location rather than duplicating the state.
 """
 
 from __future__ import annotations
 
-import threading
-import time
-
-_LOCK = threading.Lock()
-
-_http_requests: dict[tuple[str, str, str], int] = {}
-_http_duration_ms_sum: dict[tuple[str, str], float] = {}
-_http_duration_ms_count: dict[tuple[str, str], int] = {}
-_MAX_HTTP_SERIES = 1000
-_analyses_created_total = 0
-_analyses_completed: dict[str, int] = {}
-_recovery_attempts: dict[str, int] = {}
-_verification_claims: dict[str, int] = {}
-_tokens_estimated_total = 0
-_budget_rejections: dict[str, int] = {}
-_started_at = time.time()
-
-
-def _norm_path(path: str) -> str:
-    """Collapse IDs and unmatched paths to bounded metric labels."""
-    import re
-
-    p = re.sub(r"/[0-9a-fA-F]{24}(?=/|$)", "/:id", path)
-    p = re.sub(r"/\d+(?=/|$)", "/:id", p)
-    if p == "/" or (p.startswith("/api/") and "?" not in p and "\n" not in p):
-        return p
-    return "/unmatched"
-
-
-def _label(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
-
-
-def record_http_request(method: str, path: str, status_code: int, duration_ms: float) -> None:
-    verb = method.upper()
-    verb = verb if verb in {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"} else "OTHER"
-    normalized_path = _norm_path(path)
-    key = (verb, normalized_path, str(status_code))
-    pkey = (verb, normalized_path)
-    with _LOCK:
-        if key not in _http_requests and len(_http_requests) >= _MAX_HTTP_SERIES:
-            key = (key[0], "/overflow", key[2])
-            pkey = (pkey[0], "/overflow")
-        _http_requests[key] = _http_requests.get(key, 0) + 1
-        _http_duration_ms_sum[pkey] = _http_duration_ms_sum.get(pkey, 0.0) + max(0.0, duration_ms)
-        _http_duration_ms_count[pkey] = _http_duration_ms_count.get(pkey, 0) + 1
-
-
-def record_analysis_created() -> None:
-    global _analyses_created_total
-    with _LOCK:
-        _analyses_created_total += 1
-
-
-def record_analysis_completed(status: str) -> None:
-    with _LOCK:
-        _analyses_completed[status] = _analyses_completed.get(status, 0) + 1
-
-
-def record_recovery_attempt(strategy: str) -> None:
-    with _LOCK:
-        _recovery_attempts[strategy or "none"] = _recovery_attempts.get(strategy or "none", 0) + 1
-
-
-def record_verification_claims(supported: int, contradicted: int, neutral: int) -> None:
-    with _LOCK:
-        _verification_claims["SUPPORTED"] = _verification_claims.get("SUPPORTED", 0) + int(
-            supported
-        )
-        _verification_claims["CONTRADICTED"] = _verification_claims.get("CONTRADICTED", 0) + int(
-            contradicted
-        )
-        _verification_claims["NEUTRAL"] = _verification_claims.get("NEUTRAL", 0) + int(neutral)
-
-
-def record_tokens_estimated(n: int) -> None:
-    global _tokens_estimated_total
-    with _LOCK:
-        _tokens_estimated_total += max(0, int(n))
-
-
-def record_budget_rejection(reason: str) -> None:
-    with _LOCK:
-        _budget_rejections[reason] = _budget_rejections.get(reason, 0) + 1
-
-
-def estimate_tokens(text: str | None) -> int:
-    """Rough pre-request token estimate (4 chars ≈ 1 token). Zero-LM-call by design."""
-    if not text:
-        return 0
-    return max(1, len(text) // 4)
-
-
-def reset_for_tests() -> None:
-    """Clear all counters (tests only)."""
-    global _analyses_created_total, _tokens_estimated_total
-    with _LOCK:
-        _http_requests.clear()
-        _http_duration_ms_sum.clear()
-        _http_duration_ms_count.clear()
-        _analyses_created_total = 0
-        _analyses_completed.clear()
-        _recovery_attempts.clear()
-        _verification_claims.clear()
-        _tokens_estimated_total = 0
-        _budget_rejections.clear()
-
-
-def snapshot() -> dict:
-    with _LOCK:
-        return {
-            "http_requests": dict(_http_requests),
-            "http_duration_ms_sum": dict(_http_duration_ms_sum),
-            "http_duration_ms_count": dict(_http_duration_ms_count),
-            "analyses_created_total": _analyses_created_total,
-            "analyses_completed": dict(_analyses_completed),
-            "recovery_attempts": dict(_recovery_attempts),
-            "verification_claims": dict(_verification_claims),
-            "tokens_estimated_total": _tokens_estimated_total,
-            "budget_rejections": dict(_budget_rejections),
-            "uptime_seconds": round(time.time() - _started_at, 1),
-        }
-
-
-def render_prometheus() -> str:
-    """Render counters in Prometheus text exposition format."""
-    snap = snapshot()
-    lines: list[str] = []
-    lines.append("# HELP trustrag_http_requests_total HTTP requests by method/path/status.")
-    lines.append("# TYPE trustrag_http_requests_total counter")
-    for (method, path, status), val in sorted(snap["http_requests"].items()):
-        lines.append(
-            f'trustrag_http_requests_total{{method="{_label(method)}",'
-            f'path="{_label(path)}",status="{_label(status)}"}} {val}'
-        )
-    lines.append("# HELP trustrag_http_request_duration_ms_sum Total HTTP latency ms.")
-    lines.append("# TYPE trustrag_http_request_duration_ms_sum counter")
-    for (method, path), val in sorted(snap["http_duration_ms_sum"].items()):
-        lines.append(
-            f'trustrag_http_request_duration_ms_sum{{method="{_label(method)}",'
-            f'path="{_label(path)}"}} {val:.2f}'
-        )
-    lines.append("# HELP trustrag_http_request_duration_ms_count HTTP request count for avg.")
-    lines.append("# TYPE trustrag_http_request_duration_ms_count counter")
-    for (method, path), val in sorted(snap["http_duration_ms_count"].items()):
-        lines.append(
-            f'trustrag_http_request_duration_ms_count{{method="{_label(method)}",'
-            f'path="{_label(path)}"}} {val}'
-        )
-    lines.append("# HELP trustrag_analyses_created_total Analyses created.")
-    lines.append("# TYPE trustrag_analyses_created_total counter")
-    lines.append(f"trustrag_analyses_created_total {snap['analyses_created_total']}")
-    lines.append("# HELP trustrag_analyses_completed_total Analyses completed by status.")
-    lines.append("# TYPE trustrag_analyses_completed_total counter")
-    for status, val in sorted(snap["analyses_completed"].items()):
-        lines.append(f'trustrag_analyses_completed_total{{status="{_label(status)}"}} {val}')
-    lines.append("# HELP trustrag_recovery_attempts_total Recovery attempts by strategy.")
-    lines.append("# TYPE trustrag_recovery_attempts_total counter")
-    for strategy, val in sorted(snap["recovery_attempts"].items()):
-        lines.append(f'trustrag_recovery_attempts_total{{strategy="{_label(strategy)}"}} {val}')
-    lines.append("# HELP trustrag_verification_claims_total Verified claims by verdict.")
-    lines.append("# TYPE trustrag_verification_claims_total counter")
-    for verdict, val in sorted(snap["verification_claims"].items()):
-        lines.append(f'trustrag_verification_claims_total{{verdict="{verdict}"}} {val}')
-    lines.append("# HELP trustrag_tokens_estimated_total Sum of pre-request token estimates.")
-    lines.append("# TYPE trustrag_tokens_estimated_total counter")
-    lines.append(f"trustrag_tokens_estimated_total {snap['tokens_estimated_total']}")
-    lines.append("# HELP trustrag_budget_rejections_total Pre-request budget rejections by reason.")
-    lines.append("# TYPE trustrag_budget_rejections_total counter")
-    for reason, val in sorted(snap["budget_rejections"].items()):
-        lines.append(f'trustrag_budget_rejections_total{{reason="{_label(reason)}"}} {val}')
-    lines.append("# HELP trustrag_uptime_seconds Process uptime seconds.")
-    lines.append("# TYPE trustrag_uptime_seconds gauge")
-    lines.append(f"trustrag_uptime_seconds {snap['uptime_seconds']}")
-    return "\n".join(lines) + "\n"
+from app.observability.metrics import *  # noqa: F401, F403
+from app.observability.metrics import (  # noqa: F401
+    estimate_tokens,
+    record_analysis_completed,
+    record_analysis_created,
+    record_budget_rejection,
+    record_http_request,
+    record_recovery_attempt,
+    record_tokens_estimated,
+    record_verification_claims,
+    render_prometheus,
+    reset_for_tests,
+    snapshot,
+)

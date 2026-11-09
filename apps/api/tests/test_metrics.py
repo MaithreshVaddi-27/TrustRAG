@@ -82,7 +82,7 @@ def test_metrics_endpoint_public_exposition():
 @pytest.mark.asyncio
 async def test_pre_request_budget_rejects_oversized_query():
     """create_analysis must 422 (InputValidationError) when query exceeds budget."""
-    from app.core.security.exceptions import InputValidationError
+    from app.security.exceptions import InputValidationError
     from app.services import analysis_service
 
     fake_kb = MagicMock()
@@ -127,7 +127,7 @@ def test_pre_request_query_budget_is_not_vacuous():
     (~500 tokens), so it could never fire. Assert the configured query budget
     is genuinely reachable within the schema's own query limit."""
     from app.api.v1.schemas.analysis import AnalysisCreate
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
     from app.core.observability.metrics import estimate_tokens
 
     cfg = get_model_config()

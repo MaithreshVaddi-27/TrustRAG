@@ -126,7 +126,7 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeyp
             # expected engine is whatever this deployment defaults to — do not
             # hard-code a provider (v1.28 defaulted to llama_cpp, v1.29 to
             # ollama), or the test fails on a config-only change.
-            from app.core.config.model_config import get_model_config
+            from app.config import get_model_config
 
             expected_provider = get_model_config().llm_provider
             assert data["llm_provider"] == expected_provider
@@ -186,7 +186,7 @@ def test_create_analysis_fails_fast_when_local_llm_down(
     """Stopped ollama/llama-server → synchronous 503 alert, not a silent burn."""
     import app.llm.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
-    from app.core.security.exceptions import LLMUnavailableError
+    from app.security.exceptions import LLMUnavailableError
 
     monkeypatch.setattr(
         _llm_mod,
@@ -265,20 +265,31 @@ def test_create_analysis_rejects_embedding_mismatch(
         embedding_model="BAAI/bge-small-en-v1.5",
         embedding_dim=384,
     )
-    with patch("app.services.analysis_service.get_kb", return_value=mock_kb):
+    mock_collection = MagicMock()
+    mock_collection.insert_one = AsyncMock(
+        return_value=MagicMock(inserted_id=ObjectId("64ee39d09c6292376e191983"))
+    )
+    with (
+        patch("app.services.analysis_service.get_kb", return_value=mock_kb),
+        patch("app.services.analysis_service.get_collection", return_value=mock_collection),
+        patch("app.services.analysis_service.add_trace_event", AsyncMock()) as mock_add_trace,
+        patch("app.llm.local_llm.probe_local_llm_server", AsyncMock(return_value=None)),
+    ):
         payload = {
             "knowledge_base_id": "64ee39d09c6292376e191982",
             "query": "Is there a 45 days policy?",
         }
         # Simulate a post-deploy models.yaml model change: server now serves
         # MiniLM while the KB is pinned to BGE → guard must 422.
-        from app.core.config.model_config import ModelConfig
+        from app.config.model_config import ModelConfig, clear_model_config_cache
 
         monkeypatch.setattr(
             ModelConfig,
             "embedding_model",
             property(lambda self: "sentence-transformers/all-MiniLM-L6-v2"),
         )
+        # Clear cache so get_model_config() returns a fresh instance with the patched property
+        clear_model_config_cache()
         response = client.post("/api/v1/analyses", json=payload)
 
         assert response.status_code == 422
@@ -393,7 +404,7 @@ def test_stream_trace_rejects_invalid_and_reused_ticket(mock_create_indexes, moc
 @patch("app.db.mongodb.create_indexes")
 def test_stream_ticket_requires_ownership(mock_create_indexes, mock_connect):
     """Ticket issuance for a foreign/missing analysis must not succeed (IDOR guard)."""
-    from app.core.security.exceptions import NotFoundError
+    from app.security.exceptions import NotFoundError
 
     fake_tickets = _ticket_collection()
     with (

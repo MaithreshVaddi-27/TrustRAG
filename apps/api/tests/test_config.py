@@ -99,7 +99,7 @@ class TestModelConfig:
     """Tests for the ModelConfig wrapper."""
 
     def _make_config(self):
-        from app.core.config.model_config import ModelConfig
+        from app.config import ModelConfig
 
         with _MODELS_YAML.open() as f:
             data = yaml.safe_load(f)
@@ -140,7 +140,7 @@ class TestModelConfig:
         assert snapshot["config_version"]
 
     def test_missing_required_key_raises(self) -> None:
-        from app.core.config.model_config import ModelConfig
+        from app.config import ModelConfig
 
         incomplete = {"runtime": {"config_version": "1.0"}}
         cfg = ModelConfig(incomplete)
@@ -354,7 +354,7 @@ class TestAnalysisModelPolicy:
         generation's model IDs.
         """
         from app.api.v1.schemas.analysis import AnalysisCreate
-        from app.core.config.model_config import get_model_config
+        from app.config import get_model_config
 
         assert "gemini-3.8-flash" in get_model_config().supported_gemini_models
         request = AnalysisCreate(
@@ -393,7 +393,7 @@ class TestAnalysisModelPolicy:
         # model loader. The engine always serves models.yaml `embedding.model`.
         import app.llm.local_llm as _llm_mod
         from app.api.v1.schemas.analysis import AnalysisCreate
-        from app.core.config.model_config import get_model_config
+        from app.config import get_model_config
 
         _orig_get_discovered = _llm_mod.get_discovered_llms
         _llm_mod.get_discovered_llms = lambda provider: frozenset(

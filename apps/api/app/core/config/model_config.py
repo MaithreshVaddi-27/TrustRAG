@@ -14,7 +14,7 @@ from typing import Any
 import structlog
 import yaml
 
-from app.core.config.settings import (
+from app.config.settings import (
     _DEFAULT_MLX_BASE_URL,
     _MODELS_YAML_PATH,
     _blank_as_none,

@@ -202,7 +202,7 @@ def test_expired_token_rejected(mock_create_indexes, mock_connect, mock_user_doc
 
 def test_service_token_rejected_as_user_token():
     """Cross-type confusion: a service JWT must never authenticate as a user."""
-    from app.core.security.exceptions import AuthenticationError
+    from app.security.exceptions import AuthenticationError
     from app.core.security.security import create_service_token, decode_access_token
 
     svc = create_service_token("ingestion-worker", permissions=["search:read"])

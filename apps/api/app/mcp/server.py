@@ -20,16 +20,16 @@ from typing import Any
 
 from bson import ObjectId
 
-from app.core.config.settings import get_settings
-from app.core.observability.logging import get_logger
-from app.core.security.exceptions import (
+from app.config.settings import get_settings
+from app.observability.logging import get_logger
+from app.security.exceptions import (
     AuthenticationError,
     AuthorizationError,
     NotFoundError,
     RetrievalOutageError,
 )
-from app.core.security.security import decode_service_token
-from app.db.mongodb import Collections, connect_db, get_collection
+from app.security.security import decode_service_token
+from app.persistence.mongodb import Collections, connect_db, get_collection
 from app.llm import model_registry as model_registry_mod
 from app.llm.llm_ledger import invoke_counted
 from app.llm.local_llm import (

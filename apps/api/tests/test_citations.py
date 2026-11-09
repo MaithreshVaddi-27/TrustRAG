@@ -69,7 +69,7 @@ async def test_generation_strips_hallucinated_segment_refs():
     mock_response.content = "Revocations are fast [Segment 1] and free [Segment 5]."
     mock_llm.ainvoke = AsyncMock(return_value=mock_response)
     chunks = [{"filename": "doc.txt", "page": 1, "text": "Factual segment content."}]
-    with patch("app.rag.generation.generator.get_llm", return_value=mock_llm):
+    with patch("app.rag.generation.runtime.get_llm", return_value=mock_llm):
         answer = await generate_grounded_answer("Is there matching info?", chunks)
     assert "[Segment 5]" not in answer
     assert "[Segment 1]" in answer
@@ -82,7 +82,7 @@ async def test_generation_keeps_valid_citations_untouched():
     mock_response.content = "Revocations are fast [Segment 1]."
     mock_llm.ainvoke = AsyncMock(return_value=mock_response)
     chunks = [{"filename": "doc.txt", "page": 1, "text": "Factual segment content."}]
-    with patch("app.rag.generation.generator.get_llm", return_value=mock_llm):
+    with patch("app.rag.generation.runtime.get_llm", return_value=mock_llm):
         answer = await generate_grounded_answer("Is there matching info?", chunks)
     assert answer == "Revocations are fast [Segment 1]."
 

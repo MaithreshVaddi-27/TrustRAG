@@ -124,10 +124,10 @@ def test_rollback_route_returns_new_live_id(mock_create_indexes, mock_connect):
 
     with (
         patch("app.services.kb_service.get_collection", return_value=mock_collection),
-        patch("app.services.kb_service.get_qdrant_client", return_value=mock_qdrant),
+        patch("app.persistence.qdrant.get_qdrant_client", return_value=mock_qdrant),
         # delete_kb_collection() resolves the client from the qdrant module's
         # own namespace — patch it too or the test hits real Qdrant.
-        patch("app.db.qdrant.get_qdrant_client", return_value=mock_qdrant),
+        patch("app.persistence.qdrant.get_qdrant_client", return_value=mock_qdrant),
     ):
         response = client.post(f"/api/v1/knowledge-bases/{KB_ID}/rollback/{SNAP_ID}")
         assert response.status_code == 200
@@ -178,7 +178,7 @@ async def test_rollback_refuses_snapshot_without_vectors():
         patch.object(kb_service, "get_collection", return_value=mock_collection),
         patch.object(kb_service, "get_qdrant_client", return_value=mock_qdrant),
     ):
-        from app.core.security.exceptions import ConflictError
+        from app.security.exceptions import ConflictError
 
         with pytest.raises(ConflictError, match="no searchable vectors"):
             await kb_service.rollback_kb_to_snapshot(KB_ID, SNAP_ID, USER_ID)

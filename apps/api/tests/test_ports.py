@@ -47,7 +47,7 @@ def test_model_config_urls_honor_ports_yaml(monkeypatch) -> None:
         "LLAMA_CPP_BASE_URL",
     ):
         monkeypatch.delenv(var, raising=False)
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
     from app.core.config.settings import get_ports
 
     cfg = get_model_config()

@@ -15,8 +15,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from app.core.config.model_config import get_model_config
-from app.core.observability.logging import get_logger
+from app.config import get_model_config
+from app.observability.logging import get_logger
 from app.llm.model_registry import get_reranker
 
 logger = get_logger(__name__)

@@ -186,7 +186,7 @@ def test_upload_rejects_unsupported_extension(auth_user):
 def test_upload_rejects_oversize_file(auth_user):
     """The size guard is a streaming read, so it must trip before buffering the
     whole payload into memory."""
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     limit = get_model_config().max_file_size_mb
     oversize = b"a" * ((limit + 1) * 1024 * 1024)
@@ -216,7 +216,7 @@ def test_upload_of_empty_file_does_not_crash(auth_user):
 
 def test_upload_to_foreign_kb_is_refused(auth_user):
     """Cross-tenant guard: ownership is enforced inside kb_service.add_document."""
-    from app.core.security.exceptions import AuthorizationError
+    from app.security.exceptions import AuthorizationError
 
     async def _deny(*_a, **_k):
         raise AuthorizationError("Not your knowledge base")
@@ -230,7 +230,7 @@ def test_upload_to_foreign_kb_is_refused(auth_user):
 
 
 def test_upload_against_missing_kb_is_refused(auth_user):
-    from app.core.security.exceptions import NotFoundError
+    from app.security.exceptions import NotFoundError
 
     async def _missing(*_a, **_k):
         raise NotFoundError("Knowledge base not found")

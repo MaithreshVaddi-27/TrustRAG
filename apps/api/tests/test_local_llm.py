@@ -9,7 +9,7 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
 import app.llm.local_llm as _llm_mod
-from app.core.security.exceptions import ConfigurationError
+from app.security.exceptions import ConfigurationError
 from app.llm.local_llm import (
     ChatLlamaCppClient,
     ChatOllamaClient,
@@ -122,7 +122,7 @@ async def test_llamacpp_health_check():
 
 def test_embedding_model_is_single_onnx_engine():
     """Single embedding engine: ONNX BGE from models.yaml, no provider choice."""
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
     from app.llm.model_registry import get_embedding_model
 
     cfg = get_model_config()
@@ -383,7 +383,7 @@ async def test_probe_reaches_running_server(monkeypatch):
 async def test_probe_down_server_raises_actionable_error(monkeypatch):
     import httpx
 
-    from app.core.security.exceptions import LLMUnavailableError
+    from app.security.exceptions import LLMUnavailableError
     from app.llm.local_llm import probe_local_llm_server
 
     class _Down(_FakeHTTPClient):
@@ -425,7 +425,7 @@ async def test_probe_timeout_reports_overloaded_not_down(monkeypatch):
     """Persistent timeouts mean slow/overloaded — never 'not reachable'."""
     import httpx
 
-    from app.core.security.exceptions import LLMUnavailableError
+    from app.security.exceptions import LLMUnavailableError
     from app.llm.local_llm import probe_local_llm_server
 
     class _Slow(_FakeHTTPClient):
@@ -581,7 +581,7 @@ async def test_probe_mlx_hint_names_server_command(monkeypatch):
     """A down MLX server must tell the operator the mlx_lm.server command."""
     import httpx
 
-    from app.core.security.exceptions import LLMUnavailableError
+    from app.security.exceptions import LLMUnavailableError
     from app.llm.local_llm import probe_local_llm_server
 
     class _Down(_FakeHTTPClient):
@@ -607,7 +607,7 @@ async def test_probe_mlx_hint_names_server_command(monkeypatch):
 
 @pytest.mark.parametrize("provider", ["nvidia", "nim", "bogus", "NVIDIA"])
 def test_unknown_provider_is_rejected_not_silently_gemini(provider):
-    from app.core.security.exceptions import ConfigurationError
+    from app.security.exceptions import ConfigurationError
     from app.llm.model_registry import get_llm
 
     with pytest.raises(ConfigurationError, match="Unknown LLM provider"):
@@ -625,7 +625,7 @@ def test_blank_provider_falls_back_to_configured_default():
 
 def test_supported_providers_still_resolve():
     """The rejection must not have broken the real providers."""
-    from app.core.config.model_config import SUPPORTED_LLM_PROVIDERS
+    from app.config import SUPPORTED_LLM_PROVIDERS
 
     assert SUPPORTED_LLM_PROVIDERS == frozenset({"ollama", "llama_cpp", "mlx", "gemini"})
     assert "nvidia" not in SUPPORTED_LLM_PROVIDERS

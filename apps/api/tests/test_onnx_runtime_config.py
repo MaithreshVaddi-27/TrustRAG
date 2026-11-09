@@ -41,7 +41,7 @@ def _clean_onnx_env(monkeypatch):
 
 
 def test_onnx_yaml_defaults(_clean_onnx_env):
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     cfg = get_model_config()
     assert cfg.onnx_providers == ["CPUExecutionProvider"]
@@ -58,7 +58,7 @@ def test_onnx_env_overrides_win(_clean_onnx_env, monkeypatch):
     monkeypatch.setenv("ONNX_CPU_MEM_ARENA", "false")
     monkeypatch.setenv("ONNX_PROVIDERS", "CUDAExecutionProvider,CPUExecutionProvider")
     monkeypatch.setenv("ONNX_EMBED_MICRO_BATCH", "16")
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     cfg = get_model_config()
     assert cfg.onnx_intra_op_threads == 2
@@ -95,7 +95,7 @@ def test_factory_honors_omp_and_explicit_args(_clean_onnx_env, monkeypatch):
 
 
 def test_reranker_batch_precedence(_clean_onnx_env, monkeypatch):
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     assert (
         get_model_config().reranker_batch_size_effective == get_model_config().reranker_batch_size
@@ -106,7 +106,7 @@ def test_reranker_batch_precedence(_clean_onnx_env, monkeypatch):
 
 def test_retrieval_infra_yaml_defaults(_clean_onnx_env):
     """Runtime knobs: budgets unset (module fallback), cache set."""
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     cfg = get_model_config()
     assert cfg.branch_timeout_seconds == 0.0
@@ -121,7 +121,7 @@ def test_retrieval_infra_env_overrides_win(_clean_onnx_env, monkeypatch):
     # NOTE: branch/hybrid_timeout_seconds properties intentionally ignore env —
     # env is resolved in retriever._retrieval_timeouts() so the module globals
     # stay monkeypatch-able (see next test). Properties return yaml (0 = unset).
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     cfg = get_model_config()
     assert cfg.qdrant_upsert_batch == 50
@@ -152,7 +152,7 @@ def test_production_keys_default_empty_env_only(_clean_onnx_env):
 
 def test_analysis_latency_budget_default_and_disable(_clean_onnx_env, monkeypatch):
     """Audit L-1: whole-analysis wall-clock bound (0 disables)."""
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     assert get_model_config().max_analysis_seconds == 600
     monkeypatch.setenv("MAX_ANALYSIS_SECONDS", "0")

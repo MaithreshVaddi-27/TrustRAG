@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.observability.logging import get_logger
+from app.observability.logging import get_logger
 from app.rag.ingestion.preprocessor import detect_chunk_zone, normalize_text
 
 logger = get_logger(__name__)
@@ -122,3 +122,17 @@ def chunk_text(
             start += step
 
     return chunks
+
+
+def chunk_by_strategy(
+    pages: list[dict[str, Any]], chunk_size: int = 512, chunk_overlap: int = 64
+) -> list[dict[str, Any]]:
+    """Chunk pages using the configured strategy from models.yaml.
+
+    This delegates to the global chunking strategy instance which reads
+    the strategy name from config (e.g., sliding_window, semantic, progressive, layout_aware).
+    """
+    from app.rag.ingestion.chunking_strategies import get_chunking_strategy
+
+    strategy = get_chunking_strategy()
+    return strategy.chunk(pages, chunk_size=chunk_size, chunk_overlap=chunk_overlap)

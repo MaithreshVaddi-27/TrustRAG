@@ -1,0 +1,261 @@
+"""
+TRUSTRAG — Qdrant vector database client (Async).
+
+Handles collection initialization and drops.
+Separates knowledge bases into independent Qdrant collections.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.http import models
+
+from app.config import get_model_config
+from app.config.settings import get_settings
+from app.observability.logging import get_logger
+from app.security.exceptions import VectorStoreError
+
+logger = get_logger(__name__)
+
+API_ROOT = Path(__file__).resolve().parents[2]
+_client: AsyncQdrantClient | None = None
+
+
+async def get_qdrant_client() -> AsyncQdrantClient:
+    """Return an async Qdrant client singleton."""
+    global _client
+    if _client is None:
+        settings = get_settings()
+        logger.info("Initializing async Qdrant client", url=settings.qdrant_url)
+        # Embedded mode needs explicit markers. A typo'd URL (e.g.
+        # "localhost:6333" without a scheme) must fail loudly here — never be
+        # mkdir'd as a storage path.
+        raw_url = (settings.qdrant_url or "").strip()
+        is_server_url = raw_url.startswith(("http://", "https://"))
+        is_embedded = (
+            raw_url in ("local", ":memory:")
+            or raw_url.startswith(("./", "/"))
+            or raw_url.startswith("file://")
+            # Windows absolute paths (C:\..., C:/..., \\server\...) are storage
+            # paths, not URLs.
+            or (len(raw_url) > 2 and raw_url[1] == ":" and raw_url[0].isalpha())
+            or raw_url.startswith("\\\\")
+        )
+        if not raw_url or (not is_server_url and not is_embedded):
+            raise VectorStoreError(
+                "Invalid QDRANT_URL — use http(s)://host:port for server mode, "
+                "or 'local' / ':memory:' / a ./ or / path for embedded mode",
+                detail=f"got {raw_url!r}",
+            )
+        try:
+            # Support embedded local Qdrant directly via pip qdrant-client rust engine
+            if is_embedded:
+                storage_path: Path | str
+                if raw_url == "local":
+                    storage_path = API_ROOT / "data" / "qdrant"
+                elif raw_url == ":memory:":
+                    storage_path = ":memory:"
+                else:
+                    storage_path = Path(raw_url[7:] if raw_url.startswith("file://") else raw_url)
+
+                if isinstance(storage_path, Path):
+                    storage_path.mkdir(parents=True, exist_ok=True)
+                    _client = AsyncQdrantClient(path=str(storage_path))
+                else:
+                    _client = AsyncQdrantClient(location=str(storage_path))
+            elif settings.qdrant_api_key:
+                _client = AsyncQdrantClient(url=raw_url, api_key=settings.qdrant_api_key)
+            else:
+                _client = AsyncQdrantClient(url=raw_url)
+        except Exception as exc:
+            raise VectorStoreError(
+                "Failed to initialize async Qdrant client", detail=str(exc)
+            ) from exc
+    return _client
+
+
+async def close_qdrant_client() -> None:
+    """Close the async Qdrant client connection and reset the singleton."""
+    global _client
+    if _client is not None:
+        try:
+            await _client.close()
+        except Exception as exc:
+            logger.warning("Error closing async Qdrant client", error=str(exc))
+        finally:
+            _client = None
+
+
+def get_collection_name(kb_id: str) -> str:
+    """Consistently format collection name per KB ID."""
+    return f"kb_{kb_id}"
+
+
+async def _sparse_idf_enabled(client: AsyncQdrantClient, collection_name: str) -> bool | None:
+    """Check whether the collection's sparse-text index uses Modifier.IDF.
+
+    Returns True if IDF is enabled, False if collection exists but IDF is not
+    enabled, raises if the config cannot be read (fail-closed).
+    """
+    try:
+        info = await client.get_collection(collection_name)
+        params = getattr(getattr(info, "config", None), "params", None)
+        sparse_vectors = getattr(params, "sparse_vectors", None) or {}
+        sparse_params = sparse_vectors.get("sparse-text")
+        modifier = getattr(sparse_params, "modifier", None)
+        return modifier is not None and str(modifier).lower() == "idf"
+    except Exception as exc:
+        logger.error(
+            "Could not verify sparse index config; failing closed",
+            collection=collection_name,
+            error=str(exc),
+        )
+        raise
+
+
+async def init_kb_collection(kb_id: str) -> None:
+    """
+    Initialize a vector collection for the given knowledge base ID.
+
+    Creates a collection with:
+      - Dense vector parameters: Cosine distance, 384 dimensions (HuggingFace)
+      - Sparse vector parameters: BM25-style TF client vectors + server-side
+        IDF (Modifier.IDF). Qdrant derives IDF from collection statistics.
+
+    Collections created before the IDF sparse config need re-indexing —
+    their TF-only vectors are scoring-incompatible with IDF weighting.
+    NEVER auto-delete in the request path: deleting drops all vectors.
+    Set ALLOW_QDRANT_RECREATE=1 explicitly to allow recreation, otherwise
+    raise and require the operator to re-upload into a NEW KB.
+    """
+    client = await get_qdrant_client()
+    collection_name = get_collection_name(kb_id)
+    cfg = get_model_config()
+
+    try:
+        # Check if already exists
+        exists = await client.collection_exists(collection_name)
+        if exists:
+            try:
+                idf_enabled = await _sparse_idf_enabled(client, collection_name)
+            except Exception as exc:
+                raise VectorStoreError(
+                    f"Could not verify Qdrant collection '{collection_name}' sparse config: {exc}. "
+                    "Set ALLOW_QDRANT_RECREATE=1 to force recreation."
+                ) from exc
+
+            if idf_enabled is False:
+                import os
+
+                if os.environ.get("ALLOW_QDRANT_RECREATE", "").strip() == "1":
+                    logger.warning(
+                        "Recreating Qdrant collection with IDF sparse config; "
+                        "re-upload this KB's documents to re-index",
+                        collection=collection_name,
+                    )
+                    await client.delete_collection(collection_name)
+                else:
+                    raise VectorStoreError(
+                        f"Qdrant collection '{collection_name}' needs re-index "
+                        "(pre-IDF sparse config). Re-upload into a NEW KB, or set "
+                        "ALLOW_QDRANT_RECREATE=1 to recreate empty."
+                    )
+            else:
+                logger.debug("Qdrant collection already exists", collection=collection_name)
+                return
+
+        await _create_kb_collection(client, collection_name, cfg)
+    except VectorStoreError:
+        raise
+    except Exception as exc:
+        raise VectorStoreError(
+            f"Failed to initialize Qdrant collection '{collection_name}'", detail=str(exc)
+        ) from exc
+
+
+async def _create_kb_collection(client: AsyncQdrantClient, collection_name: str, cfg) -> None:  # type: ignore[no-untyped-def]
+    """Create the KB collection with dense + IDF-weighted sparse vectors."""
+    logger.info(
+        "Creating Qdrant collection",
+        collection=collection_name,
+        dense_dim=cfg.embedding_dimensionality,
+    )
+
+    quant_enabled = bool(getattr(cfg, "qdrant_quantization_enabled", False))
+    create_kwargs: dict[str, Any] = {
+        "collection_name": collection_name,
+        "vectors_config": models.VectorParams(
+            size=cfg.embedding_dimensionality,
+            distance=models.Distance.COSINE,
+            on_disk=True,
+        ),
+        # Sparse leg: client sends BM25 TF-saturated values (see
+        # app/ingestion/sparse_vector.py); Qdrant multiplies query-time IDF
+        # from collection statistics (Modifier.IDF).
+        "sparse_vectors_config": {
+            "sparse-text": models.SparseVectorParams(
+                index=models.SparseIndexParams(on_disk=True),
+                modifier=models.Modifier.IDF,
+            )
+        },
+        # Keep document payloads on disk using memory-mapped pages
+        "on_disk_payload": True,
+    }
+    # N-53: INT8 quantization is gated (default OFF) until recall impact is
+    # measured on BGE-small 384-d; enabling without a gate risks dropping the
+    # true nearest neighbour at the reranker boundary.
+    if quant_enabled:
+        create_kwargs["quantization_config"] = models.ScalarQuantization(
+            scalar=models.ScalarQuantizationConfig(
+                type=models.ScalarType.INT8,
+                quantile=0.99,
+                always_ram=False,
+            )
+        )
+    await client.create_collection(**create_kwargs)
+    logger.info(
+        "Qdrant collection created",
+        collection=collection_name,
+        quantization="int8" if quant_enabled else "off",
+    )
+    # N-47: document deletion filters on these payload keys; without indexes
+    # it full-scans inside a DELETE request.
+    for _field in ("document_id", "knowledge_base_id", "chunk_index", "integrity_status"):
+        try:
+            await client.create_payload_index(
+                collection_name=collection_name,
+                field_name=_field,
+                field_schema=models.PayloadSchemaType.KEYWORD,
+            )
+        except Exception as exc:
+            logger.debug("Payload index skipped", field=_field, error=str(exc))
+
+
+async def delete_kb_collection(kb_id: str) -> None:
+    """Drop the Qdrant collection associated with this KB."""
+    client = await get_qdrant_client()
+    collection_name = get_collection_name(kb_id)
+
+    try:
+        if await client.collection_exists(collection_name):
+            logger.info("Dropping Qdrant collection", collection=collection_name)
+            await client.delete_collection(collection_name)
+            logger.info("Qdrant collection dropped", collection=collection_name)
+    except Exception as exc:
+        raise VectorStoreError(
+            f"Failed to drop Qdrant collection '{collection_name}'", detail=str(exc)
+        ) from exc
+
+
+async def health_check() -> bool:
+    """Verify connectivity to Qdrant cluster."""
+    try:
+        client = await get_qdrant_client()
+        await client.get_collections()
+        return True
+    except Exception as exc:
+        logger.warning("Qdrant health check failed", error=str(exc))
+        return False

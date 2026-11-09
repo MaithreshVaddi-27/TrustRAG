@@ -22,9 +22,9 @@ import pymongo
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo.errors import PyMongoError
 
-from app.core.config.settings import get_settings
-from app.core.observability.logging import get_logger
-from app.core.security.exceptions import DatabaseError
+from app.config.settings import get_settings
+from app.observability.logging import get_logger
+from app.security.exceptions import DatabaseError
 
 if TYPE_CHECKING:
     from motor.motor_asyncio import AsyncIOMotorCollection

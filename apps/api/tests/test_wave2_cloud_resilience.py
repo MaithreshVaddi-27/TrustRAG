@@ -323,7 +323,7 @@ def test_compression_is_off_by_default():
     """Compression issues a SECOND full LLM call on the same model. Cloud tiers
     have 128K-1M windows, so firing by default doubled cloud generation cost
     (audit B-7)."""
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     cfg = get_model_config()
     assert cfg.context_compression_provider == "off", (
@@ -334,7 +334,7 @@ def test_compression_is_off_by_default():
 
 
 def test_compression_threshold_is_configurable():
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     assert get_model_config().context_compression_min_tokens > 0
 
@@ -384,7 +384,7 @@ def test_provider_normalization_is_canonical():
     """Aliases must resolve identically wherever they are handled, so the
     allowlist check, the resolved model, the persisted document, and downstream
     provider switches cannot disagree (audit B-15/B-18)."""
-    from app.core.config.model_config import normalize_provider
+    from app.config import normalize_provider
 
     assert normalize_provider("google_genai") == "google_genai"
     assert normalize_provider("llamacpp") == "llama_cpp"
@@ -401,7 +401,7 @@ def test_effective_cloud_model_is_validated_even_when_request_omits_it():
     from pydantic import ValidationError
 
     from app.api.v1.schemas.analysis import AnalysisCreate
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     real = get_model_config()
     base = {"knowledge_base_id": "64ee39d09c6292376e191982", "query": "hello"}
@@ -455,7 +455,7 @@ def test_cross_provider_mismatch_is_still_rejected():
     from pydantic import ValidationError
 
     from app.api.v1.schemas.analysis import AnalysisCreate
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     gemini = get_model_config().supported_gemini_models
     if not gemini:

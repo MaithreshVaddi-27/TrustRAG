@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from app.core.security.exceptions import AuthenticationError, AuthorizationError
+from app.security.exceptions import AuthenticationError, AuthorizationError
 from app.core.security.security import (
     create_access_token,
     create_service_token,
@@ -152,7 +152,7 @@ async def test_generation_with_injection_chunk_does_not_execute(mock_gen):
 
 
 @patch("app.rag.agent.graph.add_trace_event", AsyncMock())
-@patch("app.rag.verification.verifier.get_verification_model")
+@patch("app.rag.verification.pipeline.nli.get_verification_model")
 @pytest.mark.asyncio
 async def test_fused_verify_with_injection_claim_returns_neutral_or_contradicted(mock_get_model):
     """Fused path on injection-like answer should not mark SUPPORTED."""
@@ -262,12 +262,12 @@ def test_conflicting_chunks_both_present_in_context():
 
 def test_stale_chunk_passes_through_but_temporal_filter_exists():
     """Stale evidence path exists — retrieval honors effective_from/until via graph."""
-    # Verify the retrieval node code references temporal filtering
+    # Verify the retriever module code references temporal filtering
     import inspect
 
-    from app.rag.agent import graph as graph_mod
+    from app.rag.retrieval import retriever as retriever_mod
 
-    src = inspect.getsource(graph_mod.retrieval_node)
+    src = inspect.getsource(retriever_mod.apply_temporal_filtering)
     # At least one reference to temporal or effective_ must exist in retrieval path
     assert (
         "temporal" in src.lower() or "effective" in src.lower() or "reference_time" in src.lower()
@@ -280,7 +280,7 @@ def test_stale_chunk_passes_through_but_temporal_filter_exists():
 def test_ocr_garbled_chunk_not_trusted_as_high_confidence():
     """OCR garbled text at low confidence must not be treated as reliable."""
     # OCR pipeline drops low-confidence pages (min_confidence 0.5)
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     cfg = get_model_config()
     assert cfg.ocr_min_confidence >= 0.5
@@ -294,7 +294,7 @@ def test_ocr_garbled_chunk_not_trusted_as_high_confidence():
 
 def test_ocr_store_page_images_config_present():
     """OCR provenance: page image ref must be plumbable."""
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     cfg = get_model_config()
     # store_page_images is a bool config
@@ -375,7 +375,7 @@ def test_expired_token_rejected():
 
 def test_max_file_size_config_exists():
     """Upload size guard must be configured."""
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     cfg = get_model_config()
     assert cfg.max_file_size_mb > 0
@@ -389,7 +389,7 @@ def test_max_total_tokens_per_doc_config_exists():
     (pre-request 422 guard). The legacy ingestion.max_total_tokens_per_doc key
     was removed as dead config — it was never read by application code.
     """
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     cfg = get_model_config()
     assert cfg.max_input_tokens > 0

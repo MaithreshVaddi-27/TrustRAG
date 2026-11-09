@@ -24,8 +24,8 @@ import asyncio
 
 import pytest
 
-import app.db.mongodb as mongodb_mod
-from app.core.security.exceptions import DatabaseError
+import app.persistence.mongodb as mongodb_mod
+from app.security.exceptions import DatabaseError
 
 # Every one of these is permanently unusable, so no amount of retrying helps.
 BAD_URIS = [

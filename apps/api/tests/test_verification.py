@@ -18,10 +18,12 @@ from app.rag.verification.verifier import (
     execute_claim_verification,
     extract_claim_triple_heuristic,
     verify_claim_nli,
+    batch_verify_claims_nli,
+    fused_decompose_verify,
 )
 
 
-@patch("app.rag.verification.verifier.get_verification_model")
+@patch("app.rag.verification.pipeline.decomposition.get_verification_model")
 @pytest.mark.asyncio
 async def test_claim_decomposition(mock_get_model):
     # Mock structured output model response
@@ -47,7 +49,7 @@ async def test_claim_decomposition(mock_get_model):
     assert claims[1] == "Processing records takes 5 business days."
 
 
-@patch("app.rag.verification.verifier.get_verification_model")
+@patch("app.rag.verification.pipeline.nli.get_verification_model")
 @pytest.mark.asyncio
 async def test_verify_claim_supported(mock_get_model):
     mock_verdict = NLIVerdict(
@@ -76,7 +78,7 @@ async def test_verify_claim_supported(mock_get_model):
     assert "30-day window" in res["explanation"]
 
 
-@patch("app.rag.verification.verifier.get_verification_model")
+@patch("app.rag.verification.pipeline.nli.get_verification_model")
 @pytest.mark.asyncio
 async def test_verify_claim_contradicted(mock_get_model):
     mock_verdict = NLIVerdict(
@@ -99,10 +101,10 @@ async def test_verify_claim_contradicted(mock_get_model):
 
 
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
-@patch("app.rag.verification.verifier.batch_verify_claims_nli")
-@patch("app.rag.verification.verifier.decompose_answer_to_claims")
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli")
+@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 async def test_execute_claim_verification(
     mock_create_indexes, mock_connect, mock_decompose, mock_batch_verify
 ):
@@ -123,7 +125,13 @@ async def test_execute_claim_verification(
         return_value=MagicMock(inserted_id=ObjectId("64ee39d09c6292376e191984"))
     )
 
-    with patch("app.rag.verification.verifier.get_collection", return_value=mock_collection):
+    # Need to mock the database initialization
+    import app.persistence.mongodb as mongodb
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
+    with patch.object(mongodb, '_database', mock_db), \
+         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
         chunks = [{"text": "segment 1"}]
         evidence_ids = [ObjectId("64ee39d09c6292376e191985")]
 
@@ -144,10 +152,12 @@ async def test_execute_claim_verification(
 
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.rag.verification.verifier.verify_claim_nli")
-@patch("app.rag.verification.verifier.batch_verify_claims_nli")
-@patch("app.rag.verification.verifier.decompose_answer_to_claims")
+@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli")
+@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 async def test_neutral_batch_verdict_stays_neutral_without_targeted_retrieval(
-    mock_decompose, mock_batch_verify, mock_individual
+    mock_create_indexes, mock_connect, mock_decompose, mock_batch_verify, mock_individual
 ):
     mock_decompose.return_value = ["The policy allows access within thirty days."]
     mock_batch_verify.return_value = {
@@ -156,7 +166,13 @@ async def test_neutral_batch_verdict_stays_neutral_without_targeted_retrieval(
     mock_collection = MagicMock()
     mock_collection.insert_many = AsyncMock(return_value=MagicMock(inserted_ids=[ObjectId()]))
 
-    with patch("app.rag.verification.verifier.get_collection", return_value=mock_collection):
+    # Need to mock the database initialization
+    import app.persistence.mongodb as mongodb
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
+    with patch.object(mongodb, '_database', mock_db), \
+         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="The policy allows access within thirty days.",
@@ -187,11 +203,13 @@ def test_fused_coverage_rejects_answer_with_no_claims():
 
 @patch("app.rag.verification.verifier.fused_decompose_verify")
 @patch("app.rag.verification.verifier.batch_verify_claims_nli")
-@patch("app.rag.verification.verifier.decompose_answer_to_claims")
+@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 async def test_partial_fused_output_falls_back_to_full_decomposition(
-    mock_decompose, mock_batch_verify, mock_fused
+    mock_create_indexes, mock_connect, mock_decompose, mock_batch_verify, mock_fused
 ):
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     answer = (
         "The policy allows access for thirty days. "
@@ -210,11 +228,17 @@ async def test_partial_fused_output_falls_back_to_full_decomposition(
         return_value=MagicMock(inserted_ids=[ObjectId(), ObjectId()])
     )
     cfg = get_model_config()
+    # Need to mock the database initialization
+    import app.persistence.mongodb as mongodb
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
     with (
         patch("app.rag.verification.verifier._is_small", return_value=False),
-        patch("app.rag.verification.verifier.get_model_config", return_value=cfg),
-        patch("app.rag.verification.verifier.get_verification_model"),
-        patch("app.rag.verification.verifier.get_collection", return_value=mock_collection),
+        patch("app.config.get_model_config", return_value=cfg),
+        patch("app.rag.verification.pipeline.nli.get_verification_model"),
+        patch.object(mongodb, '_database', mock_db),
+        patch("app.persistence.mongodb.get_collection", return_value=mock_collection),
     ):
         # Ensure the fused path is eligible (non-small, non-reasoning model).
         from app.rag.verification.verifier import execute_claim_verification
@@ -241,10 +265,12 @@ async def test_partial_fused_output_falls_back_to_full_decomposition(
 
 
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
-@patch("app.rag.verification.verifier.batch_verify_claims_nli")
-@patch("app.rag.verification.verifier.decompose_answer_to_claims")
+@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli")
+@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 async def test_execute_claim_verification_maps_sorted_segments_to_original_evidence(
-    mock_decompose, mock_batch_verify
+    mock_create_indexes, mock_connect, mock_decompose, mock_batch_verify
 ):
     """Segment 1 belongs to the highest-scored context chunk, not chunks[0]."""
     mock_decompose.return_value = ["The policy permits records."]
@@ -276,7 +302,13 @@ async def test_execute_claim_verification_maps_sorted_segments_to_original_evide
         ObjectId("64ee39d09c6292376e191989"),
     ]
 
-    with patch("app.rag.verification.verifier.get_collection", return_value=mock_collection):
+    # Need to mock the database initialization
+    import app.persistence.mongodb as mongodb
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
+    with patch.object(mongodb, '_database', mock_db), \
+         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="The policy permits records.",
@@ -289,10 +321,12 @@ async def test_execute_claim_verification_maps_sorted_segments_to_original_evide
 
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.rag.verification.verifier.verify_claim_nli")
-@patch("app.rag.verification.verifier.batch_verify_claims_nli")
-@patch("app.rag.verification.verifier.decompose_answer_to_claims")
+@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli")
+@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 async def test_batch_verification_retried_once_before_individual_fallback(
-    mock_decompose, mock_batch_verify, mock_individual
+    mock_create_indexes, mock_connect, mock_decompose, mock_batch_verify, mock_individual
 ):
     """A transient batch failure costs 1 retry call, not N individual calls."""
     from bson import ObjectId
@@ -307,7 +341,13 @@ async def test_batch_verification_retried_once_before_individual_fallback(
     mock_collection.insert_many = AsyncMock(
         return_value=MagicMock(inserted_ids=[ObjectId("64ee39d09c6292376e191986")])
     )
-    with patch("app.rag.verification.verifier.get_collection", return_value=mock_collection):
+    # Need to mock the database initialization
+    import app.persistence.mongodb as mongodb
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
+    with patch.object(mongodb, '_database', mock_db), \
+         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="The policy permits records within thirty days.",
@@ -321,11 +361,13 @@ async def test_batch_verification_retried_once_before_individual_fallback(
 
 
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
-@patch("app.rag.verification.verifier.verify_claim_nli")
-@patch("app.rag.verification.verifier.batch_verify_claims_nli")
-@patch("app.rag.verification.verifier.decompose_answer_to_claims")
+@patch("app.rag.verification.pipeline.orchestrator.verify_claim_nli")
+@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli")
+@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 async def test_individual_nli_fallback_is_capped(
-    mock_decompose, mock_batch_verify, mock_individual
+    mock_create_indexes, mock_connect, mock_decompose, mock_batch_verify, mock_individual
 ):
     """Persistent batch failure → every claim attempted individually, none auto-skipped.
 
@@ -335,7 +377,7 @@ async def test_individual_nli_fallback_is_capped(
     """
     from bson import ObjectId
 
-    from app.core.config.model_config import get_model_config
+    from app.config import get_model_config
 
     cap = int(get_model_config().max_individual_nli_fallback)
     max_claims = int(get_model_config().max_verification_claims)
@@ -355,7 +397,13 @@ async def test_individual_nli_fallback_is_capped(
     mock_collection.insert_many = AsyncMock(
         return_value=MagicMock(inserted_ids=[ObjectId("64ee39d09c6292376e191986")] * 8)
     )
-    with patch("app.rag.verification.verifier.get_collection", return_value=mock_collection):
+    # Need to mock the database initialization
+    import app.persistence.mongodb as mongodb
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
+    with patch.object(mongodb, '_database', mock_db), \
+         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer=" ".join(sentences),
@@ -389,9 +437,10 @@ def test_extract_claim_triple_heuristics():
     assert extract_claim_triple_heuristic("Warning") == ("Warning", None, None)
 
 
-@patch("app.rag.verification.verifier.get_verification_model")
+@patch("app.rag.verification.pipeline.nli.get_verification_model")
+@patch("app.rag.verification.pipeline.decomposition.get_verification_model")
 @pytest.mark.asyncio
-async def test_local_task_token_caps_applied(mock_get_model):
+async def test_local_task_token_caps_applied(mock_get_model_decomp, mock_get_model_nli):
     """Local inference uses task-sized output caps (KV/wall-time savings)."""
     from app.rag.verification.verifier import (
         BatchNLIVerdict,
@@ -431,7 +480,8 @@ async def test_local_task_token_caps_applied(mock_get_model):
 
     mock_model = MagicMock()
     mock_model.with_structured_output = MagicMock(side_effect=_structured)
-    mock_get_model.return_value = mock_model
+    mock_get_model_decomp.return_value = mock_model
+    mock_get_model_nli.return_value = mock_model
 
     chunks = [{"text": "Segment one."}]
     await decompose_answer_to_claims("Some grounded answer text.", provider="llama_cpp")
@@ -446,9 +496,10 @@ async def test_local_task_token_caps_applied(mock_get_model):
     assert calls["BatchNLIVerdict"] == {"max_tokens": 768}
 
 
-@patch("app.rag.verification.verifier.get_verification_model")
+@patch("app.rag.verification.pipeline.nli.get_verification_model")
+@patch("app.rag.verification.pipeline.decomposition.get_verification_model")
 @pytest.mark.asyncio
-async def test_cloud_providers_receive_no_foreign_cap(mock_get_model):
+async def test_cloud_providers_receive_no_foreign_cap(mock_get_model_decomp, mock_get_model_nli):
     """Cloud chat models must not receive local-only max_tokens bindings."""
     from app.rag.verification.verifier import BatchNLIVerdict, batch_verify_claims_nli
 
@@ -462,7 +513,8 @@ async def test_cloud_providers_receive_no_foreign_cap(mock_get_model):
 
     mock_model = MagicMock()
     mock_model.with_structured_output = MagicMock(side_effect=_structured)
-    mock_get_model.return_value = mock_model
+    mock_get_model_decomp.return_value = mock_model
+    mock_get_model_nli.return_value = mock_model
 
     await batch_verify_claims_nli(
         ["Claim one."], [{"text": "Segment one."}], provider="gemini", context_str="Segment one."
@@ -489,9 +541,13 @@ def test_is_refusal_answer_matrix():
     assert is_refusal_answer("ABSTAIN is not in the text.") is False
 
 
-@patch("app.rag.verification.verifier.get_verification_model")
+@patch("app.llm.model_registry.get_verification_model")
+@patch("app.rag.verification.pipeline.nli.get_verification_model")
+@patch("app.rag.verification.pipeline.decomposition.get_verification_model")
 @pytest.mark.asyncio
-async def test_batch_total_failure_raises_instead_of_poisoning(mock_get_model):
+async def test_batch_total_failure_raises_instead_of_poisoning(
+    mock_get_model_decomp, mock_get_model_nli, mock_get_model_registry
+):
     """Total batch failure must raise so retry + individual fallback can run."""
     from app.rag.verification.verifier import batch_verify_claims_nli
 
@@ -499,7 +555,9 @@ async def test_batch_total_failure_raises_instead_of_poisoning(mock_get_model):
     mock_structured.ainvoke = AsyncMock(side_effect=RuntimeError("model blew up"))
     mock_model = MagicMock()
     mock_model.with_structured_output = MagicMock(return_value=mock_structured)
-    mock_get_model.return_value = mock_model
+    mock_get_model_decomp.return_value = mock_model
+    mock_get_model_nli.return_value = mock_model
+    mock_get_model_registry.return_value = mock_model
 
     with pytest.raises(RuntimeError, match="model blew up"):
         await batch_verify_claims_nli(
@@ -510,12 +568,14 @@ async def test_batch_total_failure_raises_instead_of_poisoning(mock_get_model):
         )
 
 
-@patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
-@patch("app.rag.verification.verifier.verify_claim_nli")
-@patch("app.rag.verification.verifier.batch_verify_claims_nli")
-@patch("app.rag.verification.verifier.decompose_answer_to_claims")
+@patch("app.rag.verification.pipeline.nli.fused_decompose_verify", new=AsyncMock(return_value=None))
+@patch("app.rag.verification.pipeline.orchestrator.verify_claim_nli")
+@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli")
+@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 async def test_total_batch_failure_recovers_via_individual_calls(
-    mock_decompose, mock_batch_verify, mock_individual
+    mock_create_indexes, mock_connect, mock_decompose, mock_batch_verify, mock_individual
 ):
     """The pasted-answer bug: batch dies → budgeted individuals still verify."""
     from bson import ObjectId
@@ -532,7 +592,12 @@ async def test_total_batch_failure_recovers_via_individual_calls(
     mock_collection.insert_many = AsyncMock(
         return_value=MagicMock(inserted_ids=[ObjectId("64ee39d09c6292376e191986")] * 2)
     )
-    with patch("app.rag.verification.verifier.get_collection", return_value=mock_collection):
+    import app.persistence.mongodb as mongodb
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
+    with patch.object(mongodb, '_database', mock_db), \
+         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="Records take 45 days. Ranking uses models.",
@@ -545,10 +610,11 @@ async def test_total_batch_failure_recovers_via_individual_calls(
     assert all(c["state"] == "SUPPORTED" for c in claims)
 
 
-@patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
-@patch("app.rag.verification.verifier.get_verification_model")
+@patch("app.rag.verification.pipeline.nli.fused_decompose_verify", new=AsyncMock(return_value=None))
+@patch("app.rag.verification.pipeline.nli.get_verification_model")
+@patch("app.rag.verification.pipeline.decomposition.get_verification_model")
 @pytest.mark.asyncio
-async def test_empty_structured_decomposition_falls_back_to_sentences(mock_get_model):
+async def test_empty_structured_decomposition_falls_back_to_sentences(mock_get_model_decomp, mock_get_model_nli):
     """≤3B models return valid-but-empty claims JSON → deterministic split."""
     from app.rag.verification.verifier import (
         ClaimDecomposition,
@@ -559,9 +625,10 @@ async def test_empty_structured_decomposition_falls_back_to_sentences(mock_get_m
     mock_structured.ainvoke = AsyncMock(return_value=ClaimDecomposition(claims=[]))
     mock_model = MagicMock()
     mock_model.with_structured_output = MagicMock(return_value=mock_structured)
-    mock_get_model.return_value = mock_model
+    mock_get_model_decomp.return_value = mock_model
+    mock_get_model_nli.return_value = mock_model
 
-    with patch("app.rag.verification.verifier.batch_verify_claims_nli") as mock_batch:
+    with patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli") as mock_batch:
         mock_batch.return_value = {
             1: {"verdict": "SUPPORTED", "supporting_segments": [1], "explanation": "Ok"},
             2: {"verdict": "SUPPORTED", "supporting_segments": [1], "explanation": "Ok"},
@@ -570,7 +637,12 @@ async def test_empty_structured_decomposition_falls_back_to_sentences(mock_get_m
         mock_collection.insert_many = AsyncMock(
             return_value=MagicMock(inserted_ids=[ObjectId("64ee39d09c6292376e191986")] * 2)
         )
-        with patch("app.rag.verification.verifier.get_collection", return_value=mock_collection):
+        import app.persistence.mongodb as mongodb
+        mock_db = MagicMock()
+        mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
+        with patch.object(mongodb, '_database', mock_db), \
+             patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
             claims = await execute_claim_verification(
                 analysis_id_str="64ee39d09c6292376e191983",
                 answer=(
@@ -585,15 +657,22 @@ async def test_empty_structured_decomposition_falls_back_to_sentences(mock_get_m
     assert all(c["state"] == "SUPPORTED" for c in claims)
 
 
-@patch("app.rag.verification.verifier.get_verification_model")
+@patch("app.rag.verification.pipeline.decomposition.get_verification_model")
+@patch("app.llm.model_registry.get_verification_model")
 @pytest.mark.asyncio
-async def test_empty_decomposition_of_refusal_stays_empty(mock_get_model):
+async def test_empty_decomposition_of_refusal_stays_empty(mock_get_model_nli, mock_get_model_decomp):
     """Refusals must not be sentence-split into pseudo-claims."""
     from app.rag.verification.verifier import execute_claim_verification
 
-    mock_get_model.side_effect = AssertionError("no LLM call expected")
+    mock_get_model_decomp.side_effect = AssertionError("no LLM call expected")
+    mock_get_model_nli.side_effect = AssertionError("no LLM call expected")
     mock_collection = MagicMock()
-    with patch("app.rag.verification.verifier.get_collection", return_value=mock_collection):
+    import app.persistence.mongodb as mongodb
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
+    with patch.object(mongodb, '_database', mock_db), \
+         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="ABSTAIN",
@@ -703,7 +782,7 @@ async def test_nli_batch_total_failures_metric_counts():
     mock_structured.ainvoke = AsyncMock(side_effect=RuntimeError("model blew up"))
     mock_model = MagicMock()
     mock_model.with_structured_output = MagicMock(return_value=mock_structured)
-    with patch("app.rag.verification.verifier.get_verification_model", return_value=mock_model):
+    with patch("app.rag.verification.pipeline.nli.get_verification_model", return_value=mock_model):
         for _ in range(2):
             try:
                 await batch_verify_claims_nli(
@@ -741,9 +820,13 @@ def _fused_items():
     ]
 
 
-@patch("app.rag.verification.verifier.get_verification_model")
+@patch("app.llm.model_registry.get_verification_model")
+@patch("app.rag.verification.pipeline.nli.get_verification_model")
+@patch("app.rag.verification.pipeline.decomposition.get_verification_model")
 @pytest.mark.asyncio
-async def test_fused_path_skips_two_step_calls(mock_get_model):
+async def test_fused_path_skips_two_step_calls(
+    mock_get_model_decomp, mock_get_model_nli, mock_get_model_fused
+):
     """Fused success must not invoke decompose or batch at all (1 call total)."""
     from app.rag.verification.verifier import execute_claim_verification
 
@@ -751,21 +834,26 @@ async def test_fused_path_skips_two_step_calls(mock_get_model):
     mock_structured.ainvoke = AsyncMock(return_value=MagicMock(items=_fused_items()))
     mock_model = MagicMock()
     mock_model.with_structured_output = MagicMock(return_value=mock_structured)
-    mock_get_model.return_value = mock_model
+    mock_get_model_decomp.return_value = mock_model
+    mock_get_model_nli.return_value = mock_model
+    mock_get_model_fused.return_value = mock_model
 
     mock_collection = MagicMock()
     mock_collection.insert_many = AsyncMock(return_value=MagicMock(inserted_ids=[ObjectId()] * 2))
-    with (
-        patch("app.rag.verification.verifier.get_collection", return_value=mock_collection),
-        patch(
-            "app.rag.verification.verifier.decompose_answer_to_claims",
-            side_effect=AssertionError("two-step decompose must not run"),
-        ),
-        patch(
-            "app.rag.verification.verifier.batch_verify_claims_nli",
-            side_effect=AssertionError("two-step batch must not run"),
-        ),
-    ):
+    import app.persistence.mongodb as mongodb
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
+    with patch.object(mongodb, '_database', mock_db), \
+         patch("app.persistence.mongodb.get_collection", return_value=mock_collection), \
+         patch(
+             "app.rag.verification.verifier.decompose_answer_to_claims",
+             side_effect=AssertionError("two-step decompose must not run"),
+         ), \
+         patch(
+             "app.rag.verification.verifier.batch_verify_claims_nli",
+             side_effect=AssertionError("two-step batch must not run"),
+         ):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="Records are available within 30 days. Backups are kept for 90 days.",
@@ -779,9 +867,13 @@ async def test_fused_path_skips_two_step_calls(mock_get_model):
     mock_structured.ainvoke.assert_awaited_once()
 
 
-@patch("app.rag.verification.verifier.get_verification_model")
+@patch("app.llm.model_registry.get_verification_model")
+@patch("app.rag.verification.pipeline.nli.get_verification_model")
+@patch("app.rag.verification.pipeline.decomposition.get_verification_model")
 @pytest.mark.asyncio
-async def test_fused_failure_falls_back_to_two_step(mock_get_model):
+async def test_fused_failure_falls_back_to_two_step(
+    mock_get_model_decomp, mock_get_model_nli, mock_get_model_fused
+):
     """Fused total failure must run the classic path (worst case: +1 call)."""
     from app.rag.verification.verifier import (
         BatchNLIVerdict,
@@ -828,11 +920,18 @@ async def test_fused_failure_falls_back_to_two_step(mock_get_model):
 
     mock_model = MagicMock()
     mock_model.with_structured_output = MagicMock(side_effect=_structured)
-    mock_get_model.return_value = mock_model
+    mock_get_model_decomp.return_value = mock_model
+    mock_get_model_nli.return_value = mock_model
+    mock_get_model_fused.return_value = mock_model
 
     mock_collection = MagicMock()
     mock_collection.insert_many = AsyncMock(return_value=MagicMock(inserted_ids=[ObjectId()]))
-    with patch("app.rag.verification.verifier.get_collection", return_value=mock_collection):
+    import app.persistence.mongodb as mongodb
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
+    with patch.object(mongodb, '_database', mock_db), \
+         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="Records are available within 30 days.",
@@ -845,9 +944,13 @@ async def test_fused_failure_falls_back_to_two_step(mock_get_model):
     assert calls == {"fused": 1, "decompose": 1, "batch": 1}
 
 
-@patch("app.rag.verification.verifier.get_verification_model")
+@patch("app.llm.model_registry.get_verification_model")
+@patch("app.rag.verification.pipeline.nli.get_verification_model")
+@patch("app.rag.verification.pipeline.decomposition.get_verification_model")
 @pytest.mark.asyncio
-async def test_fused_kill_switch_restores_two_step(mock_get_model, monkeypatch):
+async def test_fused_kill_switch_restores_two_step(
+    mock_get_model_decomp, mock_get_model_nli, mock_get_model_fused, monkeypatch
+):
     """FUSED_DECOMPOSE_VERIFY=0 must never invoke the fused call."""
     from app.rag.verification.verifier import (
         BatchNLIVerdict,
@@ -893,11 +996,18 @@ async def test_fused_kill_switch_restores_two_step(mock_get_model, monkeypatch):
 
     mock_model = MagicMock()
     mock_model.with_structured_output = MagicMock(side_effect=_structured)
-    mock_get_model.return_value = mock_model
+    mock_get_model_decomp.return_value = mock_model
+    mock_get_model_nli.return_value = mock_model
+    mock_get_model_fused.return_value = mock_model
 
     mock_collection = MagicMock()
     mock_collection.insert_many = AsyncMock(return_value=MagicMock(inserted_ids=[ObjectId()]))
-    with patch("app.rag.verification.verifier.get_collection", return_value=mock_collection):
+    import app.persistence.mongodb as mongodb
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
+    with patch.object(mongodb, '_database', mock_db), \
+         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="Records are available within 30 days.",
@@ -909,9 +1019,13 @@ async def test_fused_kill_switch_restores_two_step(mock_get_model, monkeypatch):
     assert claims[0]["state"] == "SUPPORTED"
 
 
-@patch("app.rag.verification.verifier.get_verification_model")
+@patch("app.llm.model_registry.get_verification_model")
+@patch("app.rag.verification.pipeline.nli.get_verification_model")
+@patch("app.rag.verification.pipeline.decomposition.get_verification_model")
 @pytest.mark.asyncio
-async def test_fused_meta_claims_filtered(mock_get_model):
+async def test_fused_meta_claims_filtered(
+    mock_get_model_decomp, mock_get_model_nli, mock_get_model_fused
+):
     """Prompt-echo claims in fused output must not launder into verdicts."""
     from app.rag.verification.verifier import FusedClaimVerdict, execute_claim_verification
 
@@ -928,11 +1042,18 @@ async def test_fused_meta_claims_filtered(mock_get_model):
     mock_structured.ainvoke = AsyncMock(return_value=MagicMock(items=items))
     mock_model = MagicMock()
     mock_model.with_structured_output = MagicMock(return_value=mock_structured)
-    mock_get_model.return_value = mock_model
+    mock_get_model_decomp.return_value = mock_model
+    mock_get_model_nli.return_value = mock_model
+    mock_get_model_fused.return_value = mock_model
 
     mock_collection = MagicMock()
     mock_collection.insert_many = AsyncMock(return_value=MagicMock(inserted_ids=[ObjectId()] * 2))
-    with patch("app.rag.verification.verifier.get_collection", return_value=mock_collection):
+    import app.persistence.mongodb as mongodb
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
+    with patch.object(mongodb, '_database', mock_db), \
+         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="Records are available within 30 days. Backups are kept for 90 days.",
@@ -944,7 +1065,7 @@ async def test_fused_meta_claims_filtered(mock_get_model):
     assert all("user asks" not in c["text"].lower() for c in claims)
 
 
-@patch("app.rag.verification.verifier.get_verification_model")
+@patch("app.rag.verification.pipeline.decomposition.get_verification_model")
 @pytest.mark.asyncio
 async def test_fused_decompose_verify_returns_none_on_failure(mock_get_model):
     """Unit: total fused failure returns None (caller falls back)."""
@@ -1202,6 +1323,8 @@ def test_every_verification_prompt_has_a_small_model_route():
     import inspect
 
     from app.rag.verification import verifier as v
+    from app.rag.verification.pipeline import nli as nli_module
+    from app.rag.verification.pipeline import decomposition as decomp_module
 
     # Prompts a ≤3B model can actually reach. FUSED is absent by design:
     # small models skip the fused call entirely (see the fused-skip test).
@@ -1217,9 +1340,14 @@ def test_every_verification_prompt_has_a_small_model_route():
     # Fused must exist (large models use it) but must never be selected for small.
     assert hasattr(v, "FUSED_DECOMPOSE_VERIFY_PROMPT_TEMPLATE")
 
-    # And the selection helper must be the one the call sites use.
-    src = inspect.getsource(v)
-    body = src[src.index("def _is_small") :]
-    assert "BATCH_NLI_PROMPT_TEMPLATE_SMALL if _is_small" in body
-    assert "DECOMPOSITION_PROMPT_SMALL if _is_small" in body
-    assert "NLI_PROMPT_TEMPLATE_SMALL if _is_small" in body
+    # The selection helper must be the one the call sites use.
+    # Check decomposition module for DECOMPOSITION_PROMPT_SMALL selection
+    decomp_src = inspect.getsource(decomp_module)
+    assert "DECOMPOSITION_PROMPT_SMALL" in decomp_src
+    assert "is_small_model(model, provider)" in decomp_src
+
+    # Check nli module for NLI_PROMPT_TEMPLATE_SMALL selection
+    nli_src = inspect.getsource(nli_module)
+    assert "NLI_PROMPT_TEMPLATE_SMALL" in nli_src
+    assert "BATCH_NLI_PROMPT_TEMPLATE_SMALL" in nli_src
+    assert "is_small_model(model, provider)" in nli_src

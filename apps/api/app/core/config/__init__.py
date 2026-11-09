@@ -6,13 +6,13 @@ re-exported so existing `from app.core.config import X` imports and
 `patch("app.core.config.*")` targets keep working.
 """
 
-from app.core.config.model_config import (
+from app.config import (
     SUPPORTED_LLM_PROVIDERS,
     ModelConfig,
     get_model_config,
     normalize_provider,
 )
-from app.core.config.settings import (
+from app.config.settings import (
     Settings,
     get_ports,
     get_settings,

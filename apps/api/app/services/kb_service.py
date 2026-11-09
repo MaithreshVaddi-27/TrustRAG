@@ -13,10 +13,10 @@ from bson import ObjectId
 from qdrant_client.http import models
 
 from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
-from app.core.observability.logging import get_logger
-from app.core.security.exceptions import AuthorizationError, ConflictError, NotFoundError
-from app.db.mongodb import Collections, get_collection
-from app.db.qdrant import delete_kb_collection, get_collection_name, get_qdrant_client
+from app.observability.logging import get_logger
+from app.security.exceptions import AuthorizationError, ConflictError, NotFoundError
+from app.persistence.mongodb import Collections, get_collection
+from app.persistence.qdrant import delete_kb_collection, get_collection_name, get_qdrant_client
 from app.rag.ingestion import page_images as page_images_mod
 
 logger = get_logger(__name__)
@@ -119,7 +119,7 @@ async def list_kbs(user_id_str: str, limit: int = 200, skip: int = 0) -> list[KB
         .to_list(capped)
     )
     if len(kbs_raw) == 500 and skip == 0:
-        from app.core.observability.logging import get_logger as _get_logger
+        from app.observability.logging import get_logger as _get_logger
 
         _get_logger(__name__).warning("KB list truncated at 500; use skip/limit pagination")
 
@@ -378,7 +378,7 @@ async def _copy_kb_vectors(source_kb_id: str, dest_kb_id: str, doc_id_map: dict[
     # (test_kb/test_lifecycle) and sources (test_delete_safety/test_agent) —
     # so the snapshot path re-reads source attributes per call while the rest
     # of this module uses top-level bindings. Do not hoist.
-    from app.db.qdrant import get_collection_name, init_kb_collection
+    from app.persistence.qdrant import get_collection_name, init_kb_collection
     from app.rag.ingestion.pipeline import hashlib_qdrant_id
 
     client = await get_qdrant_client()
