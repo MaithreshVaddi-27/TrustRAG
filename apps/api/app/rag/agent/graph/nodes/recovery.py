@@ -8,7 +8,6 @@ terminal failure handling for dead credentials / LLM outages.
 
 from __future__ import annotations
 
-import asyncio
 import re
 import time
 from collections.abc import Callable
@@ -19,12 +18,12 @@ from bson import ObjectId
 
 import app.rag.agent.graph as _graph_mod
 from app.config import get_model_config
-from app.observability.logging import get_logger
-from app.observability.metrics import record_recovery_attempt
-from app.persistence.mongodb import Collections
 from app.llm.llm_ledger import invoke_counted
 from app.llm.llm_utils import normalize_llm_content
 from app.llm.local_llm import verification_cap_kwargs
+from app.observability.logging import get_logger
+from app.observability.metrics import record_recovery_attempt
+from app.persistence.mongodb import Collections
 from app.rag.agent.graph.state import AgentState
 from app.rag.verification.verdict import is_refusal_answer
 

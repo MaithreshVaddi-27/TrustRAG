@@ -11,9 +11,9 @@ from bson import ObjectId
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
+from app.persistence.mongodb import Collections, get_collection
 from app.security.exceptions import AuthenticationError
 from app.security.security import decode_access_token, decode_service_token, jti_key
-from app.persistence.mongodb import Collections, get_collection
 
 # Login endpoint URL (under the API prefix)
 oauth2_scheme = OAuth2PasswordBearer(

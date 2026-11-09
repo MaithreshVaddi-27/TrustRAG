@@ -34,8 +34,21 @@ from slowapi.util import get_remote_address
 from app.api.router import api_router
 from app.config.model_config import get_model_config
 from app.config.settings import get_settings
+from app.core.system.hardware import get_cached_hardware_profile
+from app.core.system.memory import get_memory_usage_mb
+from app.llm.local_llm import (
+    close_local_llm_clients,
+    load_discovery_snapshot,
+    seed_local_model_discovery,
+)
+from app.llm.model_registry import (
+    get_embedding_model,
+    onnx_model_status,
+)
 from app.observability.logging import configure_logging, get_logger
 from app.observability.tracing import init_tracing, tracing_middleware
+from app.persistence.mongodb import connect_db, create_indexes, disconnect_db
+from app.persistence.qdrant import close_qdrant_client
 from app.security.exceptions import (
     AnalysisNotFoundError,
     AuthenticationError,
@@ -51,19 +64,6 @@ from app.security.exceptions import (
     TrustRAGError,
     UnsupportedFormatError,
     VectorStoreError,
-)
-from app.core.system.hardware import get_cached_hardware_profile
-from app.core.system.memory import get_memory_usage_mb
-from app.persistence.mongodb import connect_db, create_indexes, disconnect_db
-from app.persistence.qdrant import close_qdrant_client
-from app.llm.local_llm import (
-    close_local_llm_clients,
-    load_discovery_snapshot,
-    seed_local_model_discovery,
-)
-from app.llm.model_registry import (
-    get_embedding_model,
-    onnx_model_status,
 )
 
 logger = get_logger(__name__)

@@ -4,6 +4,7 @@ TRUSTRAG — Generation Capability.
 Grounded answer generation using local LLMs and Gemini.
 """
 
+from app.llm.model_registry import get_llm
 from app.rag.generation.context import (
     extract_citations,
     extract_final_answer,
@@ -32,7 +33,6 @@ from app.rag.generation.prompt import (
 from app.rag.generation.runtime import (
     generate_grounded_answer,
 )
-from app.llm.model_registry import get_llm
 
 __all__ = [
     "GROUNDING_SYSTEM_PROMPT",

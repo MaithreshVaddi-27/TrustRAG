@@ -30,9 +30,9 @@ from app.llm.providers.capabilities import (  # noqa: F401
     verification_cap_kwargs,
 )
 from app.llm.providers.discovery import (
-    _DISCOVERED_LLMS,
-    _DISCOVERED_LLMS_LOCK,
-    _DISCOVERY_SNAPSHOT_PATH,
+    _discovered_llms,
+    _discovered_llms_lock,
+    _discovery_snapshot_path,
     discover_hf_hub_gguf_models,
     discover_llamacpp_cache_models,
     discover_mlx_cache_models,
@@ -65,15 +65,15 @@ from app.llm.providers.ollama import (
 
 __all__ = [
     "LOCAL_LLM_PROVIDERS",
-    "_DISCOVERED_LLMS",
-    "_DISCOVERED_LLMS_LOCK",
-    "_DISCOVERY_SNAPSHOT_PATH",
     "_HTTP_CLIENTS",
     "_HTTP_CLIENTS_LOCK",
     "ChatLlamaCppClient",
     "ChatMLXClient",
     "ChatOllamaClient",
     "_convert_messages_to_dict",
+    "_discovered_llms",
+    "_discovered_llms_lock",
+    "_discovery_snapshot_path",
     "_shared_http_client",
     "_status_code_of",
     "close_local_llm_clients",

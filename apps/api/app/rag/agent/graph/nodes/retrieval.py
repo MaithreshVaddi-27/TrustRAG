@@ -9,25 +9,21 @@ strategy handling (regenerate/re_retrieve), and self-heal re-indexing.
 from __future__ import annotations
 
 import asyncio
-import time
-from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, cast
 
 from bson import ObjectId
+from qdrant_client.http import models as qdrant_models
 
 import app.rag.agent.graph as _graph_mod
-from qdrant_client.http import models as qdrant_models
 from app.config import get_model_config
+from app.llm import model_registry
 from app.observability.logging import get_logger
 from app.persistence import qdrant as qdrant_db
 from app.persistence.mongodb import Collections
-from app.llm import model_registry
 from app.rag.agent.graph.state import AgentState
-from app.rag.ingestion.sparse_vector import generate_sparse_vector
 from app.rag.ingestion import pipeline as pipeline_mod
-from app.rag.retrieval.reranker import rerank_candidate_chunks
-from app.rag.retrieval.retriever import retrieve_hybrid_chunks
+from app.rag.ingestion.sparse_vector import generate_sparse_vector
 
 logger = get_logger(__name__)
 
@@ -195,7 +191,6 @@ async def retrieval_node(state: AgentState) -> AgentState:
                     # Progress events keep the trace UI honest on long heals
                     # (the feed compacts consecutive same-type events).
                     total_chunks = len(chunks)
-                    from datetime import UTC as _UTC
 
                     for batch_start in range(0, total_chunks, _graph_mod.SELF_HEAL_BATCH_SIZE):
                         batch = chunks[batch_start : batch_start + _graph_mod.SELF_HEAL_BATCH_SIZE]
@@ -245,18 +240,18 @@ async def retrieval_node(state: AgentState) -> AgentState:
                                 )
                             )
                         await q_client.upsert(collection_name=col_name, points=sync_points)
+                        healed_count = min(
+                            batch_start + _graph_mod.SELF_HEAL_BATCH_SIZE, total_chunks
+                        )
                         await _graph_mod.add_trace_event(
                             state["analysis_id"],
                             "retrieval.self_heal_batch",
                             {
                                 "message": (
-                                    f"Self-heal re-indexed "
-                                    f"{min(batch_start + _graph_mod.SELF_HEAL_BATCH_SIZE, total_chunks)}"
-                                    f"/{total_chunks} chunks"
+                                    "Self-heal re-indexed "
+                                    f"{healed_count} of {total_chunks}"
                                 ),
-                                "completed": min(
-                                    batch_start + _graph_mod.SELF_HEAL_BATCH_SIZE, total_chunks
-                                ),
+                                "completed": healed_count,
                                 "total": total_chunks,
                             },
                         )

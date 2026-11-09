@@ -13,10 +13,10 @@ Main entry point for RAG functionality organized into sub-capabilities:
 from __future__ import annotations
 
 __all__ = [
-    "embedding",
-    "retrieval",
-    "ingestion",
-    "verification",
-    "generation",
     "agent",
+    "embedding",
+    "generation",
+    "ingestion",
+    "retrieval",
+    "verification",
 ]

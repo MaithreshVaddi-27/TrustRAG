@@ -12,14 +12,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.config import ModelConfig, get_model_config
-from app.observability.logging import get_logger
-from app.security.exceptions import ConfigurationError
 from app.llm.onnx_embeddings import ONNXBGEEmbeddings, ONNXBGEEmbeddingsWrapper
 from app.llm.registry.factories.onnx_paths import (
     _embedding_cache,
     _embedding_lock,
     _resolve_embedding_onnx_path,
 )
+from app.observability.logging import get_logger
+from app.security.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
     from langchain_core.embeddings import Embeddings
@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 __all__ = ["get_embedding_model"]
 
 
-def get_embedding_model() -> "Embeddings":
+def get_embedding_model() -> Embeddings:
     """
     Return the single ONNX embedding model wrapped with persistent disk cache.
 
@@ -65,11 +65,6 @@ def get_embedding_model() -> "Embeddings":
         onnx_path=str(onnx_model_path),
     )
 
-    from app.llm.registry.factories.onnx_paths import (
-        _embedding_cache,
-        _embedding_lock,
-        _resolve_embedding_onnx_path,
-    )
 
     cache_key = (active_model, str(onnx_model_path), int(cfg.embedding_max_seq_length))
     with _embedding_lock:

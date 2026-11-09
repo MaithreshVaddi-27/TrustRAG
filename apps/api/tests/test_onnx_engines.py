@@ -131,7 +131,7 @@ def _make_reranker(session, **kwargs):
     configures SessionOptions, so the real (installed) module is patched."""
     import onnxruntime as ort
 
-    from app.llm import onnx_reranker as mod
+    from app.rag.retrieval import onnx_reranker as mod
 
     tok = _fake_tokenizer()
     with (

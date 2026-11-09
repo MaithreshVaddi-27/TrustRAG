@@ -47,8 +47,8 @@ def setup_dependency_override(mock_user_doc):
     app.dependency_overrides.clear()
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_create_kb(mock_create_indexes, mock_connect):
     # Mock database call
     mock_collection = MagicMock()
@@ -67,8 +67,8 @@ def test_create_kb(mock_create_indexes, mock_connect):
         assert "id" in data
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_list_kbs(mock_create_indexes, mock_connect, mock_kb_doc):
     # Mock async cursor for find().sort().skip().limit().to_list()
     mock_cursor = MagicMock()
@@ -96,8 +96,8 @@ def test_list_kbs(mock_create_indexes, mock_connect, mock_kb_doc):
         assert data[0]["document_count"] == 2
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_delete_document_success(mock_create_indexes, mock_connect):
     doc_id = "64ee39d09c6292376e191999"
     kb_id = "64ee39d09c6292376e191982"
@@ -126,14 +126,14 @@ def test_delete_document_success(mock_create_indexes, mock_connect):
     with (
         patch("app.services.kb_service.get_collection", return_value=mock_coll),
         patch("app.services.kb_service.get_qdrant_client", return_value=mock_qdrant),
-        patch("app.db.mongodb.get_collection", return_value=mock_coll),
+        patch("app.persistence.mongodb.get_collection", return_value=mock_coll),
     ):
         response = client.delete(f"/api/v1/documents/{doc_id}")
         assert response.status_code == 204
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_multi_tenant_cross_user_access_blocked(mock_create_indexes, mock_connect):
     # KB owned by a DIFFERENT user (User B)
     other_kb = {

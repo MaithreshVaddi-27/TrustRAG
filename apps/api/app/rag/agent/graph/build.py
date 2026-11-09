@@ -15,7 +15,6 @@ from langgraph.graph import StateGraph
 
 import app.rag.agent.graph as _graph_mod
 from app.observability.logging import get_logger
-from app.llm.llm_ledger import llm_budget_exhausted
 from app.rag.agent.graph.edges import should_end, should_recover
 from app.rag.agent.graph.nodes.generation import generation_node
 from app.rag.agent.graph.nodes.recovery import recovery_node

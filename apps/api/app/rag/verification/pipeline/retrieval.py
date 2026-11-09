@@ -9,10 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.config import get_model_config
 from app.observability.logging import get_logger
 from app.persistence.mongodb import Collections, get_collection
-from app.rag.generation.generator import format_context_with_chunk_indices
 from app.rag.retrieval import retriever as retriever_mod
 from app.rag.verification import integrity as integrity_mod
 from app.rag.verification.pipeline.infra import _chunk_identity, _safe_object_id

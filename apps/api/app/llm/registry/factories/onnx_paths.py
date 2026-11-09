@@ -17,10 +17,10 @@ from app.observability.logging import get_logger
 logger = get_logger(__name__)
 
 __all__ = [
-    "clear_onnx_caches",
-    "onnx_model_status",
     "_resolve_embedding_onnx_path",
     "_resolve_reranker_onnx_path",
+    "clear_onnx_caches",
+    "onnx_model_status",
 ]
 
 # ─── ONNX singleton caches (P1-3) ────────────────────────────────────────────

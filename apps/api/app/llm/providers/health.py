@@ -19,8 +19,6 @@ from app.config.settings import (
     _DEFAULT_MLX_BASE_URL,
     _DEFAULT_OLLAMA_BASE_URL,
 )
-from app.observability.logging import get_logger
-from app.security.exceptions import LLMUnavailableError
 from app.llm.providers.base import _shared_http_client
 from app.llm.providers.capabilities import _is_embedding_model_name
 from app.llm.providers.discovery import (
@@ -28,6 +26,8 @@ from app.llm.providers.discovery import (
     discover_mlx_cache_models,
     merge_discovered_llms,
 )
+from app.observability.logging import get_logger
+from app.security.exceptions import LLMUnavailableError
 
 logger = get_logger(__name__)
 
@@ -310,13 +310,6 @@ async def probe_cloud_llm(
     hint: str = "",
 ) -> None:
     """Probe a cloud LLM provider to confirm it is reachable and responsive."""
-    try:
-        from app.llm.local_llm import _local_chat_models
-
-        llm = _local_chat_models[norm]
-    except Exception:
-        pass
-
     async with httpx.AsyncClient(timeout=httpx.Timeout(timeout)) as client:
         res = await client.post(
             f"{base_url.rstrip('/')}/v1/chat/completions",

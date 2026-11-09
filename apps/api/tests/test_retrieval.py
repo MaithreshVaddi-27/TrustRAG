@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.security.exceptions import RetrievalOutageError
 from app.rag.retrieval.retriever import (
     apply_temporal_filtering,
     dense_search,
@@ -19,6 +18,7 @@ from app.rag.retrieval.retriever import (
     retrieve_hybrid_chunks,
     sparse_search,
 )
+from app.security.exceptions import RetrievalOutageError
 
 
 def test_reciprocal_rank_fusion_logic():

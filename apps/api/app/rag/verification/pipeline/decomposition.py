@@ -6,12 +6,11 @@ Decomposes generated answers into atomic claims using structured outputs.
 
 from __future__ import annotations
 
-from app.observability.logging import get_logger
 from app.llm.llm_ledger import invoke_counted
-from app.llm.providers.capabilities import verification_cap_kwargs
 from app.llm.local_llm import is_small_model
 from app.llm.model_registry import get_verification_model
-from app.rag.generation.generator import neutralize_prompt_fences
+from app.llm.providers.capabilities import verification_cap_kwargs
+from app.observability.logging import get_logger
 from app.rag.verification.pipeline.infra import _structured_verifier
 from app.rag.verification.prompts import DECOMPOSITION_PROMPT, DECOMPOSITION_PROMPT_SMALL
 from app.rag.verification.schemas import ClaimDecomposition

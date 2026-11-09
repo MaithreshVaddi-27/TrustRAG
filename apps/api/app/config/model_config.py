@@ -12,8 +12,8 @@ import threading as _threading
 from typing import Any
 
 import structlog
-import yaml
 
+from app.config.loader import load_models_yaml, validate_models_yaml
 from app.config.settings import (
     _DEFAULT_MLX_BASE_URL,
     _MODELS_YAML_PATH,
@@ -21,7 +21,6 @@ from app.config.settings import (
     _parse_bool,
     get_ports,
 )
-from app.config.loader import load_models_yaml, validate_models_yaml
 
 logger = structlog.get_logger(__name__)
 
@@ -587,7 +586,7 @@ class ModelConfig:
 
     @property
     def recovery_strategy_priority(self) -> list[str]:
-        """Return ordered recovery strategies, e.g. ['query_rewrite', 're_retrieve'].""" 
+        """Return ordered recovery strategies, e.g. ['query_rewrite', 're_retrieve']."""
         val = self._get("recovery", "strategy_priority", required=False)
         if isinstance(val, list) and val:
             return [str(s) for s in val]

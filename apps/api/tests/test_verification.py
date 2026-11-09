@@ -14,12 +14,12 @@ from app.rag.verification.verifier import (
     ClaimDecomposition,
     ClaimVerdict,
     NLIVerdict,
+    batch_verify_claims_nli,
     decompose_answer_to_claims,
     execute_claim_verification,
     extract_claim_triple_heuristic,
-    verify_claim_nli,
-    batch_verify_claims_nli,
     fused_decompose_verify,
+    verify_claim_nli,
 )
 
 
@@ -445,7 +445,6 @@ async def test_local_task_token_caps_applied(mock_get_model_decomp, mock_get_mod
     from app.rag.verification.verifier import (
         BatchNLIVerdict,
         ClaimVerdict,
-        batch_verify_claims_nli,
     )
 
     calls = {}
@@ -501,7 +500,7 @@ async def test_local_task_token_caps_applied(mock_get_model_decomp, mock_get_mod
 @pytest.mark.asyncio
 async def test_cloud_providers_receive_no_foreign_cap(mock_get_model_decomp, mock_get_model_nli):
     """Cloud chat models must not receive local-only max_tokens bindings."""
-    from app.rag.verification.verifier import BatchNLIVerdict, batch_verify_claims_nli
+    from app.rag.verification.verifier import BatchNLIVerdict
 
     calls = {}
 
@@ -549,7 +548,6 @@ async def test_batch_total_failure_raises_instead_of_poisoning(
     mock_get_model_decomp, mock_get_model_nli, mock_get_model_registry
 ):
     """Total batch failure must raise so retry + individual fallback can run."""
-    from app.rag.verification.verifier import batch_verify_claims_nli
 
     mock_structured = MagicMock()
     mock_structured.ainvoke = AsyncMock(side_effect=RuntimeError("model blew up"))
@@ -614,7 +612,9 @@ async def test_total_batch_failure_recovers_via_individual_calls(
 @patch("app.rag.verification.pipeline.nli.get_verification_model")
 @patch("app.rag.verification.pipeline.decomposition.get_verification_model")
 @pytest.mark.asyncio
-async def test_empty_structured_decomposition_falls_back_to_sentences(mock_get_model_decomp, mock_get_model_nli):
+async def test_empty_structured_decomposition_falls_back_to_sentences(
+    mock_get_model_decomp, mock_get_model_nli
+):
     """≤3B models return valid-but-empty claims JSON → deterministic split."""
     from app.rag.verification.verifier import (
         ClaimDecomposition,
@@ -660,7 +660,9 @@ async def test_empty_structured_decomposition_falls_back_to_sentences(mock_get_m
 @patch("app.rag.verification.pipeline.decomposition.get_verification_model")
 @patch("app.llm.model_registry.get_verification_model")
 @pytest.mark.asyncio
-async def test_empty_decomposition_of_refusal_stays_empty(mock_get_model_nli, mock_get_model_decomp):
+async def test_empty_decomposition_of_refusal_stays_empty(
+    mock_get_model_nli, mock_get_model_decomp
+):
     """Refusals must not be sentence-split into pseudo-claims."""
     from app.rag.verification.verifier import execute_claim_verification
 
@@ -774,7 +776,7 @@ async def test_nli_batch_total_failures_metric_counts():
     """Audit HIGH follow-up: total batch failures are counted, not just logged."""
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from app.rag.verification.verifier import batch_verify_claims_nli, get_nli_metrics
+    from app.rag.verification.verifier import get_nli_metrics
 
     before = get_nli_metrics()["batch_total_failures"]
 
@@ -1069,7 +1071,6 @@ async def test_fused_meta_claims_filtered(
 @pytest.mark.asyncio
 async def test_fused_decompose_verify_returns_none_on_failure(mock_get_model):
     """Unit: total fused failure returns None (caller falls back)."""
-    from app.rag.verification.verifier import fused_decompose_verify
 
     mock_structured = MagicMock()
     mock_structured.ainvoke = AsyncMock(side_effect=RuntimeError("boom"))
@@ -1323,8 +1324,8 @@ def test_every_verification_prompt_has_a_small_model_route():
     import inspect
 
     from app.rag.verification import verifier as v
-    from app.rag.verification.pipeline import nli as nli_module
     from app.rag.verification.pipeline import decomposition as decomp_module
+    from app.rag.verification.pipeline import nli as nli_module
 
     # Prompts a ≤3B model can actually reach. FUSED is absent by design:
     # small models skip the fused call entirely (see the fused-skip test).

@@ -7,26 +7,24 @@ Extracted from the flat ``verifier.py`` module into its own focused file.
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.config import get_model_config
-from app.observability.logging import get_logger
 from app.llm.llm_ledger import invoke_counted
-from app.llm.local_llm import is_reasoning_model, is_small_model
+from app.llm.local_llm import is_small_model
 from app.llm.model_registry import get_verification_model
 from app.llm.providers.capabilities import verification_cap_kwargs
+from app.observability.logging import get_logger
 from app.rag.generation.generator import (
     format_context,
-    format_context_with_chunk_indices,
     neutralize_prompt_fences,
 )
 from app.rag.verification.pipeline.infra import (
-    NLI_PER_CALL_TIMEOUT_SECONDS,
-    _await_nli_call,
     _structured_verifier,
 )
 from app.rag.verification.prompts import (
     BATCH_NLI_PROMPT_TEMPLATE,
     BATCH_NLI_PROMPT_TEMPLATE_SMALL,
-    DECOMPOSITION_PROMPT_SMALL,
     FUSED_DECOMPOSE_VERIFY_PROMPT_TEMPLATE,
     NLI_PROMPT_TEMPLATE,
     NLI_PROMPT_TEMPLATE_SMALL,
@@ -54,7 +52,6 @@ async def verify_claim_nli(
     context_str: str | None = None,
 ) -> dict[str, Any]:
     """Perform NLI verification check on a single claim against evidence segments."""
-    from typing import Any
 
     try:
         if context_str is None:

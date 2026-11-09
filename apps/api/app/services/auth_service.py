@@ -12,6 +12,7 @@ from pymongo.errors import DuplicateKeyError
 
 from app.api.v1.schemas.auth import UserRegister, UserResponse
 from app.config.settings import get_settings
+from app.persistence.mongodb import Collections, get_collection
 from app.security.exceptions import AuthenticationError, ConflictError
 from app.security.security import (
     create_access_token,
@@ -20,7 +21,6 @@ from app.security.security import (
     jti_key,
     verify_password,
 )
-from app.persistence.mongodb import Collections, get_collection
 
 
 def serialize_user(user_doc: Mapping[str, Any]) -> UserResponse:

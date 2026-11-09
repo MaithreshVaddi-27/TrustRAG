@@ -15,7 +15,7 @@ to work unchanged.
 
 from __future__ import annotations
 
-from app.llm.model_registry import get_llm  # noqa: F401
+from app.llm.model_registry import get_llm
 from app.rag.generation.context import (
     extract_citations,
     extract_final_answer,

@@ -126,7 +126,6 @@ TrustRAG/
 │   │   │   ├── security/       # exceptions, JWT + bcrypt auth
 │   │   │   ├── core/           # backward-compat shims (config/, observability/, security/) + system/
 │   │   │   │   └── system/     # concurrency, hardware, memory
-│   │   │   ├── db/             # legacy duplicate of persistence/ (kept: tests patch app.db.mongodb.*)
 │   │   │   ├── services/       # analysis, KB, auth, search, claims_evidence, pipeline, sse, analytics
 │   │   │   ├── bootstrap.py    # app initialization
 │   │   │   ├── main.py         # create_app() factory entry point

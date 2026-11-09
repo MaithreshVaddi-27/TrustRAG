@@ -12,13 +12,13 @@ Existing imports (``from app.llm.onnx_embeddings import ...``) continue to work.
 
 from __future__ import annotations
 
-from app.llm.embedding import (  # noqa: F401
+from app.llm.embedding import (
     EMBEDDING_MODE_DOCUMENT,
     EMBEDDING_MODE_QUERY,
     ONNXBGEEmbeddings,
     ONNXBGEEmbeddingsWrapper,
 )
-from app.llm.embedding.engine import (  # noqa: F401
+from app.llm.embedding.engine import (
     _ORT_AVAILABLE,
     ort,
 )
@@ -26,8 +26,8 @@ from app.llm.embedding.engine import (  # noqa: F401
 __all__ = [
     "EMBEDDING_MODE_DOCUMENT",
     "EMBEDDING_MODE_QUERY",
+    "_ORT_AVAILABLE",
     "ONNXBGEEmbeddings",
     "ONNXBGEEmbeddingsWrapper",
-    "_ORT_AVAILABLE",
     "ort",
 ]

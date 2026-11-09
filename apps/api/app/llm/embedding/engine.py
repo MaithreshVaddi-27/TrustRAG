@@ -17,6 +17,11 @@ from typing import Any, cast
 
 import numpy as np
 import structlog
+from langchain_core.embeddings import Embeddings
+
+from app.config import get_model_config
+from app.core.system.hardware import get_ingest_embed_batch_size
+from app.llm.onnx_runtime import build_session_options
 
 try:
     import onnxruntime as ort
@@ -44,11 +49,6 @@ def _get_ort() -> Any:
         return shim.ort
     return ort
 
-from langchain_core.embeddings import Embeddings
-
-from app.config import get_model_config
-from app.core.system.hardware import get_ingest_embed_batch_size
-from app.llm.onnx_runtime import build_session_options
 
 logger = structlog.get_logger(__name__)
 

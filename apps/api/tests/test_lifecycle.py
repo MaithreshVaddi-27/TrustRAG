@@ -60,8 +60,8 @@ def _kb_doc(kb_id: str, **overrides):
 # ── Routes ───────────────────────────────────────────────────────────────────
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_snapshot_route_end_to_end_shape(mock_create_indexes, mock_connect, mock_user_doc):
     """POST /knowledge-bases/{id}/snapshots → 201 with the snapshot KB payload."""
     snap_doc = _kb_doc(SNAP_ID, is_snapshot=True, parent_kb_id=ObjectId(KB_ID))
@@ -84,7 +84,7 @@ def test_snapshot_route_end_to_end_shape(mock_create_indexes, mock_connect, mock
     with (
         patch("app.services.kb_service.get_collection", return_value=mock_collection),
         patch("app.services.kb_service.get_qdrant_client", return_value=mock_qdrant),
-        patch("app.db.qdrant.get_qdrant_client", return_value=mock_qdrant),
+        patch("app.persistence.qdrant.get_qdrant_client", return_value=mock_qdrant),
     ):
         response = client.post(f"/api/v1/knowledge-bases/{KB_ID}/snapshots")
         assert response.status_code == 201
@@ -101,8 +101,8 @@ class _FakeCursor:
         return self._rows
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_rollback_route_returns_new_live_id(mock_create_indexes, mock_connect):
     """POST /knowledge-bases/{id}/rollback/{snap} → 200; id CHANGES to the snapshot's."""
     live_doc = _kb_doc(KB_ID)
@@ -136,8 +136,8 @@ def test_rollback_route_returns_new_live_id(mock_create_indexes, mock_connect):
         assert data["is_snapshot"] is False
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_rollback_route_rejects_foreign_snapshot_with_409(mock_create_indexes, mock_connect):
     live_doc = _kb_doc(KB_ID)
     foreign_snap = _kb_doc(

@@ -13,8 +13,8 @@ import pytest
 from bson import ObjectId
 from fastapi.testclient import TestClient
 
-from app.observability import metrics
 from app.main import app
+from app.observability import metrics
 
 client = TestClient(app)
 

@@ -21,15 +21,6 @@ from typing import Any
 from bson import ObjectId
 
 from app.config.settings import get_settings
-from app.observability.logging import get_logger
-from app.security.exceptions import (
-    AuthenticationError,
-    AuthorizationError,
-    NotFoundError,
-    RetrievalOutageError,
-)
-from app.security.security import decode_service_token
-from app.persistence.mongodb import Collections, connect_db, get_collection
 from app.llm import model_registry as model_registry_mod
 from app.llm.llm_ledger import invoke_counted
 from app.llm.local_llm import (
@@ -37,8 +28,17 @@ from app.llm.local_llm import (
     check_llamacpp_status,
     check_ollama_status,
 )
+from app.observability.logging import get_logger
+from app.persistence.mongodb import Collections, connect_db, get_collection
 from app.rag.retrieval.retriever import retrieve_hybrid_chunks
 from app.rag.verification.verifier import batch_verify_claims_nli
+from app.security.exceptions import (
+    AuthenticationError,
+    AuthorizationError,
+    NotFoundError,
+    RetrievalOutageError,
+)
+from app.security.security import decode_service_token
 from app.services import kb_service as kb_service_mod
 from app.services import search_service as search_service_mod
 

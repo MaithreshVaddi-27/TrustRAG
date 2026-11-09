@@ -17,8 +17,8 @@ import time
 from typing import Any
 
 from app.config import get_model_config
-from app.observability.logging import get_logger
 from app.core.system.memory import get_memory_usage_mb
+from app.observability.logging import get_logger
 
 logger = get_logger(__name__)
 

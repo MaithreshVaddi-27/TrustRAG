@@ -20,10 +20,10 @@ from pydantic import BaseModel, Field
 
 from app.config import get_model_config
 from app.config.settings import _DEFAULT_LLAMACPP_BASE_URL
-from app.observability.logging import get_logger
-from app.security.exceptions import ConfigurationError
 from app.core.system.concurrency import get_global_semaphore
 from app.llm.providers.base import _convert_messages_to_dict, _shared_http_client
+from app.observability.logging import get_logger
+from app.security.exceptions import ConfigurationError
 
 logger = get_logger(__name__)
 

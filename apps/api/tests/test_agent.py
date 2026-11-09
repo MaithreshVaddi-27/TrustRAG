@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from app.security.exceptions import RetrievalOutageError
 from app.rag.agent.graph import (
     _execute_with_fallback,
     generation_node,
@@ -18,6 +17,7 @@ from app.rag.agent.graph import (
     should_recover,
     verification_node,
 )
+from app.security.exceptions import RetrievalOutageError
 
 
 @pytest.mark.asyncio

@@ -17,13 +17,13 @@ from typing import Any
 
 import pytest
 
-from app.security.exceptions import IngestionError
 from app.rag.ingestion.parser import (
     _ENCODING_DETECT_SLICE,
     EICAR_TEST_STRING,
     _detect_encoding,
     scan_for_malware,
 )
+from app.security.exceptions import IngestionError
 
 
 def test_detect_encoding_samples_head_only(monkeypatch):
@@ -82,8 +82,8 @@ async def test_await_nli_call_passes_fast_result(monkeypatch):
 
 
 async def test_mcp_local_chat_rejects_cloud_provider():
-    from app.security.security import create_service_token
     from app.mcp.server import handle_tool_call
+    from app.security.security import create_service_token
 
     token = create_service_token("test-service")
     with pytest.raises(ValueError, match="local providers only"):
@@ -115,9 +115,9 @@ async def test_mcp_external_still_needs_token():
 
 
 async def test_mcp_search_rejects_wrong_bound_kb():
+    from app.mcp.server import handle_tool_call
     from app.security.exceptions import AuthenticationError
     from app.security.security import create_service_token
-    from app.mcp.server import handle_tool_call
 
     token = create_service_token(
         "scoped-service",
@@ -138,9 +138,9 @@ async def test_mcp_search_rejects_wrong_bound_kb():
 async def test_mcp_search_rejects_foreign_bound_user():
     from unittest.mock import AsyncMock, patch
 
+    from app.mcp.server import handle_tool_call
     from app.security.exceptions import AuthenticationError, AuthorizationError
     from app.security.security import create_service_token
-    from app.mcp.server import handle_tool_call
 
     token = create_service_token(
         "scoped-service",
@@ -165,8 +165,8 @@ async def test_mcp_search_rejects_foreign_bound_user():
 async def test_mcp_search_unbound_token_proceeds():
     from unittest.mock import AsyncMock, patch
 
-    from app.security.security import create_service_token
     from app.mcp.server import handle_tool_call
+    from app.security.security import create_service_token
 
     token = create_service_token("svc", permissions=["search:read"])
     with patch(
@@ -183,8 +183,8 @@ async def test_mcp_search_unbound_token_proceeds():
 async def test_mcp_list_kbs_scoped_to_bound_user():
     from unittest.mock import patch
 
-    from app.security.security import create_service_token
     from app.mcp.server import handle_tool_call
+    from app.security.security import create_service_token
 
     token = create_service_token(
         "scoped-service",
@@ -228,8 +228,8 @@ def test_onnx_missing_model_points_at_bootstrap():
     # fails loudly with the bootstrap fix (not silent). No model cache
     # exists: every call loads fresh, so no clearing needed.
     import app.llm.model_registry as _reg
-    from app.security.exceptions import ConfigurationError
     from app.llm.model_registry import get_embedding_model
+    from app.security.exceptions import ConfigurationError
 
     orig = _reg._resolve_embedding_onnx_path
     _reg._resolve_embedding_onnx_path = lambda _cache_dir: None
@@ -266,8 +266,8 @@ def test_export_fn_accepts_model_name():
 def test_parse_document_rejects_eicar():
     import io
 
-    from app.security.exceptions import IngestionError
     from app.rag.ingestion.parser import EICAR_TEST_STRING, parse_document
+    from app.security.exceptions import IngestionError
 
     stream = io.BytesIO(b"clean header " + EICAR_TEST_STRING + b" trailer")
     with pytest.raises(IngestionError, match=r"[Mm]alware|EICAR|blocked"):
@@ -277,8 +277,8 @@ def test_parse_document_rejects_eicar():
 def test_parse_document_rejects_signature_mismatch():
     import io
 
-    from app.security.exceptions import IngestionError
     from app.rag.ingestion.parser import parse_document
+    from app.security.exceptions import IngestionError
 
     with pytest.raises(IngestionError, match=r"[Ss]ignature|mismatch|format"):
         parse_document("evil.pdf", io.BytesIO(b"hello world, not a pdf"))
@@ -288,8 +288,8 @@ def test_parse_docx_rejects_zip_bomb():
     import io
     import zipfile
 
-    from app.security.exceptions import IngestionError
     from app.rag.ingestion.parser import parse_document
+    from app.security.exceptions import IngestionError
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -303,8 +303,8 @@ def test_parse_docx_rejects_xxe():
     import io
     import zipfile
 
-    from app.security.exceptions import IngestionError
     from app.rag.ingestion.parser import parse_document
+    from app.security.exceptions import IngestionError
 
     evil_xml = (
         b'<?xml version="1.0"?>'
@@ -322,8 +322,8 @@ def test_parse_docx_rejects_xxe():
 def test_parse_pdf_rejects_oversize():
     import io
 
-    from app.security.exceptions import IngestionError
     from app.rag.ingestion.parser import parse_document
+    from app.security.exceptions import IngestionError
 
     # Size guard trips before any PDF parsing (fast: no fitz work).
     big = b"%PDF-1.7\n" + b"0" * (21 * 1024 * 1024)
@@ -336,7 +336,7 @@ def test_parse_pdf_rejects_oversize():
 async def test_qdrant_rejects_schemeless_url_without_mkdir(tmp_path):
     from unittest.mock import patch
 
-    import app.db.qdrant as qdrant_module
+    import app.persistence.qdrant as qdrant_module
     from app.security.exceptions import VectorStoreError
 
     saved = qdrant_module._client

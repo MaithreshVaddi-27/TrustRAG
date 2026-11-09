@@ -71,8 +71,8 @@ def _kb_record():
     }
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_serve_ocr_page_image(mock_create_indexes, mock_connect, image_dir):
     ref = save_page_image(KB_ID, DOC_ID, 2, PNG_BYTES)
     chunk = {"document_id": ObjectId(DOC_ID), "page": 2, "page_image_ref": ref}
@@ -93,8 +93,8 @@ def test_serve_ocr_page_image(mock_create_indexes, mock_connect, image_dir):
     assert response.content == PNG_BYTES
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_serve_image_404_when_chunk_has_no_ref(mock_create_indexes, mock_connect):
     chunk = {"document_id": ObjectId(DOC_ID), "page": 1}
     mock_docs = MagicMock()
@@ -111,8 +111,8 @@ def test_serve_image_404_when_chunk_has_no_ref(mock_create_indexes, mock_connect
     assert response.status_code == 404
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_serve_image_404_for_unknown_document(mock_create_indexes, mock_connect):
     mock_collection = MagicMock()
     mock_collection.find_one = AsyncMock(return_value=None)

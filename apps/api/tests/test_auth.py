@@ -26,8 +26,8 @@ def mock_user_doc():
     }
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_register_user_success(mock_create_indexes, mock_connect, mock_user_doc):
     # Mock database insert
     mock_users_collection = MagicMock()
@@ -48,7 +48,7 @@ def test_register_user_success(mock_create_indexes, mock_connect, mock_user_doc)
         return mock_users_collection
 
     with patch("app.services.auth_service.get_collection", side_effect=get_collection_side_effect):
-        with patch("app.db.mongodb.health_check", return_value=True):
+        with patch("app.persistence.mongodb.health_check", return_value=True):
             payload = {
                 "email": "test@example.com",
                 "password": "StrongPass123!",
@@ -62,8 +62,8 @@ def test_register_user_success(mock_create_indexes, mock_connect, mock_user_doc)
             assert "id" in data
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_login_user_success(mock_create_indexes, mock_connect, mock_user_doc):
     # Mock find_one for login
     mock_users_collection = MagicMock()
@@ -89,7 +89,7 @@ def test_login_user_success(mock_create_indexes, mock_connect, mock_user_doc):
         return mock_users_collection
 
     with patch("app.services.auth_service.get_collection", side_effect=get_collection_side_effect):
-        with patch("app.db.mongodb.health_check", return_value=True):
+        with patch("app.persistence.mongodb.health_check", return_value=True):
             payload = {"email": "test@example.com", "password": "StrongPass123!"}
             response = client.post("/api/v1/auth/login", json=payload)
             assert response.status_code == 200
@@ -99,8 +99,8 @@ def test_login_user_success(mock_create_indexes, mock_connect, mock_user_doc):
             assert data["user"]["email"] == "test@example.com"
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_get_me_protected_route(mock_create_indexes, mock_connect, mock_user_doc):
     from bson import ObjectId
 
@@ -143,8 +143,8 @@ def test_access_token_carries_jti_claim():
     assert payload.get("jti")
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_logout_revokes_token(mock_create_indexes, mock_connect, mock_user_doc):
     """SEC-H1: after /auth/logout the same token is rejected by /auth/me."""
     from bson import ObjectId
@@ -181,8 +181,8 @@ def test_logout_revokes_token(mock_create_indexes, mock_connect, mock_user_doc):
         assert response.status_code == 401
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_expired_token_rejected(mock_create_indexes, mock_connect, mock_user_doc):
     from datetime import timedelta
 

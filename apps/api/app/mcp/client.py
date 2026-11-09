@@ -10,8 +10,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.observability.logging import get_logger
 from app.mcp.server import handle_tool_call
+from app.observability.logging import get_logger
 
 logger = get_logger(__name__)
 

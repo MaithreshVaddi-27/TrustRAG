@@ -16,8 +16,8 @@ import asyncio
 from typing import Any
 
 from app.config import get_model_config
-from app.observability.logging import get_logger
 from app.llm.model_registry import get_reranker
+from app.observability.logging import get_logger
 
 logger = get_logger(__name__)
 

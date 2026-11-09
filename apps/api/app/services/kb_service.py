@@ -14,10 +14,10 @@ from qdrant_client.http import models
 
 from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
 from app.observability.logging import get_logger
-from app.security.exceptions import AuthorizationError, ConflictError, NotFoundError
 from app.persistence.mongodb import Collections, get_collection
 from app.persistence.qdrant import delete_kb_collection, get_collection_name, get_qdrant_client
 from app.rag.ingestion import page_images as page_images_mod
+from app.security.exceptions import AuthorizationError, ConflictError, NotFoundError
 
 logger = get_logger(__name__)
 

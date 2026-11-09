@@ -8,26 +8,18 @@ imports between decomposition, NLI, retrieval, and orchestration.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 from typing import Any
 
 from bson import ObjectId
 
 from app.config import get_model_config, normalize_provider
 from app.observability.logging import get_logger
-from app.persistence.mongodb import Collections, get_collection
-from app.llm.local_llm import is_small_model
-from app.rag.generation.context import extract_citations
-from app.rag.verification.meta import _is_meta_claim
-from app.rag.verification.schemas import ClaimVerdict
-from app.rag.verification.triple import extract_claim_triple_heuristic
-from app.rag.verification.verdict import is_refusal_answer
 
 logger = get_logger(__name__)
 
 __all__ = [
-    "UNCHECKED_CLAIM_STATE",
     "NLI_PER_CALL_TIMEOUT_SECONDS",
+    "UNCHECKED_CLAIM_STATE",
     "_apply_cap_via_model_copy",
     "_await_nli_call",
     "_chunk_identity",

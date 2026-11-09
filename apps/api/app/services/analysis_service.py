@@ -17,7 +17,6 @@ All public names are re-exported here so existing imports keep working.
 from __future__ import annotations
 
 from app.config import get_model_config
-from app.core.system import memory as memory_mod
 from app.persistence.mongodb import get_collection
 from app.services.analytics import (
     export_analysis_dossier,
@@ -33,12 +32,10 @@ from app.services.kb_service import get_kb
 from app.services.pipeline import (
     _SCAFFOLD_MARKERS,
     _UNVERIFIED_ANSWER,
-    _UNVERIFIED_ANSWER as _UNVERIFIED_ANSWER_DEGENERATE,
     _fetch_claims,
     _fetch_evidence,
     _fetch_trace,
     _looks_like_scaffold_echo,
-    _looks_like_scaffold_echo as _looks_like_scaffold_echo_degenerate,
     _presentable_answer,
     _record_completed,
     add_trace_event,
@@ -49,6 +46,7 @@ from app.services.pipeline import (
     get_analysis_evidence,
     get_analysis_trace,
     list_analyses,
+    memory_mod,  # noqa: F401  — re-export shim; patched by tests via svc.memory_mod.trim_memory
     run_analysis_pipeline,
     serialize_analysis,
     serialize_claim,
@@ -57,6 +55,12 @@ from app.services.pipeline import (
     sse_event_generator,
     strip_citation_markers,
     verdict_from_state,
+)
+from app.services.pipeline import (
+    _UNVERIFIED_ANSWER as _UNVERIFIED_ANSWER_DEGENERATE,
+)
+from app.services.pipeline import (
+    _looks_like_scaffold_echo as _looks_like_scaffold_echo_degenerate,
 )
 from app.services.sse import (
     _analysis_subscribers,

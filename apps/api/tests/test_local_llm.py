@@ -9,7 +9,6 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
 import app.llm.local_llm as _llm_mod
-from app.security.exceptions import ConfigurationError
 from app.llm.local_llm import (
     ChatLlamaCppClient,
     ChatOllamaClient,
@@ -19,6 +18,7 @@ from app.llm.local_llm import (
     close_local_llm_clients,
 )
 from app.llm.model_registry import get_llm, get_verification_model
+from app.security.exceptions import ConfigurationError
 
 
 class SampleExtraction(BaseModel):
@@ -383,8 +383,8 @@ async def test_probe_reaches_running_server(monkeypatch):
 async def test_probe_down_server_raises_actionable_error(monkeypatch):
     import httpx
 
-    from app.security.exceptions import LLMUnavailableError
     from app.llm.local_llm import probe_local_llm_server
+    from app.security.exceptions import LLMUnavailableError
 
     class _Down(_FakeHTTPClient):
         async def get(self, url):
@@ -425,8 +425,8 @@ async def test_probe_timeout_reports_overloaded_not_down(monkeypatch):
     """Persistent timeouts mean slow/overloaded — never 'not reachable'."""
     import httpx
 
-    from app.security.exceptions import LLMUnavailableError
     from app.llm.local_llm import probe_local_llm_server
+    from app.security.exceptions import LLMUnavailableError
 
     class _Slow(_FakeHTTPClient):
         async def get(self, url):
@@ -581,8 +581,8 @@ async def test_probe_mlx_hint_names_server_command(monkeypatch):
     """A down MLX server must tell the operator the mlx_lm.server command."""
     import httpx
 
-    from app.security.exceptions import LLMUnavailableError
     from app.llm.local_llm import probe_local_llm_server
+    from app.security.exceptions import LLMUnavailableError
 
     class _Down(_FakeHTTPClient):
         async def get(self, url):
@@ -607,8 +607,8 @@ async def test_probe_mlx_hint_names_server_command(monkeypatch):
 
 @pytest.mark.parametrize("provider", ["nvidia", "nim", "bogus", "NVIDIA"])
 def test_unknown_provider_is_rejected_not_silently_gemini(provider):
-    from app.security.exceptions import ConfigurationError
     from app.llm.model_registry import get_llm
+    from app.security.exceptions import ConfigurationError
 
     with pytest.raises(ConfigurationError, match="Unknown LLM provider"):
         get_llm(provider, "some-model")

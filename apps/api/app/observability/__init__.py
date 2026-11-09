@@ -14,12 +14,12 @@ single package:
 
 from __future__ import annotations
 
-from app.observability.logging import (  # noqa: F401
+from app.observability.logging import (
     configure_logging,
     get_logger,
     scrub_secret_values,
 )
-from app.observability.metrics import (  # noqa: F401
+from app.observability.metrics import (
     estimate_tokens,
     record_analysis_completed,
     record_analysis_created,
@@ -32,16 +32,16 @@ from app.observability.metrics import (  # noqa: F401
     reset_for_tests,
     snapshot,
 )
-from app.observability.tracing import (  # noqa: F401
+from app.observability.tracing import (
     init_tracing,
     tracing_middleware,
 )
 
 __all__ = [
     "configure_logging",
-    "get_logger",
-    "scrub_secret_values",
     "estimate_tokens",
+    "get_logger",
+    "init_tracing",
     "record_analysis_completed",
     "record_analysis_created",
     "record_budget_rejection",
@@ -51,7 +51,7 @@ __all__ = [
     "record_verification_claims",
     "render_prometheus",
     "reset_for_tests",
+    "scrub_secret_values",
     "snapshot",
-    "init_tracing",
     "tracing_middleware",
 ]

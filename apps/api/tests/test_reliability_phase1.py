@@ -26,6 +26,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
+from app.rag.verification.schemas import BatchNLIVerdict
 from app.rag.verification.verdict import (
     DiagnosisType,
     ReliabilityStatus,
@@ -40,7 +41,6 @@ from app.rag.verification.verifier import (
     _filter_degenerate_claims,
     execute_claim_verification,
 )
-from app.rag.verification.schemas import BatchNLIVerdict
 
 _THRESHOLDS = Thresholds(
     minimum_evidence_coverage=0.80,

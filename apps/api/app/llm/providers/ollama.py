@@ -19,10 +19,10 @@ from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field
 
 from app.config import get_model_config
+from app.core.system.concurrency import get_global_semaphore
+from app.llm.providers.base import _convert_messages_to_dict
 from app.observability.logging import get_logger
 from app.security.exceptions import ConfigurationError
-from app.core.system.concurrency import get_global_semaphore
-from app.llm.providers.base import _convert_messages_to_dict, _shared_http_client
 
 logger = get_logger(__name__)
 
@@ -37,8 +37,10 @@ T = TypeVar("T", bound=BaseModel)
 
 
 def _get_shared_http_client():
-    """Lazy getter for _shared_http_client so tests can patch app.llm.local_llm._shared_http_client."""
+    """Lazy getter for _shared_http_client so tests can patch
+    app.llm.local_llm._shared_http_client."""
     import app.llm.local_llm as _m
+
     return _m._shared_http_client
 
 
@@ -86,10 +88,6 @@ class ChatOllamaClient(BaseChatModel):
         run_manager: Any = None,
         **kwargs: Any,
     ) -> ChatResult:
-        from app.observability.logging import get_logger
-
-        logger = get_logger(__name__)
-
         dict_messages = _convert_messages_to_dict(messages)
         endpoint = f"{self.base_url.rstrip('/')}/api/chat"
 

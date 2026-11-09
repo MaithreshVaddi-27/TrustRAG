@@ -94,8 +94,8 @@ def test_sparse_vectorizer_generation():
 
 @patch("app.rag.ingestion.pipeline.init_kb_collection", AsyncMock())
 @patch("app.rag.ingestion.pipeline.get_embedding_model")
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 @pytest.mark.asyncio
 async def test_indexing_pipeline_execution(mock_create_indexes, mock_connect, mock_embed):
     # Mock Qdrant client (async client — methods are awaited by the pipeline)

@@ -51,7 +51,6 @@ def should_recover(state: AgentState) -> str:
         return "end"
     # Analysis-wide wall-clock budget.
     if _deadline_spent(state):
-        remaining_s = (_remaining_budget_ms(state) or 0) / 1000.0
         if state.get("verdict_status") != "PASS":
             state["diagnosis_type"] = "RECOVERY_BUDGET_EXHAUSTED"
             state["diagnosis_failures"] = [

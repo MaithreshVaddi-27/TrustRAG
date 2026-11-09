@@ -19,9 +19,21 @@ from typing import Any
 from bson import ObjectId
 
 from app.config import get_model_config
+from app.llm.local_llm import is_reasoning_model, is_small_model
 from app.observability.logging import get_logger
 from app.persistence.mongodb import Collections
 from app.persistence.mongodb import get_collection as _mongodb_get_collection
+from app.rag.generation.context import extract_citations
+from app.rag.generation.generator import format_context_with_chunk_indices
+from app.rag.verification.meta import _filter_degenerate_claims, _fused_claims_cover_answer
+from app.rag.verification.pipeline.infra import _chunk_identity
+from app.rag.verification.pipeline.metrics import get_nli_metrics
+from app.rag.verification.pipeline.retrieval import (
+    _persist_claim_evidence,
+    retrieve_evidence_for_claim,
+)
+from app.rag.verification.triple import extract_claim_triple_heuristic
+from app.rag.verification.verdict import is_refusal_answer
 
 
 def _shim_or(name, default):
@@ -64,27 +76,19 @@ def batch_verify_claims_nli(*args, **kwargs):
 def decompose_answer_to_claims(*args, **kwargs):
     from app.rag.verification.pipeline.decomposition import decompose_answer_to_claims as _real
     return _shim_or("decompose_answer_to_claims", _real)(*args, **kwargs)
-from app.llm.local_llm import is_reasoning_model, is_small_model
 
 
 def _is_small(provider: str | None, model: str | None) -> bool:
     """Wrapper for is_small_model to keep the verifier module's re-export stable."""
     return is_small_model(model, provider)
-from app.rag.generation.context import extract_citations
-from app.rag.generation.generator import format_context_with_chunk_indices, neutralize_prompt_fences
-from app.rag.verification.meta import _fused_claims_cover_answer, _filter_degenerate_claims
-from app.rag.verification.pipeline.metrics import get_nli_metrics
-from app.rag.verification.pipeline.infra import _chunk_identity
-from app.rag.verification.pipeline.retrieval import _persist_claim_evidence, retrieve_evidence_for_claim
-from app.rag.verification.schemas import ClaimVerdict
-from app.rag.verification.verdict import is_refusal_answer
-from app.rag.verification.triple import extract_claim_triple_heuristic
+
 
 logger = get_logger(__name__)
 
 __all__ = [
     "UNCHECKED_CLAIM_STATE",
     "_await_nli_call",
+    "_is_small",
     "_nli_timeout_seconds",
     "_structured_verifier",
     "batch_verify_claims_nli",
@@ -94,7 +98,6 @@ __all__ = [
     "get_nli_metrics",
     "is_refusal_answer",
     "verify_claim_nli",
-    "_is_small",
 ]
 
 # ─── Sentinel ─────────────────────────────────────────────────────────────────
@@ -140,7 +143,7 @@ def _structured_verifier(
     cap: dict[str, Any],
 ):
     """Build the structured-output verifier for the active provider."""
-    from app.config import get_model_config, normalize_provider
+    from app.config import get_model_config
 
     norm = (provider or get_model_config().verification_provider or "").strip().lower()
 
@@ -392,7 +395,10 @@ async def execute_claim_verification(
                 nli_res = {
                     "verdict": UNCHECKED_CLAIM_STATE,
                     "supporting_segments": [],
-                    "explanation": f"Verification skipped: per-call NLI timeout ({NLI_PER_CALL_TIMEOUT_SECONDS}s).",
+                    "explanation": (
+                        f"Verification skipped: per-call NLI timeout "
+                        f"({NLI_PER_CALL_TIMEOUT_SECONDS}s)."
+                    ),
                 }
         else:
             nli_res = {

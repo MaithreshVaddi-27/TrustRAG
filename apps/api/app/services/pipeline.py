@@ -32,6 +32,8 @@ from app.api.v1.schemas.analysis import (
     TraceEventResponse,
 )
 from app.config.settings import get_settings
+from app.core.system import memory as memory_mod
+from app.llm import local_llm as local_llm_mod
 from app.observability.logging import get_logger
 from app.observability.metrics import (
     estimate_tokens,
@@ -40,17 +42,15 @@ from app.observability.metrics import (
     record_budget_rejection,
     record_tokens_estimated,
 )
-from app.security.exceptions import AuthorizationError, InputValidationError, NotFoundError
-from app.core.system import memory as memory_mod
 from app.persistence.mongodb import Collections
-from app.llm import local_llm as local_llm_mod
 from app.rag.generation.generator import strip_citation_markers
-from app.rag.verification.verdict import (
+from app.rag.verification.verdict import (  # noqa: F401 - re-exported via analysis_service shim
     ReliabilityStatus,
     Thresholds,
     VerdictResult,
     verdict_from_state,
 )
+from app.security.exceptions import AuthorizationError, InputValidationError, NotFoundError
 from app.services.claims_evidence import list_analysis_claims, list_analysis_evidence
 from app.services.sse import (
     _publish_analysis_event,

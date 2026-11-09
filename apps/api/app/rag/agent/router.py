@@ -28,8 +28,8 @@ from enum import StrEnum
 from typing import Any
 
 from app.observability.logging import get_logger
-from app.security.exceptions import RetrievalOutageError
 from app.rag.retrieval.retriever import retrieve_hybrid_chunks
+from app.security.exceptions import RetrievalOutageError
 
 logger = get_logger(__name__)
 

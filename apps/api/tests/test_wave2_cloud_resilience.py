@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.observability.logging import _scrub_sensitive, scrub_secret_values
 from app.llm.llm_ledger import (
     begin_analysis,
     calls_remaining,
@@ -26,6 +25,7 @@ from app.llm.llm_ledger import (
     max_calls_per_analysis,
     record_call,
 )
+from app.observability.logging import _scrub_sensitive, scrub_secret_values
 
 CONFIG_PATH = "app.llm.llm_ledger.get_model_config"
 
@@ -401,7 +401,6 @@ def test_effective_cloud_model_is_validated_even_when_request_omits_it():
     from pydantic import ValidationError
 
     from app.api.v1.schemas.analysis import AnalysisCreate
-    import app.config as cfgmod
     from app.config import get_model_config
 
     real = get_model_config()
@@ -489,7 +488,6 @@ def test_verification_model_allowlist_rejects_unbudgeted_cloud_model(monkeypatch
     cloud model those calls targeted, so a drifted verification model could
     bill a model the generation allowlist already forbids (audit B-15)."""
     from app.api.v1.schemas.analysis import AnalysisCreate
-    import app.config as cfgmod
     from app.config import get_model_config
 
     real = get_model_config()
@@ -534,8 +532,8 @@ def test_verification_model_allowlist_rejects_unbudgeted_cloud_model(monkeypatch
 def test_verification_model_allowlist_allows_env_operator_override(monkeypatch):
     """An explicit env override is an operator decision, same trust level as
     settings.<provider>_model — honour it rather than rejecting the request."""
-    from app.api.v1.schemas.analysis import AnalysisCreate
     import app.config as cfgmod
+    from app.api.v1.schemas.analysis import AnalysisCreate
     from app.config import get_model_config
 
     real = get_model_config()

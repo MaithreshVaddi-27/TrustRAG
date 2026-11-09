@@ -65,8 +65,8 @@ def setup_dependency_override(mock_user_doc):
 
 
 @patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeypatch):
     # Mock kb ownership check inside analysis_service (real get_kb returns KBResponse)
     # Patch discovered models so the default model is allowed.
@@ -178,8 +178,8 @@ def test_create_analysis_ignores_legacy_embedding_overrides(monkeypatch):
 
 
 @patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_create_analysis_fails_fast_when_local_llm_down(
     mock_create_indexes, mock_connect, mock_kb_doc, monkeypatch
 ):
@@ -231,8 +231,8 @@ def test_create_analysis_fails_fast_when_local_llm_down(
 
 
 @patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_create_analysis_rejects_embedding_mismatch(
     mock_create_indexes, mock_connect, mock_kb_doc, mock_user_doc, monkeypatch
 ):
@@ -272,7 +272,7 @@ def test_create_analysis_rejects_embedding_mismatch(
     with (
         patch("app.services.analysis_service.get_kb", return_value=mock_kb),
         patch("app.services.analysis_service.get_collection", return_value=mock_collection),
-        patch("app.services.analysis_service.add_trace_event", AsyncMock()) as mock_add_trace,
+        patch("app.services.analysis_service.add_trace_event", AsyncMock()),
         patch("app.llm.local_llm.probe_local_llm_server", AsyncMock(return_value=None)),
     ):
         payload = {
@@ -320,8 +320,8 @@ def _ticket_collection():
     return coll
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_stream_trace_endpoint(mock_create_indexes, mock_connect):
     # Mock sse_event_generator
     async def mock_generator(analysis_id, user_id_str):
@@ -355,8 +355,8 @@ def test_stream_trace_endpoint(mock_create_indexes, mock_connect):
             assert "analysis.completed" in lines[1]
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_stream_trace_rejects_invalid_and_reused_ticket(mock_create_indexes, mock_connect):
     analysis_id = "64ee39d09c6292376e191983"
     fake_tickets = _ticket_collection()
@@ -400,8 +400,8 @@ def test_stream_trace_rejects_invalid_and_reused_ticket(mock_create_indexes, moc
             assert client.get(stream_url).status_code == 401
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_stream_ticket_requires_ownership(mock_create_indexes, mock_connect):
     """Ticket issuance for a foreign/missing analysis must not succeed (IDOR guard)."""
     from app.security.exceptions import NotFoundError
@@ -418,8 +418,8 @@ def test_stream_ticket_requires_ownership(mock_create_indexes, mock_connect):
         assert resp.status_code == 404
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_export_analysis_endpoint_jsonld(mock_create_indexes, mock_connect, mock_analysis_doc):
     mock_coll = MagicMock()
     mock_coll.find_one = AsyncMock(return_value=mock_analysis_doc)
@@ -438,8 +438,8 @@ def test_export_analysis_endpoint_jsonld(mock_create_indexes, mock_connect, mock
         assert data["name"] == "TRUSTRAG Verification Audit — 64ee39d09c6292376e191983"
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_list_analyses_with_pagination(mock_create_indexes, mock_connect, mock_analysis_doc):
     mock_coll = MagicMock()
 
@@ -465,8 +465,8 @@ def test_list_analyses_with_pagination(mock_create_indexes, mock_connect, mock_a
         mock_cursor.limit.assert_called_once_with(10)
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_create_analysis_guides_new_user_without_models(
     mock_create_indexes, mock_connect, monkeypatch
 ):

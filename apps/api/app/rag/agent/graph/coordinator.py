@@ -13,9 +13,8 @@ import time
 from typing import cast
 
 import app.rag.agent.graph as _graph_mod
-from app.observability.logging import get_logger
 from app.core.system import memory
-from app.rag.agent.graph.build import build_graph
+from app.observability.logging import get_logger
 from app.rag.agent.graph.state import AgentState, initial_state
 
 logger = get_logger(__name__)

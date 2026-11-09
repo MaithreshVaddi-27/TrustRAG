@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models import BaseChatModel

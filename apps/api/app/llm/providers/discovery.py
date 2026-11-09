@@ -14,20 +14,21 @@ import re
 from contextlib import suppress
 from pathlib import Path
 
-from app.observability.logging import get_logger
 from app.llm.providers.capabilities import _is_embedding_model_name
+from app.observability.logging import get_logger
 
 logger = get_logger(__name__)
 
 __all__ = [
-    "_DISCOVERED_LLMS",
-    "_DISCOVERED_LLMS_LOCK",
-    "_DISCOVERY_SNAPSHOT_PATH",
+    "_discovered_llms",
+    "_discovered_llms_lock",
+    "_discovery_snapshot_path",
     "_is_embedding_model_name",
+    "discover_hf_hub_gguf_models",
     "discover_llamacpp_cache_models",
     "discover_mlx_cache_models",
-    "discover_hf_hub_gguf_models",
     "discover_ollama_cli_models",
+    "get_discovered_llms",
     "load_discovery_snapshot",
     "merge_discovered_llms",
     "save_discovery_snapshot",
@@ -38,22 +39,20 @@ __all__ = [
 # Lazy imports to avoid circular import with app.llm.local_llm
 def _get_state():
     import app.llm.local_llm as m
+
     return m._DISCOVERED_LLMS, m._DISCOVERED_LLMS_LOCK, m._DISCOVERY_SNAPSHOT_PATH
 
 
-# Backward-compat properties for __init__.py to import
-@property
-def _DISCOVERED_LLMS():
+# Backward-compat accessors for the discovery state owned by app.llm.local_llm
+def _discovered_llms():
     return _get_state()[0]
 
 
-@property
-def _DISCOVERED_LLMS_LOCK():
+def _discovered_llms_lock():
     return _get_state()[1]
 
 
-@property
-def _DISCOVERY_SNAPSHOT_PATH():
+def _discovery_snapshot_path():
     return _get_state()[2]
 
 
@@ -65,49 +64,49 @@ def merge_discovered_llms(provider: str, models: list[str], replace: bool = Fals
     stop being offered. An empty fresh list never wipes the cache — a
     transient discovery failure must not break in-flight request validation.
     """
-    _DISCOVERED_LLMS, _DISCOVERED_LLMS_LOCK, _ = _get_state()
+    discovered_llms, discovered_llms_lock, _ = _get_state()
     clean = [m for m in models if m and not _is_embedding_model_name(m)]
     if not clean:
         return
-    with _DISCOVERED_LLMS_LOCK:
+    with discovered_llms_lock:
         if replace:
-            _DISCOVERED_LLMS[provider] = set(clean)
+            discovered_llms[provider] = set(clean)
         else:
-            bucket = _DISCOVERED_LLMS.setdefault(provider, set())
+            bucket = discovered_llms.setdefault(provider, set())
             bucket.update(clean)
 
 
 def get_discovered_llms(provider: str) -> frozenset[str]:
     """Return cached live-discovered model ids for a provider (empty if unknown)."""
-    _DISCOVERED_LLMS, _DISCOVERED_LLMS_LOCK, _ = _get_state()
-    with _DISCOVERED_LLMS_LOCK:
-        return frozenset(_DISCOVERED_LLMS.get(provider, set()))
+    discovered_llms, discovered_llms_lock, _ = _get_state()
+    with discovered_llms_lock:
+        return frozenset(discovered_llms.get(provider, set()))
 
 
 def save_discovery_snapshot() -> None:
     """Persist the current discovered-model cache for later processes."""
-    _DISCOVERED_LLMS, _DISCOVERED_LLMS_LOCK, _DISCOVERY_SNAPSHOT_PATH = _get_state()
-    with _DISCOVERED_LLMS_LOCK:
+    discovered_llms, discovered_llms_lock, discovery_snapshot_path = _get_state()
+    with discovered_llms_lock:
         payload = {
             "providers": {
-                provider: sorted(models) for provider, models in _DISCOVERED_LLMS.items()
+                provider: sorted(models) for provider, models in discovered_llms.items()
             },
         }
     try:
-        _DISCOVERY_SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = _DISCOVERY_SNAPSHOT_PATH.with_suffix(".json.tmp")
+        discovery_snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = discovery_snapshot_path.with_suffix(".json.tmp")
         tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        tmp_path.replace(_DISCOVERY_SNAPSHOT_PATH)
-        logger.debug("Persisted model discovery snapshot", path=str(_DISCOVERY_SNAPSHOT_PATH))
+        tmp_path.replace(discovery_snapshot_path)
+        logger.debug("Persisted model discovery snapshot", path=str(discovery_snapshot_path))
     except Exception as exc:
         logger.debug("Failed to persist model discovery snapshot", error=str(exc))
 
 
 def load_discovery_snapshot() -> None:
     """Seed the in-process discovery cache from a previously-persisted snapshot."""
-    _, _, _DISCOVERY_SNAPSHOT_PATH = _get_state()
+    _, _, discovery_snapshot_path = _get_state()
     try:
-        data = json.loads(_DISCOVERY_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+        data = json.loads(discovery_snapshot_path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return
     except Exception:
@@ -215,12 +214,18 @@ async def seed_local_model_discovery() -> dict[str, list[str]]:
     import app.llm.local_llm as _llm_mod
 
     ollama_models = [
-        m for m in await _llm_mod.discover_ollama_cli_models() if not _is_embedding_model_name(m)
+        m
+        for m in await _llm_mod.discover_ollama_cli_models()
+        if not _is_embedding_model_name(m)
     ]
     llamacpp_models = [
-        m for m in await _llm_mod.discover_llamacpp_cache_models() if not _is_embedding_model_name(m)
+        m
+        for m in await _llm_mod.discover_llamacpp_cache_models()
+        if not _is_embedding_model_name(m)
     ]
-    mlx_models = [m for m in _llm_mod.discover_mlx_cache_models() if not _is_embedding_model_name(m)]
+    mlx_models = [
+        m for m in _llm_mod.discover_mlx_cache_models() if not _is_embedding_model_name(m)
+    ]
 
     merge_discovered_llms("ollama", ollama_models)
     merge_discovered_llms("llama_cpp", llamacpp_models)
