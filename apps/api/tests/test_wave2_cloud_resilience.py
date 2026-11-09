@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.observability.logging import _scrub_sensitive, scrub_secret_values
+from app.observability.logging import _scrub_sensitive, scrub_secret_values
 from app.llm.llm_ledger import (
     begin_analysis,
     calls_remaining,
@@ -401,6 +401,7 @@ def test_effective_cloud_model_is_validated_even_when_request_omits_it():
     from pydantic import ValidationError
 
     from app.api.v1.schemas.analysis import AnalysisCreate
+    import app.config as cfgmod
     from app.config import get_model_config
 
     real = get_model_config()
@@ -488,9 +489,10 @@ def test_verification_model_allowlist_rejects_unbudgeted_cloud_model(monkeypatch
     cloud model those calls targeted, so a drifted verification model could
     bill a model the generation allowlist already forbids (audit B-15)."""
     from app.api.v1.schemas.analysis import AnalysisCreate
-    from app.core import config as cfgmod
+    import app.config as cfgmod
+    from app.config import get_model_config
 
-    real = cfgmod.get_model_config()
+    real = get_model_config()
 
     class _CfgStub:
         """Cloud generation allowlist stays valid; the verifier is the offender."""
@@ -533,9 +535,10 @@ def test_verification_model_allowlist_allows_env_operator_override(monkeypatch):
     """An explicit env override is an operator decision, same trust level as
     settings.<provider>_model — honour it rather than rejecting the request."""
     from app.api.v1.schemas.analysis import AnalysisCreate
-    from app.core import config as cfgmod
+    import app.config as cfgmod
+    from app.config import get_model_config
 
-    real = cfgmod.get_model_config()
+    real = get_model_config()
 
     class _CfgStub:
         llm_provider = "gemini"
@@ -582,10 +585,10 @@ def test_nli_timeout_is_longer_for_billed_cloud_calls(monkeypatch):
 
     monkeypatch.setattr(verifier, "NLI_PER_CALL_TIMEOUT_SECONDS", 90)
 
-    with patch("app.core.config.get_model_config", return_value=_CloudCfg()):
+    with patch("app.config.get_model_config", return_value=_CloudCfg()):
         assert verifier._nli_timeout_seconds() == 180
 
-    with patch("app.core.config.get_model_config", return_value=_LocalCfg()):
+    with patch("app.config.get_model_config", return_value=_LocalCfg()):
         assert verifier._nli_timeout_seconds() == 90
 
 
@@ -598,5 +601,5 @@ def test_nli_timeout_never_goes_below_the_local_floor(monkeypatch):
         llm_timeout_seconds = 10
 
     monkeypatch.setattr(verifier, "NLI_PER_CALL_TIMEOUT_SECONDS", 90)
-    with patch("app.core.config.get_model_config", return_value=_ShortCfg()):
+    with patch("app.config.get_model_config", return_value=_ShortCfg()):
         assert verifier._nli_timeout_seconds() == 90

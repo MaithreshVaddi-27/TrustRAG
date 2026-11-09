@@ -13,7 +13,7 @@ import pytest
 from bson import ObjectId
 from fastapi.testclient import TestClient
 
-from app.core.observability import metrics
+from app.observability import metrics
 from app.main import app
 
 client = TestClient(app)
@@ -128,7 +128,7 @@ def test_pre_request_query_budget_is_not_vacuous():
     is genuinely reachable within the schema's own query limit."""
     from app.api.v1.schemas.analysis import AnalysisCreate
     from app.config import get_model_config
-    from app.core.observability.metrics import estimate_tokens
+    from app.observability.metrics import estimate_tokens
 
     cfg = get_model_config()
     max_schema_chars = next(

@@ -46,12 +46,13 @@ _CLOUD_PROVIDERS = frozenset({"gemini"})
 
 
 def _resolve_model_config():
-    """Resolve get_model_config through app.core.config shim so patches land."""
+    """Resolve get_model_config from the app.config module object at call time
+    so `patch("app.config.get_model_config", ...)` targets land."""
     import sys
 
-    core_cfg = sys.modules.get("app.core.config")
-    if core_cfg is not None and hasattr(core_cfg, "get_model_config"):
-        return core_cfg.get_model_config()
+    app_config = sys.modules.get("app.config")
+    if app_config is not None and hasattr(app_config, "get_model_config"):
+        return app_config.get_model_config()
     return get_model_config()
 
 

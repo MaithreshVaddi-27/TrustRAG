@@ -8,7 +8,7 @@ import pytest
 
 
 def test_ports_yaml_loads_with_required_keys() -> None:
-    from app.core.config.settings import get_ports
+    from app.config.settings import get_ports
 
     ports = get_ports()
     for key in (
@@ -28,7 +28,7 @@ def test_ports_yaml_loads_with_required_keys() -> None:
 
 def test_ports_reserved_allocation() -> None:
     """9931 belongs to llama-server, 8080 to MLX; the backend must never claim them."""
-    from app.core.config.settings import get_ports
+    from app.config.settings import get_ports
 
     ports = get_ports()
     assert ports["llamacpp"] == 9931
@@ -48,7 +48,7 @@ def test_model_config_urls_honor_ports_yaml(monkeypatch) -> None:
     ):
         monkeypatch.delenv(var, raising=False)
     from app.config import get_model_config
-    from app.core.config.settings import get_ports
+    from app.config.settings import get_ports
 
     cfg = get_model_config()
     ports = get_ports()

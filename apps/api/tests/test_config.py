@@ -168,7 +168,7 @@ class TestModelConfig:
 
     def test_mlx_base_url_default_and_env(self, monkeypatch) -> None:
         """MLX uses dedicated port 8080; env overrides it."""
-        from app.core.config.settings import get_settings
+        from app.config.settings import get_settings
 
         # Fresh read per call: no reload dance needed between env states.
         monkeypatch.delenv("MLX_BASE_URL", raising=False)
@@ -185,7 +185,7 @@ class TestSettings:
 
     def _make_settings(self, **overrides):
         """Create Settings with test values, bypassing .env file."""
-        from app.core.config.settings import Settings
+        from app.config.settings import Settings
 
         base = {
             "jwt_secret": "a" * 64,

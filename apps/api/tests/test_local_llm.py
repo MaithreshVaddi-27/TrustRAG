@@ -69,7 +69,7 @@ def test_model_registry_local_providers(monkeypatch):
     # Blank env = no override (Settings reads env fresh per call, no cache).
     for var in ("OLLAMA_MODEL", "LLAMACPP_MODEL", "LLAMA_CPP_MODEL", "LLM_MODEL", "GEMINI_MODEL"):
         monkeypatch.setenv(var, "")
-    from app.core.config.settings import get_settings
+    from app.config.settings import get_settings
 
     ollama_llm = get_llm("ollama")
     assert isinstance(ollama_llm, ChatOllamaClient)

@@ -535,7 +535,7 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "app.core.observability.metrics.record_analysis_completed",
+        "app.observability.metrics.record_analysis_completed",
         lambda *_a, **_k: None,
     )
 
@@ -619,7 +619,7 @@ async def test_finalize_withholds_unverified_answer_from_user(
         ),
     )
     monkeypatch.setattr(
-        "app.core.observability.metrics.record_analysis_completed",
+        "app.observability.metrics.record_analysis_completed",
         lambda *_a, **_k: None,
     )
 
@@ -682,7 +682,7 @@ async def test_finalize_keeps_trusted_answer(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "app.core.observability.metrics.record_analysis_completed",
+        "app.observability.metrics.record_analysis_completed",
         lambda *_a, **_k: None,
     )
 
@@ -751,7 +751,7 @@ async def test_pipeline_failure_persists_safe_message(
     monkeypatch.setattr(svc, "add_trace_event", trace)
     monkeypatch.setattr(svc.memory_mod, "trim_memory", lambda: None)
     monkeypatch.setattr(
-        "app.core.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
+        "app.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
     )
 
     await svc.run_analysis_pipeline(
@@ -801,7 +801,7 @@ async def test_finalize_abstained_replaces_bare_token(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "app.core.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
+        "app.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
     )
 
     await svc.run_analysis_pipeline(
@@ -839,7 +839,7 @@ async def test_finalize_retrieval_outage_marks_analysis_failed(monkeypatch):
     monkeypatch.setattr(svc, "add_trace_event", trace)
     monkeypatch.setattr(svc, "memory_mod", SimpleNamespace(trim_memory=lambda: None))
     monkeypatch.setattr(
-        "app.core.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
+        "app.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
     )
 
     await svc.run_analysis_pipeline(

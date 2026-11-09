@@ -7,7 +7,7 @@ been split into focused sub-modules under ``app/services/``:
 - ``app/services/pipeline.py`` — create_analysis, run_analysis_pipeline, reads,
   trace events, SSE, serialization helpers
 - ``app/services/claims_evidence.py`` — user-level claim/evidence/conflict reads
-- ``app/services/degenerate.py`` — prompt-echo / repetition-loop detection
+- ``app/services/pipeline.py`` — prompt-echo / repetition-loop detection
 - ``app/services/sse.py`` — in-process SSE pub/sub
 - ``app/services/analytics.py`` — analysis dossier export
 

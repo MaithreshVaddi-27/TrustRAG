@@ -18,7 +18,7 @@ import pytest
 from bson import ObjectId
 
 from app.security.exceptions import AuthenticationError, AuthorizationError
-from app.core.security.security import (
+from app.security.security import (
     create_access_token,
     create_service_token,
     decode_access_token,

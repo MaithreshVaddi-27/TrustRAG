@@ -95,7 +95,7 @@ async def test_degenerate_answer_is_replaced_before_persist(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "app.core.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
+        "app.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
     )
 
     await svc.run_analysis_pipeline(
@@ -143,7 +143,7 @@ async def test_clean_answer_is_stored_verbatim(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "app.core.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
+        "app.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
     )
 
     await svc.run_analysis_pipeline(

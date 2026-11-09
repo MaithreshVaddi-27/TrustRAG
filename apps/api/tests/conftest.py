@@ -53,7 +53,7 @@ os.environ.setdefault("APP_ENV", "development")
 # Clear global caches between tests to avoid cross-test pollution
 def _clear_all_caches() -> None:
     """Reset every process-global cache that can leak state between tests."""
-    # Provider hermeticity: app/core/config.py runs load_dotenv() at import,
+    # Provider hermeticity: app/config/settings.py runs load_dotenv() at import,
     # so a developer's local .env (e.g. AI_PROVIDER=ollama) lands in
     # os.environ AFTER this module's top-level pop. Strip file-loaded values
     # here too, before the config caches below are cleared and re-read.

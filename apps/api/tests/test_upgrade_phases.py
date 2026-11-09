@@ -82,7 +82,7 @@ async def test_await_nli_call_passes_fast_result(monkeypatch):
 
 
 async def test_mcp_local_chat_rejects_cloud_provider():
-    from app.core.security.security import create_service_token
+    from app.security.security import create_service_token
     from app.mcp.server import handle_tool_call
 
     token = create_service_token("test-service")
@@ -116,7 +116,7 @@ async def test_mcp_external_still_needs_token():
 
 async def test_mcp_search_rejects_wrong_bound_kb():
     from app.security.exceptions import AuthenticationError
-    from app.core.security.security import create_service_token
+    from app.security.security import create_service_token
     from app.mcp.server import handle_tool_call
 
     token = create_service_token(
@@ -139,7 +139,7 @@ async def test_mcp_search_rejects_foreign_bound_user():
     from unittest.mock import AsyncMock, patch
 
     from app.security.exceptions import AuthenticationError, AuthorizationError
-    from app.core.security.security import create_service_token
+    from app.security.security import create_service_token
     from app.mcp.server import handle_tool_call
 
     token = create_service_token(
@@ -165,7 +165,7 @@ async def test_mcp_search_rejects_foreign_bound_user():
 async def test_mcp_search_unbound_token_proceeds():
     from unittest.mock import AsyncMock, patch
 
-    from app.core.security.security import create_service_token
+    from app.security.security import create_service_token
     from app.mcp.server import handle_tool_call
 
     token = create_service_token("svc", permissions=["search:read"])
@@ -183,7 +183,7 @@ async def test_mcp_search_unbound_token_proceeds():
 async def test_mcp_list_kbs_scoped_to_bound_user():
     from unittest.mock import patch
 
-    from app.core.security.security import create_service_token
+    from app.security.security import create_service_token
     from app.mcp.server import handle_tool_call
 
     token = create_service_token(

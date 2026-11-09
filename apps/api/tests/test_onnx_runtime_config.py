@@ -144,7 +144,7 @@ def test_retrieval_timeout_resolution_prefers_env_over_yaml(_clean_onnx_env, mon
 
 def test_production_keys_default_empty_env_only(_clean_onnx_env):
     """Key field defaults are empty; only env fills them (no real key in code)."""
-    from app.core.config.settings import Settings
+    from app.config.settings import Settings
 
     for field in ("gemini_api_key", "tavily_api_key", "hf_token"):
         assert Settings.model_fields[field].default == "", field
