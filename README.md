@@ -104,19 +104,37 @@ TrustRAG/
 ├── apps/
 │   ├── api/                    # FastAPI backend (Python 3.11+)
 │   │   ├── app/
-│   │   │   ├── agent/          # LangGraph self-heal loop + query router
-│   │   │   ├── api/v1/         # REST routes (auth, KBs, analyses, claims, …)
-│   │   │   ├── core/           # config, security, LLM, embeddings, metrics
-│   │   │   ├── db/             # MongoDB + Qdrant clients
-│   │   │   ├── generation/     # grounded answer generator
-│   │   │   ├── ingestion/      # parsers, chunkers, OCR fallback
+│   │   │   ├── api/v1/         # REST routes + schemas + deps
+│   │   │   │   ├── routes/     # auth, KBs, analyses, documents, claims, evidence, health, internal
+│   │   │   │   └── schemas/    # Pydantic v2 request/response schemas
+│   │   │   ├── rag/            # RAG capability (embedding, retrieval, ingestion, verification, generation, agent)
+│   │   │   │   ├── embedding/  # ONNX engine + cache
+│   │   │   │   ├── retrieval/  # hybrid + reranker + qdrant client
+│   │   │   │   ├── ingestion/  # parsers, chunkers, OCR, pipeline
+│   │   │   │   ├── verification/ # decompose → NLI → verdict + pipeline orchestrator
+│   │   │   │   ├── generation/ # grounded answer generator
+│   │   │   │   └── agent/      # LangGraph self-heal loop + query router
+│   │   │   ├── llm/            # LLM capability (providers, registry, embedding/reranker re-exports)
+│   │   │   │   ├── providers/  # ollama, llama_cpp, mlx, gemini, base, discovery, health
+│   │   │   │   ├── registry/   # factories + discovery + health
+│   │   │   │   ├── embedding/  # re-export → rag.embedding
+│   │   │   │   └── reranker/   # re-export → rag.retrieval
 │   │   │   ├── mcp/            # MCP tool server (JSON-RPC 2.0)
-│   │   │   ├── retrieval/      # hybrid retriever + reranker
-│   │   │   ├── services/       # analysis, KB, auth, experiment services
-│   │   │   └── verification/   # NLI verifier + SHA-256 integrity audit
-│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.28)
-│   │   ├── tests/              # backend suite (mocked, no live services)
-│   │   └── pyproject.toml
+│   │   │   ├── config/         # settings, model_config, loader (config version 1.29)
+│   │   │   ├── persistence/    # mongodb + qdrant clients + repositories
+│   │   │   ├── observability/  # logging, metrics, tracing
+│   │   │   ├── security/       # exceptions, JWT + bcrypt auth
+│   │   │   ├── core/           # backward-compat shims (config/, observability/, security/) + system/
+│   │   │   │   └── system/     # concurrency, hardware, memory
+│   │   │   ├── db/             # legacy duplicate of persistence/ (kept: tests patch app.db.mongodb.*)
+│   │   │   ├── services/       # analysis, KB, auth, search, claims_evidence, pipeline, sse, analytics
+│   │   │   ├── bootstrap.py    # app initialization
+│   │   │   ├── main.py         # create_app() factory entry point
+│   │   │   ├── middleware.py   # CORS, request ID, rate limit, security headers
+│   │   │   └── exception_handlers.py  # domain error → HTTP mapping
+│   │   │   ├── config/models.yaml  # model IDs, thresholds, tuning (config v1.29)
+│   │   │   ├── tests/          # backend suite (mocked, no live services)
+│   │   │   └── pyproject.toml
 │   └── web/                    # React frontend (Node 22+)
 │       ├── src/{pages,components,services,lib,store,hooks,layouts,styles}/
 │       └── e2e/                # Playwright specs

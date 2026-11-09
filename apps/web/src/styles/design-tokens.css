@@ -1,0 +1,146 @@
+/* ── TrustRAG Design Tokens v2 — "The Ledger" ────────────────────────────────
+ * Editorial evidence ledger: ink-black surfaces, ivory display type,
+ * restrained cyan (one accent), hairlines, tabular mono telemetry.
+ * Mirrors tailwind.config.js. Change here and in tailwind config together.
+ * Dark is canonical; light theme deferred (see
+ * docs/design/ULTRA_PREMIUM_DESIGN_SYSTEM.md §Light theme). */
+
+:root {
+  /* ── Ink & parchment ───────────────────────────────────────────────────── */
+  --color-ink-950: #040711;
+  --color-ink-900: #080c16;
+  --color-ink-850: #0d1322;
+  --color-ink-800: #121826;
+  --color-ink-700: #1e293b;
+  --color-parchment: #f2ede3;
+  --color-mist: #94a3b8;
+  --color-faint: #7c8ba1;
+
+  /* ── Color ─────────────────────────────────────────────────────────────── */
+  --color-primary-50: #f0f9ff;
+  --color-primary-100: #e0f2fe;
+  --color-primary-200: #bae6fd;
+  --color-primary-300: #7dd3fc;
+  --color-primary-400: #38bdf8;
+  --color-primary-500: #0ea5e9;
+  --color-primary-600: #0284c7;
+  --color-primary-700: #0369a1;
+  --color-primary-800: #075985;
+  --color-primary-900: #0c4a6e;
+  --color-primary-950: #041d30;
+
+  --color-cyber-300: #67e8f9;
+  --color-cyber-400: #22d3ee;
+  --color-cyber-500: #06b6d4;
+  --color-cyber-600: #0891b2;
+
+  --color-surface-50: #f8fafc;
+  --color-surface-100: #f1f5f9;
+  --color-surface-700: #1e293b;
+  --color-surface-800: #121826;
+  --color-surface-850: #0d1322;
+  --color-surface-900: #080c16;
+  --color-surface-950: #040711;
+
+  --color-verified: #10b981;
+  --color-contradicted: #ef4444;
+  --color-unsupported: #f59e0b;
+  --color-unknown: #64748b;
+
+  --color-trust-high: #10b981;
+  --color-trust-medium: #f59e0b;
+  --color-trust-low: #ef4444;
+
+  /* Hairline: structural borders (1px, always visible) */
+  --color-hairline: rgba(148, 163, 184, 0.14);
+  --color-hairline-strong: rgba(148, 163, 184, 0.28);
+
+  /* Champagne gold — the single luxury accent (verdicts, primary CTAs' edge).
+   * Blends with the existing ink/cyan theme; never used for status. */
+  --color-gold-300: #e5d5a8;
+  --color-gold-400: #d8c9a3;
+  --color-gold-500: #c9ab6e;
+
+  /* Focus ring (consumed by index.css :focus-visible) */
+  --focus-ring: rgba(56, 189, 248, 0.7);
+
+  /* ── Typography ────────────────────────────────────────────────────────── */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+  --font-display: 'Iowan Old Style', 'Palatino Linotype', 'URW Palladio L', Georgia, 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --text-display: clamp(2.5rem, 5vw, 4.5rem);
+  --text-display-sm: clamp(1.75rem, 3.5vw, 3rem);
+  --text-heading-1: clamp(1.875rem, 3vw, 2.5rem);
+  --text-heading-2: clamp(1.5rem, 2.5vw, 2rem);
+  --text-heading-3: clamp(1.125rem, 1.5rem, 1.5rem);
+
+  --leading-display: 1.05;
+  --leading-tight: 1.2;
+  --leading-base: 1.65;
+  --tracking-display: -0.025em;
+  --tracking-heading: -0.015em;
+
+  /* ── Spacing (4pt grid) ────────────────────────────────────────────────── */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-section: 2rem;
+  --space-chapter: 3rem;
+
+  /* ── Radius / Elevation ────────────────────────────────────────────────── */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-full: 9999px;
+
+  --shadow-card: 0 10px 40px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --shadow-nav: 0 8px 32px -8px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-lift: 0 20px 50px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(56, 189, 248, 0.12);
+  --shadow-glow-primary: 0 0 25px -2px rgba(14, 165, 233, 0.35), 0 0 10px -1px rgba(14, 165, 233, 0.2);
+  --shadow-glow-emerald: 0 0 25px -2px rgba(16, 185, 129, 0.35), 0 0 10px -1px rgba(16, 185, 129, 0.2);
+  --shadow-glow-crimson: 0 0 25px -2px rgba(239, 68, 68, 0.35), 0 0 10px -1px rgba(239, 68, 68, 0.2);
+  --shadow-glow-amber: 0 0 25px -2px rgba(245, 158, 11, 0.35), 0 0 10px -1px rgba(245, 158, 11, 0.2);
+
+  /* ── Icons (token scale — one size per role) ───────────────────────────── */
+  --icon-sm: 16px;
+  --icon-md: 20px;
+  --icon-lg: 24px;
+  --icon-stroke: 1.5px;
+
+  /* ── Motion ────────────────────────────────────────────────────────────── */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-instant: 80ms;
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+  --duration-route: 200ms;
+
+  /* ── Z-index ───────────────────────────────────────────────────────────── */
+  --z-base: 0;
+  --z-raised: 10;
+  --z-sticky: 20;
+  --z-nav: 40;
+  --z-sidebar: 50;
+  --z-overlay: 100;
+
+  color-scheme: dark;
+}
+
+/* ── Focus: single definition (mirrors index.css; kept here for token docs) ─
+ * :focus-visible lives in index.css. Do not redefine here. */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 1ms;
+    --duration-base: 1ms;
+    --duration-slow: 1ms;
+    --duration-route: 1ms;
+  }
+}

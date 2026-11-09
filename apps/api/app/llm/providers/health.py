@@ -139,7 +139,7 @@ async def check_llamacpp_status(
     base_url: str = _DEFAULT_LLAMACPP_BASE_URL,
 ) -> dict[str, Any]:
     """Probe llama.cpp server status and discover cached models."""
-    cache_models = discover_llamacpp_cache_models()
+    cache_models = await discover_llamacpp_cache_models()
     try:
         api_models: list[str] = []
         connected = False
