@@ -95,7 +95,7 @@ TrustRAG/
 │   │   │   │   └── search_service.py # Web-search orchestration (SSRF-guarded)
 │   │   │   └── mcp/                  # MCP server (`trustrag_*` tools) + client
 │   │   ├── config/
-│   │   │   └── models.yaml           # Model IDs, thresholds, tuning params (v1.28)
+│   │   │   └── models.yaml           # Model IDs, thresholds, tuning params (v1.29)
 │   │   ├── tests/                    # Backend suite incl. `tests/eval/` harness
 │   │   └── pyproject.toml
 │   └── web/                          # React frontend
@@ -277,7 +277,7 @@ Sanitization strips meta-prefixes ("Expanded Search Query:", "Rewritten Query:")
 - Each point: dense vector (384d BGE) + sparse weights + payload (chunk text, document ID, chunk index, OCR flags)
 - Hybrid dense+sparse search; INT8 on-disk quantization; pre-IDF collections recreate on init
 
-**MongoDB** — document store (`Collections` in `app/db/mongodb.py`)
+**MongoDB** — document store (`Collections` in `app/persistence/mongodb/`)
 - Collections: `users`, `knowledge_bases`, `documents`, `document_chunks`, `analyses`, `claims`, `evidence`, `recovery_runs`, `trace_events`, `experiments`, `feedback`, `revoked_tokens`, `stream_tickets`
 - Tracks ingestion status, analysis results, claim verification results, recovery run history
 - Evidence integrity audit compares SHA-256 hashes of served chunks against source `document_chunks` records

@@ -42,7 +42,7 @@ Query → Route (deterministic regex: SIMPLE/TEMPORAL/COMPARISON/COMPLEX)
 
 ### 1.2 Key Implementation Details (verified from source)
 
-| Component | Implementation | Config (models.yaml v1.28) |
+| Component | Implementation | Config (models.yaml v1.29) |
 |-----------|----------------|---------------------------|
 | **Embedding** | `BAAI/bge-small-en-v1.5` ONNX Runtime only (torch-free) | `embedding.model`, `onnx_path`, LRU cache 1024 |
 | **Reranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` ONNX int8 | `reranker.enabled: true`, `use_onnx: true` |

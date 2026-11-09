@@ -242,7 +242,7 @@ The runtime does not train models. A one-time setup path exports/obtains model f
 scripts/bootstrap.py
     └─ scripts/ensure_onnx_models.py
          ├─ scripts/export_bge_onnx.py       BGE transformer + CLS + L2 normalisation
-         └─ app/core/onnx_reranker.py        cross-encoder export + optional int8 quantisation
+         └─ app/rag/retrieval/onnx_reranker.py  cross-encoder export + optional int8 quantisation
 ```
 
 The exporter needs the optional `local-models` dependencies (including PyTorch) **only at export time**. The ordinary API runtime deliberately remains torch-free. On startup `main.py` reports missing ONNX weights; embedding absence makes retrieval fail, while reranker absence degrades to RRF order.
@@ -501,9 +501,9 @@ This map lets a presenter answer “where is that implemented?” without relyin
 | app startup, middleware, error mapping | `apps/api/app/main.py`, `app/api/router.py` |
 | central settings/model policy | `app/core/config/`, `apps/api/config/models.yaml`, `.env.example` |
 | model selection/local LLM clients | `app/core/model_registry.py`, `app/core/local_llm.py`, `app/core/llm_utils.py`, `app/core/llm_ledger.py` |
-| ONNX embedding/reranking | `app/llm/onnx_embeddings.py`, `app/llm/onnx_reranker.py`, `scripts/ensure_onnx_models.py`, `scripts/export_bge_onnx.py` |
+| ONNX embedding/reranking | `app/llm/onnx_embeddings.py`, `app/rag/retrieval/onnx_reranker.py`, `scripts/ensure_onnx_models.py`, `scripts/export_bge_onnx.py` |
 | document parsing/OCR/chunking | `app/rag/ingestion/parser.py`, `ocr.py`, `preprocessor.py`, `chunker.py`, `chunking_strategies.py`, `page_images.py` |
-| indexing/vector DB | `app/rag/ingestion/pipeline.py`, `sparse_vector.py`, `app/db/qdrant.py`, `app/db/mongodb.py` |
+| indexing/vector DB | `app/rag/ingestion/pipeline.py`, `sparse_vector.py`, `app/persistence/qdrant/`, `app/persistence/mongodb/` |
 | retrieval/reranking/router | `app/rag/retrieval/retriever.py`, `reranker.py`, `app/rag/agent/router.py` |
 | answer generation | `app/rag/generation/generator.py` |
 | verification/verdict/provenance integrity | `app/rag/verification/verifier.py`, `verdict.py`, `integrity.py` |

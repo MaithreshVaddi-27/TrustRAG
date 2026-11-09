@@ -286,7 +286,7 @@ Already correct in code — these are "verify, don't change" items:
 ## 9. Storage & infra (free)
 
 - **Qdrant:** `local` (embedded, in-process) for dev = zero ops, zero latency hop. Docker Compose server + volume for team demos. Cloud only when you need off-host persistence.
-- **MongoDB indexes** are created idempotently on startup (`ensure_indexes` in `app/db/mongodb.py`) — nothing to do, don't hand-create.
+- **MongoDB indexes** are created idempotently on startup (`ensure_indexes` in `app/persistence/mongodb/`) — nothing to do, don't hand-create.
 - **Frontend:** `npm run build` + static CDN (Cloudflare Pages free tier) instead of running Vite dev in production.
 - **Docker image** is torch-free by design — keep it that way (don't `pip install sentence-transformers` into the image; use the ONNX path).
 
@@ -329,4 +329,4 @@ python scripts/run_baseline_eval.py --email ... --password ... \
 # 4. Copy the aggregate row into docs/evaluation/methodology.md. Never hand-edit JSON.
 ```
 
-> History note: superseded tuning advice lives in git (`git log -- docs/`). This guide reflects `models.yaml` v1.28 and the code at HEAD.
+> History note: superseded tuning advice lives in git (`git log -- docs/`). This guide reflects `models.yaml` v1.29 and the code at HEAD.

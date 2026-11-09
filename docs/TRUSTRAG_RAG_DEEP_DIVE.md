@@ -80,8 +80,8 @@ Natural Language Inference asks whether a premise supports, contradicts, or says
 | OCR scanned pages and preserve images | `apps/api/app/rag/ingestion/ocr.py`, `page_images.py` |
 | Generate sparse vectors | `apps/api/app/rag/ingestion/sparse_vector.py` |
 | Create embeddings and index chunks | `apps/api/app/rag/ingestion/pipeline.py` |
-| Connect/create per-KB vector collections | `apps/api/app/db/qdrant.py` |
-| Persist app records and canonical chunks | `apps/api/app/db/mongodb.py` |
+| Connect/create per-KB vector collections | `apps/api/app/persistence/qdrant/` |
+| Persist app records and canonical chunks | `apps/api/app/persistence/mongodb/` |
 | Make dense/sparse searches and fuse ranks | `apps/api/app/rag/retrieval/retriever.py` |
 | Deterministic query routing and fan-out | `apps/api/app/rag/agent/router.py` |
 | Cross-encoder reranking | `apps/api/app/rag/retrieval/reranker.py` |
@@ -92,7 +92,7 @@ Natural Language Inference asks whether a premise supports, contradicts, or says
 | Check retrieved text against canonical hash | `apps/api/app/rag/verification/integrity.py` |
 | Calculate trust result | `apps/api/app/rag/verification/verdict.py` |
 | Model configuration/runtime registry | `apps/api/app/core/config/`, `apps/api/app/llm/model_registry.py` |
-| ONNX runtime wrappers | `apps/api/app/llm/onnx_embeddings.py`, `onnx_reranker.py` |
+| ONNX runtime wrappers | `apps/api/app/llm/onnx_embeddings.py`, `apps/api/app/rag/retrieval/onnx_reranker.py` |
 | MCP tools and web search | `apps/api/app/mcp/server.py`, `client.py`, `services/search_service.py` |
 
 ---
@@ -817,7 +817,7 @@ For a mentor/code review, this order follows the actual data path:
 4. `apps/api/app/rag/ingestion/preprocessor.py` — normalization, lexical analysis, zones.
 5. `apps/api/app/rag/ingestion/chunker.py` and `chunking_strategies.py` — chunk boundaries and provenance.
 6. `apps/api/app/rag/ingestion/pipeline.py` — Mongo persistence, dense/sparse vectors, Qdrant upsert.
-7. `apps/api/app/llm/onnx_embeddings.py` and `onnx_reranker.py` — ONNX runtime inference.
+7. `apps/api/app/llm/onnx_embeddings.py` and `apps/api/app/rag/retrieval/onnx_reranker.py` — ONNX runtime inference.
 8. `apps/api/app/rag/retrieval/retriever.py` — dense/sparse query, RRF, temporal filtering.
 9. `apps/api/app/rag/agent/router.py` — deterministic routing/fan-out.
 10. `apps/api/app/rag/retrieval/reranker.py` — cross-encoder second stage.

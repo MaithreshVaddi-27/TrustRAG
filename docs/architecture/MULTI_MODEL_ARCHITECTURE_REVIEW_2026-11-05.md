@@ -369,7 +369,7 @@ Based on the empirical findings, the production serving configuration has been i
 1. **Default Local Production Stack (Active by default):**
    - **Generation:** `gemma3:1b` via local Ollama with XML CRAFT contrastive prompting.
    - **Retrieval:** Hybrid RRF ($k=60$) over dense BGE small ONNX (384-d) and Qdrant sparse BM25.
-   - **Reranker Gating:** The int8 MiniLM ONNX cross-encoder is kept in tree (`app/llm/onnx_reranker.py`) but **disabled by default** (`reranker.enabled: false`, toggleable via `RERANKER_ENABLED`). Exp 3 showed zero recall improvement on the fixture KB and lower claim support compared to Exp 1.
+   - **Reranker Gating:** The int8 MiniLM ONNX cross-encoder is kept in tree (`app/rag/retrieval/onnx_reranker.py`) but **disabled by default** (`reranker.enabled: false`, toggleable via `RERANKER_ENABLED`). Exp 3 showed zero recall improvement on the fixture KB and lower claim support compared to Exp 1.
    - **Performance:** Sub-7s p50 latency, ~2.4GB resident memory, and 100% citation accuracy on Mac M2 (8GB RAM). Zero cloud API dependencies or data egress.
 
 2. **Deep-Reasoning Mode (Optional / Batch):**

@@ -185,7 +185,7 @@ Provider choice must be documented and verified at deployment time because free-
 **MongoDB**
 
 - Collections: `users`, `knowledge_bases`, `documents`, `document_chunks`, `analyses`, `claims`, `evidence`, `recovery_runs`, `trace_events`, `experiments`, `feedback`, `revoked_tokens`, `stream_tickets`
-- Source of truth: `Collections` in `app/db/mongodb.py`
+- Source of truth: `Collections` in `app/persistence/mongodb.py`
 - Tracks ingestion status, analysis results, claim verification, recovery history
 - Evidence integrity audit: SHA-256 hash comparison of served chunks vs `document_chunks`
 
@@ -239,21 +239,24 @@ TRUSTRAG/
 │       │   │   ├── observability/         # logging + metrics + tracing
 │       │   │   ├── security/              # Auth primitives + exception hierarchy
 │       │   │   └── system/                # hardware + memory + concurrency
-│       │   ├── db/
-│       │   │   ├── qdrant.py              # Qdrant client + collection init
-│       │   │   └── mongodb.py             # MongoDB client + indexes (`Collections`)
+│       │   ├── persistence/
+│       │   │   ├── mongodb/               # MongoDB client + `Collections` + indexes
+│       │   │   │   └── repositories/
+│       │   │   └── qdrant/                # Qdrant client + collection init
+│       │   │       └── repositories/
 │       │   ├── llm/
 │       │   │   ├── model_registry.py      # Model factory (embedding, reranker, LLM)
 │       │   │   ├── onnx_embeddings.py     # ONNX BGE embedding engine
-│       │   │   ├── onnx_reranker.py       # ONNX cross-encoder reranker
 │       │   │   ├── onnx_runtime.py        # Shared ORT session options
+│       │   │   ├── reranker/              # re-export → app.rag.retrieval.onnx_reranker
 │       │   │   ├── local_llm.py           # Ollama + llama.cpp LangChain clients
 │       │   │   └── llm_ledger.py          # Per-analysis LLM call budget
 │       │   ├── rag/
 │       │   │   ├── agent/                 # LangGraph StateGraph + recovery loop (graph.py, router.py)
 │       │   │   ├── generation/            # Grounded answer generator (generator.py)
 │       │   │   ├── ingestion/             # Pipeline, parser, chunker, strategies, sparse_vector, OCR
-│       │   │   ├── retrieval/             # Hybrid retriever + reranker
+│       │   │   ├── retrieval/             # Hybrid retriever + reranker + ONNX cross-encoder
+│       │   │   │   └── onnx_reranker.py   # ONNX cross-encoder reranker (moved from llm/)
 │       │   │   └── verification/          # Verifier (decomposition + NLI), verdict, integrity
 │       │   ├── services/
 │       │   │   ├── analysis_service.py    # Analysis lifecycle + SSE tickets
@@ -263,7 +266,7 @@ TRUSTRAG/
 │       │   │   └── search_service.py      # Web search orchestration (SSRF-guarded)
 │       │   └── mcp/                       # MCP server (trustrag_* tools) + client dispatcher
 │       ├── config/
-│       │   └── models.yaml                # Model IDs, thresholds, tuning params (v1.28)
+│       │   └── models.yaml                # Model IDs, thresholds, tuning params (v1.29)
 │       ├── tests/                         # Backend suite incl. tests/eval/ harness
 │       ├── pyproject.toml
 │       └── Dockerfile
@@ -346,7 +349,7 @@ LOG_LEVEL=INFO
 
 Never commit `.env`.
 
-### `config/models.yaml` (v1.28)
+### `config/models.yaml` (v1.29)
 
 Example structure:
 
@@ -421,10 +424,10 @@ observability:
   pre_request_budget_enforcement: true
 
 runtime:
-  config_version: "1.28"
+  config_version: "1.29"
 ```
 
-These are engineering defaults, not calibrated truth. Version 1.28 (2026-10) added: embedding.onnx_path, reranker.onnx_path, llm.context_window, retrieval.timeouts, recovery.strategy_priority, cost_controls.claim_retrieval_top_k.
+These are engineering defaults, not calibrated truth. Version 1.29 (2026-11-05) standardized default production mode (gemma3:1b via Ollama); config_version: "1.29" (2026-11-05).
 
 ### Model registry
 

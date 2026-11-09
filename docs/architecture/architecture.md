@@ -30,8 +30,9 @@ FastAPI (Python 3.11+, Default Port 8000)
     │
     ├─── app/core/         Settings, Logging, Security, Exceptions
     ├─── app/llm/          ModelRegistry, local LLM clients (Ollama/llama.cpp/MLX),
-    │                      CLI introspection, ONNX embedding/reranker engines
-    ├─── app/db/           MongoDB Community / Atlas client, Qdrant client
+    │                      CLI introspection, ONNX embedding engine
+    ├─── app/persistence/  MongoDB (`persistence/mongodb/`) + Qdrant
+    │                      (`persistence/qdrant/`) clients
     ├─── app/rag/ingestion/ Document parsing (+ per-page RapidOCR-ONNX fallback for
     │                      <50-native-char pages), selectable chunking strategies,
     │                      newline-preserving normalization, cryptographic hashing
@@ -192,4 +193,4 @@ TRUSTRAG adopts the open **Model Context Protocol (MCP)** specification to decou
 | `revoked_tokens` | JTI blocklist for logged-out JWTs                       |
 | `stream_tickets` | One-time SSE stream tickets (TTL)                       |
 
-Source of truth: `Collections` in `apps/api/app/db/mongodb.py`.
+Source of truth: `Collections` in `apps/api/app/persistence/mongodb/`.

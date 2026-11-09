@@ -93,7 +93,7 @@ The following metrics were measured empirically against the frozen 27-query fixt
 1. **Zero Recall Lift:** Dense BGE ONNX + Sparse BM25 with Reciprocal Rank Fusion ($k=60$) already achieved 100% recall (24/24 answerable queries) at top-8 context. The reranker could not improve candidate recall.
 2. **Reduced Claim Support in Exp 3:** Adding the reranker reordered passages such that claim support degraded from 0.8750 to 0.7917 on the fixture KB.
 3. **CPU Overhead Avoidance:** While int8 ONNX inference adds only ~90ms latency, disabling it by default conserves CPU execution cycles on 8GB machines.
-4. **Instant Fallback Available:** The code remains fully compiled and tested (`app/llm/onnx_reranker.py`); it can be toggled via `models.yaml` or `RERANKER_ENABLED=true` when deploying against large multi-thousand document corpora.
+4. **Instant Fallback Available:** The code remains fully compiled and tested (`app/rag/retrieval/onnx_reranker.py`); it can be toggled via `models.yaml` or `RERANKER_ENABLED=true` when deploying against large multi-thousand document corpora.
 
 ---
 
