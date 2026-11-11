@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { Activity } from 'lucide-react'
 import ReliabilityAreaChart from '@/components/charts/ReliabilityAreaChart'
-import { CHART } from '@/lib/chartTheme'
 import { format } from 'date-fns'
 
 /**
@@ -9,8 +8,13 @@ import { format } from 'date-fns'
  *
  * One accent: the reliability line is Chrome Silver. The threshold is a
  * hairline, not a coloured band. A point that fell below the threshold is
- * marked in crimson, because that is the one event on this chart that
- * mattered.
+ * the only thing on the chart that carries crimson, because that is the one
+ * event on this chart that mattered.
+ *
+ * The series is the reliability of answers that were actually delivered. A
+ * run that abstained scores zero because there was no answer, and plotting
+ * it here would say the system produced a bad answer when it produced no
+ * answer at all.
  */
 const WINDOWS = [
   { id: '10', label: 'Last 10' },
@@ -19,21 +23,28 @@ const WINDOWS = [
 ]
 
 export function ReliabilityChart({ analyses, historyWindow, setHistoryWindow }) {
-  const timelineData = useMemo(() => {
-    if (!analyses?.length) return []
+  const answered = useMemo(
+    () =>
+      (analyses || []).filter(
+        (analysis) =>
+          analysis.status === 'completed' &&
+          analysis.reliability?.score !== undefined &&
+          analysis.reliability?.score !== null,
+      ),
+    [analyses],
+  )
 
-    const limit = historyWindow === 'all' ? analyses.length : Number(historyWindow)
-    const chronologicalSlice = [...analyses].slice(0, limit).reverse()
+  const timelineData = useMemo(() => {
+    if (!answered.length) return []
+
+    const limit = historyWindow === 'all' ? answered.length : Number(historyWindow)
+    const chronologicalSlice = [...answered].slice(0, limit).reverse()
 
     return chronologicalSlice.map((analysis, index) => {
-      const scoreValue =
-        analysis.reliability?.score != null
-          ? Math.round(analysis.reliability.score * 100)
-          : analysis.status === 'completed'
-            ? 100
-            : 0
-
-      const createdDate = analysis.created_at ? new Date(analysis.created_at) : new Date()
+      const scoreValue = Math.round(analysis.reliability.score * 100)
+      const createdDate = analysis.created_at
+        ? new Date(analysis.created_at)
+        : new Date()
 
       return {
         id: analysis.id,
@@ -43,14 +54,14 @@ export function ReliabilityChart({ analyses, historyWindow, setHistoryWindow }) 
         score: scoreValue,
         threshold: 75,
         status:
-          analysis.reliability?.status ||
+          analysis.reliability.status ||
           (scoreValue >= 75 ? 'TRUSTED' : scoreValue > 0 ? 'UNCERTAIN' : 'FAILED'),
         query: analysis.query || 'Untitled analysis',
       }
     })
-  }, [analyses, historyWindow])
+  }, [answered, historyWindow])
 
-  const hasData = timelineData.length > 0
+  const excluded = (analyses?.length ?? 0) - answered.length
 
   return (
     <section className="lx-panel-block" aria-labelledby="reliability-heading">
@@ -60,7 +71,7 @@ export function ReliabilityChart({ analyses, historyWindow, setHistoryWindow }) 
             Reliability progression
           </h2>
           <p className="lx-micro mt-1">
-            Execution history against the {CHART.threshold ?? 75}% safety threshold
+            Delivered answers against the 75% safety threshold
           </p>
         </div>
 
@@ -74,26 +85,36 @@ export function ReliabilityChart({ analyses, historyWindow, setHistoryWindow }) 
               onClick={() => setHistoryWindow(window.id)}
             >
               {window.label}
-              {window.id === 'all' && analyses?.length ? ` (${analyses.length})` : ''}
+              {window.id === 'all' && answered.length ? ` (${answered.length})` : ''}
             </button>
           ))}
         </div>
       </div>
 
       <div className="lx-panel-block__body">
-        {hasData ? (
+        {timelineData.length ? (
           <ReliabilityAreaChart data={timelineData} threshold={75} />
         ) : (
           <div className="lx-empty">
             <Activity size={22} strokeWidth={1.5} className="lx-empty__icon" aria-hidden="true" />
-            <p className="lx-empty__title">No reliability analyses recorded yet</p>
+            <p className="lx-empty__title">No delivered answers yet</p>
             <p className="lx-empty__body">
-              Run an analysis in the playground to start the reliability
-              progression curve.
+              {excluded > 0
+                ? `${excluded} ${excluded === 1 ? 'run' : 'runs'} produced no verified answer, so there is nothing to plot. The curve starts when the pipeline returns an answer.`
+                : 'Run an analysis in the playground to start the reliability progression curve.'}
             </p>
           </div>
         )}
       </div>
+
+      {excluded > 0 && timelineData.length > 0 && (
+        <div className="lx-panel-block__foot">
+          <p className="lx-micro">
+            {excluded} {excluded === 1 ? 'run' : 'runs'} produced no verified answer
+            and are not plotted.
+          </p>
+        </div>
+      )}
     </section>
   )
 }

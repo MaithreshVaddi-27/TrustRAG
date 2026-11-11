@@ -1,23 +1,37 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, RefreshCw } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
 import AppLayout from '@/layouts/AppLayout'
-import { HeroBanner } from '@/components/dashboard/HeroBanner'
-import { ObservabilityBar } from '@/components/dashboard/ObservabilityBar'
-import { MetricsGrid } from '@/components/dashboard/MetricsGrid'
+import PageHeader from '@/components/ui/PageHeader'
+import { StatStrip } from '@/components/dashboard/StatStrip'
 import { ReliabilityChart } from '@/components/dashboard/ReliabilityChart'
 import { ClaimDistributionChart } from '@/components/dashboard/ClaimDistributionChart'
-import { RecentAnalysesFeed } from '@/components/dashboard/RecentAnalysesFeed'
+import { ActivityFeed } from '@/components/dashboard/ActivityFeed'
+import { AttentionPanel } from '@/components/dashboard/AttentionPanel'
+import { WorkspacePanel } from '@/components/dashboard/WorkspacePanel'
 import { PipelineArchitecture } from '@/components/dashboard/PipelineArchitecture'
 import { kbService, analysisService, claimService, conflictService } from '@/services/api'
 import { normalizeClaimState } from '@/lib/claimState'
 
+/**
+ * DashboardPage — the operator's overview.
+ *
+ * Four questions, in order of how much they matter:
+ *
+ *   1. What needs my attention?      — AttentionPanel
+ *   2. How is the corpus doing?       — StatStrip, WorkspacePanel
+ *   3. Is reliability holding?        — the two charts
+ *   4. What has happened lately?      — ActivityFeed
+ *
+ * The pipeline primer is only shown to a workspace that has not run
+ * anything yet. After the first run it is noise, and it is duplicated by
+ * the playground's own empty state.
+ */
 export default function DashboardPage() {
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [historyWindow, setHistoryWindow] = useState('10') // '10' | '20' | 'all'
-  const [lastSync, setLastSync] = useState(new Date())
 
-  // Real-time live polling for active telemetry
   const {
     data: analyses = [],
     refetch: refetchAnalyses,
@@ -25,6 +39,7 @@ export default function DashboardPage() {
     isLoading: isLoadingAnalyses,
     isError: isErrorAnalyses,
     error: analysesError,
+    dataUpdatedAt: analysesUpdatedAt,
   } = useQuery({
     queryKey: ['analyses'],
     queryFn: analysisService.list,
@@ -37,6 +52,7 @@ export default function DashboardPage() {
     isLoading: isLoadingClaims,
     isError: isErrorClaims,
     error: claimsError,
+    dataUpdatedAt: claimsUpdatedAt,
   } = useQuery({
     queryKey: ['all-claims'],
     queryFn: claimService.list,
@@ -48,6 +64,7 @@ export default function DashboardPage() {
     refetch: refetchConflicts,
     isError: isErrorConflicts,
     error: conflictsError,
+    dataUpdatedAt: conflictsUpdatedAt,
   } = useQuery({
     queryKey: ['all-conflicts'],
     queryFn: conflictService.list,
@@ -60,6 +77,7 @@ export default function DashboardPage() {
     isLoading: isLoadingKbs,
     isError: isErrorKbs,
     error: kbsError,
+    dataUpdatedAt: kbsUpdatedAt,
   } = useQuery({
     queryKey: ['knowledgeBases'],
     queryFn: kbService.list,
@@ -68,78 +86,183 @@ export default function DashboardPage() {
 
   // First paint shows layout-matching skeletons rather than a false "0" state.
   const isInitialLoad = isLoadingAnalyses || isLoadingClaims || isLoadingKbs
+
   // Surface the first failing feed — silent zeros previously hid outages.
   const loadError = analysesError || kbsError || claimsError || conflictsError
-  const hasLoadError = isErrorAnalyses || isErrorKbs || isErrorClaims || isErrorConflicts
+  const hasLoadError =
+    isErrorAnalyses || isErrorKbs || isErrorClaims || isErrorConflicts
 
-  const updateLastSync = () => setLastSync(new Date())
-
-  // Re-render every 30s so "Synced x ago" never freezes.
-  useEffect(() => {
-    const t = setInterval(updateLastSync, 30000)
-    return () => clearInterval(t)
-  }, [])
+  // The least fresh feed decides when the workspace is genuinely current.
+  // A timestamp that ticks on a timer measures the clock, not the data.
+  const stamps = [analysesUpdatedAt, claimsUpdatedAt, conflictsUpdatedAt, kbsUpdatedAt].filter(
+    Boolean,
+  )
+  const lastSync = stamps.length ? Math.min(...stamps) : null
 
   const handleManualSync = () => {
     refetchAnalyses()
     refetchClaims()
     refetchConflicts()
     refetchKbs()
-    updateLastSync()
   }
 
   const stats = useMemo(() => {
     const totalDocs = kbs.reduce((sum, kb) => sum + (kb.document_count || 0), 0)
 
-    let totalScore = 0
-    let scoredCount = 0
-    let supportedClaims = 0
-    let contradictedClaims = 0
-    let neutralClaims = 0
+    // A run that abstained scores zero because there was no answer, not
+    // because the answer was unreliable. Averaging those into "mean
+    // reliability" would conflate "no answer" with "a bad answer".
+    const answeredRuns = analyses.filter(
+      (analysis) =>
+        analysis.status === 'completed' &&
+        analysis.reliability?.score !== undefined &&
+        analysis.reliability?.score !== null,
+    )
+    const meanScore = answeredRuns.length
+      ? answeredRuns.reduce((sum, a) => sum + a.reliability.score, 0) /
+        answeredRuns.length
+      : null
 
-    analyses.forEach((a) => {
-      if (a.reliability?.score !== undefined && a.reliability?.score !== null) {
-        totalScore += a.reliability.score
-        scoredCount++
+    let supported = 0
+    let contradicted = 0
+    let neutral = 0
+
+    claims.forEach((claim) => {
+      const state = normalizeClaimState(claim)
+      if (state === 'SUPPORTED' || state === 'VERIFIED') supported += 1
+      else if (state === 'CONTRADICTED') contradicted += 1
+      else neutral += 1
+    })
+
+    const totalClaims = supported + contradicted + neutral
+    const answered = analyses.filter((a) => a.status === 'completed').length
+    const abstained = analyses.filter((a) => a.status === 'abstained').length
+    const failed = analyses.filter(
+      (a) => a.status === 'failed' || a.status === 'outage',
+    ).length
+    const running = analyses.filter(
+      (a) => a.status === 'pending' || a.status === 'processing',
+    ).length
+
+    // The second line of the figure states what happened to the runs, not
+    // what they are. A run that abstained still happened.
+    const analysisMeta = (() => {
+      if (analyses.length === 0) return 'No runs yet'
+      const parts = []
+      if (answered) parts.push(`${answered} answered`)
+      if (abstained + failed) parts.push(`${abstained + failed} without an answer`)
+      if (running) parts.push(`${running} running`)
+      return parts.join(' · ') || 'No runs yet'
+    })()
+
+    const kbNames = Object.fromEntries(kbs.map((kb) => [kb.id, kb.name]))
+
+    // The last run against each collection, so the workspace table can say
+    // whether a collection has been exercised recently.
+    const lastRunByKb = {}
+    for (const analysis of analyses) {
+      const id = analysis.knowledge_base_id
+      if (!id || lastRunByKb[id]) continue
+      lastRunByKb[id] = {
+        label: formatDistanceToNow(new Date(analysis.created_at)) + ' ago',
+        at: analysis.created_at,
       }
-    })
-
-    claims.forEach((c) => {
-      const s = normalizeClaimState(c)
-      if (s === 'SUPPORTED' || s === 'VERIFIED') supportedClaims++
-      else if (s === 'CONTRADICTED') contradictedClaims++
-      else neutralClaims++
-    })
-
-    const avgReliability = scoredCount > 0 ? totalScore / scoredCount : 0
-    const avgReliabilityDisplay = scoredCount > 0 ? `${(avgReliability * 100).toFixed(1)}%` : '--'
-    const totalClaimsCount = supportedClaims + contradictedClaims + neutralClaims
-    const supportedRate = totalClaimsCount > 0 ? (supportedClaims / totalClaimsCount) * 100 : 0
+    }
 
     return {
-      totalDocs,
-      avgReliability: (avgReliability * 100).toFixed(1),
-      avgReliabilityDisplay,
-      supportedClaims,
-      contradictedClaims,
-      neutralClaims,
-      totalClaimsCount,
-      supportedRate: supportedRate.toFixed(0),
-      totalConflicts: conflicts.length,
+      figures: {
+        'knowledge-bases': {
+          value: kbs.length,
+          meta: `${totalDocs} ${totalDocs === 1 ? 'document' : 'documents'} indexed`,
+        },
+        analyses: {
+          value: analyses.length,
+          meta: analysisMeta,
+          alarm: failed > 0,
+        },
+        reliability: {
+          value: meanScore == null ? '—' : `${(meanScore * 100).toFixed(1)}%`,
+          meta:
+            meanScore == null
+              ? 'No verified answers yet'
+              : `Threshold 75% · ${answeredRuns.length} ${answeredRuns.length === 1 ? 'answer' : 'answers'}`,
+          alarm: meanScore != null && meanScore * 100 < 75,
+        },
+        claims: {
+          value: totalClaims,
+          meta: totalClaims
+            ? `${supported} supported · ${contradicted} contradicted`
+            : 'No claims decomposed yet',
+          alarm: contradicted > 0,
+        },
+      },
+      chart: {
+        supportedClaims: supported,
+        neutralClaims: neutral,
+        contradictedClaims: contradicted,
+        totalClaimsCount: totalClaims,
+        supportedRate: totalClaims ? Math.round((supported / totalClaims) * 100) : 0,
+      },
+      attention: {
+        conflicts,
+        contradictedClaims: contradicted,
+        failedRuns: abstained + failed,
+      },
+      lastRunByKb,
+      kbNames,
+      hasActivity: analyses.length > 0,
     }
   }, [kbs, analyses, claims, conflicts])
+
+  const syncLabel = lastSync
+    ? `Synced ${formatDistanceToNow(new Date(lastSync))} ago`
+    : 'Never synced'
 
   return (
     <AppLayout>
       <div className="lx-page lx-stack">
-        <HeroBanner />
+        <PageHeader
+          title="Overview"
+          description="The state of your corpus, and the reliability of every answer it has produced."
+          countLabel={
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className={`lx-dot${autoRefresh ? ' lx-dot--live' : ''}`}
+                aria-hidden="true"
+              />
+              {autoRefresh ? 'Live' : 'Paused'}
+              <span className="text-silver-600">·</span>
+              {syncLabel}
+            </span>
+          }
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={handleManualSync}
+                disabled={isFetchingAnalyses}
+                className="lx-btn lx-btn--secondary"
+                title="Refresh every feed"
+              >
+                <RefreshCw
+                  size={13}
+                  strokeWidth={1.75}
+                  className={isFetchingAnalyses ? 'animate-spin' : ''}
+                  aria-hidden="true"
+                />
+                <span>Sync now</span>
+              </button>
 
-        <ObservabilityBar
-          autoRefresh={autoRefresh}
-          setAutoRefresh={setAutoRefresh}
-          lastSync={lastSync}
-          isFetchingAnalyses={isFetchingAnalyses}
-          handleManualSync={handleManualSync}
+              <button
+                type="button"
+                onClick={() => setAutoRefresh((previous) => !previous)}
+                className="lx-btn lx-btn--quiet"
+                aria-pressed={autoRefresh}
+              >
+                {autoRefresh ? 'Pause stream' : 'Go live'}
+              </button>
+            </>
+          }
         />
 
         {hasLoadError && !isInitialLoad && (
@@ -162,13 +285,9 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <MetricsGrid
-          stats={stats}
-          kbs={kbs}
-          analyses={analyses}
-          claims={claims}
-          conflicts={conflicts}
-        />
+        <AttentionPanel {...stats.attention} />
+
+        <StatStrip stats={stats} />
 
         {/* One wide chart beside a narrower one — a rhythm, not two equal boxes. */}
         <div className="lx-grid-wide-narrow">
@@ -177,12 +296,19 @@ export default function DashboardPage() {
             historyWindow={historyWindow}
             setHistoryWindow={setHistoryWindow}
           />
-          <ClaimDistributionChart stats={stats} />
+          <ClaimDistributionChart stats={stats.chart} />
         </div>
 
-        <RecentAnalysesFeed analyses={analyses} isInitialLoad={isInitialLoad} />
+        <WorkspacePanel kbs={kbs} lastRunByKb={stats.lastRunByKb} />
 
-        <PipelineArchitecture />
+        <ActivityFeed
+          analyses={analyses}
+          isInitialLoad={isInitialLoad}
+          kbNames={stats.kbNames}
+        />
+
+        {/* The primer is for a workspace that has not run anything yet. */}
+        {!stats.hasActivity && <PipelineArchitecture />}
       </div>
     </AppLayout>
   )

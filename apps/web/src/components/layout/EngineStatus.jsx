@@ -65,7 +65,7 @@ export function EngineStatus({ isOnline, providers }) {
           />
         }
         title="Checking engine"
-        meta="Reading the provider registry"
+        meta="Reading the registry"
       />
     )
   }

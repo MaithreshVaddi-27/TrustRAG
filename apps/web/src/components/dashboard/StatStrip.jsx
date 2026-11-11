@@ -2,15 +2,16 @@ import { Link } from 'react-router-dom'
 import { ArrowUpRight } from 'lucide-react'
 
 /**
- * MetricsGrid — the dashboard's figures.
+ * StatStrip — the dashboard's figures.
  *
  * Not four cards. Four figures in one ruled strip, because they are peers:
  * the same size, the same weight, the same rhythm, separated by hairlines
  * rather than boxes. A row of equal cards is the template default, and it
  * makes the reader hunt for the number that matters.
  *
- * Each cell links through to the surface that owns the figure, so the
- * number is a way in rather than a decoration.
+ * Every figure carries a second line that is a real measurement. A label
+ * that restates the label above it — "Evidence-linked" under "Analyses
+ * executed" — is decoration, and decoration in a metrics strip is noise.
  */
 const FIGURES = [
   { id: 'knowledge-bases', label: 'Knowledge bases', to: '/knowledge-bases' },
@@ -19,44 +20,22 @@ const FIGURES = [
   { id: 'claims', label: 'Claims decomposed', to: '/claims' },
 ]
 
-export function MetricsGrid({ stats, kbs, analyses, claims, conflicts }) {
-  const values = {
-    'knowledge-bases': {
-      value: kbs.length,
-      meta: `${stats.totalDocs} documents`,
-    },
-    analyses: {
-      value: analyses.length,
-      meta: 'Evidence-linked',
-    },
-    reliability: {
-      value: stats.avgReliabilityDisplay,
-      meta: 'Threshold 75%',
-      // A mean below the threshold is the one figure on this screen that is
-      // an alarm, so it is the one figure that carries crimson.
-      alarm: stats.avgReliabilityDisplay !== '--' && Number(stats.avgReliability) < 75,
-    },
-    claims: {
-      value: stats.totalClaimsCount || claims.length,
-      meta: conflicts?.length
-        ? `${stats.supportedClaims} verified · ${conflicts.length} flagged`
-        : `${stats.supportedClaims} verified`,
-      alarm: Boolean(conflicts?.length),
-    },
-  }
+export function StatStrip({ stats }) {
+  const { figures } = stats
 
   return (
     <div className="lx-statstrip">
       {FIGURES.map(({ id, label, to }) => {
-        const { value, meta, alarm } = values[id]
-
+        const figure = figures[id]
         const body = (
           <>
             <span className="lx-stat__label">{label}</span>
-            <span className={`lx-stat__value${alarm ? ' lx-stat__value--alarm' : ''}`}>
-              {value}
+            <span
+              className={`lx-stat__value${figure.alarm ? ' lx-stat__value--alarm' : ''}`}
+            >
+              {figure.value}
             </span>
-            <span className="lx-stat__meta">{meta}</span>
+            <span className="lx-stat__meta">{figure.meta}</span>
           </>
         )
 

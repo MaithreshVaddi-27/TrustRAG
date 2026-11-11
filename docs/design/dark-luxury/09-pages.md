@@ -7,10 +7,10 @@ implemented and verified before the next begins.
 
 ## The order
 
-| Phase | Surface | Depends on |
-|---|---|---|
-| P4.1 | Application shell | — |
-| P4.2 | Dashboard | shell |
+| Phase | Surface | Depends on | State |
+|---|---|---|---|
+| P4.1 | Application shell | — | Done |
+| P4.2 | Dashboard | shell | Done |
 | P4.3 | Knowledge bases | shell |
 | P4.4 | Documents | knowledge bases |
 | P4.5 | Playground | shell, knowledge bases |
@@ -98,6 +98,96 @@ falls back to the local part of the email — "AR" for "Audit Reviewer",
   `robots.txt` disallows them. That is deliberate — the workbench requires
   a session and is not useful in an index — so the score is expected. The
   public landing page scores 100.
+
+---
+
+## P4.2 — Dashboard
+
+The operator's overview. Four questions, in the order they matter.
+
+### What was wrong
+
+| # | Problem | Severity |
+|---|---|---|
+| 1 | The page opened with a marketing panel — the product's own name and a pitch. A dashboard is not a landing page, and the hero repeated what the top bar already said. | High |
+| 2 | **The mean reliability averaged abstentions in.** A run that abstained scores zero because there was no answer, not because the answer was unreliable. Averaging those in reported an unreliable answer where the system reported none. | High |
+| 3 | Nothing on the screen said what had gone wrong. Conflicts were fetched, counted, and folded into a subtitle — the one number that mattered was the one that was least visible. | High |
+| 4 | "Synced less than a minute ago" was updated by a timer every 30 seconds. It measured the clock, not the data. | High |
+| 5 | "Analyses executed · Evidence-linked" was a label restating the label above it. The run had actually abstained. | Medium |
+| 6 | "Claims decomposed · 0 verified · 2 flagged" mixed two different populations — verified claims and source conflicts — into one figure's subtitle, and never showed contradicted claims at all. | Medium |
+| 7 | "Inspect" on every run linked to the playground, which starts a *new* run. There was no way to reach a specific run's trace from the list. | Medium |
+| 8 | The same pipeline primer was on the dashboard and in the playground's empty state, for every user, on every visit. | Medium |
+| 9 | The knowledge bases were a bare count. Nothing said whether a collection was queryable. | Medium |
+| 10 | "Run analysis" appeared twice — in the top bar and in the page header — 60px apart. | Low |
+
+### What changed
+
+**The page answers four questions, in order.**
+
+1. **What needs my attention?** — `AttentionPanel` leads the page. It lists
+   contradicted claims, source conflicts and runs that produced no verified
+   answer, each with what it means and where to go. When there is nothing,
+   it says so in one line: silence would be ambiguous.
+2. **How is the corpus doing?** — `StatStrip` (four figures, one ruled strip)
+   and `WorkspacePanel` (the collections, their document counts, their
+   pinned vector space and when they were last queried).
+3. **Is reliability holding?** — the reliability progression and the claim
+   distribution.
+4. **What has happened lately?** — `ActivityFeed`, every run and what the
+   verifier concluded.
+
+**The metrics are honest.**
+
+- Mean reliability is computed over **delivered answers only**. Runs that
+  abstained or failed are counted separately, and the figure says how many
+  answers it covers.
+- The reliability curve plots delivered answers only, and the panel's
+  footnote says how many runs were left off it.
+- Every figure's second line is a real measurement. "Evidence-linked" was
+  decoration; it is now "1 answered · 1 without an answer".
+- "Synced X ago" comes from the least fresh feed's own fetch timestamp, so
+  it moves when the data moves.
+
+**The activity feed reads the run.** Each row carries the query, the
+verdict, the collection it ran against, the time and a link to that run's
+trace — `/traces/:id`, which is the only per-run view the product has. The
+verdict badge appears only when there is a verdict: a run with no answer
+shows its status, not a 0% score in crimson.
+
+**The primer is a first-run guide.** The pipeline layer stack is shown
+only while the workspace has never run anything. After the first run it
+is noise, and it is already on the playground's empty state.
+
+**The workspace is a specification, not a count.** A table: collection,
+documents, vector space, last run.
+
+### Files
+
+| File | Change |
+|---|---|
+| `pages/DashboardPage.jsx` | Rewritten around the four questions |
+| `components/dashboard/StatStrip.jsx` | New — replaces `MetricsGrid` |
+| `components/dashboard/AttentionPanel.jsx` | New |
+| `components/dashboard/WorkspacePanel.jsx` | New |
+| `components/dashboard/ActivityFeed.jsx` | New — replaces `RecentAnalysesFeed` |
+| `components/dashboard/ReliabilityChart.jsx` | Plots delivered answers only |
+| `components/dashboard/HeroBanner.jsx` | Deleted — marketing copy on an app screen |
+| `components/dashboard/MetricsGrid.jsx` | Deleted |
+| `components/dashboard/ObservabilityBar.jsx` | Deleted — folded into the page header |
+| `components/dashboard/RecentAnalysesFeed.jsx` | Deleted |
+| `pages/DashboardPage.test.jsx` | New — 8 tests over the metric rules |
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean |
+| `npm run test` | 9 files, 43 tests, all pass |
+| `npm run build` | Succeeds in ~2.2s |
+| Lighthouse — dashboard | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
+| Responsive | No page or top-bar overflow at 1440 / 1280 / 1024 / 768 / 390 / 320 |
+| Landmarks | One `<main>`, one `<h1>`, headings in order |
+| Console | 0 errors, 0 warnings |
 
 ---
 
