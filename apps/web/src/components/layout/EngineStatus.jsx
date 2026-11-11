@@ -10,110 +10,150 @@ import { providerShortLabel, shortModelId } from '@/lib/modelLabels'
  * registry actually say.
  *
  * Four states, and each one names the problem rather than glossing it:
- * unreachable, not yet known, not configured, and running.
+ * unreachable, not yet known, not configured, and running. "Not yet known"
+ * and "not configured" are different answers, and a registry that has not
+ * been read yet must never be reported as an empty one.
  */
-export function EngineStatus({ isOnline, providersData }) {
-  const activeProvider = providersData?.active_provider
-  const engine = activeProvider ? providersData?.providers?.[activeProvider] : null
+export function EngineStatus({ isOnline, providers }) {
+  const { data, isLoading, isError } = providers
+
+  const activeProvider = data?.active_provider
+  const engine = activeProvider ? data?.providers?.[activeProvider] : null
 
   // ── The backend did not answer ────────────────────────────────────────────
   if (isOnline === false) {
     return (
-      <div className="lx-sidebar__status lx-sidebar__status--alarm">
-        <ServerOff
-          size={15}
-          strokeWidth={1.5}
-          aria-hidden="true"
-          focusable="false"
-          className="shrink-0"
-        />
-        <div className="min-w-0">
-          <p className="lx-sidebar__status-title truncate">Engine unreachable</p>
-          <p className="lx-sidebar__status-meta truncate">API server not responding</p>
-        </div>
-      </div>
+      <Status
+        icon={<ServerOff size={15} strokeWidth={1.5} aria-hidden="true" focusable="false" />}
+        title="Engine unreachable"
+        meta="API server not responding"
+        alarm
+      />
     )
   }
 
   // ── We have never had an answer ───────────────────────────────────────────
   if (isOnline === null) {
     return (
-      <div className="lx-sidebar__status">
-        <Circle
-          size={15}
-          strokeWidth={1.5}
-          aria-hidden="true"
-          focusable="false"
-          className="shrink-0 text-silver-500"
-        />
-        <div className="min-w-0">
-          <p className="lx-sidebar__status-title truncate">Checking engine</p>
-          <p className="lx-sidebar__status-meta truncate">Probing the health endpoint</p>
-        </div>
-      </div>
+      <Status
+        icon={
+          <Circle
+            size={15}
+            strokeWidth={1.5}
+            aria-hidden="true"
+            focusable="false"
+            className="text-silver-500"
+          />
+        }
+        title="Checking engine"
+        meta="Probing the health endpoint"
+      />
     )
   }
 
-  // ── The backend answered, but the registry names no engine ─────────────────
+  // ── The registry has not been read yet ─────────────────────────────────────
+  if (isLoading && !data) {
+    return (
+      <Status
+        icon={
+          <Circle
+            size={15}
+            strokeWidth={1.5}
+            aria-hidden="true"
+            focusable="false"
+            className="text-silver-500"
+          />
+        }
+        title="Checking engine"
+        meta="Reading the provider registry"
+      />
+    )
+  }
+
+  // ── The registry could not be read ─────────────────────────────────────────
+  if (isError && !data) {
+    return (
+      <Status
+        icon={
+          <CircleSlash
+            size={15}
+            strokeWidth={1.5}
+            aria-hidden="true"
+            focusable="false"
+            className="text-silver-500"
+          />
+        }
+        title="Registry unavailable"
+        meta="The provider list could not be read"
+      />
+    )
+  }
+
+  // ── The registry names no engine ───────────────────────────────────────────
   if (!activeProvider) {
     return (
-      <div className="lx-sidebar__status">
-        <CircleSlash
-          size={15}
-          strokeWidth={1.5}
-          aria-hidden="true"
-          focusable="false"
-          className="shrink-0 text-silver-500"
-        />
-        <div className="min-w-0">
-          <p className="lx-sidebar__status-title truncate">Engine not configured</p>
-          <p className="lx-sidebar__status-meta truncate">
-            No active provider in the registry
-          </p>
-        </div>
-      </div>
+      <Status
+        icon={
+          <CircleSlash
+            size={15}
+            strokeWidth={1.5}
+            aria-hidden="true"
+            focusable="false"
+            className="text-silver-500"
+          />
+        }
+        title="Engine not configured"
+        meta="No active provider in the registry"
+      />
     )
   }
 
   // ── The provider is named but is not answering ────────────────────────────
   if (engine && !engine.connected) {
     return (
-      <div className="lx-sidebar__status">
-        <CircleSlash
-          size={15}
-          strokeWidth={1.5}
-          aria-hidden="true"
-          focusable="false"
-          className="shrink-0 text-silver-500"
-        />
-        <div className="min-w-0">
-          <p className="lx-sidebar__status-title truncate">
-            {providerShortLabel(activeProvider)} not responding
-          </p>
-          <p className="lx-sidebar__status-meta truncate">
-            {engine.error || 'The inference server is unreachable'}
-          </p>
-        </div>
-      </div>
+      <Status
+        icon={
+          <CircleSlash
+            size={15}
+            strokeWidth={1.5}
+            aria-hidden="true"
+            focusable="false"
+            className="text-silver-500"
+          />
+        }
+        title={`${providerShortLabel(activeProvider)} not responding`}
+        meta={engine.error || 'The inference server is unreachable'}
+      />
     )
   }
 
   // ── Running ───────────────────────────────────────────────────────────────
   return (
-    <div className="lx-sidebar__status">
-      <Activity
-        size={15}
-        strokeWidth={1.5}
-        aria-hidden="true"
-        focusable="false"
-        className="shrink-0 text-silver-400"
-      />
+    <Status
+      icon={
+        <Activity
+          size={15}
+          strokeWidth={1.5}
+          aria-hidden="true"
+          focusable="false"
+          className="text-silver-400"
+        />
+      }
+      title="Engine online"
+      meta={`${providerShortLabel(activeProvider)}${
+        engine?.default_model ? ` · ${shortModelId(engine.default_model)}` : ''
+      }`}
+    />
+  )
+}
+
+function Status({ icon, title, meta, alarm = false }) {
+  return (
+    <div className={`lx-sidebar__status${alarm ? ' lx-sidebar__status--alarm' : ''}`}>
+      <span className="shrink-0">{icon}</span>
       <div className="min-w-0">
-        <p className="lx-sidebar__status-title truncate">Engine online</p>
-        <p className="lx-sidebar__status-meta truncate">
-          {providerShortLabel(activeProvider)}
-          {engine?.default_model ? ` · ${shortModelId(engine.default_model)}` : ''}
-        </p>
+        <p className="lx-sidebar__status-title truncate">{title}</p>
+        <p className="lx-sidebar__status-meta truncate">{meta}</p>
       </div>
     </div>
   )

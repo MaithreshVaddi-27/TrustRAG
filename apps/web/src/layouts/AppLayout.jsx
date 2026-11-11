@@ -22,14 +22,14 @@ import { modelService } from '@/services/api'
  */
 export default function AppLayout({ children }) {
   const location = useLocation()
-  const { isOnline, isChecking, recheck } = useBackendHealth()
+  const { isOnline, recheck } = useBackendHealth()
   const { isCollapsed, toggleSidebar, sidebarWidth } = useSidebar()
   const [isMobileOpen, setIsMobileOpen] = useState(false)
 
   // The engine's state belongs in the sidebar footer, so the shell reads it
   // once and hands it down. React Query dedupes the request against the
   // header's own query on the same key.
-  const { data: providersData } = useQuery({
+  const providersQuery = useQuery({
     queryKey: ['model-providers'],
     queryFn: modelService.getProviders,
     staleTime: 30000,
@@ -48,7 +48,6 @@ export default function AppLayout({ children }) {
 
       <Navbar
         isOnline={isOnline}
-        isChecking={isChecking}
         recheck={recheck}
         setIsMobileOpen={setIsMobileOpen}
       />
@@ -61,8 +60,7 @@ export default function AppLayout({ children }) {
           sidebarWidth={sidebarWidth}
           toggleSidebar={toggleSidebar}
           isOnline={isOnline}
-          isChecking={isChecking}
-          providersData={providersData}
+          providers={providersQuery}
         />
 
         <MobileDrawer isMobileOpen={isMobileOpen} setIsMobileOpen={setIsMobileOpen} />

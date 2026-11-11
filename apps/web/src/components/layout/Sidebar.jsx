@@ -19,8 +19,7 @@ export function Sidebar({
   sidebarWidth,
   toggleSidebar,
   isOnline,
-  isChecking,
-  providersData,
+  providers,
 }) {
   return (
     <aside
@@ -45,11 +44,7 @@ export function Sidebar({
 
       <div className="lx-sidebar__footer">
         {!isCollapsed && (
-          <EngineStatus
-            isOnline={isOnline}
-            isChecking={isChecking}
-            providersData={providersData}
-          />
+          <EngineStatus isOnline={isOnline} providers={providers} />
         )}
 
         <button
