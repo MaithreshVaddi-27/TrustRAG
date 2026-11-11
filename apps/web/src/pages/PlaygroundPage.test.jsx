@@ -56,24 +56,48 @@ describe('PlaygroundPage engine selection', () => {
     localStorage.clear()
   })
 
-  it('auto-selects the discovered default model so runs never use DEFAULT', async () => {
+  it('auto-selects a model the provider actually offers so runs never use DEFAULT', async () => {
     renderPage()
 
     await waitFor(() => {
       const raw = localStorage.getItem('trustrag.playground.engine')
       expect(raw).toBeTruthy()
-      expect(JSON.parse(raw).model).toBe('LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M')
+      // The provider advertises exactly one model. The selected model must be
+      // that one — a model the provider does not offer is rejected by the
+      // server with "Model is not enabled for provider".
+      expect(JSON.parse(raw).model).toBe('org/Picked-Model-GGUF:Q4_K_M')
     })
 
     // Top telemetry bar reflects the selection with the full id available.
     await waitFor(() => {
-      const pill = document.querySelector('[title*="LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"]')
+      const pill = document.querySelector('[title*="org/Picked-Model-GGUF:Q4_K_M"]')
       expect(pill).toBeTruthy()
     })
-    // Pill text shows the short label (LFM2.5-1.2B-Instruct) — confirm the pill rendered.
-    expect(
-      screen.getAllByText((_, el) => el?.textContent?.includes('LFM2.5-1.2B-Instruct')).length
-    ).toBeGreaterThan(0)
+  })
+
+  it('prefers the server active model when the provider offers it', async () => {
+    const { modelService } = await import('@/services/api')
+    vi.mocked(modelService.getProviders).mockResolvedValueOnce({
+      active_provider: 'llama_cpp',
+      active_model: 'org/Picked-Model-GGUF:Q4_K_M',
+      active_embedding_provider: 'onnx',
+      active_embedding_model: 'BAAI/bge-small-en-v1.5',
+      providers: {
+        llama_cpp: {
+          connected: true,
+          default_model: 'org/Other-Model-GGUF:Q4_K_M',
+          models: ['org/Picked-Model-GGUF:Q4_K_M', 'org/Other-Model-GGUF:Q4_K_M'],
+        },
+      },
+    })
+
+    renderPage()
+
+    await waitFor(() => {
+      const raw = localStorage.getItem('trustrag.playground.engine')
+      expect(raw).toBeTruthy()
+      expect(JSON.parse(raw).model).toBe('org/Picked-Model-GGUF:Q4_K_M')
+    })
   })
 
   it('shows the offline warning when the providers query fails', async () => {

@@ -2,12 +2,11 @@
  * Order matters.
  *
  *   1. Tokens — every `var(--…)` in the codebase resolves from here.
- *   2. Legacy application stylesheets (dashboard, playground, workbench).
- *      These still reference the older token names; `tokens/compat.css`
- *      re-points those names at the new palette.
- *   3. Base — element defaults and the browser surfaces nobody designed.
+ *   2. Motion and materials — the few global keyframes and the browser
+ *      surfaces nobody designed.
+ *   3. Base — element defaults.
  *   4. Utilities — the small shared vocabulary.
- *   5. Components — the landing system.
+ *   5. Components — the landing system, then the application surfaces.
  *
  * Tailwind's layers come last so utility classes win on a tie, which is the
  * convention the rest of the codebase already assumes.
@@ -15,7 +14,6 @@
 
 @import './tokens/index.css';
 
-@import './typography.css';
 @import './animations.css';
 @import './materials.css';
 @import './landing.css';
@@ -23,10 +21,11 @@
 
 @import './base.css';
 @import './utilities.css';
-@import './legacy-components.css';
 @import './components/index.css';
 @import './app/shell.css';
 @import './app/auth.css';
+@import './app/surfaces.css';
+@import './app/markdown.css';
 
 @tailwind base;
 @tailwind components;

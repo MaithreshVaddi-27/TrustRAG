@@ -1,22 +1,21 @@
-import { motion } from 'motion/react'
-import { SPRING_SNAPPY } from '@/lib/motionConfig'
 import { ClaimInspector } from '@/components/workbench/ClaimInspector'
 
 export function ClaimsTab({ analysis }) {
+  const abstained =
+    analysis.status === 'abstained' || analysis.reliability?.status === 'ABSTAINED'
+
   return (
-    <motion.div
-      key="claims"
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={SPRING_SNAPPY}
-    >
-      {analysis.status === 'abstained' || analysis.reliability?.status === 'ABSTAINED' ? (
-        <p className="mb-3 rounded-lg border border-amber-800/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-300">
-          The generated draft was checked against the evidence, but the final answer was withheld. These claim verdicts apply to that draft, not the abstention message.
-        </p>
-      ) : null}
+    <div className="space-y-4">
+      {abstained && (
+        <div className="lx-message" role="status">
+          <span>
+            The generated draft was checked against the evidence, but the final
+            answer was withheld. These verdicts apply to the draft, not to the
+            abstention message.
+          </span>
+        </div>
+      )}
       <ClaimInspector claims={analysis.claims || []} />
-    </motion.div>
+    </div>
   )
 }

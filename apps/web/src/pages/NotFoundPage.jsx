@@ -1,22 +1,24 @@
 import { Link } from 'react-router-dom'
-import { ShieldAlert, ArrowLeft } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 
 export default function NotFoundPage() {
   return (
-    <div className="min-h-screen supports-[min-height:100dvh]:min-h-dvh bg-surface-950 flex flex-col items-center justify-center px-4">
+    <div className="lx-auth">
       <div className="text-center max-w-md">
-        <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-surface-900 border border-slate-800 flex items-center justify-center">
-          <ShieldAlert size={32} className="text-slate-500" />
+        <p className="lx-micro">Error 404</p>
+
+        <h1 className="lx-display-sm mt-3">This page does not exist.</h1>
+
+        <p className="lx-body mt-4">
+          The address may be out of date, or the page may have been moved.
+        </p>
+
+        <div className="mt-8 flex items-center justify-center">
+          <Link to="/" className="lx-btn lx-btn--primary">
+            <ArrowLeft size={15} strokeWidth={1.5} aria-hidden="true" />
+            <span>Back to the overview</span>
+          </Link>
         </div>
-        <h1 className="text-display-sm text-white mb-3">404</h1>
-        <p className="text-body text-slate-400 mb-8">This page doesn&apos;t exist or has been moved.</p>
-        <Link
-          to="/"
-          className="btn-primary inline-flex"
-        >
-          <ArrowLeft size={16} />
-          <span>Return Home</span>
-        </Link>
       </div>
     </div>
   )

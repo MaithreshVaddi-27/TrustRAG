@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { TrustRagEmblem } from '@/components/common/TrustRagLogo'
-import { FOOTER } from './landingData'
+import { FOOTER } from './data/footer'
 
 /**
  * LandingFooter — a ruled index.

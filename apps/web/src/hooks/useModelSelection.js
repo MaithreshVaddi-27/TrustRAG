@@ -2,64 +2,103 @@ import { useState, useEffect, useCallback } from 'react'
 
 const LOCAL_PROVIDERS = ['ollama', 'llama_cpp', 'mlx']
 
-const PROVIDER_DEFAULTS = {
-  ollama: 'granite4.2:3b-q4_K_M',
-  llama_cpp: 'occ-ai/OCC-RAG-1.7B-GGUF:Q4_K_M',
-  mlx: 'mlx-community/Llama-3.2-1B-Instruct-4bit',
-  gemini: 'gemini-3.5-flash-lite',
-}
-
+/**
+ * useModelSelection — which engine the playground runs on.
+ *
+ * The default is the server's ACTIVE engine, not the first model a provider
+ * happens to advertise. The two are not the same: a provider can list a
+ * model it has downloaded that the platform registry does not enable, and
+ * the server rejects the request with "Model is not enabled for provider".
+ * Adopting the server's active pair means the default always works.
+ *
+ * The user can still override either half; an override is kept as long as
+ * it is one the provider actually offers.
+ */
 export function useModelSelection(providersData) {
-  const [selectedProvider, setSelectedProvider] = useState('llama_cpp')
-  const [selectedModel, setSelectedModel] = useState('LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M')
+  const [selectedProvider, setSelectedProviderState] = useState(null)
+  const [selectedModel, setSelectedModel] = useState('')
   const [providersUnresolved, setProvidersUnresolved] = useState(false)
   const [refetchTrigger, setRefetchTrigger] = useState(0)
 
-  const activeProviderInfo = providersData?.providers?.[selectedProvider]
-  const availableModels = activeProviderInfo?.models?.length
-    ? [...new Set(activeProviderInfo.models)]
-    : []
+  const providers = providersData?.providers
 
-  // Publish effective engine to telemetry bar
+  const modelsFor = useCallback(
+    (providerKey) => {
+      const models = providers?.[providerKey]?.models
+      return models?.length ? [...new Set(models)] : []
+    },
+    [providers],
+  )
+
+  const activeProviderInfo = providers?.[selectedProvider]
+  const availableModels = modelsFor(selectedProvider)
+
+  // Adopt the server's active provider once it is known.
   useEffect(() => {
+    const provider = providersData?.active_provider
+    if (!provider) return
+    setSelectedProviderState((previous) => previous ?? provider)
+  }, [providersData?.active_provider])
+
+  // Adopt the server's active model when it belongs to the selected
+  // provider; otherwise fall back to the provider's own default, and then
+  // to whatever the provider does offer.
+  useEffect(() => {
+    if (!selectedProvider) return
+
+    const models = modelsFor(selectedProvider)
+    const serverActive = providersData?.active_model
+
+    setSelectedModel((previous) => {
+      if (previous && models.includes(previous)) return previous
+      if (
+        selectedProvider === providersData?.active_provider &&
+        serverActive &&
+        models.includes(serverActive)
+      ) {
+        return serverActive
+      }
+      const advertised = providers?.[selectedProvider]?.default_model
+      if (advertised && models.includes(advertised)) return advertised
+      return models[0] || ''
+    })
+  }, [selectedProvider, modelsFor, providers, providersData?.active_model, providersData?.active_provider])
+
+  // Publish the effective engine to the telemetry bar.
+  useEffect(() => {
+    if (!selectedProvider) return
     try {
-      localStorage.setItem('trustrag.playground.engine', JSON.stringify({
-        provider: selectedProvider,
-        model: selectedModel,
-        ts: Date.now(),
-      }))
+      localStorage.setItem(
+        'trustrag.playground.engine',
+        JSON.stringify({
+          provider: selectedProvider,
+          model: selectedModel,
+          ts: Date.now(),
+        }),
+      )
       window.dispatchEvent(new CustomEvent('trustrag:engine-change'))
     } catch {
       // private-mode storage denial must never break the workbench
     }
   }, [selectedProvider, selectedModel])
 
-  // Auto-select default model when provider changes
-  const activeProviderDefault = providersData?.providers?.[selectedProvider]?.default_model
+  // Detect unresolved providers (backend down).
   useEffect(() => {
-    if (!selectedModel && activeProviderDefault) {
-      setSelectedModel(activeProviderDefault)
-    }
-  }, [activeProviderDefault, selectedModel])
-
-  // Detect unresolved providers (backend down)
-  useEffect(() => {
-    const data = providersData
-    setProvidersUnresolved(!data && !data?.providers)
+    setProvidersUnresolved(!providersData && !providersData?.providers)
   }, [providersData])
 
-  const handleProviderChange = useCallback((providerKey) => {
-    setSelectedProvider(providerKey)
-    const prov = providersData?.providers?.[providerKey]
-    if (prov?.default_model) {
-      setSelectedModel(prov.default_model)
-    } else if (PROVIDER_DEFAULTS[providerKey]) {
-      setSelectedModel(PROVIDER_DEFAULTS[providerKey])
-    }
-  }, [providersData])
+  const handleProviderChange = useCallback(
+    (providerKey) => {
+      setSelectedProviderState(providerKey)
+      const models = modelsFor(providerKey)
+      const advertised = providers?.[providerKey]?.default_model
+      setSelectedModel(models.includes(advertised) ? advertised : (models[0] || ''))
+    },
+    [modelsFor, providers],
+  )
 
   const refetchProviders = useCallback(() => {
-    setRefetchTrigger(t => t + 1)
+    setRefetchTrigger((t) => t + 1)
   }, [])
 
   return {

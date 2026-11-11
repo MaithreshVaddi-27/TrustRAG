@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { clsx } from 'clsx'
-import { PIPELINE_STAGES, PIPELINE_OUTPUT } from './landingData'
+import { PIPELINE_STAGES, PIPELINE_OUTPUT } from './data/pipeline'
 
 /**
  * PipelineDiagram — the signature technical visualisation.

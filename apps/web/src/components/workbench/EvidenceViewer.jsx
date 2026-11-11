@@ -1,53 +1,65 @@
-import { memo, useState, useMemo } from 'react'
-import { clsx } from 'clsx'
-import { BookOpen, Calendar, ExternalLink, Hash, Shield, ShieldAlert, Search, Globe, Database, Copy, Check } from 'lucide-react'
-import { motion } from 'motion/react'
+import { memo, useMemo, useState } from 'react'
+import { BookOpen, Search, Globe, Database } from 'lucide-react'
+import EvidenceChunk from './EvidenceChunk'
 import { copyToClipboard } from '@/lib/clipboard'
-import { SPRING_SNAPPY } from '@/lib/motionConfig'
 import { isWebSource } from '@/lib/claimState'
 
 /**
- * EvidenceViewer — Ultra-refined retrieved evidence viewer with live keyword filter,
- * source segregation (KB vs MCP Web), and score bars.
+ * EvidenceViewer — the retrieved passages, with their provenance.
+ *
+ * Three filters: where the passage came from, how it was retrieved, and a
+ * free-text filter over the passage and its filename. The counts in the
+ * source filter are always shown, so a reader can see how much of the
+ * evidence is web-sourced without switching filter.
  *
  * Memoized (FE-M3): re-renders only when the chunks array reference changes.
  */
+const SOURCES = [
+  { id: 'ALL', label: 'All' },
+  { id: 'KB', label: 'Local KB', icon: Database },
+  { id: 'WEB', label: 'MCP web', icon: Globe },
+]
+
 export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
   const [searchTerm, setSearchTerm] = useState('')
-  const [sourceFilter, setSourceFilter] = useState('ALL') // 'ALL' | 'KB' | 'WEB'
-  const [methodFilter, setMethodFilter] = useState('ALL') // 'ALL' | 'hybrid' | 'dense' | 'sparse'
+  const [sourceFilter, setSourceFilter] = useState('ALL')
+  const [methodFilter, setMethodFilter] = useState('ALL')
   const [copiedIndex, setCopiedIndex] = useState(null)
 
   const counts = useMemo(() => {
-    let webCount = 0
-    let kbCount = 0
-    chunks.forEach(c => {
-      if (isWebSource(c)) {
-        webCount++
-      } else {
-        kbCount++
-      }
+    let web = 0
+    let kb = 0
+    chunks.forEach((chunk) => {
+      if (isWebSource(chunk)) web += 1
+      else kb += 1
     })
-    return { all: chunks.length, web: webCount, kb: kbCount }
+    return { all: chunks.length, web, kb }
   }, [chunks])
 
-  const filteredChunks = useMemo(() => {
-    return chunks.filter(c => {
-      const isWeb = isWebSource(c)
-      if (sourceFilter === 'KB' && isWeb) return false
-      if (sourceFilter === 'WEB' && !isWeb) return false
+  const filteredChunks = useMemo(
+    () =>
+      chunks.filter((chunk) => {
+        const isWeb = isWebSource(chunk)
+        if (sourceFilter === 'KB' && isWeb) return false
+        if (sourceFilter === 'WEB' && !isWeb) return false
 
-      if (methodFilter !== 'ALL' && c.method?.toLowerCase() !== methodFilter.toLowerCase()) {
-        return false
-      }
+        if (
+          methodFilter !== 'ALL' &&
+          chunk.method?.toLowerCase() !== methodFilter.toLowerCase()
+        ) {
+          return false
+        }
 
-      if (!searchTerm.trim()) return true
-      const term = searchTerm.toLowerCase()
-      const textMatch = (c.text || '').toLowerCase().includes(term)
-      const fileMatch = (c.filename || c.document_id || '').toLowerCase().includes(term)
-      return textMatch || fileMatch
-    })
-  }, [chunks, searchTerm, sourceFilter, methodFilter])
+        if (!searchTerm.trim()) return true
+        const term = searchTerm.toLowerCase()
+        const textMatch = (chunk.text || '').toLowerCase().includes(term)
+        const fileMatch = (chunk.filename || chunk.document_id || '')
+          .toLowerCase()
+          .includes(term)
+        return textMatch || fileMatch
+      }),
+    [chunks, searchTerm, sourceFilter, methodFilter],
+  )
 
   const handleCopy = async (text, rank) => {
     const ok = await copyToClipboard(text)
@@ -58,97 +70,93 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
 
   if (chunks.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 text-center text-slate-500 border border-slate-800 rounded-2xl bg-surface-900/40">
-        <BookOpen size={24} className="text-slate-600 mb-2" />
-        <p className="text-sm font-medium text-slate-300">No Evidence Segments Retrieved</p>
-        <p className="text-xs text-slate-500 mt-1 max-w-sm">
-          No passages matched the hybrid search query thresholds or knowledge base is currently unindexed.
-        </p>
+      <div className="lx-panel-block">
+        <div className="lx-empty">
+          <BookOpen size={22} strokeWidth={1.5} className="lx-empty__icon" aria-hidden="true" />
+          <p className="lx-empty__title">No evidence segments retrieved</p>
+          <p className="lx-empty__body">
+            No passages matched the hybrid search thresholds, or the knowledge
+            base has not been indexed yet.
+          </p>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="space-y-4">
-      {/* Search & Source Filter Bar */}
-      <div className="p-3 rounded-xl border border-slate-800 bg-surface-900/60 backdrop-blur-sm flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm">
-        {/* Search box */}
-        <div className="relative w-full sm:w-72">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+      <div className="lx-toolbar">
+        <div className="relative w-full max-w-xs">
+          <Search
+            size={14}
+            strokeWidth={1.75}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-silver-500"
+          />
           <input
             id="evidence-search-input"
             name="evidence-search"
-            type="text"
+            type="search"
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Filter evidence text or filename…"
-            aria-label="Filter evidence text or filename"
-            className="w-full bg-surface-800 border border-slate-700/80 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Filter the evidence text or filename"
+            aria-label="Filter the evidence text or filename"
+            className="lx-control pl-9"
           />
         </div>
 
-        {/* Source Pills & Method Filter */}
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-          {/* Method selector */}
+        <div className="lx-toolbar__group">
           <select
             id="evidence-method-filter"
             name="evidence-method"
             value={methodFilter}
-            onChange={e => setMethodFilter(e.target.value)}
-            className="bg-surface-800 border border-slate-700/80 rounded-lg px-2 py-1 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 cursor-pointer"
+            onChange={(event) => setMethodFilter(event.target.value)}
             aria-label="Filter by retrieval method"
+            className="lx-control w-auto"
           >
-            <option value="ALL">All Methods</option>
+            <option value="ALL">All methods</option>
             <option value="hybrid">Hybrid</option>
             <option value="dense">Dense</option>
             <option value="sparse">Sparse</option>
           </select>
 
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setSourceFilter('ALL')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                sourceFilter === 'ALL'
-                  ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-surface-800'
-              }`}
-            >
-              All ({counts.all})
-            </button>
-            <button
-              type="button"
-              onClick={() => setSourceFilter('KB')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1 cursor-pointer ${
-                sourceFilter === 'KB'
-                  ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-surface-800'
-              }`}
-            >
-              <Database size={12} className="text-cyan-400" />
-              <span>Local KB ({counts.kb})</span>
-            </button>
-            {counts.web > 0 && (
-              <button
-                type="button"
-                onClick={() => setSourceFilter('WEB')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1 cursor-pointer ${
-                  sourceFilter === 'WEB'
-                    ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/40 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-surface-800'
-                }`}
-              >
-                <Globe size={12} className="text-cyan-400" />
-                <span>MCP Web ({counts.web})</span>
-              </button>
-            )}
+          <div className="lx-tabs" role="group" aria-label="Filter by evidence source">
+            {SOURCES.map((source) => {
+              const count = counts[source.id.toLowerCase()] ?? 0
+              if (source.id === 'WEB' && counts.web === 0) return null
+              const Icon = source.icon
+              return (
+                <button
+                  key={source.id}
+                  type="button"
+                  onClick={() => setSourceFilter(source.id)}
+                  aria-pressed={sourceFilter === source.id}
+                  className="lx-tab"
+                >
+                  {Icon && <Icon size={12} strokeWidth={1.75} aria-hidden="true" />}
+                  {source.label}
+                  <span className="ml-1 font-mono text-[0.625rem] text-silver-500">{count}</span>
+                </button>
+              )
+            })}
           </div>
         </div>
       </div>
 
-      {/* Chunks List */}
-      <div className="space-y-3">
-{filteredChunks.map(chunk => {
+      {filteredChunks.length === 0 ? (
+        <div className="lx-panel-block">
+          <div className="lx-empty">
+            <Search size={22} strokeWidth={1.5} className="lx-empty__icon" aria-hidden="true" />
+            <p className="lx-empty__title">No passage matches this filter</p>
+            <p className="lx-empty__body">
+              Clear the search term, or choose a different source or retrieval
+              method.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filteredChunks.map((chunk) => {
             const rank = chunks.indexOf(chunk) + 1
             return (
               <EvidenceChunk
@@ -160,139 +168,8 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
               />
             )
           })}
-      </div>
+        </div>
+      )}
     </div>
   )
 })
-
-export function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
-  const [expanded, setExpanded] = useState(false)
-  // Fail-closed display: only an explicit VERIFIED earns the shield. Missing
-  // status (legacy rows) renders as UNVERIFIED, never as verified.
-  const integrityOk = chunk.integrity_status === 'VERIFIED'
-  const integrityLabel = chunk.integrity_status || 'UNVERIFIED'
-  const isWeb = isWebSource(chunk)
-  const isLong = chunk.text && chunk.text.length > 260
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={SPRING_SNAPPY}
-      className="glass-card p-5 space-y-3 hover:border-cyan-500/40 hover:shadow-lg transition-all duration-200"
-    >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xs font-mono font-bold text-slate-500 shrink-0">#{rank}</span>
-          {isWeb ? (
-            <Globe size={13} className="text-cyan-400 shrink-0" />
-          ) : (
-            <BookOpen size={13} className="text-primary-400 shrink-0" />
-          )}
-          <span className="text-sm font-semibold text-slate-200 truncate">
-            {chunk.filename ?? chunk.document_id ?? (isWeb ? 'MCP Web Citation' : 'Unknown source')}
-          </span>
-          {isWeb && (
-            <span className="px-1.5 py-[2px] rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800/40 text-[10px] font-mono shrink-0">
-              MCP
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <motion.button
-            type="button"
-            onClick={onCopy}
-            whileTap={{ scale: 0.9 }}
-            className="text-slate-500 hover:text-slate-300 p-1 rounded hover:bg-surface-800 transition-colors"
-            title="Copy evidence snippet"
-          >
-            {isCopied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-          </motion.button>
-          {integrityOk
-            ? <Shield size={13} className="text-emerald-400" title="Cryptographic provenance verified" />
-            : <ShieldAlert size={13} className="text-amber-400" title={integrityLabel} />
-          }
-          {!integrityOk && (
-            <span className="text-xs text-amber-400">{integrityLabel}</span>
-          )}
-        </div>
-      </div>
-
-      {/* Evidence text with spring expand/collapse */}
-      <div className="space-y-1.5">
-        <motion.div
-          className={clsx(
-            "border-l-2 pl-3 text-sm text-slate-300 leading-relaxed break-words font-normal",
-            isWeb ? "border-cyan-500/60 bg-cyan-950/10 py-1 rounded-r-md" : "border-primary-600/60 bg-surface-900/40 py-1 rounded-r-md",
-          )}
-          initial={!expanded && isLong ? { maxHeight: 120 } : { maxHeight: 'none' }}
-          animate={expanded || !isLong ? { maxHeight: 'none' } : { maxHeight: 120 }}
-          transition={SPRING_SNAPPY}
-          style={{ overflow: 'hidden' }}
-        >
-          {chunk.text}
-        </motion.div>
-        {isLong && (
-          <motion.button
-            type="button"
-            onClick={() => setExpanded(e => !e)}
-            whileTap={{ scale: 0.98 }}
-            className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium pl-3 transition-colors"
-          >
-            <motion.span
-              animate={{ rotate: expanded ? 180 : 0 }}
-              transition={SPRING_SNAPPY}
-              className="inline-block"
-            >
-              {expanded ? '▲' : '▼'}
-            </motion.span>
-            <span className="ml-1">Show {expanded ? 'less' : 'full segment'}</span>
-          </motion.button>
-        )}
-      </div>
-
-      {/* Scores + metadata */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1 border-t border-slate-800/60 text-xs text-slate-500 font-mono">
-        {chunk.dense_score != null || chunk.retrieval_score != null ? (
-          <span className="flex items-center gap-1">
-            dense: <span className="text-slate-300 font-bold">{(chunk.dense_score ?? chunk.retrieval_score).toFixed(3)}</span>
-          </span>
-        ) : null}
-        {chunk.rrf_score != null || chunk.fusion_score != null ? (
-          <span className="flex items-center gap-1">
-            rrf: <span className="text-slate-300 font-bold">{(chunk.rrf_score ?? chunk.fusion_score).toFixed(3)}</span>
-          </span>
-        ) : null}
-        {chunk.rerank_score != null && (
-          <span className="flex items-center gap-1">
-            rerank: <span className="text-slate-300 font-bold">{chunk.rerank_score.toFixed(3)}</span>
-          </span>
-        )}
-        {chunk.method && (
-          <span className="flex items-center gap-1 text-[11px] text-slate-400">
-            <Hash size={10} /> {chunk.method}
-          </span>
-        )}
-        {(chunk.effective_from || chunk.effective_until) && (
-          <span className="flex items-center gap-1 text-amber-400/80">
-            <Calendar size={10} />
-            {chunk.effective_from && new Date(chunk.effective_from).toLocaleDateString()}
-            {chunk.effective_until && ` → ${new Date(chunk.effective_until).toLocaleDateString()}`}
-          </span>
-        )}
-        {chunk.url ? (
-          <a
-            href={chunk.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-cyan-400 hover:text-cyan-300 underline flex items-center gap-1 ml-auto font-sans text-[11px]"
-          >
-            <span>Direct Citation</span>
-            <ExternalLink size={10} />
-          </a>
-        ) : null}
-      </div>
-    </motion.div>
-  )
-}

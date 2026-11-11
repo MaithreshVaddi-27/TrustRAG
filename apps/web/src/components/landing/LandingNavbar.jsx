@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import { TrustRagEmblem } from '@/components/common/TrustRagLogo'
-import { NAV_LINKS } from './landingData'
+import { NAV_LINKS } from './data/nav'
 
 /**
  * LandingNavbar — quiet chrome.

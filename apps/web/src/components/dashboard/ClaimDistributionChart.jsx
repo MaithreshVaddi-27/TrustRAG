@@ -1,94 +1,71 @@
-import { motion } from 'motion/react'
 import { ShieldCheck } from 'lucide-react'
-import { useReducedMotion } from 'motion/react'
-import {
-  ResponsiveContainer, BarChart, Bar,
-  XAxis, YAxis, Tooltip, Cell
-} from 'recharts'
-
-const SPRING_SNAPPY = { type: 'spring', damping: 28, stiffness: 220 }
+import VerdictBarChart from '@/components/charts/VerdictBarChart'
+import { VERDICT_COLORS } from '@/lib/chartTheme'
 
 /**
- * ClaimDistributionChart - Claim verification breakdown bar chart
- * Called by: DashboardPage.jsx (line 202)
- * No existing file serves this purpose - extracted from DashboardPage
- * Reads/writes: Receives stats object as prop
- * User instruction: "continue and Use asynchronous methods for better working with async and await"
+ * ClaimDistributionChart — how the audited claims broke down.
+ *
+ * A ranked bar, not a pie and not a card with three coloured boxes. One
+ * accent: supported is Chrome Silver, neutral is a quiet step, and only
+ * contradicted carries crimson.
  */
 export function ClaimDistributionChart({ stats }) {
-  const reduced = useReducedMotion()
-  const springTransition = reduced ? { duration: 0.01 } : SPRING_SNAPPY
-
-  const claimDistributionData = [
-    { name: 'Supported', count: stats.supportedClaims, color: '#10b981' },
-    { name: 'Neutral', count: stats.neutralClaims, color: '#f59e0b' },
-    { name: 'Contradicted', count: stats.contradictedClaims, color: '#ef4444' },
+  const series = [
+    { name: 'Supported', count: stats.supportedClaims, color: VERDICT_COLORS.supported },
+    { name: 'Neutral', count: stats.neutralClaims, color: VERDICT_COLORS.neutral },
+    { name: 'Contradicted', count: stats.contradictedClaims, color: VERDICT_COLORS.contradicted },
   ]
 
+  const hasClaims = stats.totalClaimsCount > 0
+
   return (
-    <motion.div
-      initial={reduced ? { opacity: 1 } : { opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={springTransition}
-      className="glass-card p-6 flex flex-col justify-between"
-    >
-      <div className="mb-4">
-        <h3 className="font-bold text-white text-base flex items-center gap-2">
-          <ShieldCheck size={16} className="text-emerald-400" aria-hidden="true" />
-          Claim Verification Audit
-        </h3>
-        <p className="text-xs text-slate-400 mt-0.5">
-          {stats.totalClaimsCount} atomic claims evaluated from history
-        </p>
+    <section className="lx-panel-block" aria-labelledby="claim-audit-heading">
+      <div className="lx-panel-block__head">
+        <h2 id="claim-audit-heading" className="lx-panel-block__title">
+          Claim verification audit
+        </h2>
+        <span className="lx-micro">{stats.totalClaimsCount} claims evaluated</span>
       </div>
 
-      {stats.totalClaimsCount === 0 ? (
-        <div className="h-48 w-full flex flex-col items-center justify-center text-center p-4 border border-dashed border-slate-800 rounded-xl bg-surface-900/40">
-          <ShieldCheck size={24} className="text-slate-600 mb-2" aria-hidden="true" />
-          <p className="text-xs text-slate-300 font-medium">No claims decomposed yet</p>
-          <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
-            Run a query in the Playground to extract and verify atomic assertions.
-          </p>
-        </div>
-      ) : (
-        <div className="h-48 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={claimDistributionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} />
-              <YAxis stroke="#64748b" fontSize={11} allowDecimals={false} tickLine={false} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#080c16',
-                  borderColor: '#1e293b',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  color: '#f8fafc',
-                }}
-              />
-              <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                {claimDistributionData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+      <div className="lx-panel-block__body">
+        {hasClaims ? (
+          <VerdictBarChart data={series} />
+        ) : (
+          <div className="lx-empty">
+            <ShieldCheck size={22} strokeWidth={1.5} className="lx-empty__icon" aria-hidden="true" />
+            <p className="lx-empty__title">No claims decomposed yet</p>
+            <p className="lx-empty__body">
+              Run a query in the playground to extract and verify atomic assertions.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {hasClaims && (
+        <div className="lx-panel-block__foot">
+          <dl className="lx-deflist">
+            <div className="lx-deflist__row">
+              <dt className="lx-deflist__key">Supported</dt>
+              <dd className="lx-deflist__value">
+                {stats.supportedClaims} · {stats.supportedRate}%
+              </dd>
+            </div>
+            <div className="lx-deflist__row">
+              <dt className="lx-deflist__key">Neutral</dt>
+              <dd className="lx-deflist__value">{stats.neutralClaims}</dd>
+            </div>
+            <div className="lx-deflist__row">
+              <dt className="lx-deflist__key">Contradicted</dt>
+              <dd
+                className="lx-deflist__value"
+                style={{ color: 'var(--color-crimson-300)' }}
+              >
+                {stats.contradictedClaims}
+              </dd>
+            </div>
+          </dl>
         </div>
       )}
-
-      <div className="grid grid-cols-3 gap-2 pt-4 border-t border-slate-800/80 text-center">
-        <div className="p-2 rounded-xl bg-emerald-950/20 border border-emerald-800/30">
-          <p className="text-xs text-emerald-400 font-bold">{stats.supportedClaims}</p>
-          <p className="text-[10px] text-slate-400">Supported ({stats.supportedRate}%)</p>
-        </div>
-        <div className="p-2 rounded-xl bg-amber-950/20 border border-amber-800/30">
-          <p className="text-xs text-amber-400 font-bold">{stats.neutralClaims}</p>
-          <p className="text-[10px] text-slate-400">Neutral</p>
-        </div>
-        <div className="p-2 rounded-xl bg-red-950/20 border border-red-800/30">
-          <p className="text-xs text-red-400 font-bold">{stats.contradictedClaims}</p>
-          <p className="text-[10px] text-slate-400">Contradicted</p>
-        </div>
-      </div>
-    </motion.div>
+    </section>
   )
 }

@@ -14,7 +14,12 @@
       "description": "Versioned REST API under /api/v1. GET /api/v1/health is unauthenticated; all other routes require a bearer token from POST /api/v1/auth/login.",
       "type": "application/json",
       "url": "https://trustrag.local/api/v1",
-      "methods": ["GET", "POST", "DELETE"]
+      "methods": ["GET", "POST", "DELETE"],
+      "representativeQueries": [
+        "TrustRAG verification API",
+        "claim verification endpoints",
+        "audit trail REST API"
+      ]
     },
     {
       "identifier": "urn:air:trustrag.local:workbench:mcp",
@@ -22,7 +27,12 @@
       "description": "Model Context Protocol server over JSON-RPC 2.0 stdio, exposing search, verification and audit tools to external agents.",
       "type": "application/json",
       "url": "https://trustrag.local/mcp",
-      "methods": ["POST"]
+      "methods": ["POST"],
+      "representativeQueries": [
+        "TrustRAG MCP server",
+        "Model Context Protocol verification tools",
+        "grounded search and claim audit tools"
+      ]
     },
     {
       "identifier": "urn:air:trustrag.local:workbench:openapi",
@@ -30,7 +40,12 @@
       "description": "The machine-readable contract for the versioned REST API.",
       "type": "application/json",
       "url": "https://trustrag.local/openapi.json",
-      "methods": ["GET"]
+      "methods": ["GET"],
+      "representativeQueries": [
+        "TrustRAG OpenAPI schema",
+        "machine-readable API contract",
+        "service version 1 endpoints"
+      ]
     }
   ]
 }

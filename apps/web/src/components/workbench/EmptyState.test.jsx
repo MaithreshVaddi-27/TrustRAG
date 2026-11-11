@@ -6,8 +6,8 @@ describe('EmptyState', () => {
   it('renders the idle workbench prompt', () => {
     render(<EmptyState onLoadSample={() => {}} />)
 
-    expect(screen.getByRole('heading', { name: 'Awaiting Pipeline Query' })).toBeInTheDocument()
-    expect(screen.getByText('Interactive Verification Workbench')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Awaiting a query' })).toBeInTheDocument()
+    expect(screen.getByText(/Interactive verification workbench/)).toBeInTheDocument()
   })
 
 })

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
 import EvidenceRecord from './EvidenceRecord'
-import { HERO, HERO_RECORDS } from './landingData'
+import { HERO, HERO_RECORDS } from './data/hero'
 
 /**
  * HeroSection — the entry point.

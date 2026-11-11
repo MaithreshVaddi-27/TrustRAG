@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ArrowRight } from 'lucide-react'
-import { COMPARISON_FILTERS, COMPARISON_ROWS } from './landingData'
+import { COMPARISON_FILTERS, COMPARISON_ROWS } from './data/comparison'
 
 /**
  * ComparisonMatrix — a specification table.

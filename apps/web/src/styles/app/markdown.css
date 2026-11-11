@@ -1,0 +1,210 @@
+/* ── TrustRAG · Generated prose ─────────────────────────────────────────────
+ * The answer is the product, and it arrives as Markdown. These are the rules
+ * for rendering it: a reading measure, a quiet hierarchy, and tables that
+ * look like specification tables rather than spreadsheet exports.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-prose {
+  max-width: 72ch;
+  font-size: var(--size-body);
+  line-height: var(--leading-body);
+  color: var(--color-silver-300);
+}
+
+.lx-prose > * + * {
+  margin-top: var(--step-4);
+}
+
+/* ── Headings ─────────────────────────────────────────────────────────────
+ * The answer's own headings. Didot is reserved for the product's headings,
+ * so generated headings use the interface face at a heavier weight — the
+ * answer is content, not chrome.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-prose h1,
+.lx-prose h2,
+.lx-prose h3,
+.lx-prose h4 {
+  color: var(--color-silver-050);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.lx-prose h1 {
+  margin-top: var(--step-8);
+  padding-bottom: var(--step-2);
+  border-bottom: 1px solid var(--rule);
+  font-size: 1.375rem;
+}
+
+.lx-prose h2 {
+  margin-top: var(--step-7, 1.75rem);
+  font-size: 1.1875rem;
+}
+
+.lx-prose h3 {
+  margin-top: var(--step-6, 1.5rem);
+  font-size: 1.0625rem;
+}
+
+.lx-prose h4 {
+  margin-top: var(--step-5);
+  font-size: var(--size-body);
+  color: var(--color-silver-200);
+}
+
+.lx-prose h1:first-child,
+.lx-prose h2:first-child {
+  margin-top: 0;
+}
+
+/* ── Inline ─────────────────────────────────────────────────────────────── */
+
+.lx-prose strong {
+  font-weight: var(--weight-medium);
+  color: var(--color-silver-050);
+}
+
+.lx-prose em {
+  font-style: italic;
+  color: var(--color-silver-200);
+}
+
+.lx-prose a {
+  color: var(--color-silver-100);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-prose a:hover {
+  text-decoration-color: var(--color-silver-400);
+}
+
+/* ── Lists ──────────────────────────────────────────────────────────────── */
+
+.lx-prose ul,
+.lx-prose ol {
+  padding-left: var(--step-5);
+}
+
+.lx-prose li + li {
+  margin-top: var(--step-2);
+}
+
+.lx-prose ul {
+  list-style: none;
+  padding-left: var(--step-4);
+}
+
+.lx-prose ul > li {
+  position: relative;
+}
+
+.lx-prose ul > li::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--step-4) * -1);
+  top: 0.62em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--color-silver-500);
+}
+
+.lx-prose ol {
+  list-style: decimal;
+}
+
+.lx-prose ol > li::marker {
+  font-family: var(--typeface-mono);
+  font-size: 0.8125rem;
+  color: var(--color-silver-500);
+}
+
+/* ── Quote ──────────────────────────────────────────────────────────────── */
+
+.lx-prose blockquote {
+  padding-left: var(--step-4);
+  border-left: 1px solid var(--rule-strong);
+  color: var(--color-silver-400);
+}
+
+/* ── Code ───────────────────────────────────────────────────────────────── */
+
+.lx-prose code {
+  font-family: var(--typeface-mono);
+  font-size: 0.8125em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background-color: var(--surface-inset);
+  border: 1px solid var(--rule-faint);
+  color: var(--color-silver-200);
+}
+
+.lx-prose pre {
+  margin-top: var(--step-4);
+  padding: var(--step-4);
+  overflow-x: auto;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--rule);
+  background-color: var(--surface-inset);
+}
+
+.lx-prose pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: var(--size-micro);
+  line-height: 1.6;
+  color: var(--color-silver-300);
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+
+.lx-prose .lx-prose__table-wrap {
+  margin-top: var(--step-5);
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+}
+
+.lx-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--size-body-sm);
+}
+
+.lx-prose th {
+  padding: var(--step-3) var(--step-4);
+  border-bottom: 1px solid var(--rule);
+  background-color: var(--surface-raised);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-micro);
+  text-align: left;
+  color: var(--color-silver-500);
+  white-space: nowrap;
+}
+
+.lx-prose td {
+  padding: var(--step-3) var(--step-4);
+  border-bottom: 1px solid var(--rule-faint);
+  color: var(--color-silver-300);
+  vertical-align: top;
+}
+
+.lx-prose tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ── Rule ───────────────────────────────────────────────────────────────── */
+
+.lx-prose hr {
+  margin-block: var(--step-6, 1.5rem);
+  border: 0;
+  border-top: 1px solid var(--rule-faint);
+}

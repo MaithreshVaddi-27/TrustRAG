@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Check } from 'lucide-react'
-import { CAPABILITIES } from './landingData'
+import { CAPABILITIES } from './data/capabilities'
 
 /**
  * CapabilitiesExplorer — four capabilities, one visible at a time.

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
-import { CTA } from './landingData'
+import { CTA } from './data/cta'
 
 /**
  * LandingCTA — the close.

@@ -66,6 +66,16 @@
   color: var(--color-silver-050);
 }
 
+/* Alarm — a destructive action. The only filled crimson button. */
+.lx-btn--alarm {
+  background-color: var(--color-crimson-500);
+  color: var(--color-silver-050);
+}
+
+.lx-btn--alarm:hover:not(:disabled) {
+  background-color: var(--color-crimson-600);
+}
+
 .lx-btn--large {
   min-height: 52px;
   padding-inline: var(--step-6);

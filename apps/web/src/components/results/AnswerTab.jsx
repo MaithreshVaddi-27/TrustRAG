@@ -1,17 +1,28 @@
-import { useState } from 'react'
-import { motion } from 'motion/react'
+import { lazy, Suspense, useState } from 'react'
 import { Sparkles, Clock, Copy, Check, Download, AlertTriangle } from 'lucide-react'
-import { SPRING_SNAPPY } from '@/lib/motionConfig'
-import { FormattedAnswer } from '@/components/workbench/FormattedAnswer'
 import { RecoveryTimeline } from '@/components/workbench/ExecutionTrace'
 import { copyToClipboard } from '@/lib/clipboard'
 
+// The Markdown renderer and its parser stack are the heaviest dependency in
+// the app, and the answer is the only thing that needs them. Loading it on
+// demand keeps it out of the playground's initial chunk.
+const FormattedAnswer = lazy(() => import('@/components/workbench/FormattedAnswer'))
+
+/**
+ * AnswerTab — the grounded synthesis.
+ *
+ * The answer is the product. It gets a panel with a header that states what
+ * produced it, the answer itself in reading measure, and the two failures
+ * that can precede it: a failed run and an abstention.
+ */
 export function AnswerTab({ analysis, selectedProvider, recoveryRuns, onExportDossier }) {
   const [copied, setCopied] = useState(false)
 
   if (!analysis) return null
 
-  const answerWordCount = analysis?.answer ? analysis.answer.trim().split(/\s+/).filter(Boolean).length : 0
+  const answerWordCount = analysis?.answer
+    ? analysis.answer.trim().split(/\s+/).filter(Boolean).length
+    : 0
   const estimatedReadTime = Math.max(1, Math.ceil(answerWordCount / 180))
 
   const handleCopy = async () => {
@@ -22,92 +33,118 @@ export function AnswerTab({ analysis, selectedProvider, recoveryRuns, onExportDo
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const failed =
+    analysis.status === 'failed' ||
+    analysis.status === 'outage' ||
+    analysis.reliability?.status === 'FAILED'
+
+  const abstained =
+    analysis.status === 'abstained' || analysis.reliability?.status === 'ABSTAINED'
+
   return (
-    <motion.div
-      key="answer"
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={SPRING_SNAPPY}
-      className="space-y-5"
-    >
-      {(analysis.status === 'failed' || analysis.status === 'outage' || analysis.reliability?.status === 'FAILED') && (
-        <div className="rounded-xl border border-red-800/50 bg-red-950/30 p-4 shadow-glow-crimson animate-fade-in">
-          <p className="text-sm font-medium text-red-300">
-            {analysis.status === 'failed' || analysis.status === 'outage'
-              ? `Analysis failed: ${analysis.diagnosis?.failures?.[0] || 'Retrieval service is temporarily unavailable'}`
-              : `Reliability check failed: ${analysis.diagnosis?.failures?.[0] || 'Thresholds not met'}`}
-          </p>
+    <div className="space-y-5">
+      {failed && (
+        <div className="lx-message lx-message--alarm" role="alert">
+          <AlertTriangle size={15} strokeWidth={1.75} className="lx-message__icon" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <span className="lx-message__title">
+              {analysis.status === 'failed' || analysis.status === 'outage'
+                ? 'The analysis failed'
+                : 'The reliability check failed'}
+            </span>
+            <span className="lx-message__body">
+              {analysis.diagnosis?.failures?.[0] ||
+                'Thresholds were not met for this run.'}
+            </span>
+          </div>
         </div>
       )}
 
-      {(analysis.status === 'abstained' || analysis.reliability?.status === 'ABSTAINED') && (
-        <div className="rounded-xl border border-amber-800/50 bg-amber-950/30 p-4 shadow-glow-amber animate-fade-in">
-          <p className="text-sm font-medium text-amber-300">
-            ⊘ The agent abstained from answering because the retrieved document segments did not contain sufficient factual evidence to answer this question reliably without hallucinating.
-          </p>
-          <p className="text-xs text-amber-400/90 mt-1.5">
-            Tip: Try phrasing your question using specific section names or verify that your uploaded documents cover this topic.
-          </p>
+      {abstained && (
+        <div className="lx-message" role="status">
+          <AlertTriangle size={15} strokeWidth={1.75} className="lx-message__icon" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <span className="lx-message__title">The agent abstained</span>
+            <span className="lx-message__body">
+              The retrieved segments did not contain enough factual evidence to
+              answer this question reliably. Try naming a specific section, or
+              check that your documents cover this topic.
+            </span>
+          </div>
         </div>
       )}
 
       {analysis.answer && analysis.answer !== 'ABSTAIN' && (
-        <div className="glass-card p-5 sm:p-6 relative overflow-hidden border-slate-700/60 hover:border-cyan-500/40 transition-all shadow-lg">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800/80 flex-wrap gap-2">
-            <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-cyan-950/80 border border-cyan-500/40 text-cyan-400">
-                <Sparkles size={14} />
-              </span>
-              <span className="text-xs font-semibold text-slate-200">
-                Grounded Synthesis
-              </span>
-              <span className="text-[11px] text-slate-500 font-mono flex items-center gap-1 ml-2">
-                <Clock size={11} />{' '}
+        <section className="lx-panel-block">
+          <div className="lx-panel-block__head">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Sparkles
+                size={14}
+                strokeWidth={1.75}
+                aria-hidden="true"
+                className="text-silver-500"
+              />
+              <h3 className="lx-panel-block__title">Grounded synthesis</h3>
+              <span className="lx-micro flex items-center gap-1">
+                <Clock size={11} strokeWidth={1.75} aria-hidden="true" />
                 {answerWordCount < 120
                   ? `${selectedProvider || 'local'} · terse by design`
-                  : `~${estimatedReadTime} min read (${answerWordCount} words)`}
+                  : `~${estimatedReadTime} min read · ${answerWordCount} words`}
               </span>
             </div>
-            <div className="flex items-center gap-1.5">
+
+            <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
                 onClick={handleCopy}
-                className="text-xs text-slate-400 hover:text-cyan-300 flex items-center gap-1.5 transition-all px-3 py-1.5 rounded-lg bg-surface-800/90 border border-slate-700/60 hover:border-cyan-500/50 shadow-sm"
-                title="Copy answer to clipboard"
-                aria-label="Copy answer to clipboard"
+                className="lx-btn lx-btn--quiet"
+                title="Copy the answer to the clipboard"
+                aria-label="Copy the answer to the clipboard"
               >
-                {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                <span className={copied ? 'text-emerald-400 font-medium' : ''}>
-                  {copied ? 'Copied!' : 'Copy Answer'}
-                </span>
+                {copied ? (
+                  <Check size={13} strokeWidth={2} aria-hidden="true" />
+                ) : (
+                  <Copy size={13} strokeWidth={1.75} aria-hidden="true" />
+                )}
+                <span>{copied ? 'Copied' : 'Copy'}</span>
               </button>
+
               <button
                 type="button"
                 onClick={onExportDossier}
-                title="Export Verification Audit Report (JSON-LD)"
-                aria-label="Export verification audit report"
-                className="px-3 py-1.5 text-xs border border-slate-700 hover:border-cyan-500/50 rounded-xl text-slate-300 hover:text-white flex items-center gap-1.5 transition-all bg-surface-800/90 hover:bg-surface-700/80 shadow-sm"
+                className="lx-btn lx-btn--secondary"
+                title="Export the verification audit report as JSON-LD"
+                aria-label="Export the verification audit report"
               >
-                <Download size={13} className="text-cyan-400" />
-                <span className="font-medium">Export</span>
+                <Download size={13} strokeWidth={1.75} aria-hidden="true" />
+                <span>Export</span>
               </button>
             </div>
           </div>
-          <FormattedAnswer content={analysis.answer} />
-        </div>
+
+          <div className="lx-panel-block__body">
+            <Suspense
+              fallback={<div className="lx-skeleton h-40 w-full" aria-busy="true" />}
+            >
+              <FormattedAnswer content={analysis.answer} />
+            </Suspense>
+          </div>
+        </section>
       )}
 
-      {analysis.claims?.some(c => c.state === 'NEUTRAL' || c.state === 'CONTRADICTED') && (
-        <div className="flex items-start gap-2 rounded-xl border border-[color:rgba(212,21,20,0.35)] bg-[rgba(212,21,20,0.08)] px-4 py-3">
-          <AlertTriangle size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-crimson-400" aria-hidden="true" />
-          <p className="text-xs text-crimson-300">
-            Some claims could not be verified against the citation corpus. Inspect the Claims tab for proposition-level breakdown.
-          </p>
+      {analysis.claims?.some(
+        (claim) => claim.state === 'NEUTRAL' || claim.state === 'CONTRADICTED',
+      ) && (
+        <div className="lx-message lx-message--alarm" role="alert">
+          <AlertTriangle size={15} strokeWidth={1.75} className="lx-message__icon" aria-hidden="true" />
+          <span>
+            Some claims could not be verified against the citation corpus. Open
+            the claims tab for the proposition-level breakdown.
+          </span>
         </div>
       )}
 
       <RecoveryTimeline recoveryRuns={recoveryRuns} />
-    </motion.div>
+    </div>
   )
 }

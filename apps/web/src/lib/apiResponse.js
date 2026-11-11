@@ -216,8 +216,14 @@ export async function withRetry(fn, options = {}) {
   const {
     maxAttempts = DEFAULT_RETRY_CONFIG.maxAttempts,
     onRetry,
-    retryConfig = DEFAULT_RETRY_CONFIG,
+    // A caller's retryConfig is an OVERRIDE, not a replacement. Merging over
+    // the default keeps the fields the caller did not mention — replacing it
+    // wholesale dropped `retryableStatuses`, and the retry check then threw a
+    // TypeError that masked the original failure.
+    retryConfig = {},
   } = options
+
+  const resolvedConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig }
 
   let lastError
 
@@ -232,11 +238,11 @@ export async function withRetry(fn, options = {}) {
       if (attempt === maxAttempts - 1) break
 
       // Check if error is retryable
-      if (!isRetryableError(err, retryConfig)) {
+      if (!isRetryableError(err, resolvedConfig)) {
         break
       }
 
-      const delay = calculateBackoff(attempt, retryConfig)
+      const delay = calculateBackoff(attempt, resolvedConfig)
 
       if (onRetry) {
         onRetry(attempt + 1, normalizeError(err), delay)

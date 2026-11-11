@@ -1,73 +1,12 @@
-/* ── Glassmorphism & Translucent Surfaces ──────────────────────────────────── */
-/* Apple Design: material weight encodes hierarchy                            */
-/* Heavier blur + deeper shadow = structural; lighter = interactive            */
-
-.glass-card {
-  background: var(--surface-card);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-card);
-  /* Bright top edge: light catching the material (Apple Design §12) */
-  box-shadow: var(--shadow-card);
-  transition: border-color var(--duration-fast) var(--ease-out-expo),
-              box-shadow var(--duration-fast) var(--ease-out-expo),
-              transform var(--duration-fast) var(--ease-out-expo);
-}
-
-.glass-card-hover:hover {
-  border-color: var(--color-hairline-strong);
-  box-shadow: var(--shadow-lift);
-  transform: translateY(-2px);
-}
-
-/* ── Border Beam ───────────────────────────────────────────────────────────── */
-
-.border-beam {
-  position: relative;
-}
-
-.border-beam::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  padding: 1px;
-  background: conic-gradient(
-    from var(--beam-angle, 0deg) at 50% 50%,
-    transparent 0%,
-    var(--color-primary-600) 15%,
-    var(--color-cyber-500) 25%,
-    var(--color-primary-400) 35%,
-    transparent 50%
-  );
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-  animation: rotateBeam 4s linear infinite;
-}
-
-.border-glow-emerald {
-  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.35),
-              0 0 20px rgba(16, 185, 129, 0.12);
-}
-
-.border-glow-crimson {
-  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.35),
-              0 0 20px rgba(239, 68, 68, 0.12);
-}
-
-.border-glow-amber {
-  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35),
-              0 0 20px rgba(245, 158, 11, 0.12);
-}
-
-.border-glow-gold {
-  box-shadow: 0 0 0 1px rgba(201, 171, 110, 0.35),
-              0 0 20px rgba(201, 171, 110, 0.12);
-}
-
-/* ── Text Gradient ─────────────────────────────────────────────────────────── */
+/* ── TrustRAG · Materials ────────────────────────────────────────────────────
+ * The materials layer used to carry glass cards, glow borders and a cursor
+ * halo. None of that survived the redesign: depth comes from surface steps
+ * and hairlines, and the only shadow in the system belongs to the hero
+ * preview.
+ *
+ * What remains is the part that is not decoration — the scrollbar, the
+ * selection colour, and the high-contrast overrides.
+ * ─────────────────────────────────────────────────────────────────────────── */
 
 /* ── Scrollbar ─────────────────────────────────────────────────────────────── */
 
@@ -77,59 +16,32 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-ink-950);
+  background: var(--color-obsidian-950);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-ink-700);
-  border-radius: var(--radius-full);
-  border: 2px solid var(--color-ink-950);
+  background: var(--color-graphite-700);
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--color-obsidian-950);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-primary-600);
-  box-shadow: 0 0 10px rgba(2, 132, 199, 0.5);
+  background: var(--color-silver-600);
 }
 
 /* ── Selection ─────────────────────────────────────────────────────────────── */
 
 ::selection {
-  background: rgba(2, 132, 199, 0.35);
-  color: var(--color-primary-300);
-}/* ── Reduced Transparency ──────────────────────────────────────────────────── */
-
-@media (prefers-reduced-transparency: reduce) {
-  .glass-card,
-  .glass-nav,
-  .glass-sidebar,
-  .glass-surface,
-  .glass-overlay {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background-color: rgba(4, 7, 17, 0.98) !important;
-  }
-  .cursor-glow {
-    display: none !important;
-  }
+  background: rgba(212, 21, 20, 0.32);
+  color: var(--color-silver-050);
 }
 
-/* ── High Contrast ─────────────────────────────────────────────────────────── */
+/* ── High contrast ─────────────────────────────────────────────────────────── */
 
 @media (prefers-contrast: more) {
   :root {
-    --border-color: rgba(255, 255, 255, 0.3);
-    --text-muted: rgba(255, 255, 255, 0.8);
-  }
-
-  .border-slate-800\/80,
-  .border-slate-700\/60,
-  .border-slate-700\/80 {
-    border-color: var(--border-color) !important;
-  }
-
-  .text-slate-400,
-  .text-slate-500,
-  .text-slate-600 {
-    color: var(--text-muted) !important;
+    --rule-faint: rgba(255, 255, 255, 0.42);
+    --rule: rgba(255, 255, 255, 0.6);
+    --rule-strong: rgba(255, 255, 255, 0.8);
   }
 }

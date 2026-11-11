@@ -78,7 +78,7 @@ describe('FormattedAnswer rendering', () => {
   it('applies the caller className alongside the base classes', () => {
     const { container } = render(<FormattedAnswer content="hi" className="max-h-40" />)
     const root = container.firstChild
-    expect(root.className).toContain('formatted-answer')
+    expect(root.className).toContain('lx-prose')
     expect(root.className).toContain('max-h-40')
   })
 })

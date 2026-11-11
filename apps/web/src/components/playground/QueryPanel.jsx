@@ -1,4 +1,4 @@
-import { Zap, RotateCcw } from 'lucide-react'
+import { RotateCcw, Zap } from 'lucide-react'
 import { KnowledgeBaseSelector } from './KnowledgeBaseSelector'
 import { AIEngineSelector } from './AIEngineSelector'
 import { WebSearchToggle } from './WebSearchToggle'
@@ -7,6 +7,13 @@ import { QueryInput } from './QueryInput'
 import { RunButton } from './RunButton'
 import { ErrorDisplay } from './ErrorDisplay'
 
+/**
+ * QueryPanel — the fixed left pane of the workbench.
+ *
+ * Configuration scrolls; the query and the run control stay anchored at the
+ * bottom, because the question you are asking is the one thing you should
+ * never have to scroll to find.
+ */
 export function QueryPanel({
   query,
   setQuery,
@@ -36,74 +43,72 @@ export function QueryPanel({
   elapsedSec,
 }) {
   return (
-    <div className="w-full md:w-[330px] lg:w-[370px] xl:w-[410px] shrink-0 border-b md:border-b-0 md:border-r border-slate-800 flex flex-col bg-surface-900/60 backdrop-blur-md h-auto md:h-full overflow-hidden">
-      <div className="p-4 border-b border-slate-800 shrink-0 flex items-center justify-between">
-        <div>
-          <h2 className="font-semibold text-white flex items-center gap-2 text-sm">
-            <span className="p-1 rounded-md bg-cyan-950/80 border border-cyan-500/40 text-cyan-400">
-              <Zap size={14} />
-            </span>
-            <span>Playground</span>
-          </h2>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <p className="text-[11px] text-slate-400 font-medium">Reliability & Provenance Workbench</p>
-          </div>
+    <div className="lx-workbench__pane">
+      <div className="lx-workbench__section flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="lx-h3 flex items-center gap-2">
+            <Zap size={15} strokeWidth={1.5} aria-hidden="true" className="text-silver-500" />
+            Playground
+          </h1>
+          <p className="lx-micro mt-1">Reliability and provenance workbench</p>
         </div>
+
         <button
           type="button"
           onClick={handleReset}
           disabled={loading}
-          title="Reset query and results (Clear)"
+          className="lx-icon-btn shrink-0"
+          title="Reset query and results"
           aria-label="Reset query and results"
-          className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-surface-800 rounded-lg border border-slate-800 transition-colors"
         >
-          <RotateCcw size={13} />
+          <RotateCcw size={14} strokeWidth={1.5} aria-hidden="true" />
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        {/* Top: Scrollable Model & Context Configuration */}
-        <div className="p-3.5 space-y-3 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-          <ErrorDisplay errorMsg={errorMsg} setErrorMsg={setErrorMsg} />
+      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <div className="flex-1 space-y-5 overflow-y-auto">
+          <div className="lx-workbench__section">
+            <ErrorDisplay errorMsg={errorMsg} setErrorMsg={setErrorMsg} />
+          </div>
 
-          <KnowledgeBaseSelector
-            kbId={kbId}
-            setKbId={setKbId}
-            knowledgeBases={knowledgeBases}
-            selectedKb={selectedKb}
-            loading={loading}
-          />
+          <div className="lx-workbench__section space-y-5">
+            <KnowledgeBaseSelector
+              kbId={kbId}
+              setKbId={setKbId}
+              knowledgeBases={knowledgeBases}
+              selectedKb={selectedKb}
+              loading={loading}
+            />
 
-          <AIEngineSelector
-            selectedProvider={selectedProvider}
-            setSelectedProvider={setSelectedProvider}
-            activeProviderInfo={activeProviderInfo}
-            availableModels={availableModels}
-            selectedModel={selectedModel}
-            setSelectedModel={setSelectedModel}
-            loading={loading}
-            providersUnresolved={providersUnresolved}
-            refetchProviders={refetchProviders}
-          />
+            <AIEngineSelector
+              selectedProvider={selectedProvider}
+              setSelectedProvider={setSelectedProvider}
+              activeProviderInfo={activeProviderInfo}
+              availableModels={availableModels}
+              selectedModel={selectedModel}
+              setSelectedModel={setSelectedModel}
+              loading={loading}
+              providersUnresolved={providersUnresolved}
+              refetchProviders={refetchProviders}
+            />
 
-          <EmbeddingModelDisplay
-            selectedEmbeddingModel={selectedEmbeddingModel}
-            selectedKb={selectedKb}
-            kbEmbeddingPin={kbEmbeddingPin}
-            embeddingMismatch={embeddingMismatch}
-          />
+            <EmbeddingModelDisplay
+              selectedEmbeddingModel={selectedEmbeddingModel}
+              selectedKb={selectedKb}
+              kbEmbeddingPin={kbEmbeddingPin}
+              embeddingMismatch={embeddingMismatch}
+            />
 
-          <WebSearchToggle
-            enableWebSearch={enableWebSearch}
-            setEnableWebSearch={setEnableWebSearch}
-            loading={loading}
-            selectedProvider={selectedProvider}
-          />
+            <WebSearchToggle
+              enableWebSearch={enableWebSearch}
+              setEnableWebSearch={setEnableWebSearch}
+              loading={loading}
+              selectedProvider={selectedProvider}
+            />
+          </div>
         </div>
 
-        {/* Bottom: Anchored Query Input & Execution CTA */}
-        <div className="p-3.5 border-t border-slate-800/90 bg-surface-900/95 backdrop-blur-md shrink-0 space-y-3 shadow-lg shadow-black/20">
+        <div className="shrink-0 space-y-3 border-t border-[color:var(--rule)] bg-surface-raised px-5 py-5">
           <QueryInput
             query={query}
             setQuery={setQuery}
@@ -115,7 +120,7 @@ export function QueryPanel({
           <RunButton
             loading={loading}
             elapsedSec={elapsedSec}
-            disabled={!query.trim() || !kbId}
+            disabled={!query.trim() || !kbId || !selectedProvider || !selectedModel}
             onClick={handleSubmit}
           />
         </div>

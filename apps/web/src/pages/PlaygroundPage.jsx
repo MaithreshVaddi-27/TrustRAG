@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { motion } from 'motion/react'
 import AppLayout from '@/layouts/AppLayout'
 import { TraceEventType } from '@/components/workbench/traceEvents'
 import { modelService } from '@/services/api'
@@ -161,12 +160,7 @@ export default function PlaygroundPage() {
 
   return (
     <AppLayout>
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 200, delay: 0.1 }}
-        className="flex flex-col md:flex-row h-full min-h-0 w-full overflow-hidden"
-      >
+      <div className="lx-workbench">
         <QueryPanel
           query={query}
           setQuery={setQuery}
@@ -211,7 +205,7 @@ export default function PlaygroundPage() {
           selectedEmbeddingModel={selectedEmbeddingModel}
           analysisStatus={analysis?.status}
         />
-      </motion.div>
+      </div>
     </AppLayout>
   )
 }

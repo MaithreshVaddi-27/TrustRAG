@@ -4,19 +4,18 @@ import { ChevronRight, Loader2 } from 'lucide-react'
 import { EVENT_META, compactTraceEvents, displayMessage } from './traceEvents'
 
 /**
- * ExecutionTrace — clean, compact live SSE trace event feed as before,
- * with smooth auto-scroll and resilient word-wrapping.
+ * ExecutionTrace — the live event feed.
  *
- * Props:
- *   events: [{ event, timestamp, data }]
- *   isLive: boolean  (show animated spinner & auto-scroll)
+ * A monospace log: one line per pipeline moment, hairline rules between
+ * entries, the timestamp on the right. It auto-scrolls while the stream is
+ * live and stops the moment the run ends, so a finished trace can be read
+ * from the top.
  */
 export function ExecutionTrace({ events = [], isLive = false }) {
   const bottomRef = useRef(null)
   // Collapse backend lifecycle duplicates so each pipeline moment reads once.
   const visibleEvents = useMemo(() => compactTraceEvents(events), [events])
 
-  // Auto-scroll to newest event during live processing
   useEffect(() => {
     if (isLive && bottomRef.current) {
       bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
@@ -24,20 +23,29 @@ export function ExecutionTrace({ events = [], isLive = false }) {
   }, [visibleEvents.length, isLive])
 
   return (
-    <div className="space-y-1 font-mono text-xs" aria-live="polite" aria-atomic="false">
+    <div className="lx-trace" aria-live="polite" aria-atomic="false">
       {isLive && (
-        <div className="flex items-center gap-2 text-primary-400 py-1.5 px-2 animate-pulse">
-          <Loader2 size={12} className="animate-spin text-cyan-400" />
-          <span className="text-cyan-300 font-sans text-xs font-medium">Pipeline running…</span>
+        <div className="flex items-center gap-2 py-2">
+          <Loader2
+            size={12}
+            strokeWidth={1.75}
+            className="animate-spin text-silver-500"
+            aria-hidden="true"
+          />
+          <span className="font-sans text-[var(--size-body-sm)] text-silver-400">
+            Pipeline running…
+          </span>
         </div>
       )}
 
-      {events.length === 0 && !isLive && (
-        <p className="text-slate-500 text-sm font-sans py-4 text-center">No trace events yet.</p>
+      {visibleEvents.length === 0 && !isLive && (
+        <p className="py-4 text-center font-sans text-[var(--size-body-sm)] text-silver-500">
+          No trace events yet.
+        </p>
       )}
 
-      {visibleEvents.map((evt, i) => (
-        <TraceEvent key={`${evt.event}-${evt.timestamp ?? i}`} evt={evt} />
+      {visibleEvents.map((event, index) => (
+        <TraceEvent key={`${event.event}-${event.timestamp ?? index}`} evt={event} />
       ))}
 
       <div ref={bottomRef} className="h-1" />
@@ -48,75 +56,77 @@ export function ExecutionTrace({ events = [], isLive = false }) {
 function TraceEvent({ evt }) {
   const meta = EVENT_META[evt.event] ?? {
     icon: ChevronRight,
-    color: 'text-slate-400',
+    color: 'text-silver-400',
     label: evt.event,
   }
   const Icon = meta.icon
-  // Backend sometimes restates the label ("retrieval completed successfully")
-  // — render the message only when it adds information.
+  // The backend sometimes restates the label ("retrieval completed
+  // successfully") — render the message only when it adds information.
   const message = displayMessage(evt.event, evt.data?.message)
 
   return (
-    <div className="trace-event group">
-      <Icon size={13} className={clsx('shrink-0 mt-0.5', meta.color)} />
-      <div className="flex-1 min-w-0">
-        <span className={clsx('font-semibold tracking-tight', meta.color)}>{meta.label}</span>
-        {message && (
-          <span className="text-slate-300 ml-2 font-sans break-words leading-relaxed">
-            {message}
-          </span>
-        )}
+    <div className="lx-trace__event">
+      <Icon size={13} className={clsx('lx-trace__icon', meta.color)} aria-hidden="true" />
+      <div className="lx-trace__body">
+        <span className={clsx('lx-trace__label', meta.color)}>{meta.label}</span>
+
+        {message && <span className="lx-trace__message">{message}</span>}
+
         {evt.data?.rewritten_query && (
-          <span className="text-cyan-300 ml-2 font-mono text-[11px] block mt-0.5 break-words">
-            ↳ Expanded: {evt.data.rewritten_query}
+          <span className="lx-trace__detail">
+            Expanded: {evt.data.rewritten_query}
           </span>
         )}
+
         {evt.data?.latency_ms && (
-          <span className="text-slate-500 ml-2 font-mono">({evt.data.latency_ms}ms)</span>
+          <span className="lx-trace__detail">{evt.data.latency_ms}ms</span>
         )}
       </div>
-      <span className="text-slate-600 group-hover:text-slate-400 shrink-0 text-[10px] font-mono tabular-nums transition-colors ml-2">
-        {evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString('en-GB', { hour12: false }) : ''}
+
+      <span className="lx-trace__time">
+        {evt.timestamp
+          ? new Date(evt.timestamp).toLocaleTimeString('en-GB', { hour12: false })
+          : ''}
       </span>
     </div>
   )
 }
 
 /**
- * RecoveryTimeline — shows recovery attempts in sequence.
+ * RecoveryTimeline — the self-healing attempts, in sequence.
+ *
+ * Each attempt is a row: the strategy, why it fired, and what it changed.
  */
 export function RecoveryTimeline({ recoveryRuns = [] }) {
   if (recoveryRuns.length === 0) return null
 
   return (
-    <div className="space-y-3">
-      <p className="section-heading">Recovery Timeline</p>
-      {recoveryRuns.map((run, i) => (
-        <div key={i} className="flex gap-3">
-          <div className="flex flex-col items-center">
-            <div
-              className={clsx(
-                'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border',
-                run.success
-                  ? 'border-green-600 bg-green-900/40 text-green-400'
-                  : 'border-red-600 bg-red-900/40 text-red-400'
-              )}
-            >
-              {i + 1}
+    <section className="lx-panel-block">
+      <div className="lx-panel-block__head">
+        <h3 className="lx-panel-block__title">Recovery timeline</h3>
+        <span className="lx-micro">{recoveryRuns.length} attempts</span>
+      </div>
+
+      <div className="lx-panel-block__body">
+        <dl className="lx-list">
+          {recoveryRuns.map((run, index) => (
+            <div key={index} className="lx-list__item">
+              <div className="lx-list__head">
+                <dt className="lx-list__title">
+                  <span className="lx-layer__index mr-2">{String(index + 1).padStart(2, '0')}</span>
+                  {run.strategy}
+                </dt>
+              </div>
+              <dd className="lx-body-sm mt-1.5 max-w-[68ch]">
+                {run.reason}
+                {run.result && (
+                  <span className="mt-1 block text-silver-500">{run.result}</span>
+                )}
+              </dd>
             </div>
-            {i < recoveryRuns.length - 1 && <div className="w-px h-full bg-slate-700 my-1" />}
-          </div>
-          <div className="pb-4 flex-1">
-            <p className="text-sm font-medium text-slate-200">{run.strategy}</p>
-            <p className="text-xs text-slate-400 mt-0.5 break-words">{run.reason}</p>
-            {run.result && (
-              <p className={clsx('text-xs mt-1 break-words', run.success ? 'text-green-400' : 'text-red-400')}>
-                {run.result}
-              </p>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
+          ))}
+        </dl>
+      </div>
+    </section>
   )
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BENCHMARKS, BENCHMARK_TABS } from './landingData'
+import { BENCHMARKS, BENCHMARK_TABS } from './data/benchmarks'
 
 /**
  * BenchmarksSection — a ranked table with thin bars.

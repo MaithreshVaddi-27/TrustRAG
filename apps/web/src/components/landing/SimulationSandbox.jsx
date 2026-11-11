@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { clsx } from 'clsx'
 import VerificationSeal from './VerificationSeal'
 import Verdict from './Verdict'
-import { SCENARIOS } from './landingData'
+import { SCENARIOS } from './data/scenarios'
 
 /**
  * SimulationSandbox — an interactive verification run.

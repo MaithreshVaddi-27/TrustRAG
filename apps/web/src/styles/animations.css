@@ -1,55 +1,45 @@
-/* ── Keyframes ─────────────────────────────────────────────────────────────── */
+/* ── TrustRAG · Motion ───────────────────────────────────────────────────────
+ * The only animations left in the product are the ones that carry meaning:
+ * a press that responds to a finger, a skeleton that breathes while it
+ * waits, and the entrance on the landing page.
+ *
+ * Apple HIG §14: prefers-reduced-motion means cross-fade or static, never
+ * a removed state. Functional feedback (press) survives; decoration does
+ * not.
+ * ─────────────────────────────────────────────────────────────────────────── */
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes glow {
-  from { filter: drop-shadow(0 0 6px rgba(14, 165, 233, 0.4)); }
-  to { filter: drop-shadow(0 0 16px rgba(14, 165, 233, 0.8)); }
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-8px); }
-}
-
-@keyframes scan {
-  0% { top: 0%; }
-  50% { top: 95%; }
-  100% { top: 0%; }
-}
-
-@keyframes shimmer {
-  from { background-position: -200% 0; }
-  to { background-position: 200% 0; }
-}
-
-@keyframes radarSweep {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes haloPulse {
-  0% { transform: scale(0.95); opacity: 0.8; }
-  50% { transform: scale(1.25); opacity: 0; }
-  100% { transform: scale(0.95); opacity: 0; }
-}
-
-@keyframes borderGlow {
-  0%, 100% {
-    border-color: var(--color-primary-400);
-    box-shadow: 0 0 15px rgba(14, 165, 233, 0.15);
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
   }
   50% {
-    border-color: var(--color-cyber-400);
-    box-shadow: 0 0 25px rgba(6, 182, 212, 0.35);
+    transform: scale(1.25);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0;
   }
 }
 
@@ -60,182 +50,64 @@
 }
 
 @keyframes rotateBeam {
-  from { --beam-angle: 0deg; }
-  to { --beam-angle: 360deg; }
-}
-
-@keyframes shine {
-  to { background-position: 200% center; }
+  from {
+    --beam-angle: 0deg;
+  }
+  to {
+    --beam-angle: 360deg;
+  }
 }
 
 @keyframes scanlineMove {
-  0%, 100% { top: 6%; opacity: 0.3; }
-  50% { top: 92%; opacity: 1; }
+  0%,
+  100% {
+    top: 6%;
+    opacity: 0.3;
+  }
+  50% {
+    top: 92%;
+    opacity: 1;
+  }
 }
 
-/* ── Animation Utility Classes ─────────────────────────────────────────────── */
+/* ── Press feedback ─────────────────────────────────────────────────────────
+ * Apple: respond on pointer-down, not on release. This is the one piece of
+ * motion in the product that is functional rather than decorative.
+ * ─────────────────────────────────────────────────────────────────────────── */
 
-.animate-fade-in {
-  animation: fadeIn var(--duration-fast) var(--ease-out-expo) both;
-  animation-delay: var(--stagger-delay, 0s);
-}
-
-.animate-slide-up {
-  animation: slideUp var(--duration-base) var(--ease-out-expo) both;
-  animation-delay: var(--stagger-delay, 0s);
-}
-
-/* Auto-stagger direct children by 60ms each */
-.stagger-children > *:nth-child(1) { --stagger-delay: 0s; }
-.stagger-children > *:nth-child(2) { --stagger-delay: 0.06s; }
-.stagger-children > *:nth-child(3) { --stagger-delay: 0.12s; }
-.stagger-children > *:nth-child(4) { --stagger-delay: 0.18s; }
-.stagger-children > *:nth-child(5) { --stagger-delay: 0.24s; }
-.stagger-children > *:nth-child(6) { --stagger-delay: 0.30s; }
-.stagger-children > *:nth-child(7) { --stagger-delay: 0.36s; }
-.stagger-children > *:nth-child(8) { --stagger-delay: 0.42s; }/* ── Neon Verdict Cards ────────────────────────────────────────────────────── */
-
-.neon-verdict-supported {
-  background: linear-gradient(135deg, rgba(6, 78, 59, 0.15) 0%, var(--color-ink-900) 100%);
-  border: 1px solid rgba(16, 185, 129, 0.4);
-  box-shadow: 0 4px 20px -2px rgba(16, 185, 129, 0.15);
-}
-
-.neon-verdict-contradicted {
-  background: linear-gradient(135deg, rgba(127, 29, 29, 0.18) 0%, var(--color-ink-900) 100%);
-  border: 1px solid rgba(239, 68, 68, 0.45);
-  box-shadow: 0 4px 20px -2px rgba(239, 68, 68, 0.2);
-}
-
-.neon-verdict-neutral {
-  background: linear-gradient(135deg, rgba(120, 53, 15, 0.15) 0%, var(--color-ink-900) 100%);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  box-shadow: 0 4px 20px -2px rgba(245, 158, 11, 0.12);
-}.cyber-ping-emerald::after {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: 9999px;
-  background: rgba(16, 185, 129, 0.4);
-  animation: haloPulse 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-  pointer-events: none;
-}.stream-pulse::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  background: rgba(14, 165, 233, 0.4);
-  animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
-  opacity: 0.4;
-}
-
-/* ── Cyber Grid Background ─────────────────────────────────────────────────── */
-
-.bg-cyber-grid {
-  background-image: radial-gradient(rgba(14, 165, 233, 0.07) 1px, transparent 1px);
-  background-size: 28px 28px;
-}
-
-/* ── Action Button Feedback ────────────────────────────────────────────────── */
-/* Apple Design: respond on pointer-down, not release                          */
-
-.action-feedback:active,
 button:active:not(:disabled),
 a[href]:active,
-[role="button"]:active,
-input[type="button"]:active,
-input[type="submit"]:active,
-input[type="reset"]:active,
+[role='button']:active,
+input[type='button']:active,
+input[type='submit']:active,
+input[type='reset']:active,
 select:active {
   transform: scale(0.97);
-  transition: transform var(--duration-instant) ease-out;
+  transition: transform var(--motion-duration-instant) ease-out;
 }
 
-.btn-primary:active {
-  transform: scale(0.97);
-  transition: transform var(--duration-instant) ease-out;
-}
-
-.btn-secondary:active {
-  transform: scale(0.97);
-  transition: transform var(--duration-instant) ease-out;
-}
-
-/* Action pulse: brief scale flash after press */
-@keyframes actionPulse {
-  0% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.4); }
-  70% { box-shadow: 0 0 0 8px rgba(14, 165, 233, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0); }
-}
-
-.action-pulse:active {
-  animation: actionPulse 0.3s ease-out;
-}/* ── Reduced Motion ────────────────────────────────────────────────────────── */
-/* Apple Design §14: prefers-reduced-motion means cross-fade/static, no springs */
+/* ── Reduced motion ─────────────────────────────────────────────────────────
+ * Decorative and continuous animation is disabled. The transition duration
+ * is kept for press feedback, which is functional.
+ * ─────────────────────────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    /* Disable decorative/continuous animations but PRESERVE functional transitions */
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    /* Keep transition-duration for button presses (functional feedback) */
     scroll-behavior: auto !important;
   }
 
-  /* Disable spring transitions on decorative elements */
-  .spring-interactive,
-  .spring-scale,
-  .spring-fast,
-  .spring-critical,
-  .spring-momentum {
-    transition: none !important;
-  }
-
-  .glass-card {
-    transform: none !important;
-  }
-
-  .shimmer-text {
-    animation: none !important;
-    background: none !important;
-    color: var(--color-primary-400);
-    -webkit-background-clip: unset;
-    background-clip: unset;
-  }
-
-  /* Status dot pulse is decorative */
-  .status-dot--running { animation: none !important; }
-
-  /* Cursor glow is decorative */
-  .cursor-glow { display: none !important; }
-
-  /* Floating/ambient animations */
-  .animate-float,
-  .animate-pulse-slow,
-  .animate-spin-slow,
-  .animate-glow,
-  .animate-scan,
-  .animate-shimmer,
-  .animate-radar-sweep,
-  .animate-halo-pulse,
-  .animate-border-glow,
-  .laser-scanline,
-  .cyber-radar-sweep {
-    animation: none !important;
-  }
-
-  /* Preserve button press feedback (functional) */
-  .action-feedback:active,
   button:active:not(:disabled),
   a[href]:active,
-  [role="button"]:active,
-  input[type="button"]:active,
-  input[type="submit"]:active,
-  input[type="reset"]:active,
-  select:active,
-  .btn-primary:active,
-  .btn-secondary:active {
+  [role='button']:active,
+  input[type='button']:active,
+  input[type='submit']:active,
+  input[type='reset']:active,
+  select:active {
     transform: scale(0.97) !important;
-    transition: transform var(--duration-instant) ease-out !important;
+    transition: transform var(--motion-duration-instant) ease-out !important;
   }
 }

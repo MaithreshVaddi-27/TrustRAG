@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
-import { motion } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
+import { AlertTriangle } from 'lucide-react'
 import AppLayout from '@/layouts/AppLayout'
 import { HeroBanner } from '@/components/dashboard/HeroBanner'
 import { ObservabilityBar } from '@/components/dashboard/ObservabilityBar'
@@ -11,14 +11,13 @@ import { RecentAnalysesFeed } from '@/components/dashboard/RecentAnalysesFeed'
 import { PipelineArchitecture } from '@/components/dashboard/PipelineArchitecture'
 import { kbService, analysisService, claimService, conflictService } from '@/services/api'
 import { normalizeClaimState } from '@/lib/claimState'
-import { AlertTriangle } from 'lucide-react'
 
 export default function DashboardPage() {
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [historyWindow, setHistoryWindow] = useState('10') // '10' | '20' | 'all'
   const [lastSync, setLastSync] = useState(new Date())
 
-  // Real-time live polling every 3 seconds for active telemetry
+  // Real-time live polling for active telemetry
   const {
     data: analyses = [],
     refetch: refetchAnalyses,
@@ -67,16 +66,15 @@ export default function DashboardPage() {
     refetchInterval: autoRefresh ? 30000 : false,
   })
 
-  // First paint: show layout-matching skeletons instead of a false "0" state.
+  // First paint shows layout-matching skeletons rather than a false "0" state.
   const isInitialLoad = isLoadingAnalyses || isLoadingClaims || isLoadingKbs
   // Surface the first failing feed — silent zeros previously hid outages.
   const loadError = analysesError || kbsError || claimsError || conflictsError
   const hasLoadError = isErrorAnalyses || isErrorKbs || isErrorClaims || isErrorConflicts
 
-  // Update lastSync on manual sync + the 30s tick (N-82) — avoid infinite loop from auto-refresh data changes
   const updateLastSync = () => setLastSync(new Date())
 
-  // Re-render every 30s so "Synced x ago" never freezes (N-82).
+  // Re-render every 30s so "Synced x ago" never freezes.
   useEffect(() => {
     const t = setInterval(updateLastSync, 30000)
     return () => clearInterval(t)
@@ -90,7 +88,6 @@ export default function DashboardPage() {
     updateLastSync()
   }
 
-  // Aggregate statistics computed from real live history
   const stats = useMemo(() => {
     const totalDocs = kbs.reduce((sum, kb) => sum + (kb.document_count || 0), 0)
 
@@ -100,24 +97,24 @@ export default function DashboardPage() {
     let contradictedClaims = 0
     let neutralClaims = 0
 
-    analyses.forEach(a => {
+    analyses.forEach((a) => {
       if (a.reliability?.score !== undefined && a.reliability?.score !== null) {
         totalScore += a.reliability.score
         scoredCount++
       }
     })
 
-    claims.forEach(c => {
+    claims.forEach((c) => {
       const s = normalizeClaimState(c)
       if (s === 'SUPPORTED' || s === 'VERIFIED') supportedClaims++
       else if (s === 'CONTRADICTED') contradictedClaims++
       else neutralClaims++
     })
 
-    const avgReliability = scoredCount > 0 ? (totalScore / scoredCount) : 0
+    const avgReliability = scoredCount > 0 ? totalScore / scoredCount : 0
     const avgReliabilityDisplay = scoredCount > 0 ? `${(avgReliability * 100).toFixed(1)}%` : '--'
     const totalClaimsCount = supportedClaims + contradictedClaims + neutralClaims
-    const supportedRate = totalClaimsCount > 0 ? ((supportedClaims / totalClaimsCount) * 100).toFixed(0) : '0'
+    const supportedRate = totalClaimsCount > 0 ? (supportedClaims / totalClaimsCount) * 100 : 0
 
     return {
       totalDocs,
@@ -127,59 +124,44 @@ export default function DashboardPage() {
       contradictedClaims,
       neutralClaims,
       totalClaimsCount,
-      supportedRate,
+      supportedRate: supportedRate.toFixed(0),
       totalConflicts: conflicts.length,
     }
   }, [kbs, analyses, claims, conflicts])
 
   return (
     <AppLayout>
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 200, delay: 0.1 }}
-        className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-8"
-      >
-        {/* ── HERO BANNER ─────────────────────────────────────────────── */}
+      <div className="lx-page lx-stack">
         <HeroBanner />
 
-        {/* ── LIVE OBSERVABILITY CONTROL BAR ────────────────────────────── */}
         <ObservabilityBar
           autoRefresh={autoRefresh}
           setAutoRefresh={setAutoRefresh}
           lastSync={lastSync}
           isFetchingAnalyses={isFetchingAnalyses}
           handleManualSync={handleManualSync}
-          analyses={analyses}
-          claims={claims}
         />
 
-        {/* ── LOAD STATE: error banner + first-paint skeletons ──────────── */}
         {hasLoadError && !isInitialLoad && (
-          <div
-            role="alert"
-            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-red-800/50 bg-red-950/30"
-          >
-            <div className="flex items-start gap-2.5">
-              <AlertTriangle size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-crimson-400" aria-hidden="true" />
-              <div>
-                <p className="text-xs font-semibold text-red-300">Some dashboard feeds failed to load</p>
-                <p className="text-[11px] text-red-400/80 mt-0.5">
-                  {loadError?.message || 'An unexpected error occurred. Metrics below may be incomplete.'}
-                </p>
-              </div>
+          <div className="lx-message lx-message--alarm" role="alert">
+            <AlertTriangle size={15} strokeWidth={1.75} className="lx-message__icon" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <span className="lx-message__title">Some dashboard feeds failed to load</span>
+              <span className="lx-message__body">
+                {loadError?.message ||
+                  'An unexpected error occurred. Metrics below may be incomplete.'}
+              </span>
             </div>
             <button
               type="button"
               onClick={handleManualSync}
-              className="px-3 py-1.5 rounded-xl bg-red-950/60 hover:bg-red-900/50 border border-red-800/60 text-red-200 text-xs font-semibold transition-all shrink-0"
+              className="lx-btn lx-btn--secondary shrink-0"
             >
               Retry
             </button>
           </div>
         )}
 
-        {/* ── 4 HERO METRIC CARDS ─────────────────────────────────────── */}
         <MetricsGrid
           stats={stats}
           kbs={kbs}
@@ -188,28 +170,20 @@ export default function DashboardPage() {
           conflicts={conflicts}
         />
 
-        {/* ── ANALYTICS VISUALIZATIONS ────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Reliability Score History AreaChart */}
+        {/* One wide chart beside a narrower one — a rhythm, not two equal boxes. */}
+        <div className="lx-grid-wide-narrow">
           <ReliabilityChart
             analyses={analyses}
             historyWindow={historyWindow}
             setHistoryWindow={setHistoryWindow}
           />
-
-          {/* Claim Verification Breakdown BarChart */}
           <ClaimDistributionChart stats={stats} />
         </div>
 
-        {/* ── RECENT EXECUTION FEED ───────────────────────────────────── */}
-        <RecentAnalysesFeed
-          analyses={analyses}
-          isInitialLoad={isInitialLoad}
-        />
+        <RecentAnalysesFeed analyses={analyses} isInitialLoad={isInitialLoad} />
 
-        {/* ── 5-STEP RELIABILITY LOOP ARCHITECTURE ────────────────────── */}
         <PipelineArchitecture />
-      </motion.div>
+      </div>
     </AppLayout>
   )
 }
