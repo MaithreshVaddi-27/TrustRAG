@@ -1,0 +1,225 @@
+/* ── TrustRAG · Pipeline diagram ─────────────────────────────────────────────
+ * The signature technical visualisation. Six stages of the closed loop,
+ * drawn as linework: a hairline runs the whole chain, each stage is a node
+ * on it, and a single sweep travels the chain when the diagram enters the
+ * viewport. That sweep is the only looping-free authored motion in the
+ * product — it explains what the pipeline does rather than decorating it.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-pipeline {
+  position: relative;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  background-color: var(--surface-panel);
+  overflow: hidden;
+}
+
+.lx-pipeline__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--step-2) var(--step-6);
+  padding: var(--step-4) var(--step-5);
+  border-bottom: 1px solid var(--rule);
+}
+
+.lx-pipeline__body {
+  padding: var(--step-6) var(--step-5);
+}
+
+@media (min-width: 1024px) {
+  .lx-pipeline__body {
+    padding: var(--step-8) var(--step-6);
+  }
+}
+
+/* ── Chain ────────────────────────────────────────────────────────────────── */
+
+.lx-chain {
+  display: grid;
+  gap: 0;
+  position: relative;
+}
+
+/* Vertical rhythm: the hairline runs behind the nodes. */
+@media (min-width: 900px) {
+  .lx-chain {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 899px) {
+  .lx-chain {
+    grid-template-columns: 1fr;
+    gap: var(--step-1);
+  }
+}
+
+/* One continuous hairline behind the whole chain. The nodes sit on top of
+ * it with an opaque fill, so the line appears to pass between them. This is
+ * how a real diagram does it and it cannot drift out of alignment. */
+.lx-chain::before {
+  content: '';
+  position: absolute;
+  background-color: var(--rule);
+  pointer-events: none;
+}
+
+@media (min-width: 900px) {
+  .lx-chain::before {
+    left: 11px;
+    right: 11px;
+    top: 35px;
+    height: 1px;
+  }
+}
+
+@media (max-width: 899px) {
+  .lx-chain::before {
+    left: 11px;
+    top: 23px;
+    bottom: 23px;
+    width: 1px;
+  }
+}
+
+.lx-stage {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--step-3);
+  padding-block: var(--step-3);
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .lx-stage {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--step-3);
+    padding-block: 0;
+    padding-top: var(--step-6);
+  }
+}
+
+/* ── Node ─────────────────────────────────────────────────────────────────── */
+
+.lx-stage__node {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--rule-strong);
+  border-radius: 50%;
+  /* Opaque, so the chain hairline reads as passing behind the node. */
+  background-color: var(--surface-panel);
+  color: var(--color-silver-400);
+}
+
+.lx-stage__node svg {
+  width: 12px;
+  height: 12px;
+}
+
+.lx-stage__body {
+  min-width: 0;
+}
+
+.lx-stage__name {
+  font-size: var(--size-label);
+  font-weight: var(--weight-medium);
+  color: var(--color-silver-200);
+  line-height: 1.3;
+}
+
+.lx-stage__desc {
+  margin-top: var(--step-1);
+  font-size: var(--size-body-sm);
+  line-height: 1.5;
+  color: var(--color-silver-500);
+}
+
+@media (min-width: 900px) {
+  .lx-stage__desc {
+    max-width: 22ch;
+  }
+}
+
+/* The stage that produces the verdict. */
+.lx-stage--output .lx-stage__node {
+  border-color: var(--color-crimson-500);
+  color: var(--color-crimson-400);
+}
+
+/* ── Sweep ──────────────────────────────────────────────────────────────────
+ * A bright segment that travels the chain once, when the diagram is
+ * revealed. It is not a loop: it runs once and holds its final state.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-pipeline__sweep {
+  position: absolute;
+  left: 11px;
+  right: 11px;
+  top: 35px;
+  height: 1px;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+}
+
+@media (max-width: 899px) {
+  .lx-pipeline__sweep {
+    display: none;
+  }
+}
+
+.lx-pipeline__sweep::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 18%;
+  height: 100%;
+  background-color: var(--color-silver-050);
+  transform: translateX(-100%);
+}
+
+.lx-pipeline[data-swept='true'] .lx-pipeline__sweep {
+  opacity: 1;
+}
+
+.lx-pipeline[data-swept='true'] .lx-pipeline__sweep::after {
+  animation: lx-sweep 1400ms var(--motion-ease-out) 220ms 1 both;
+}
+
+@keyframes lx-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(556%);
+  }
+}
+
+/* ── Output row ───────────────────────────────────────────────────────────── */
+
+.lx-pipeline__output {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-3) var(--step-6);
+  margin-top: var(--step-6);
+  padding-top: var(--step-4);
+  border-top: 1px solid var(--rule);
+}
+
+.lx-pipeline__outcomes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--step-2) var(--step-5);
+}

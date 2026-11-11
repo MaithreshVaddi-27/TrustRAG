@@ -1,0 +1,16 @@
+/* ── TrustRAG · Tokens ───────────────────────────────────────────────────────
+ * The complete token layer. `src/styles/index.css` imports this FIRST, before
+ * any component stylesheet, so every `var(--…)` reference in the codebase
+ * resolves.
+ *
+ * Do not add rules here that are not tokens. Component rules live in
+ * `src/styles/components/`.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+@import './color.css';
+@import './typography.css';
+@import './spacing.css';
+@import './radius.css';
+@import './elevation.css';
+@import './motion.css';
+@import './compat.css';

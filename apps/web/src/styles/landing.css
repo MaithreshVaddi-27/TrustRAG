@@ -5,8 +5,8 @@
 /* Cyber grid background — landing variant with 60px grid */
 .bg-cyber-grid {
   background-image:
-    linear-gradient(rgba(14, 165, 233, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(14, 165, 233, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(205, 203, 202, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(205, 203, 202, 0.018) 1px, transparent 1px);
   background-size: 60px 60px;
 }
 

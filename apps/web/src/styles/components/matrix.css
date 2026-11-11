@@ -1,0 +1,121 @@
+/* ── TrustRAG · Comparison matrix ───────────────────────────────────────────
+ * A specification table. Three columns, hairline separators, no cards. On
+ * narrow screens each row stacks and each column gets a label, so the
+ * comparison survives 320px without becoming a different design.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-matrix {
+  border-top: 1px solid var(--rule);
+}
+
+.lx-matrix__row {
+  display: grid;
+  gap: var(--step-4);
+  padding-block: var(--step-6);
+  border-bottom: 1px solid var(--rule);
+}
+
+@media (min-width: 900px) {
+  .lx-matrix__row {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--step-8);
+    align-items: start;
+  }
+}
+
+.lx-matrix__head {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .lx-matrix__head {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--step-8);
+    padding-block: var(--step-3) var(--step-4);
+    border-bottom: 1px solid var(--rule);
+  }
+}
+
+.lx-matrix__col-label {
+  display: block;
+  margin-bottom: var(--step-2);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-600);
+}
+
+@media (min-width: 900px) {
+  .lx-matrix__col-label {
+    display: none;
+  }
+}
+
+.lx-matrix__name {
+  font-family: var(--typeface-display);
+  font-size: 1.25rem;
+  line-height: 1.25;
+  letter-spacing: -0.012em;
+  color: var(--color-silver-050);
+}
+
+.lx-matrix__subtitle {
+  margin-top: var(--step-2);
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-500);
+  max-width: 40ch;
+}
+
+.lx-matrix__cell {
+  font-size: var(--size-body);
+  line-height: var(--leading-body);
+  color: var(--color-silver-400);
+  max-width: 46ch;
+}
+
+.lx-matrix__cell--ours {
+  color: var(--color-silver-200);
+}
+
+/* The TrustRAG column is marked by a hairline, not a colour wash. */
+.lx-matrix__ours {
+  position: relative;
+}
+
+@media (min-width: 900px) {
+  .lx-matrix__ours::before {
+    content: '';
+    position: absolute;
+    left: calc(var(--step-8) / -2);
+    top: calc(var(--step-6) * -1);
+    bottom: calc(var(--step-6) * -1);
+    width: 1px;
+    /* Laser Crimson marks the column that differs from the baseline. */
+    background-color: rgba(212, 21, 20, 0.38);
+  }
+}
+
+.lx-matrix__impact {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--step-2);
+  margin-top: var(--step-3);
+  font-size: var(--size-body-sm);
+  line-height: 1.5;
+  color: var(--color-silver-500);
+}
+
+.lx-matrix__impact svg {
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+  color: var(--color-silver-600);
+}
+
+.lx-matrix__filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--step-1);
+  margin-bottom: var(--step-6);
+}

@@ -1,0 +1,77 @@
+/* ── TrustRAG · Palette ────────────────────────────────────────────────────────
+ * Obsidian Black × Chrome Silver × Laser Crimson.
+ * Strictly dark. There is no light theme; `color-scheme: dark` is locked in
+ * base.css and this file exposes no light-mode values.
+ *
+ * The system is deliberately near-monochrome. Chrome Silver carries the
+ * interface; Laser Crimson is an alarm, not a decoration. Crimson appears only
+ * where a claim has failed, a verification seal is stamped, or focus lands.
+ *
+ * Source of truth for raw values. Mirrored in tailwind.config.js — change
+ * both, or use the `palette.sync` check in scripts/check-token-drift.mjs.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  color-scheme: dark;
+
+  /* ── Obsidian — the substrate ─────────────────────────────────────────────
+   * Page and raised surfaces. Depth on dark comes from these steps, not
+   * from shadows. */
+  --color-obsidian-950: #080808; /* page */
+  --color-obsidian-900: #0c0c0d; /* raised: nav, bars */
+  --color-obsidian-850: #101012; /* panel */
+  --color-obsidian-800: #141416; /* card */
+
+  /* ── Graphite — structure ───────────────────────────────────────────────
+   * Rules, dividers, inactive strokes. */
+  --color-graphite-300: #5a5957;
+  --color-graphite-400: #4a4a49;
+  --color-graphite-500: #3a3a3c;
+  --color-graphite-600: #2e2e33;
+  --color-graphite-700: #232327;
+  --color-graphite-800: #1a1a1d;
+  --color-graphite-900: #141416;
+
+  /* ── Chrome Silver — the voice ───────────────────────────────────────────
+   * Three text roles: silver-050/300 (primary), silver-400 (secondary),
+   * silver-500 (muted). Below silver-600 is decorative only. */
+  --color-silver-050: #f7f7f6; /* on-accent text, highest emphasis */
+  --color-silver-100: #e9e9e7;
+  --color-silver-200: #d8d7d5;
+  --color-silver-300: #cdcbcA; /* Chrome Silver — brand neutral */
+  --color-silver-400: #a3a2a0; /* secondary text · 7.6:1 on obsidian */
+  --color-silver-500: #8a8987; /* muted text · 5.6:1 on obsidian */
+  --color-silver-600: #5a5957; /* decorative */
+  --color-silver-700: #3d3d3c;
+
+  /* ── Laser Crimson — the alarm ────────────────────────────────────────────
+   * Contradicted verdicts, verification seals, focus. Never decorative.
+   * crimson-400 is the focus ring (5.5:1). crimson-500 is the brand mark. */
+  --color-crimson-300: #f26a68;
+  --color-crimson-400: #f04a48; /* focus ring · 5.5:1 on obsidian */
+  --color-crimson-500: #d41514; /* Laser Crimson — brand */
+  --color-crimson-600: #a81010;
+  --color-crimson-700: #7a0c0c;
+  --color-crimson-950: #1a0707;
+
+  /* ── Rules — chrome silver at low opacity ────────────────────────────────
+   * The single structural device of the whole interface. */
+  --rule-faint: rgba(205, 203, 202, 0.08);
+  --rule: rgba(205, 203, 202, 0.16);
+  --rule-strong: rgba(205, 203, 202, 0.28);
+
+  /* ── Semantic mapping ────────────────────────────────────────────────────
+   * Verdicts are a monochrome family. A failed claim is the only thing that
+   * gets colour, which is exactly what a reliability product should do. */
+  --verdict-supported: var(--color-silver-200);
+  --verdict-unsupported: var(--color-silver-400);
+  --verdict-contradicted: var(--color-crimson-400);
+  --verdict-unknown: var(--color-silver-500);
+
+  /* ── Accent ───────────────────────────────────────────────────────────────
+   * Chrome Silver is the accent. Dark themes read more deliberate when the
+   * primary action is off-white with dark text and the colour is reserved. */
+  --color-accent: var(--color-silver-050);
+  --color-accent-hover: #ffffff;
+  --color-on-accent: var(--color-obsidian-950);
+}

@@ -1,0 +1,178 @@
+/* ── TrustRAG · Verification ledger ──────────────────────────────────────────
+ * The interactive sandbox, restyled as a case file. A mono header carries
+ * the document identity; each claim is a row in a ruled table; the recovery
+ * band closes the record.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-ledger {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  background-color: var(--surface-panel);
+  overflow: hidden;
+}
+
+.lx-ledger__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-2) var(--step-4);
+  padding: var(--step-4) var(--step-5);
+  border-bottom: 1px solid var(--rule);
+  background-color: var(--surface-raised);
+}
+
+.lx-ledger__doc {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-400);
+}
+
+.lx-ledger__query {
+  padding: var(--step-5);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.lx-ledger__query-text {
+  font-family: var(--typeface-display);
+  font-size: 1.125rem;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--color-silver-100);
+  max-width: 60ch;
+}
+
+/* ── Claim rows ───────────────────────────────────────────────────────────── */
+
+.lx-claim {
+  display: grid;
+  gap: var(--step-2) var(--step-5);
+  padding: var(--step-5);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+@media (min-width: 900px) {
+  .lx-claim {
+    grid-template-columns: 2rem minmax(0, 1fr) minmax(0, 12rem);
+    align-items: start;
+  }
+}
+
+.lx-claim--contradicted {
+  background-color: rgba(212, 21, 20, 0.045);
+}
+
+.lx-claim__index {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-silver-600);
+  padding-top: 0.25rem;
+}
+
+.lx-claim__text {
+  font-size: var(--size-body);
+  line-height: var(--leading-body);
+  color: var(--color-silver-200);
+}
+
+.lx-claim__citation {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  margin-top: var(--step-2);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+}
+
+.lx-claim__conflict {
+  margin-top: var(--step-3);
+  padding-left: var(--step-3);
+  border-left: 1px solid rgba(212, 21, 20, 0.5);
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-400);
+}
+
+.lx-claim__aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--step-2);
+}
+
+@media (min-width: 900px) {
+  .lx-claim__aside {
+    align-items: flex-end;
+    text-align: right;
+  }
+}
+
+/* ── Recovery band ────────────────────────────────────────────────────────── */
+
+.lx-recovery {
+  padding: var(--step-5);
+  background-color: rgba(8, 8, 8, 0.5);
+  border-top: 1px solid var(--rule);
+}
+
+.lx-recovery__head {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  margin-bottom: var(--step-3);
+}
+
+.lx-recovery__action {
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-400);
+  max-width: 72ch;
+}
+
+.lx-recovery__healed {
+  margin-top: var(--step-4);
+  padding-top: var(--step-4);
+  border-top: 1px solid var(--rule-faint);
+  font-family: var(--typeface-display);
+  font-size: 1.0625rem;
+  line-height: 1.45;
+  color: var(--color-silver-100);
+}
+
+/* ── Scenario switcher ────────────────────────────────────────────────────── */
+
+.lx-scenarios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--step-1);
+}
+
+.lx-scenario {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding-inline: var(--step-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  font-size: var(--size-label);
+  color: var(--color-silver-500);
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-scenario:hover {
+  border-color: var(--rule-strong);
+  color: var(--color-silver-200);
+}
+
+.lx-scenario[aria-pressed='true'] {
+  border-color: var(--color-crimson-500);
+  background-color: rgba(212, 21, 20, 0.07);
+  color: var(--color-silver-050);
+}

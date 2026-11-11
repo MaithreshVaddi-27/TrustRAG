@@ -1,0 +1,15 @@
+/* ── TrustRAG · Component styles ─────────────────────────────────────────────
+ * One stylesheet per component family. Imported by `src/styles/index.css`
+ * after the token layer, so every custom property resolves.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+@import './button.css';
+@import './nav.css';
+@import './section.css';
+@import './hero.css';
+@import './capabilities.css';
+@import './ledger.css';
+@import './pipeline.css';
+@import './matrix.css';
+@import './benchmarks.css';
+@import './footer.css';

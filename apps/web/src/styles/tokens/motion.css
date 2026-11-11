@@ -1,0 +1,30 @@
+/* ── TrustRAG · Motion ───────────────────────────────────────────────────────
+ * One easing curve, a few durations. Motion here explains something — a
+ * verdict resolving, a sweep travelling the pipeline, a section arriving —
+ * and never loops for decoration.
+ *
+ * Apple: springs are critically damped by default (damping 1.0, response
+ * 0.3–0.4). Bounce is reserved for momentum-driven physical interaction,
+ * which this product does not have.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --motion-duration-instant: 80ms; /* press feedback */
+  --motion-duration-fast: 150ms; /* hover, colour changes */
+  --motion-duration-base: 220ms; /* enters, state changes */
+  --motion-duration-slow: 320ms; /* larger transitions */
+
+  /* Exponential ease-out — the house curve. */
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Standard curve for two-way state changes. */
+  --motion-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Stagger used by the one entrance on load and by section reveals. */
+  --stagger-step: 60ms;
+
+  /* Motion springs — mirrored in lib/motion.js for Motion's JS API. */
+  --spring-critical: { type: spring, bounce: 0, duration: 0.35 };
+  --spring-momentum: { type: spring, bounce: 0.15, duration: 0.35 };
+  --spring-snappy: { type: spring, damping: 25, stiffness: 200 };
+  --spring-gentle: { type: spring, damping: 30, stiffness: 180 };
+}

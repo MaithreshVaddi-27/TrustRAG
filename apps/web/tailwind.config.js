@@ -1,4 +1,61 @@
 /** @type {import('tailwindcss').Config} */
+
+/**
+ * TrustRAG — Obsidian Black × Chrome Silver × Laser Crimson.
+ *
+ * The palette is deliberately near-monochrome. Chrome Silver carries the
+ * interface and the single accent; Laser Crimson is an alarm and appears
+ * only where a claim has failed, a verification seal is stamped, or focus
+ * lands.
+ *
+ * This file is the build-layer mirror of `src/styles/tokens/`. Raw values
+ * live in the token stylesheets; change them there and here together.
+ */
+
+/** Chrome Silver — the neutral ramp and the single accent. */
+const silver = {
+  50: '#f7f7f6',
+  100: '#e9e9e7',
+  200: '#d8d7d5',
+  300: '#cdcbcA', // Chrome Silver
+  400: '#a3a2a0',
+  500: '#8a8987',
+  600: '#5a5957',
+  700: '#3d3d3c',
+  800: '#26262a',
+  900: '#16161a',
+  950: '#0c0c0d',
+}
+
+/** Graphite — structure, dividers, inactive strokes. */
+const graphite = {
+  300: '#5a5957',
+  400: '#4a4a49',
+  500: '#3a3a3c',
+  600: '#2e2e33',
+  700: '#232327',
+  800: '#1a1a1d',
+  900: '#141416',
+}
+
+/** Obsidian — the substrate. */
+const obsidian = {
+  800: '#141416',
+  850: '#101012',
+  900: '#0c0c0d',
+  950: '#080808', // Obsidian Black
+}
+
+/** Laser Crimson — the alarm. Never decorative. */
+const crimson = {
+  300: '#f26a68',
+  400: '#f04a48', // focus ring
+  500: '#d41514', // Laser Crimson
+  600: '#a81010',
+  700: '#7a0c0c',
+  950: '#1a0707',
+}
+
 export default {
   content: [
     './index.html',
@@ -7,233 +64,258 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
-      // ── Color system (Zero purple / violet / pink) ─────────────────────
       colors: {
-        // Slate readability remap (P1-25/S-1): default 500 (#64748b) and
-        // 600 (#475569) fail AA on dark surfaces. Lighter values keep body
-        // copy readable; scale order is intentionally sacrificed for contrast.
-        slate: {
-          500: '#7c8ba1',
-          600: '#94a3b8',
-        },
-        // Primary — electric cyber azure / sky
-        primary: {
-          50:  '#f0f9ff',
-          100: '#e0f2fe',
-          200: '#bae6fd',
-          300: '#7dd3fc',
-          400: '#38bdf8',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          700: '#0369a1',
-          800: '#075985',
-          900: '#0c4a6e',
-          950: '#041d30',
-        },
-        // Cyber cyan accents
-        cyber: {
-          300: '#67e8f9',
-          400: '#22d3ee',
-          500: '#06b6d4',
-          600: '#0891b2',
-        },
-        // Surface — obsidian & space dark
+        // ── The new system ──────────────────────────────────────────────
+        silver,
+        graphite,
+        obsidian,
+        crimson,
+
+        // ── Mapped families ─────────────────────────────────────────────
+        // The product was cyan-on-slate. Those families now resolve into
+        // the silver ramp so the whole interface shares one neutral voice.
+        primary: silver,
+        cyan: silver,
+        cyber: graphite,
+
+        // Surface is the substrate: Obsidian.
         surface: {
-          50:  '#f8fafc',
-          100: '#f1f5f9',
-          700: '#1e293b',
-          800: '#121826',
-          850: '#0d1322',
-          900: '#080c16',
-          950: '#040711',
+          50: silver[50],
+          100: silver[100],
+          700: graphite[700],
+          800: obsidian[800],
+          850: obsidian[850],
+          900: obsidian[900],
+          950: obsidian[950],
         },
-        // Semantic states
-        verified:     '#10b981', // SUPPORTED — emerald
-        contradicted: '#ef4444', // CONTRADICTED — crimson
-        unsupported:  '#f59e0b', // UNSUPPORTED — amber
-        unknown:      '#64748b', // UNKNOWN — slate
-        // Reliability bands
+
+        // Slate is the interface text ramp. The 500/600 inversion is
+        // deliberate and preserved from the original config: Tailwind's
+        // default 600 (#475569) fails AA on obsidian surfaces, so the scale
+        // order is sacrificed for contrast.
+        slate: {
+          50: silver[50],
+          100: silver[100],
+          200: silver[200],
+          300: silver[300],
+          400: silver[400],
+          500: silver[500],
+          600: silver[400],
+          700: silver[700],
+          800: silver[800],
+          900: silver[900],
+          950: silver[950],
+        },
+
+        // ── Verdict states ──────────────────────────────────────────────
+        // Monochrome family plus one alarm. A failed claim is the only
+        // thing that gets colour.
+        verified: silver[200],
+        contradicted: crimson[400],
+        unsupported: silver[400],
+        unknown: silver[600],
+
         trust: {
-          high:   '#10b981',
-          medium: '#f59e0b',
-          low:    '#ef4444',
+          high: silver[200],
+          medium: silver[400],
+          low: crimson[400],
         },
-        // Gold luxury accent
+
+        // The champagne accent is retired — it is now a step in silver.
         gold: {
-          300: '#e5d5a8',
-          400: '#d8c9a3',
-          500: '#c9ab6e',
+          300: silver[200],
+          400: silver[300],
+          500: silver[400],
         },
       },
+
       // ── Typography ─────────────────────────────────────────────────────
       fontFamily: {
-        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'system-ui', 'sans-serif'],
-        display: ['Iowan Old Style', 'Palatino Linotype', 'URW Palladio L', 'Georgia', 'Times New Roman', 'serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+        sans: [
+          'system-ui',
+          '-apple-system',
+          'SF Pro Text',
+          'Helvetica Neue',
+          'Segoe UI',
+          'Roboto',
+          'Arial',
+          'sans-serif',
+        ],
+        // Didot / Bodoni 72 — a Didone, the luxury editorial voice. System
+        // faces only, so the product stays air-gapped.
+        display: [
+          'Didot',
+          'Bodoni 72',
+          'Bodoni 72 Oldstyle',
+          'Playfair Display',
+          'Times New Roman',
+          'serif',
+        ],
+        mono: [
+          'ui-monospace',
+          'SF Mono',
+          'SFMono-Regular',
+          'JetBrains Mono',
+          'Menlo',
+          'Consolas',
+          'monospace',
+        ],
       },
+
       fontSize: {
-        'display': ['clamp(2.5rem, 5vw, 4.5rem)', { lineHeight: '1.05', letterSpacing: '-0.025em', fontWeight: '800' }],
-        'display-sm': ['clamp(1.75rem, 3.5vw, 3rem)', { lineHeight: '1.1', letterSpacing: '-0.02em', fontWeight: '800' }],
-        'heading-1': ['clamp(1.875rem, 3vw, 2.5rem)', { lineHeight: '1.2', letterSpacing: '-0.015em', fontWeight: '700' }],
-        'heading-2': ['clamp(1.5rem, 2.5vw, 2rem)', { lineHeight: '1.25', letterSpacing: '-0.01em', fontWeight: '600' }],
-        'heading-3': ['clamp(1.125rem, 1.5rem, 1.5rem)', { lineHeight: '1.3', letterSpacing: '-0.005em', fontWeight: '600' }],
-        'body-lg': ['1.125rem', { lineHeight: '1.65', letterSpacing: '0' }],
-        'body': ['1rem', { lineHeight: '1.65', letterSpacing: '0' }],
-        'body-sm': ['0.875rem', { lineHeight: '1.55', letterSpacing: '0' }],
-        'caption': ['0.75rem', { lineHeight: '1.5', letterSpacing: '0.01em', fontWeight: '500' }],
-        'mono-xs': ['0.6875rem', { lineHeight: '1.5', letterSpacing: '0.02em', fontFamily: 'var(--font-mono)' }],
-        'mono-sm': ['0.75rem', { lineHeight: '1.5', letterSpacing: '0.015em', fontFamily: 'var(--font-mono)' }],
-        'mono-base': ['0.875rem', { lineHeight: '1.55', letterSpacing: '0.01em', fontFamily: 'var(--font-mono)' }],
+        display: [
+          'clamp(2.75rem, 6vw, 5.25rem)',
+          { lineHeight: '1.02', letterSpacing: '-0.03em', fontWeight: '400' },
+        ],
+        'display-sm': [
+          'clamp(2rem, 4vw, 3.25rem)',
+          { lineHeight: '1.06', letterSpacing: '-0.025em', fontWeight: '400' },
+        ],
+        'heading-1': [
+          'clamp(1.75rem, 3vw, 2.5rem)',
+          { lineHeight: '1.14', letterSpacing: '-0.02em', fontWeight: '400' },
+        ],
+        'heading-2': [
+          'clamp(1.375rem, 2vw, 1.875rem)',
+          { lineHeight: '1.2', letterSpacing: '-0.015em', fontWeight: '400' },
+        ],
+        'heading-3': [
+          '1.25rem',
+          { lineHeight: '1.3', letterSpacing: '-0.01em', fontWeight: '500' },
+        ],
+        'body-lg': ['1.125rem', { lineHeight: '1.62', letterSpacing: '0' }],
+        body: ['1rem', { lineHeight: '1.65', letterSpacing: '0' }],
+        'body-sm': ['0.875rem', { lineHeight: '1.6', letterSpacing: '0' }],
+        caption: ['0.8125rem', { lineHeight: '1.45', letterSpacing: '0.005em', fontWeight: '500' }],
+        'mono-xs': [
+          '0.75rem',
+          { lineHeight: '1.45', letterSpacing: '0.01em', fontFamily: 'var(--typeface-mono)' },
+        ],
+        'mono-sm': [
+          '0.8125rem',
+          { lineHeight: '1.45', letterSpacing: '0.01em', fontFamily: 'var(--typeface-mono)' },
+        ],
+        'mono-base': [
+          '0.875rem',
+          { lineHeight: '1.55', letterSpacing: '0.01em', fontFamily: 'var(--typeface-mono)' },
+        ],
       },
-      // ── Animation & Micro-effects ──────────────────────────────────────
+
+      // ── Animation & micro-effects ──────────────────────────────────────
+      // Only motion that explains something survives. The decorative loops
+      // (shimmer, radar sweep, halo pulse, rotating beam) are gone.
       animation: {
-        'fade-in':     'fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-        'slide-up':    'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-        'slide-down':  'slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-        'slide-left':  'slideLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+        'fade-in': 'fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+        'slide-up': 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+        'slide-down': 'slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+        'slide-left': 'slideLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
         'slide-right': 'slideRight 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-        'scale-in':    'scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-        'pulse-slow':  'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'spin-slow':   'spin 4s linear infinite',
-        'glow':        'glow 2s ease-in-out infinite alternate',
-        'float':       'float 5s ease-in-out infinite',
-        'scan':        'scan 3s ease-in-out infinite',
-        'shimmer':     'shimmer 2.5s linear infinite',
-        'radar-sweep': 'radarSweep 2.5s linear infinite',
-        'halo-pulse':  'haloPulse 2s cubic-bezier(0, 0, 0.2, 1) infinite',
-        'border-glow': 'borderGlow 3s ease-in-out infinite',
-        'rotate-beam': 'rotateBeam 4s linear infinite',
-        'shine':       'shine 3s ease-in-out infinite',
-        'scanline-move': 'scanlineMove 8s linear infinite',
-        'stagger-in':  'staggerIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both',
+        'scale-in': 'scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'spin-slow': 'spin 4s linear infinite',
+        float: 'float 5s ease-in-out infinite',
       },
       keyframes: {
-        fadeIn: {
-          '0%':   { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
+        fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
         slideUp: {
-          '0%':   { opacity: '0', transform: 'translateY(12px)' },
+          '0%': { opacity: '0', transform: 'translateY(12px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         slideDown: {
-          '0%':   { opacity: '0', transform: 'translateY(-12px)' },
+          '0%': { opacity: '0', transform: 'translateY(-12px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         slideLeft: {
-          '0%':   { opacity: '0', transform: 'translateX(-12px)' },
+          '0%': { opacity: '0', transform: 'translateX(-12px)' },
           '100%': { opacity: '1', transform: 'translateX(0)' },
         },
         slideRight: {
-          '0%':   { opacity: '0', transform: 'translateX(12px)' },
+          '0%': { opacity: '0', transform: 'translateX(12px)' },
           '100%': { opacity: '1', transform: 'translateX(0)' },
         },
         scaleIn: {
-          '0%':   { opacity: '0', transform: 'scale(0.95)' },
+          '0%': { opacity: '0', transform: 'scale(0.95)' },
           '100%': { opacity: '1', transform: 'scale(1)' },
-        },
-        glow: {
-          '0%':   { filter: 'drop-shadow(0 0 6px rgba(14, 165, 233, 0.4))' },
-          '100%': { filter: 'drop-shadow(0 0 16px rgba(14, 165, 233, 0.8))' },
         },
         float: {
           '0%, 100%': { transform: 'translateY(0px)' },
-          '50%':      { transform: 'translateY(-8px)' },
-        },
-        scan: {
-          '0%':   { top: '0%' },
-          '50%':  { top: '95%' },
-          '100%': { top: '0%' },
-        },
-        shimmer: {
-          '0%':   { backgroundPosition: '-200% 0' },
-          '100%': { backgroundPosition: '200% 0' },
-        },
-        radarSweep: {
-          '0%':   { transform: 'rotate(0deg)' },
-          '100%': { transform: 'rotate(360deg)' },
-        },
-        haloPulse: {
-          '0%':   { transform: 'scale(0.95)', opacity: '0.8' },
-          '50%':  { transform: 'scale(1.25)', opacity: '0' },
-          '100%': { transform: 'scale(0.95)', opacity: '0' },
-        },
-        borderGlow: {
-          '0%, 100%': { borderColor: 'rgba(14, 165, 233, 0.3)', boxShadow: '0 0 15px rgba(14, 165, 233, 0.15)' },
-          '50%':      { borderColor: 'rgba(6, 182, 212, 0.7)', boxShadow: '0 0 25px rgba(6, 182, 212, 0.35)' },
-        },
-        rotateBeam: {
-          '0%':   { transform: 'rotate(0deg)' },
-          '100%': { transform: 'rotate(360deg)' },
-        },
-        shine: {
-          '0%':   { backgroundPosition: '-200% center' },
-          '100%': { backgroundPosition: '200% center' },
-        },
-        scanlineMove: {
-          '0%':   { transform: 'translateY(-100%)' },
-          '100%': { transform: 'translateY(100%)' },
-        },
-        staggerIn: {
-          '0%':   { opacity: '0', transform: 'translateY(16px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-8px)' },
         },
       },
-      // ── Cyber Glow Box Shadows ──────────────────────────────────────────
+
+      // ── Elevation ──────────────────────────────────────────────────────
+      // Depth on a dark theme comes from surface steps and hairlines, not
+      // from shadows. The neutral shadows below are what remains.
       boxShadow: {
-        'glow-primary': '0 0 25px -2px rgba(14, 165, 233, 0.45), 0 0 10px -1px rgba(14, 165, 233, 0.3)',
-        'glow-cyan':    '0 0 25px -2px rgba(6, 182, 212, 0.45), 0 0 10px -1px rgba(6, 182, 212, 0.3)',
-        'glow-emerald': '0 0 25px -2px rgba(16, 185, 129, 0.45), 0 0 10px -1px rgba(16, 185, 129, 0.3)',
-        'glow-crimson': '0 0 25px -2px rgba(239, 68, 68, 0.45), 0 0 10px -1px rgba(239, 68, 68, 0.3)',
-        'glow-amber':   '0 0 25px -2px rgba(245, 158, 11, 0.45), 0 0 10px -1px rgba(245, 158, 11, 0.3)',
-        'glow-gold':    '0 0 25px -2px rgba(201, 171, 110, 0.45), 0 0 10px -1px rgba(201, 171, 110, 0.3)',
-        'card': '0 10px 40px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06)',
-        'nav': '0 8px 32px -8px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05)',
-        'lift': '0 20px 50px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(56, 189, 248, 0.12)',
+        none: 'none',
+        sm: '0 1px 2px rgba(0, 0, 0, 0.4)',
+        md: '0 4px 12px rgba(0, 0, 0, 0.5)',
+        lg: '0 12px 32px rgba(0, 0, 0, 0.6)',
+        xl: '0 24px 64px rgba(0, 0, 0, 0.7)',
+        '2xl': '0 32px 80px rgba(0, 0, 0, 0.75)',
+        inner: 'inset 0 2px 4px rgba(0, 0, 0, 0.4)',
+        // The hairline-inset shadows the glass surfaces used to rely on.
+        card: '0 1px 0 rgba(205, 203, 202, 0.04) inset',
+        nav: '0 1px 0 rgba(205, 203, 202, 0.05) inset',
+        lift: '0 32px 64px -32px rgba(0, 0, 0, 0.9)',
+        // Retired: coloured glows. Kept as keys so existing class names
+        // resolve, but they no longer emit colour.
+        'glow-primary': 'none',
+        'glow-cyan': 'none',
+        'glow-emerald': 'none',
+        'glow-crimson': 'none',
+        'glow-amber': 'none',
+        'glow-gold': 'none',
       },
-      // ── Glassmorphism ──────────────────────────────────────────────────
+
       backdropBlur: {
         xs: '2px',
       },
+
       backgroundImage: {
-        'cyber-grid': 'linear-gradient(rgba(14, 165, 233, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(14, 165, 233, 0.03) 1px, transparent 1px)',
+        'cyber-grid':
+          'linear-gradient(rgba(205, 203, 202, 0.018) 1px, transparent 1px), linear-gradient(90deg, rgba(205, 203, 202, 0.018) 1px, transparent 1px)',
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
         'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
       },
       backgroundSize: {
-        'grid': '40px 40px',
+        grid: '40px 40px',
       },
+
       spacing: {
-        'section': '2rem',
-        'chapter': '3rem',
-        '18': '4.5rem',
-        '22': '5.5rem',
+        section: '2rem',
+        chapter: '3rem',
+        18: '4.5rem',
+        22: '5.5rem',
       },
+
       borderRadius: {
         '2xl': '1.5rem',
         '3xl': '2rem',
       },
+
       zIndex: {
-        'base': '0',
-        'raised': '10',
-        'sticky': '20',
-        'nav': '40',
-        'sidebar': '50',
-        'overlay': '100',
-        'toast': '200',
-        'modal': '300',
-        'tooltip': '400',
+        base: '0',
+        raised: '10',
+        sticky: '20',
+        nav: '40',
+        sidebar: '50',
+        overlay: '100',
+        toast: '200',
+        modal: '300',
+        tooltip: '400',
       },
+
       transitionDuration: {
-        'instant': '80ms',
-        'fast': '150ms',
-        'base': '200ms',
-        'slow': '300ms',
-        'route': '200ms',
+        instant: '80ms',
+        fast: '150ms',
+        base: '220ms',
+        slow: '320ms',
+        route: '220ms',
       },
       transitionTimingFunction: {
         'out-expo': 'cubic-bezier(0.16, 1, 0.3, 1)',
-        'spring': 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+        spring: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
       },
     },
   },

@@ -1,0 +1,270 @@
+/* ── TrustRAG · Hero ────────────────────────────────────────────────────────
+ * An asymmetric split. The copy sits left and reads as the entry point; the
+ * right column carries the product itself — a real evidence record from the
+ * workbench, not an illustration of one. That panel is the only element on
+ * the page that is allowed to feel like an object.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-hero {
+  position: relative;
+  padding-top: var(--step-16);
+  padding-bottom: var(--step-16);
+}
+
+@media (min-width: 1024px) {
+  .lx-hero {
+    padding-top: var(--step-24);
+    padding-bottom: var(--step-24);
+  }
+}
+
+.lx-hero__grid {
+  display: grid;
+  gap: var(--step-12);
+  align-items: center;
+}
+
+@media (min-width: 1024px) {
+  .lx-hero__grid {
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+    gap: var(--step-16);
+  }
+}
+
+/* ── Copy column ──────────────────────────────────────────────────────────── */
+
+.lx-hero__headline {
+  /* The three lines are set deliberately in the content file, so the
+   * measure only has to stop them overflowing at narrow widths. */
+  max-width: 16ch;
+}
+
+.lx-hero__lede {
+  margin-top: var(--step-6);
+  max-width: 46ch;
+}
+
+.lx-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--step-3);
+  margin-top: var(--step-8);
+}
+
+/* A quiet, honest footnote under the hero. Claims with a number get a
+ * pointer to the method that produced it. */
+.lx-hero__note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--step-2) var(--step-3);
+  margin-top: var(--step-8);
+  padding-top: var(--step-4);
+  border-top: 1px solid var(--rule-faint);
+}
+
+.lx-hero__note a {
+  color: var(--color-silver-300);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 0.25em;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard),
+    text-decoration-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-hero__note a:hover {
+  color: var(--color-silver-050);
+  text-decoration-color: var(--color-silver-400);
+}
+
+/* ── Product preview ────────────────────────────────────────────────────────
+ * The one elevated surface in the design. It floats above the page, so it
+ * earns the single shadow in the system.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-preview {
+  position: relative;
+  background-color: var(--surface-card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-large);
+  box-shadow: var(--shadow-preview);
+  overflow: hidden;
+}
+
+.lx-preview__chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-4);
+  padding: var(--step-3) var(--step-5);
+  border-bottom: 1px solid var(--rule);
+  background-color: var(--surface-raised);
+}
+
+.lx-preview__title {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-400);
+}
+
+.lx-preview__body {
+  padding: var(--step-5);
+}
+
+@media (min-width: 1024px) {
+  .lx-preview__body {
+    padding: var(--step-6);
+  }
+}
+
+/* ── The evidence record ──────────────────────────────────────────────────── */
+
+.lx-record {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  background-color: var(--surface-panel);
+  overflow: hidden;
+}
+
+.lx-record + .lx-record {
+  margin-top: var(--step-3);
+}
+
+/* A contradicted record carries a crimson edge — the only coloured rule in
+ * the system, and it is always meaningful. */
+.lx-record--contradicted {
+  border-color: rgba(212, 21, 20, 0.42);
+}
+
+.lx-record__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-3);
+  padding: var(--step-3) var(--step-4);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.lx-record__claim {
+  padding: var(--step-4);
+}
+
+.lx-record__text {
+  font-family: var(--typeface-display);
+  font-size: 1.0625rem;
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  color: var(--color-silver-100);
+}
+
+.lx-record--contradicted .lx-record__text {
+  color: var(--color-silver-300);
+}
+
+.lx-record__evidence {
+  margin: 0 var(--step-4) var(--step-4);
+  padding: var(--step-3) var(--step-4);
+  border-left: 1px solid var(--rule);
+  background-color: rgba(8, 8, 8, 0.45);
+}
+
+.lx-record__evidence-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--step-2) var(--step-4);
+  margin-bottom: var(--step-2);
+}
+
+.lx-record__evidence-text {
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-500);
+}
+
+.lx-record__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-4);
+  padding: var(--step-3) var(--step-4);
+  border-top: 1px solid var(--rule-faint);
+}
+
+/* ── Verdict ──────────────────────────────────────────────────────────────── */
+
+.lx-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-2);
+  font-size: var(--size-label);
+  font-weight: var(--weight-medium);
+}
+
+.lx-verdict__mark {
+  flex-shrink: 0;
+  color: var(--color-silver-600);
+}
+
+.lx-verdict--supported .lx-verdict__mark {
+  color: var(--verdict-supported);
+}
+
+.lx-verdict--supported {
+  color: var(--verdict-supported);
+}
+
+.lx-verdict--contradicted .lx-verdict__mark {
+  color: var(--verdict-contradicted);
+}
+
+.lx-verdict--contradicted {
+  color: var(--verdict-contradicted);
+}
+
+.lx-verdict--unsupported {
+  color: var(--verdict-unsupported);
+}
+
+.lx-verdict--unknown {
+  color: var(--verdict-unknown);
+}
+
+/* ── Registration seal ──────────────────────────────────────────────────────
+ * The signature mark. Two opposing corner brackets, borrowed from the
+ * registration targets printers use to check alignment — the same idea as
+ * checking that a claim aligns with its evidence.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-seal {
+  flex-shrink: 0;
+  color: var(--color-crimson-500);
+}
+
+.lx-seal--silver {
+  color: var(--color-silver-500);
+}
+
+/* ── Score ────────────────────────────────────────────────────────────────── */
+
+.lx-score {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--step-2);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-silver-400);
+}
+
+.lx-score__value {
+  font-size: 0.9375rem;
+  color: var(--color-silver-100);
+}
+
+.lx-record--contradicted .lx-score__value {
+  color: var(--color-crimson-300);
+}

@@ -1,0 +1,83 @@
+/* ── TrustRAG · Buttons ──────────────────────────────────────────────────────
+ * One accent: Chrome Silver. On a dark theme the primary action is an
+ * off-white surface with dark text, which reads more deliberate than a
+ * coloured button and lets Laser Crimson keep its meaning as an alarm.
+ *
+ * Every interactive target is at least 44×44.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--step-2);
+  min-height: 44px;
+  padding-inline: var(--step-5);
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  font-size: var(--size-label);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-instant) var(--motion-ease-out);
+  touch-action: manipulation;
+}
+
+.lx-btn:active {
+  transform: scale(0.985);
+}
+
+.lx-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Primary — off-white plate, obsidian text. */
+.lx-btn--primary {
+  background-color: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.lx-btn--primary:hover:not(:disabled) {
+  background-color: var(--color-accent-hover);
+}
+
+/* Secondary — hairline outline, silver text. */
+.lx-btn--secondary {
+  border-color: var(--rule);
+  color: var(--color-silver-200);
+}
+
+.lx-btn--secondary:hover:not(:disabled) {
+  border-color: var(--rule-strong);
+  color: var(--color-silver-050);
+  background-color: rgba(205, 203, 202, 0.04);
+}
+
+/* Quiet — a text link that still meets the target size. */
+.lx-btn--quiet {
+  color: var(--color-silver-400);
+  padding-inline: var(--step-3);
+}
+
+.lx-btn--quiet:hover:not(:disabled) {
+  color: var(--color-silver-050);
+}
+
+.lx-btn--large {
+  min-height: 52px;
+  padding-inline: var(--step-6);
+  font-size: var(--size-body);
+}
+
+.lx-btn--block {
+  width: 100%;
+}
+
+.lx-btn__icon {
+  flex-shrink: 0;
+  color: currentColor;
+  opacity: 0.85;
+}

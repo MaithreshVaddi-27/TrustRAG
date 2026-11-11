@@ -1,0 +1,176 @@
+/* ── TrustRAG · Landing navigation ────────────────────────────────────────────
+ * Quiet chrome. A logo, the existing links, one button. "Sign in" is a text
+ * link beside the button, not a second button. The rule under the bar
+ * appears only once the page has scrolled past it.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background-color: rgba(8, 8, 8, 0.72);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--motion-duration-base) var(--motion-ease-standard),
+    background-color var(--motion-duration-base) var(--motion-ease-standard);
+}
+
+.lx-nav[data-scrolled='true'] {
+  border-bottom-color: var(--rule);
+  background-color: rgba(8, 8, 8, 0.9);
+}
+
+.lx-nav__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-6);
+  height: 68px;
+}
+
+.lx-nav__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-3);
+  min-height: 44px;
+  flex-shrink: 0;
+}
+
+.lx-nav__wordmark {
+  font-family: var(--typeface-display);
+  font-size: 1.0625rem;
+  letter-spacing: 0.06em;
+  color: var(--color-silver-050);
+  line-height: 1;
+}
+
+.lx-nav__links {
+  display: flex;
+  align-items: center;
+  gap: var(--step-1);
+}
+
+.lx-nav__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: var(--step-3);
+  border-radius: var(--radius-control);
+  font-size: var(--size-label);
+  color: var(--color-silver-400);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-nav__link:hover {
+  color: var(--color-silver-050);
+}
+
+.lx-nav__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  flex-shrink: 0;
+}
+
+.lx-nav__signin {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: var(--step-3);
+  border-radius: var(--radius-control);
+  font-size: var(--size-label);
+  color: var(--color-silver-400);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-nav__signin:hover {
+  color: var(--color-silver-050);
+}
+
+.lx-nav__toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--rule);
+  color: var(--color-silver-300);
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-nav__toggle:hover {
+  border-color: var(--rule-strong);
+  color: var(--color-silver-050);
+}
+
+@media (max-width: 1024px) {
+  .lx-nav__links,
+  .lx-nav__signin {
+    display: none;
+  }
+
+  .lx-nav__toggle {
+    display: inline-flex;
+  }
+}
+
+/* ── Mobile drawer ────────────────────────────────────────────────────────── */
+
+.lx-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background-color: rgba(8, 8, 8, 0.96);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  display: flex;
+  flex-direction: column;
+  padding: var(--step-4) var(--gutter) var(--step-8);
+  overflow-y: auto;
+}
+
+.lx-drawer__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 68px;
+}
+
+.lx-drawer__nav {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--step-6);
+  border-top: 1px solid var(--rule);
+}
+
+.lx-drawer__link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  border-bottom: 1px solid var(--rule-faint);
+  font-family: var(--typeface-display);
+  font-size: 1.5rem;
+  letter-spacing: -0.015em;
+  color: var(--color-silver-100);
+}
+
+.lx-drawer__link:hover {
+  color: var(--color-silver-050);
+}
+
+.lx-drawer__index {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  color: var(--color-silver-600);
+}
+
+.lx-drawer__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-3);
+  margin-top: var(--step-8);
+}

@@ -1,0 +1,163 @@
+/* ── TrustRAG · Compatibility aliases ───────────────────────────────────────
+ * The application surfaces (dashboard, playground, workbench, settings) have
+ * not been migrated to the Obsidian / Chrome Silver / Laser Crimson system
+ * yet. Their stylesheets still reference the older token names.
+ *
+ * Rather than duplicate raw values, this file re-points every legacy name at
+ * a token defined in `color.css`, `typography.css`, `spacing.css`,
+ * `radius.css`, `elevation.css` and `motion.css`. One source of truth for
+ * raw values; two names for the same value while the migration is in
+ * progress.
+ *
+ * Every alias resolves in one direction only. A legacy name never points at
+ * another legacy name, so no declaration is self-referential.
+ *
+ * When the application surfaces are redesigned, delete this file and rename
+ * the remaining `var(--color-primary-*)` / `var(--color-surface-*)`
+ * references to their semantic equivalents.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Legacy colour names ──────────────────────────────────────────────── */
+
+  /* "primary" was cyan. It is now Chrome Silver — the single accent. */
+  --color-primary-50: var(--color-silver-100);
+  --color-primary-100: var(--color-silver-200);
+  --color-primary-200: var(--color-silver-300);
+  --color-primary-300: var(--color-silver-200);
+  --color-primary-400: var(--color-silver-300);
+  --color-primary-500: var(--color-silver-400);
+  --color-primary-600: var(--color-silver-500);
+  --color-primary-700: var(--color-silver-600);
+  --color-primary-800: var(--color-graphite-700);
+  --color-primary-900: var(--color-graphite-800);
+  --color-primary-950: var(--color-obsidian-900);
+
+  /* "cyber" was the second cyan. It is now a deep graphite, so any legacy
+   * `from-primary-600 to-cyan-600` gradient becomes a tone shift inside one
+   * neutral instead of a hue gradient. */
+  --color-cyber-300: var(--color-silver-400);
+  --color-cyber-400: var(--color-silver-500);
+  --color-cyber-500: var(--color-silver-600);
+  --color-cyber-600: var(--color-silver-700);
+
+  /* "surface" is the neutral substrate. */
+  --color-surface-50: var(--color-silver-100);
+  --color-surface-100: var(--color-silver-200);
+  --color-surface-700: var(--color-graphite-700);
+  --color-surface-800: var(--color-obsidian-800);
+  --color-surface-850: var(--color-obsidian-850);
+  --color-surface-900: var(--color-obsidian-900);
+  --color-surface-950: var(--color-obsidian-950);
+
+  /* "ink" and "parchment" were the Ledger-era aliases. */
+  --color-ink-950: var(--color-obsidian-950);
+  --color-ink-900: var(--color-obsidian-900);
+  --color-ink-850: var(--color-obsidian-850);
+  --color-ink-800: var(--color-obsidian-800);
+  --color-ink-700: var(--color-graphite-700);
+  --color-parchment: var(--color-silver-050);
+  --color-mist: var(--color-silver-400);
+  --color-faint: var(--color-silver-500);
+
+  /* The champagne accent is retired. It is now a step in the silver ramp. */
+  --color-gold-300: var(--color-silver-200);
+  --color-gold-400: var(--color-silver-300);
+  --color-gold-500: var(--color-silver-400);
+
+  /* Verdict colours now come from the monochrome family. */
+  --color-verified: var(--verdict-supported);
+  --color-contradicted: var(--verdict-contradicted);
+  --color-unsupported: var(--verdict-unsupported);
+  --color-unknown: var(--verdict-unknown);
+  --color-trust-high: var(--verdict-supported);
+  --color-trust-medium: var(--verdict-unsupported);
+  --color-trust-low: var(--verdict-contradicted);
+
+  /* ── Legacy typography names ──────────────────────────────────────────── */
+  --font-sans: var(--typeface-sans);
+  --font-display: var(--typeface-display);
+  --font-mono: var(--typeface-mono);
+
+  --text-display: var(--size-display);
+  --text-display-sm: var(--size-display-sm);
+  --text-heading-1: var(--size-h1);
+  --text-heading-2: var(--size-h2);
+  --text-heading-3: var(--size-h3);
+  --text-body-lg: var(--size-lede);
+  --text-body: var(--size-body);
+  --text-body-sm: var(--size-body-sm);
+  --text-caption: var(--size-label);
+  --text-mono-xs: var(--size-micro);
+  --text-mono-sm: var(--size-micro);
+  --text-mono-base: var(--size-body-sm);
+
+  --leading-display: var(--leading-display);
+  --leading-tight: var(--leading-h1);
+  --leading-base: var(--leading-body);
+  --tracking-display: var(--tracking-display);
+  --tracking-heading: var(--tracking-h1);
+
+  /* ── Legacy spacing names ─────────────────────────────────────────────── */
+  --space-1: var(--step-1);
+  --space-2: var(--step-2);
+  --space-3: var(--step-3);
+  --space-4: var(--step-4);
+  --space-5: var(--step-5);
+  --space-6: var(--step-6);
+  --space-7: var(--step-7);
+  --space-8: var(--step-8);
+  --space-10: var(--step-10);
+  --space-12: var(--step-12);
+  --space-16: var(--step-16);
+  --space-20: var(--step-20);
+  --space-24: var(--step-24);
+  --space-32: var(--step-32);
+  --space-section: var(--section-space);
+  --space-chapter: var(--chapter-space);
+
+  /* ── Legacy radius names ──────────────────────────────────────────────── */
+  --radius-sm: var(--radius-control);
+  --radius-md: var(--radius-card);
+  --radius-lg: var(--radius-panel);
+  --radius-xl: var(--radius-panel);
+  --radius-2xl: var(--radius-large);
+  --radius-full: var(--radius-pill);
+
+  /* ── Legacy elevation names ───────────────────────────────────────────── */
+  --shadow-card: 0 1px 0 rgba(205, 203, 202, 0.04) inset;
+  --shadow-nav: 0 1px 0 rgba(205, 203, 202, 0.05) inset;
+  --shadow-lift: var(--shadow-preview);
+  --shadow-glow-primary: none;
+  --shadow-glow-cyan: none;
+  --shadow-glow-emerald: none;
+  --shadow-glow-crimson: none;
+  --shadow-glow-amber: none;
+  --shadow-glow-gold: none;
+
+  /* ── Legacy rules, icons and layering ─────────────────────────────────── */
+  --color-hairline: var(--rule);
+  --color-hairline-strong: var(--rule-strong);
+  --border-color: var(--rule-strong);
+  --text-muted: var(--color-silver-500);
+  --icon-stroke: 1.5px;
+
+  --z-base: 0;
+  --z-raised: 10;
+  --z-sticky: 20;
+  --z-nav: 40;
+  --z-sidebar: 50;
+  --z-overlay: 100;
+  --z-toast: 200;
+  --z-modal: 300;
+  --z-tooltip: 400;
+
+  /* ── Legacy motion names ──────────────────────────────────────────────── */
+  --ease-out-expo: var(--motion-ease-out);
+  --ease-spring: var(--motion-ease-standard);
+  --duration-instant: var(--motion-duration-instant);
+  --duration-fast: var(--motion-duration-fast);
+  --duration-base: var(--motion-duration-base);
+  --duration-slow: var(--motion-duration-slow);
+  --duration-route: var(--motion-duration-base);
+}

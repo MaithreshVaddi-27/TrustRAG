@@ -1,0 +1,109 @@
+/* ── TrustRAG · Footer ───────────────────────────────────────────────────────
+ * A ruled index, not a promotional block. Links grouped by area, separated
+ * by hairlines, with the build identity in mono at the bottom.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-footer {
+  border-top: 1px solid var(--rule);
+  margin-top: var(--step-16);
+  padding-block: var(--step-12) var(--step-8);
+}
+
+.lx-footer__grid {
+  display: grid;
+  gap: var(--step-10) var(--step-8);
+}
+
+@media (min-width: 768px) {
+  .lx-footer__grid {
+    grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
+  }
+}
+
+.lx-footer__brand {
+  max-width: 34ch;
+}
+
+.lx-footer__tagline {
+  margin-top: var(--step-3);
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-500);
+}
+
+.lx-footer__col-title {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-600);
+  margin-bottom: var(--step-3);
+}
+
+.lx-footer__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lx-footer__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  font-size: var(--size-body-sm);
+  color: var(--color-silver-400);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-footer__link:hover {
+  color: var(--color-silver-050);
+}
+
+.lx-footer__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-3) var(--step-6);
+  margin-top: var(--step-10);
+  padding-top: var(--step-5);
+  border-top: 1px solid var(--rule);
+}
+
+/* ── Closing CTA ──────────────────────────────────────────────────────────── */
+
+.lx-cta {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-large);
+  background-color: var(--surface-panel);
+  padding: var(--step-12) var(--step-6);
+  text-align: center;
+}
+
+@media (min-width: 1024px) {
+  .lx-cta {
+    padding: var(--step-16) var(--step-12);
+  }
+}
+
+.lx-cta__headline {
+  max-width: 20ch;
+  margin-inline: auto;
+}
+
+.lx-cta__lede {
+  max-width: 48ch;
+  margin: var(--step-5) auto 0;
+}
+
+.lx-cta__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--step-3);
+  margin-top: var(--step-8);
+}

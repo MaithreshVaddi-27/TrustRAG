@@ -1,0 +1,13 @@
+/* ── TrustRAG · Radius ───────────────────────────────────────────────────────
+ * Controls 6, cards 10, panels 14, large surfaces 20. Not everything is a
+ * pill. Nested radii subtract: an inner radius is the outer radius minus
+ * the padding between them, never less than 4.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --radius-control: 6px;
+  --radius-card: 10px;
+  --radius-panel: 14px;
+  --radius-large: 20px;
+  --radius-pill: 999px;
+}
