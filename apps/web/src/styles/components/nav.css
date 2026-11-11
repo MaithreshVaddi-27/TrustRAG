@@ -117,6 +117,15 @@
   }
 }
 
+/* Below this the brand, the primary action and the menu button no longer
+ * fit on one line. The primary action stays in the hero, so the nav keeps
+ * the brand and the menu. */
+@media (max-width: 520px) {
+  .lx-nav__actions .lx-btn--primary {
+    display: none;
+  }
+}
+
 /* ── Mobile drawer ────────────────────────────────────────────────────────── */
 
 .lx-drawer {
@@ -165,7 +174,7 @@
 .lx-drawer__index {
   font-family: var(--typeface-mono);
   font-size: var(--size-micro);
-  color: var(--color-silver-600);
+  color: var(--color-silver-500);
 }
 
 .lx-drawer__actions {

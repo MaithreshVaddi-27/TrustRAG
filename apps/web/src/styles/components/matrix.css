@@ -43,7 +43,7 @@
   font-family: var(--typeface-mono);
   font-size: var(--size-micro);
   letter-spacing: var(--tracking-micro);
-  color: var(--color-silver-600);
+  color: var(--color-silver-500);
 }
 
 @media (min-width: 900px) {
@@ -110,7 +110,7 @@
 .lx-matrix__impact svg {
   flex-shrink: 0;
   margin-top: 0.2rem;
-  color: var(--color-silver-600);
+  color: var(--color-silver-500);
 }
 
 .lx-matrix__filter {

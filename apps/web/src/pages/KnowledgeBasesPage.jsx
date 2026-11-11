@@ -68,8 +68,8 @@ export default function KnowledgeBasesPage() {
               <HardDrive size={12} />
               <span>Multi-Tenant Vector Index</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              Knowledge <span className="text-gradient">Bases</span>
+            <h1 className="lx-h1">
+              Knowledge <span className="text-silver-500">Bases</span>
             </h1>
             <p className="text-slate-400 text-sm mt-1">
               Document repositories partitioned with multi-dimensional dense (384d / 768d) & sparse BM25 indexing.

@@ -80,7 +80,7 @@
 .lx-tab {
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
+  min-height: 44px;
   padding-inline: var(--step-4);
   border-radius: 4px;
   font-size: var(--size-label);

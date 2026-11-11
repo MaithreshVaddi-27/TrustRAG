@@ -68,7 +68,7 @@
   font-size: var(--size-micro);
   letter-spacing: var(--tracking-micro);
   font-variant-numeric: tabular-nums;
-  color: var(--color-silver-600);
+  color: var(--color-silver-500);
   padding-top: 0.25rem;
 }
 
@@ -155,7 +155,7 @@
 .lx-scenario {
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
+  min-height: 44px;
   padding-inline: var(--step-4);
   border: 1px solid var(--rule);
   border-radius: var(--radius-control);

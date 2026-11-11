@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Eye, EyeOff, Loader2, AlertTriangle } from 'lucide-react'
 import AuthLayout from '@/layouts/AuthLayout'
 import { authService } from '@/services/auth'
 
@@ -30,21 +30,21 @@ export default function LoginPage() {
     <AuthLayout title="Sign in" subtitle="Access your AI reliability workbench">
       <form onSubmit={handleSubmit} className="space-y-4" id="login-form">
         {error && (
-          <div className="rounded-lg border border-red-800/50 bg-red-950/40 px-3 py-2 text-sm text-red-400">
-            {error}
+          <div className="lx-alert lx-alert--error" role="alert">
+            <AlertTriangle size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span>{error}</span>
           </div>
         )}
 
         {loading && (
-          <div className="rounded-lg border border-cyan-800/50 bg-cyan-950/30 px-3 py-2.5 text-xs text-cyan-300 space-y-1">
-            <p className="font-semibold flex items-center gap-1.5">
-              <Loader2 size={13} className="animate-spin" /> Signing in…
-            </p>
+          <div className="lx-alert lx-alert--info" role="status">
+            <Loader2 size={14} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />
+            <span>Signing in…</span>
           </div>
         )}
 
-        <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-slate-400" htmlFor="login-email">
+        <div className="lx-field">
+          <label className="lx-field__label" htmlFor="login-email">
             Email
           </label>
           <input
@@ -54,17 +54,17 @@ export default function LoginPage() {
             autoComplete="email"
             required
             value={email}
-            onChange={e => setEmail(e.target.value)}
+            onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            className="w-full bg-surface-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-600 transition-colors"
+            className="lx-field__input"
           />
         </div>
 
-        <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-slate-400" htmlFor="login-password">
+        <div className="lx-field">
+          <label className="lx-field__label" htmlFor="login-password">
             Password
           </label>
-          <div className="relative">
+          <div className="lx-field__wrap">
             <input
               id="login-password"
               name="password"
@@ -72,37 +72,35 @@ export default function LoginPage() {
               autoComplete="current-password"
               required
               value={password}
-              onChange={e => setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full bg-surface-800 border border-slate-700 rounded-lg px-3 py-2 pr-10 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-600 transition-colors"
+              className="lx-field__input lx-field__input--with-affix"
             />
             <button
               type="button"
-              onClick={() => setShowPw(v => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+              onClick={() => setShowPw((v) => !v)}
+              className="lx-field__affix"
               aria-label={showPw ? 'Hide password' : 'Show password'}
+              aria-pressed={showPw}
             >
-              {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+              {showPw ? (
+                <EyeOff size={15} strokeWidth={1.5} aria-hidden="true" />
+              ) : (
+                <Eye size={15} strokeWidth={1.5} aria-hidden="true" />
+              )}
             </button>
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          id="login-submit"
-          className="btn-primary w-full flex items-center justify-center gap-2 mt-2"
-        >
-          {loading && <Loader2 size={14} className="animate-spin" />}
+        <button type="submit" disabled={loading} id="login-submit" className="lx-btn lx-btn--primary lx-btn--block lx-btn--large">
+          {loading && <Loader2 size={14} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />}
           {loading ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
 
-      <p className="mt-4 text-center text-xs text-slate-500">
+      <p className="lx-auth__foot">
         No account?{' '}
-        <Link to="/register" className="text-primary-400 hover:text-primary-300 transition-colors">
-          Create one
-        </Link>
+        <Link to="/register">Create one</Link>
       </p>
     </AuthLayout>
   )

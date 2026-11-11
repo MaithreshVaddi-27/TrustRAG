@@ -1,0 +1,36 @@
+{
+  "$schema": "https://agenticresourcediscovery.org/schema/v1/ard.json",
+  "identifier": "urn:air:trustrag.local:workbench:trustrag",
+  "name": "TrustRAG",
+  "displayName": "TrustRAG",
+  "description": "An open reliability workbench for retrieval-augmented generation. Atomic claim decomposition, batch entailment audit, and bounded closed-loop self-healing.",
+  "version": "0.1.0",
+  "canonicalUrl": "https://trustrag.local/",
+  "license": "Apache-2.0",
+  "entries": [
+    {
+      "identifier": "urn:air:trustrag.local:workbench:api",
+      "displayName": "TrustRAG REST API",
+      "description": "Versioned REST API under /api/v1. GET /api/v1/health is unauthenticated; all other routes require a bearer token from POST /api/v1/auth/login.",
+      "type": "application/json",
+      "url": "https://trustrag.local/api/v1",
+      "methods": ["GET", "POST", "DELETE"]
+    },
+    {
+      "identifier": "urn:air:trustrag.local:workbench:mcp",
+      "displayName": "TrustRAG MCP server",
+      "description": "Model Context Protocol server over JSON-RPC 2.0 stdio, exposing search, verification and audit tools to external agents.",
+      "type": "application/json",
+      "url": "https://trustrag.local/mcp",
+      "methods": ["POST"]
+    },
+    {
+      "identifier": "urn:air:trustrag.local:workbench:openapi",
+      "displayName": "TrustRAG OpenAPI schema",
+      "description": "The machine-readable contract for the versioned REST API.",
+      "type": "application/json",
+      "url": "https://trustrag.local/openapi.json",
+      "methods": ["GET"]
+    }
+  ]
+}

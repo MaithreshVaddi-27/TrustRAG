@@ -1,0 +1,450 @@
+/* ── TrustRAG · Application shell ───────────────────────────────────────────
+ * The shell is chrome, so it stays quiet: obsidian surfaces, chrome-silver
+ * hairlines, and mono for telemetry. Laser Crimson appears only where
+ * something is live or has failed.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: var(--surface-page);
+  color: var(--color-silver-100);
+  overflow: hidden;
+}
+
+@supports (height: 100dvh) {
+  .lx-shell {
+    height: 100dvh;
+  }
+}
+
+/* ── Top bar ──────────────────────────────────────────────────────────────── */
+
+.lx-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-4);
+  height: 60px;
+  flex-shrink: 0;
+  padding-inline: var(--step-4);
+  background-color: var(--surface-raised);
+  border-bottom: 1px solid var(--rule);
+  z-index: 40;
+}
+
+.lx-topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-3);
+  min-height: 44px;
+  flex-shrink: 0;
+}
+
+.lx-topbar__wordmark {
+  font-family: var(--typeface-display);
+  font-size: 0.9375rem;
+  letter-spacing: 0.06em;
+  color: var(--color-silver-050);
+  line-height: 1;
+}
+
+.lx-topbar__meta {
+  font-family: var(--typeface-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  color: var(--color-silver-500);
+  margin-top: 3px;
+}
+
+/* ── Telemetry ──────────────────────────────────────────────────────────────
+ * Quiet mono text with a status dot. Not pills, not glows.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-telemetry {
+  display: none;
+  align-items: center;
+  gap: var(--step-5);
+}
+
+@media (min-width: 1024px) {
+  .lx-telemetry {
+    display: flex;
+  }
+}
+
+.lx-telemetry__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-2);
+  font-family: var(--typeface-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.01em;
+  color: var(--color-silver-500);
+  white-space: nowrap;
+}
+
+.lx-telemetry__item svg {
+  flex-shrink: 0;
+  color: var(--color-silver-500);
+}
+
+.lx-telemetry__item strong {
+  color: var(--color-silver-300);
+  font-weight: var(--weight-regular);
+}
+
+/* ── Status dot ─────────────────────────────────────────────────────────────
+ * Crimson when something is live or has failed. Dim silver otherwise.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--color-silver-600);
+}
+
+.lx-dot--live {
+  background-color: var(--color-crimson-500);
+}
+
+.lx-dot--alarm {
+  background-color: var(--color-crimson-400);
+}
+
+/* ── Icon button ──────────────────────────────────────────────────────────── */
+
+.lx-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  color: var(--color-silver-400);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-instant) var(--motion-ease-out);
+}
+
+.lx-icon-btn:hover {
+  color: var(--color-silver-050);
+  border-color: var(--rule);
+  background-color: rgba(205, 203, 202, 0.05);
+}
+
+.lx-icon-btn:active {
+  transform: scale(0.96);
+}
+
+.lx-icon-btn--alarm:hover {
+  color: var(--color-crimson-300);
+  border-color: rgba(212, 21, 20, 0.35);
+  background-color: rgba(212, 21, 20, 0.07);
+}
+
+/* ── User chip ────────────────────────────────────────────────────────────── */
+
+.lx-userchip {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  padding-left: var(--step-4);
+  border-left: 1px solid var(--rule);
+}
+
+.lx-userchip__avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--rule);
+  background-color: var(--surface-card);
+  font-family: var(--typeface-mono);
+  font-size: 0.6875rem;
+  font-weight: var(--weight-medium);
+  color: var(--color-silver-300);
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+
+.lx-sidebar {
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  flex-shrink: 0;
+  height: 100%;
+  min-height: 0;
+  background-color: var(--surface-raised);
+  border-right: 1px solid var(--rule);
+  z-index: 50;
+}
+
+@media (min-width: 768px) {
+  .lx-sidebar {
+    display: flex;
+  }
+}
+
+.lx-sidebar__nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--step-3) var(--step-2);
+}
+
+.lx-sidebar__sep {
+  margin-block: var(--step-2);
+  border-top: 1px solid var(--rule-faint);
+}
+
+/* A link row. 36px tall, icon in one column, label on one line. */
+.lx-navlink {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--step-3);
+  min-height: 36px;
+  padding-inline: var(--step-3);
+  border-radius: var(--radius-control);
+  font-size: var(--size-body-sm);
+  color: var(--color-silver-400);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-navlink:hover {
+  color: var(--color-silver-050);
+  background-color: rgba(205, 203, 202, 0.045);
+}
+
+.lx-navlink--active {
+  color: var(--color-silver-050);
+  background-color: rgba(205, 203, 202, 0.07);
+}
+
+/* Laser Crimson marks the active selection. */
+.lx-navlink--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background-color: var(--color-crimson-500);
+}
+
+.lx-navlink__icon {
+  flex-shrink: 0;
+  color: var(--color-silver-500);
+}
+
+.lx-navlink:hover .lx-navlink__icon {
+  color: var(--color-silver-300);
+}
+
+.lx-navlink--active .lx-navlink__icon {
+  color: var(--color-silver-200);
+}
+
+.lx-navlink__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Counts and meta are quiet text, not glowing pills. */
+.lx-navlink__meta {
+  font-family: var(--typeface-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  color: var(--color-silver-500);
+}
+
+.lx-navlink--active .lx-navlink__meta {
+  color: var(--color-crimson-300);
+}
+
+/* ── Sidebar footer ───────────────────────────────────────────────────────── */
+
+.lx-sidebar__footer {
+  flex-shrink: 0;
+  padding: var(--step-3) var(--step-2);
+  border-top: 1px solid var(--rule);
+  background-color: var(--surface-page);
+}
+
+.lx-sidebar__status {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  padding: var(--step-2) var(--step-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  background-color: var(--surface-card);
+}
+
+.lx-sidebar__status-title {
+  font-size: var(--size-label);
+  font-weight: var(--weight-medium);
+  color: var(--color-silver-200);
+  line-height: 1.3;
+}
+
+.lx-sidebar__status-meta {
+  font-family: var(--typeface-mono);
+  font-size: 0.6875rem;
+  color: var(--color-silver-500);
+  margin-top: 2px;
+}
+
+.lx-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 36px;
+  margin-top: var(--step-2);
+  padding-inline: var(--step-3);
+  border-radius: var(--radius-control);
+  font-size: var(--size-body-sm);
+  color: var(--color-silver-500);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-collapse-btn:hover {
+  color: var(--color-silver-050);
+  background-color: rgba(205, 203, 202, 0.045);
+}
+
+/* A keyboard shortcut is a keycap. */
+.lx-kbd {
+  font-family: var(--typeface-mono);
+  font-size: 0.6875rem;
+  color: var(--color-silver-500);
+  background-color: var(--surface-inset);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* Touch pointers get the full 44px target; a mouse can hit a 36px row. */
+@media (pointer: coarse) {
+  .lx-navlink,
+  .lx-collapse-btn {
+    min-height: 44px;
+  }
+}
+
+/* ── Alarm band ─────────────────────────────────────────────────────────────
+ * The backend-unreachable banner. Laser Crimson, because something is
+ * genuinely wrong.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-alarm {
+  overflow: hidden;
+  z-index: 30;
+  background-color: rgba(212, 21, 20, 0.1);
+  border-bottom: 1px solid rgba(212, 21, 20, 0.32);
+}
+
+.lx-alarm__inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--step-3);
+  padding: var(--step-2) var(--step-4);
+  font-size: var(--size-body-sm);
+  color: var(--color-crimson-300);
+}
+
+.lx-alarm__retry {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-1);
+  min-height: 28px;
+  padding-inline: var(--step-3);
+  border-radius: var(--radius-control);
+  border: 1px solid rgba(212, 21, 20, 0.42);
+  background-color: rgba(212, 21, 20, 0.14);
+  color: var(--color-crimson-300);
+  font-family: var(--typeface-mono);
+  font-size: 0.6875rem;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-alarm__retry:hover {
+  background-color: rgba(212, 21, 20, 0.24);
+  color: var(--color-crimson-300);
+}
+
+/* ── Main content ─────────────────────────────────────────────────────────── */
+
+.lx-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  background-color: var(--surface-page);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Mobile drawer (application) ──────────────────────────────────────────── */
+
+.lx-app-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background-color: rgba(8, 8, 8, 0.97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  padding: var(--step-4) var(--gutter) var(--step-8);
+  overflow-y: auto;
+}
+
+.lx-app-drawer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 60px;
+}
+
+.lx-app-drawer__nav {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--step-4);
+  border-top: 1px solid var(--rule);
+}
+
+.lx-app-drawer__link {
+  display: flex;
+  align-items: center;
+  gap: var(--step-3);
+  min-height: 52px;
+  border-bottom: 1px solid var(--rule-faint);
+  font-size: var(--size-body);
+  color: var(--color-silver-300);
+}
+
+.lx-app-drawer__link--active {
+  color: var(--color-silver-050);
+}
+
+.lx-app-drawer__link--active .lx-navlink__icon {
+  color: var(--color-crimson-400);
+}

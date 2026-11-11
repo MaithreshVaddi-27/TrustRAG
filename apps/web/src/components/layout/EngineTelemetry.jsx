@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react'
-import { motion } from 'motion/react'
-import { clsx } from 'clsx'
 import { RefreshCw, Cpu, Layers, Zap } from 'lucide-react'
 import { modelService } from '@/services/api'
 import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
@@ -16,13 +14,12 @@ function readPlaygroundEngine() {
 }
 
 /**
- * EngineTelemetry - Live engine telemetry badges for mobile/small screens
- * Called by: AppLayout.jsx
- * No existing file serves this purpose - extracted from AppLayout
- * Reads: localStorage 'trustrag.playground.engine', model providers from API
- * User instruction: "continue and Use asynchronous methods for better working with async and await"
+ * EngineTelemetry — the engine readout for narrow screens.
+ *
+ * The same quiet mono text the desktop bar uses, stacked. A status dot
+ * rather than a coloured pill.
  */
-export function EngineTelemetry({ isOnline, isChecking, recheck }) {
+export function EngineTelemetry({ isOnline, recheck }) {
   const [playgroundEngine, setPlaygroundEngine] = useState(readPlaygroundEngine)
   useEffect(() => {
     const sync = () => setPlaygroundEngine(readPlaygroundEngine())
@@ -40,96 +37,95 @@ export function EngineTelemetry({ isOnline, isChecking, recheck }) {
     staleTime: 30000,
   })
 
-  const serverProvider = providersData?.active_provider
-  const serverModel = providersData?.active_model
-  const effProvider = playgroundEngine?.provider || serverProvider
-  const effModel = playgroundEngine?.model || serverModel
-  const isEngineOverride = !!playgroundEngine?.model && playgroundEngine.model !== serverModel
+  const effProvider = playgroundEngine?.provider || providersData?.active_provider
+  const effModel = playgroundEngine?.model || providersData?.active_model
+  const isEngineOverride = !!playgroundEngine?.model && playgroundEngine.model !== providersData?.active_model
   const effEmbeddingModel = providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
+  const accelerator = providersData?.hardware?.accelerator
 
   return (
-    <div className="lg:hidden px-4 py-2 space-y-2">
-      {/* Backend Status */}
-      <motion.div
-        initial={{ opacity: 0, y: -4 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className={clsx(
-          'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono shadow-sm w-full',
+    <div className="lg:hidden px-4 py-3 flex flex-col gap-2 border-b border-[color:var(--rule)]">
+      <span
+        className="lx-telemetry__item"
+        title={
           isOnline === false
-            ? 'bg-red-950/40 border border-red-800/50 text-red-300 shadow-red-950/30'
+            ? 'Backend unreachable — start the API server'
             : isOnline === null
-              ? 'bg-slate-800/60 border border-slate-700/60 text-slate-400'
-              : 'bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 shadow-emerald-950/30'
-        )}
-        title={isOnline === false ? 'Backend unreachable — start the API server' : isOnline === null ? 'Checking backend…' : 'Backend is healthy'}
+              ? 'Checking backend…'
+              : 'Backend is healthy'
+        }
       >
-        <motion.span
-          animate={isOnline === false ? { opacity: [1, 0.4, 1] } : isChecking ? { opacity: [1, 0.3, 1] } : { scale: [1, 1.2, 1] }}
-          transition={isOnline === false ? { duration: 2, repeat: Infinity } : isChecking ? { duration: 1, repeat: Infinity } : { duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-          className={clsx(
-            'w-2 h-2 rounded-full',
-            isOnline === false ? 'bg-red-400' : isOnline === null ? 'bg-slate-500' : 'bg-emerald-400'
-          )}
+        <span
+          className={[
+            'lx-dot',
+            isOnline === false ? 'lx-dot--alarm' : isOnline === null ? '' : 'lx-dot--live',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          aria-hidden="true"
         />
-        <span className="flex-1 text-left">{isOnline === false ? 'API Offline' : isOnline === null ? 'Checking…' : 'API Online'}</span>
+        <strong>
+          {isOnline === false ? 'API offline' : isOnline === null ? 'Checking' : 'API online'}
+        </strong>
         {isOnline === false && (
-          <motion.button
+          <button
+            type="button"
             onClick={recheck}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            className="text-red-400/80 hover:text-red-300 transition-colors"
+            className="ml-1 text-crimson-400 hover:text-crimson-300 transition-colors"
             title="Reconnect to backend"
+            aria-label="Reconnect to backend"
           >
-            <RefreshCw size={10} />
-          </motion.button>
+            <RefreshCw size={11} strokeWidth={1.5} aria-hidden="true" />
+          </button>
         )}
-      </motion.div>
+      </span>
 
-      {/* Model pills - stacked on mobile */}
-      <div className="space-y-1.5">
-        <div
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300"
-          title={effModel
-            ? `${providerShortLabel(effProvider)}: ${effModel} · ${isEngineOverride ? 'Playground selection' : 'Server default'}`
-            : 'Engine model not configured'}
-        >
-          <Cpu size={12} className="text-primary-400 shrink-0" />
-          <span
-            className={`w-1.5 h-1.5 rounded-full shrink-0 ${isEngineOverride ? 'bg-cyan-400' : 'bg-slate-500'}`}
-            title={isEngineOverride ? 'Playground selection' : 'Server default'}
-          />
-          <span className="max-w-[180px] truncate tracking-tight">
-            {providerShortLabel(effProvider)}: {shortModelId(effModel) || 'Local LLM'}
-          </span>
-        </div>
+      <span
+        className="lx-telemetry__item"
+        title={
+          effModel
+            ? `${providerShortLabel(effProvider)}: ${effModel} · ${
+                isEngineOverride ? 'Playground selection' : 'Server default'
+              }`
+            : 'Engine model not configured'
+        }
+      >
+        <Cpu size={12} strokeWidth={1.5} aria-hidden="true" />
+        <span className="max-w-[220px] truncate">
+          {providerShortLabel(effProvider)}: {shortModelId(effModel) || 'Local LLM'}
+        </span>
+        {isEngineOverride && <span className="lx-dot lx-dot--live" aria-hidden="true" />}
+      </span>
 
-        <div
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300"
-          title={effEmbeddingModel
+      <span
+        className="lx-telemetry__item"
+        title={
+          effEmbeddingModel
             ? `${effEmbeddingModel} · Server default (single engine)`
-            : 'Embedding model not configured'}
-        >
-          <Layers size={12} className="text-cyan-400 shrink-0" />
-          <span
-            className="w-1.5 h-1.5 rounded-full shrink-0 bg-slate-500"
-            title="Server default"
-          />
-          <span className="max-w-[180px] truncate tracking-tight">
-            {shortModelId(effEmbeddingModel) || 'bge-small-en-v1.5'}
-          </span>
-        </div>
+            : 'Embedding model not configured'
+        }
+      >
+        <Layers size={12} strokeWidth={1.5} aria-hidden="true" />
+        <span className="max-w-[220px] truncate">
+          {shortModelId(effEmbeddingModel) || 'bge-small-en-v1.5'}
+        </span>
+      </span>
 
-        <div
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300"
-          title={`${providersData?.hardware?.accelerator_name || 'Hardware'} • Memory: ${providersData?.hardware?.memory?.total_gb || 8}GB`}
-        >
-          <Zap size={12} className={providersData?.hardware?.accelerator === 'mps' ? 'text-amber-400' : (providersData?.hardware?.accelerator === 'cuda' ? 'text-emerald-400' : 'text-slate-400')} />
-          <span>
-            {providersData?.hardware?.accelerator === 'mps' ? 'Metal (MPS)' : (providersData?.hardware?.accelerator === 'cuda' ? 'CUDA GPU' : 'Multi-Thread CPU')}
-          </span>
-        </div>
-      </div>
+      <span
+        className="lx-telemetry__item"
+        title={`${providersData?.hardware?.accelerator_name || 'Hardware'} · Memory: ${
+          providersData?.hardware?.memory?.total_gb || 8
+        }GB`}
+      >
+        <Zap size={12} strokeWidth={1.5} aria-hidden="true" />
+        <span>
+          {accelerator === 'mps'
+            ? 'Metal (MPS)'
+            : accelerator === 'cuda'
+              ? 'CUDA GPU'
+              : 'Multi-thread CPU'}
+        </span>
+      </span>
     </div>
   )
 }

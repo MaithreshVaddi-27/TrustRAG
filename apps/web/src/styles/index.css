@@ -26,6 +26,8 @@
 @import './utilities.css';
 @import './legacy-components.css';
 @import './components/index.css';
+@import './app/shell.css';
+@import './app/auth.css';
 
 @tailwind base;
 @tailwind components;

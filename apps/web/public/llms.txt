@@ -1,0 +1,66 @@
+# TrustRAG
+
+> An open reliability workbench for retrieval-augmented generation. TrustRAG
+> splits an answer into atomic claims, verifies each one against the cited
+> corpus with a batch entailment audit, and rewrites the query when confidence
+> falls short — before a hallucination reaches the reader.
+
+## What it does
+
+- **Atomic claim decomposition.** Generated prose is parsed into discrete,
+  non-overlapping propositional assertions before any citation is aligned.
+- **Hybrid retrieval.** Dense vectors and BM25 sparse matches are combined
+  with reciprocal rank fusion. Dense alone misses statutory codes and part
+  numbers; sparse alone misses paraphrase.
+- **Batch entailment audit.** Every atomic claim is scored against every
+  retrieved chunk by a cross-encoder. A claim is supported only when an
+  entailment score clears the threshold for at least one citation.
+- **Bounded self-healing.** Below a confidence threshold of 0.70, a LangGraph
+  state machine rewrites the sub-query and widens the retrieval pool, up to two
+  attempts, then routes deterministically to abstention.
+- **Cryptographic provenance.** Each chunk is checked against the SHA-256 root
+  hash of the document it came from. Changed files are discarded; documents
+  past their effective date are pruned.
+- **Model Context Protocol server.** The same audit is exposed to external
+  agents over JSON-RPC 2.0.
+
+## Interfaces
+
+- [Overview](https://trustrag.local/): what the product does and how to run it.
+- [API health](https://trustrag.local/api/v1/health): unauthenticated liveness check.
+- [OpenAPI schema](https://trustrag.local/openapi.json): the full versioned REST contract.
+- [Agent discovery manifest](https://trustrag.local/.well-known/ard.json): the resources this service exposes.
+
+## Running it locally
+
+The product is local-first and air-gapped. It ships no web fonts, calls no
+third-party CDN, and sends no visitor telemetry.
+
+```bash
+cd apps/api
+python -m venv .venv && pip install -e ".[dev,local-models]"
+.venv/bin/python -m uvicorn app.main:app --port 8000
+
+cd apps/web
+npm install && npm run dev
+```
+
+MongoDB runs on `localhost:27017`. The vector store runs in embedded local
+mode by default, so no container runtime is required.
+
+## Measurements
+
+Retrieval recall@8 of 0.889 on the internal 27-query reliability fixture.
+The methodology, per-query results and the abstention audit are in
+`docs/evaluation/`. Figures quoted in the marketing page carry their
+provenance inline.
+
+## API
+
+The REST API is versioned under `/api/v1`. `GET /api/v1/health` is
+unauthenticated. Everything else requires a bearer token from
+`POST /api/v1/auth/login`.
+
+## Licence
+
+Apache-2.0.

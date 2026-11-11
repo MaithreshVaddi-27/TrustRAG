@@ -121,6 +121,50 @@ export default {
           low: crimson[400],
         },
 
+        // ── Semantic ramps ──────────────────────────────────────────────
+        // The legacy semantic families now resolve into the same three
+        // voices: silver for supported, a dimmer silver for unsupported,
+        // and Laser Crimson for contradicted or failed.
+        emerald: {
+          50: silver[50],
+          100: silver[100],
+          200: silver[200],
+          300: silver[200],
+          400: silver[300],
+          500: silver[400],
+          600: silver[500],
+          700: silver[600],
+          800: obsidian[800],
+          900: obsidian[900],
+          950: obsidian[950],
+        },
+        amber: {
+          50: silver[50],
+          100: silver[100],
+          200: silver[200],
+          300: silver[300],
+          400: silver[400],
+          500: silver[500],
+          600: silver[600],
+          700: silver[700],
+          800: graphite[700],
+          900: obsidian[900],
+          950: obsidian[950],
+        },
+        red: {
+          50: silver[50],
+          100: silver[100],
+          200: crimson[300],
+          300: crimson[300],
+          400: crimson[400],
+          500: crimson[500],
+          600: crimson[600],
+          700: crimson[700],
+          800: crimson[700],
+          900: crimson[950],
+          950: crimson[950],
+        },
+
         // The champagne accent is retired — it is now a step in silver.
         gold: {
           300: silver[200],

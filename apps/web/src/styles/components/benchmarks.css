@@ -77,7 +77,7 @@
   font-family: var(--typeface-mono);
   font-size: var(--size-micro);
   letter-spacing: var(--tracking-micro);
-  color: var(--color-silver-600);
+  color: var(--color-silver-500);
   text-align: right;
 }
 
@@ -91,7 +91,7 @@
   margin-top: var(--step-4);
   font-size: var(--size-body-sm);
   line-height: 1.55;
-  color: var(--color-silver-600);
+  color: var(--color-silver-500);
   max-width: 78ch;
 }
 

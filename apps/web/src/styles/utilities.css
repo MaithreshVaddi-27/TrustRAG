@@ -210,6 +210,9 @@
   left: var(--step-4);
   top: var(--step-4);
   z-index: 100;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: var(--step-2) var(--step-4);
   background-color: var(--color-silver-050);
   color: var(--color-on-accent);

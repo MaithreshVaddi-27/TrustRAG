@@ -205,7 +205,7 @@
 
 .lx-verdict__mark {
   flex-shrink: 0;
-  color: var(--color-silver-600);
+  color: var(--color-silver-500);
 }
 
 .lx-verdict--supported .lx-verdict__mark {

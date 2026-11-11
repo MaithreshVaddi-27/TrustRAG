@@ -1,50 +1,40 @@
-import { motion } from 'motion/react'
-import { useReducedMotion } from 'motion/react'
+import { clsx } from 'clsx'
 
 /**
- * PageHeader — shared editorial page header (Ledger v2).
- * Kicker with hairline rule → serif title (gradient accent) →
- * supporting copy → actions. One rhythm for every app screen.
+ * PageHeader — the editorial rhythm for every application screen.
  *
- * Props:
- *   eyebrow    — kicker label (ReactNode; icon + text) or null
- *   title      — string | ReactNode
- *   accent     — word highlighted with .text-gradient (rendered inside title)
- *   description— supporting copy
- *   countLabel — mono count pill next to title (e.g. "12 Claims")
- *   actions    — right-side slot (buttons/links)
- *   children   — extra content under description (meta rows, tabs, …)
+ * The heading carries its own weight: no eyebrow label above it, no section
+ * number. A mono line of metadata sits under the title, and the actions
+ * slot sits to the right.
  */
-export default function PageHeader({ eyebrow, title, accent, description, countLabel, actions, children }) {
-  const reduced = useReducedMotion()
+export default function PageHeader({
+  eyebrow = null,
+  title,
+  accent = null,
+  description = null,
+  countLabel = null,
+  actions = null,
+  children = null,
+  className = '',
+}) {
   return (
-    <motion.div
-      initial={reduced ? false : { opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-      className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5 pb-1"
-    >
-      <div className="space-y-2.5 min-w-0 max-w-2xl">
-        {eyebrow && (
-          <p className="kicker">
-            <span className="inline-flex items-center gap-2">{eyebrow}</span>
-          </p>
-        )}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <h1 className="font-display text-heading-1 text-parchment tracking-tight text-balance">
-            {title}
-            {accent && <span className="text-gradient"> {accent}</span>}
-          </h1>
-          {countLabel && (
-            <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-primary-950/80 text-primary-300 border border-primary-800/60 font-mono tabular-nums">
-              {countLabel}
-            </span>
-          )}
-        </div>
-        {description && <p className="text-slate-300/90 text-[15px] leading-relaxed max-w-xl">{description}</p>}
+    <header className={clsx('flex flex-wrap items-end justify-between gap-4', className)}>
+      <div className="min-w-0">
+        {eyebrow && <p className="lx-micro mb-2">{eyebrow}</p>}
+
+        <h1 className="lx-h1">
+          {title}
+          {accent && <span className="text-silver-500"> {accent}</span>}
+        </h1>
+
+        {description && <p className="lx-body mt-3 max-w-[68ch]">{description}</p>}
+
+        {countLabel && <p className="lx-micro mt-2">{countLabel}</p>}
+
         {children}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2.5 shrink-0 self-start lg:self-auto">{actions}</div>}
-    </motion.div>
+
+      {actions && <div className="flex items-center gap-2">{actions}</div>}
+    </header>
   )
 }

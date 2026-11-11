@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react'
-import { motion } from 'motion/react'
-import { clsx } from 'clsx'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import {
   LogOut, Zap, Menu,
@@ -11,7 +9,6 @@ import { useAuthStore } from '@/store/authStore'
 import { authService } from '@/services/auth'
 import { modelService } from '@/services/api'
 import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
-import { SPRING_GENTLE } from '@/lib/motionConfig'
 import { useQuery } from '@tanstack/react-query'
 
 function readPlaygroundEngine() {
@@ -24,17 +21,24 @@ function readPlaygroundEngine() {
 }
 
 /**
- * Navbar - Top header with brand, telemetry pills, and user menu
- * Called by: AppLayout.jsx
- * Reads: localStorage 'trustrag.playground.engine', model providers from API, backend health
+ * Navbar — the application top bar.
+ *
+ * A brand, quiet engine telemetry, one primary action and the account
+ * control. The telemetry is mono text with a status dot, not a row of
+ * coloured pills.
  */
-export function Navbar({ isOnline, isChecking, recheck, setIsMobileOpen, isCollapsed, toggleSidebar }) {
+export function Navbar({
+  isOnline,
+  recheck,
+  setIsMobileOpen,
+  isCollapsed,
+  toggleSidebar,
+}) {
   const navigate = useNavigate()
   const location = useLocation()
   const isPlayground = location.pathname === '/playground'
   const { user } = useAuthStore()
 
-  // Playground engine override
   const [playgroundEngine, setPlaygroundEngine] = useState(readPlaygroundEngine)
   useEffect(() => {
     const sync = () => setPlaygroundEngine(readPlaygroundEngine())
@@ -58,6 +62,7 @@ export function Navbar({ isOnline, isChecking, recheck, setIsMobileOpen, isColla
   const effModel = playgroundEngine?.model || serverModel
   const isEngineOverride = !!playgroundEngine?.model && playgroundEngine.model !== serverModel
   const effEmbeddingModel = providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
+  const accelerator = providersData?.hardware?.accelerator
 
   async function handleLogout() {
     await authService.logout()
@@ -65,167 +70,153 @@ export function Navbar({ isOnline, isChecking, recheck, setIsMobileOpen, isColla
   }
 
   return (
-    <header className="h-16 shrink-0 z-40 bg-surface-900/90 backdrop-blur-xl border-b border-slate-800/80 px-4 flex items-center justify-between shadow-md shadow-black/30">
-      {/* Left: Brand + Sidebar Toggle Button */}
+    <header className="lx-topbar">
       <div className="flex items-center gap-3">
-        {/* Mobile hamburger button */}
-        <motion.button
+        <button
+          type="button"
           onClick={() => setIsMobileOpen(true)}
-          whileTap={{ scale: 0.95 }}
-          className="md:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-surface-800 border border-slate-800 transition-colors"
-          title="Open Navigation Menu"
-          aria-label="Open Navigation Menu"
+          className="lx-icon-btn md:hidden"
+          title="Open navigation"
+          aria-label="Open navigation"
         >
-          <Menu size={18} />
-        </motion.button>
+          <Menu size={18} strokeWidth={1.5} aria-hidden="true" />
+        </button>
 
-        {/* Logo */}
-        <Link to="/dashboard" className="flex items-center gap-2.5 group">
-          <motion.div
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="shrink-0"
-          >
-            <TrustRagEmblem size={32} framed={true} glow={true} />
-          </motion.div>
-          <div className="flex flex-col">
-            <span className="font-extrabold text-sm tracking-tight text-white flex items-center gap-1">
-              TRUST<span className="text-cyan-400">RAG</span>
-            </span>
-            <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest hidden sm:inline">
-              Reliability Workbench
-            </span>
-          </div>
+        <Link to="/dashboard" className="lx-topbar__brand">
+          <TrustRagEmblem size={28} framed />
+          <span className="flex flex-col">
+            <span className="lx-topbar__wordmark">TRUSTRAG</span>
+            <span className="lx-topbar__meta hidden sm:block">Reliability workbench</span>
+          </span>
         </Link>
 
-        {/* Desktop Sidebar Toggle Button */}
         {toggleSidebar && (
-          <motion.button
+          <button
+            type="button"
             onClick={toggleSidebar}
-            whileTap={{ scale: 0.92 }}
-            whileHover={{ scale: 1.05 }}
-            className="hidden md:flex items-center justify-center p-2 rounded-xl text-slate-400 hover:text-white hover:bg-surface-800 border border-slate-800 hover:border-slate-700 transition-colors ml-1"
+            className="lx-icon-btn hidden md:inline-flex ml-1"
             title={isCollapsed ? 'Expand sidebar (⌘B)' : 'Collapse sidebar (⌘B)'}
             aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {isCollapsed ? (
-              <PanelLeftOpen size={16} className="text-cyan-400" />
+              <PanelLeftOpen size={16} strokeWidth={1.5} aria-hidden="true" />
             ) : (
-              <PanelLeft size={16} className="text-slate-400" />
+              <PanelLeft size={16} strokeWidth={1.5} aria-hidden="true" />
             )}
-          </motion.button>
+          </button>
         )}
       </div>
 
-      {/* Center: Live Engine Telemetry Badges (Desktop) */}
-      <div className="hidden lg:flex items-center gap-2.5">
-        <motion.div
-          initial={{ opacity: 0, y: -4 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={SPRING_GENTLE}
-          className={clsx(
-            'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono shadow-sm',
+      {/* Engine telemetry — quiet mono text with a status dot. */}
+      <div className="lx-telemetry">
+        <span
+          className="lx-telemetry__item"
+          title={
             isOnline === false
-              ? 'bg-red-950/40 border border-red-800/50 text-red-300 shadow-red-950/30'
+              ? 'Backend unreachable — start the API server'
               : isOnline === null
-                ? 'bg-slate-800/60 border border-slate-700/60 text-slate-400'
-                : 'bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 shadow-emerald-950/30'
-          )}
-          title={isOnline === false ? 'Backend unreachable — start the API server' : isOnline === null ? 'Checking backend…' : 'Backend is healthy'}
+                ? 'Checking backend…'
+                : 'Backend is healthy'
+          }
         >
-          <motion.span
-            animate={isOnline === false ? { opacity: [1, 0.4, 1] } : isChecking ? { opacity: [1, 0.3, 1] } : { scale: [1, 1.2, 1] }}
-            transition={isOnline === false ? { duration: 2, repeat: Infinity } : isChecking ? { duration: 1, repeat: Infinity } : { duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-            className={clsx(
-              'w-2 h-2 rounded-full',
-              isOnline === false ? 'bg-red-400' : isOnline === null ? 'bg-slate-500' : 'bg-emerald-400'
-            )}
-          />
-          <span>{isOnline === false ? 'API Offline' : isOnline === null ? 'Checking…' : 'API Online'}</span>
-          {isOnline === false && (
-            <motion.button
-              onClick={recheck}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              className="ml-0.5 text-red-400/80 hover:text-red-300 transition-colors"
-              title="Reconnect to backend"
-            >
-              <RefreshCw size={10} />
-            </motion.button>
-          )}
-        </motion.div>
-
-        <div
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300"
-          title={effModel
-            ? `${providerShortLabel(effProvider)}: ${effModel} · ${isEngineOverride ? 'Playground selection' : 'Server default'}`
-            : 'Engine model not configured'}
-        >
-          <Cpu size={12} className="text-primary-400 shrink-0" />
           <span
-            className={`w-1.5 h-1.5 rounded-full shrink-0 ${isEngineOverride ? 'bg-cyan-400' : 'bg-slate-500'}`}
-            title={isEngineOverride ? 'Playground selection' : 'Server default'}
+            className={[
+              'lx-dot',
+              isOnline === false ? 'lx-dot--alarm' : isOnline === null ? '' : 'lx-dot--live',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            aria-hidden="true"
           />
-          <span className="max-w-[220px] truncate tracking-tight">
+          <strong>
+            {isOnline === false ? 'API offline' : isOnline === null ? 'Checking' : 'API online'}
+          </strong>
+          {isOnline === false && (
+            <button
+              type="button"
+              onClick={recheck}
+              className="ml-1 text-crimson-400 hover:text-crimson-300 transition-colors"
+              title="Reconnect to backend"
+              aria-label="Reconnect to backend"
+            >
+              <RefreshCw size={11} strokeWidth={1.5} aria-hidden="true" />
+            </button>
+          )}
+        </span>
+
+        <span
+          className="lx-telemetry__item"
+          title={
+            effModel
+              ? `${providerShortLabel(effProvider)}: ${effModel} · ${
+                  isEngineOverride ? 'Playground selection' : 'Server default'
+                }`
+              : 'Engine model not configured'
+          }
+        >
+          <Cpu size={12} strokeWidth={1.5} aria-hidden="true" />
+          <span className="max-w-[220px] truncate">
             {providerShortLabel(effProvider)}: {shortModelId(effModel) || 'Local LLM'}
           </span>
-        </div>
+          {isEngineOverride && <span className="lx-dot lx-dot--live" aria-hidden="true" />}
+        </span>
 
-        <div
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300"
-          title={effEmbeddingModel
-            ? `${effEmbeddingModel} · Server default (single engine)`
-            : 'Embedding model not configured'}
+        <span
+          className="lx-telemetry__item"
+          title={
+            effEmbeddingModel
+              ? `${effEmbeddingModel} · Server default (single engine)`
+              : 'Embedding model not configured'
+          }
         >
-          <Layers size={12} className="text-cyan-400 shrink-0" />
-          <span
-            className="w-1.5 h-1.5 rounded-full shrink-0 bg-slate-500"
-            title="Server default"
-          />
-          <span className="max-w-[210px] truncate tracking-tight">
+          <Layers size={12} strokeWidth={1.5} aria-hidden="true" />
+          <span className="max-w-[210px] truncate">
             {shortModelId(effEmbeddingModel) || 'bge-small-en-v1.5'}
           </span>
-        </div>
+        </span>
 
-        <div
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-800/60 border border-slate-700/60 text-[11px] font-mono text-slate-300"
-          title={`${providersData?.hardware?.accelerator_name || 'Hardware'} • Memory: ${providersData?.hardware?.memory?.total_gb || 8}GB`}
+        <span
+          className="lx-telemetry__item"
+          title={`${providersData?.hardware?.accelerator_name || 'Hardware'} · Memory: ${
+            providersData?.hardware?.memory?.total_gb || 8
+          }GB`}
         >
-          <Zap size={12} className={providersData?.hardware?.accelerator === 'mps' ? 'text-amber-400' : (providersData?.hardware?.accelerator === 'cuda' ? 'text-emerald-400' : 'text-slate-400')} />
+          <Zap size={12} strokeWidth={1.5} aria-hidden="true" />
           <span>
-            {providersData?.hardware?.accelerator === 'mps' ? 'Metal (MPS)' : (providersData?.hardware?.accelerator === 'cuda' ? 'CUDA GPU' : 'Multi-Thread CPU')}
+            {accelerator === 'mps'
+              ? 'Metal (MPS)'
+              : accelerator === 'cuda'
+                ? 'CUDA GPU'
+                : 'Multi-thread CPU'}
           </span>
-        </div>
+        </span>
       </div>
 
-      {/* Right: Quick Action & User Profile */}
       <div className="flex items-center gap-3">
         {!isPlayground && (
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+          <button
+            type="button"
             onClick={() => navigate('/playground')}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-md shadow-primary-950/50 transition-all cursor-pointer"
+            className="lx-btn lx-btn--primary hidden sm:inline-flex"
           >
-            <Zap size={13} />
-            <span>Run Analysis</span>
-          </motion.button>
+            <Zap size={13} strokeWidth={1.5} aria-hidden="true" />
+            Run analysis
+          </button>
         )}
 
-        {/* User initials & logout */}
-        <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-          <div className="w-8 h-8 rounded-full bg-surface-800 border border-slate-700 flex items-center justify-center text-xs font-mono font-bold text-slate-300 shadow-inner">
+        <div className="lx-userchip">
+          <span className="lx-userchip__avatar" aria-hidden="true">
             {user?.email ? user.email.slice(0, 2).toUpperCase() : 'TR'}
-          </div>
-          <motion.button
+          </span>
+          <button
+            type="button"
             onClick={handleLogout}
-            whileTap={{ scale: 0.9, rotate: 180 }}
-            className="p-2 rounded-xl text-slate-400 hover:text-red-400 hover:bg-surface-800/80 border border-transparent hover:border-red-900/30 transition-colors"
-            title="Logout"
-            aria-label="Logout"
+            className="lx-icon-btn lx-icon-btn--alarm"
+            title="Sign out"
+            aria-label="Sign out"
           >
-            <LogOut size={16} />
-          </motion.button>
+            <LogOut size={16} strokeWidth={1.5} aria-hidden="true" />
+          </button>
         </div>
       </div>
     </header>
