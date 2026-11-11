@@ -11,6 +11,7 @@ import { ActivityFeed } from '@/components/dashboard/ActivityFeed'
 import { AttentionPanel } from '@/components/dashboard/AttentionPanel'
 import { WorkspacePanel } from '@/components/dashboard/WorkspacePanel'
 import { PipelineArchitecture } from '@/components/dashboard/PipelineArchitecture'
+import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton'
 import { kbService, analysisService, claimService, conflictService } from '@/services/api'
 import { normalizeClaimState } from '@/lib/claimState'
 
@@ -285,30 +286,33 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <AttentionPanel {...stats.attention} />
+        {isInitialLoad ? (
+          <DashboardSkeleton />
+        ) : (
+          <>
+            <AttentionPanel {...stats.attention} />
 
-        <StatStrip stats={stats} />
+            <StatStrip stats={stats} />
 
-        {/* One wide chart beside a narrower one — a rhythm, not two equal boxes. */}
-        <div className="lx-grid-wide-narrow">
-          <ReliabilityChart
-            analyses={analyses}
-            historyWindow={historyWindow}
-            setHistoryWindow={setHistoryWindow}
-          />
-          <ClaimDistributionChart stats={stats.chart} />
-        </div>
+            {/* One wide chart beside a narrower one — a rhythm, not two
+                equal boxes. */}
+            <div className="lx-grid-wide-narrow">
+              <ReliabilityChart
+                analyses={analyses}
+                historyWindow={historyWindow}
+                setHistoryWindow={setHistoryWindow}
+              />
+              <ClaimDistributionChart stats={stats.chart} />
+            </div>
 
-        <WorkspacePanel kbs={kbs} lastRunByKb={stats.lastRunByKb} />
+            <WorkspacePanel kbs={kbs} lastRunByKb={stats.lastRunByKb} />
 
-        <ActivityFeed
-          analyses={analyses}
-          isInitialLoad={isInitialLoad}
-          kbNames={stats.kbNames}
-        />
+            <ActivityFeed analyses={analyses} kbNames={stats.kbNames} />
 
-        {/* The primer is for a workspace that has not run anything yet. */}
-        {!stats.hasActivity && <PipelineArchitecture />}
+            {/* The primer is for a workspace that has not run anything yet. */}
+            {!stats.hasActivity && <PipelineArchitecture />}
+          </>
+        )}
       </div>
     </AppLayout>
   )

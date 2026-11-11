@@ -267,6 +267,15 @@
   text-align: right;
 }
 
+/* The expanded body of a ledger row. It spans every column and carries no
+ * cell padding or rule of its own — the panel's edge is the boundary, and
+ * the panel's own surface continues behind it. */
+.lx-table__expanded {
+  padding: 0 !important;
+  border-bottom: 0 !important;
+  background-color: transparent;
+}
+
 .lx-table__id {
   font-family: var(--typeface-mono);
   font-size: var(--size-micro);
@@ -626,6 +635,26 @@ select.lx-control {
   text-align: right;
 }
 
+/* ── Skeleton ───────────────────────────────────────────────────────────────
+ * A placeholder in the shape of the thing it stands in for. It breathes
+ * rather than sweeps: a sweep is a loop that carries no information, and on
+ * a dark surface it reads as noise.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-skeleton {
+  display: block;
+  border-radius: var(--radius-control);
+  background-color: var(--surface-inset);
+  animation: lx-breathe 2.4s var(--motion-ease-standard) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lx-skeleton {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 /* ── Section label ─────────────────────────────────────────────────────────
  * A label that sits above a group of controls. Quiet, tracked, never
  * shouting.
@@ -824,6 +853,127 @@ select.lx-control {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* ── Responsive table ──────────────────────────────────────────────────────
+ * Below the table's breakpoint the columns stop being columns. Each cell
+ * becomes a labelled row, and the cell that carries the name sits above
+ * the measurements rather than beside them. One DOM, two arrangements.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .lx-table--stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .lx-table--stack tbody tr {
+    display: block;
+    padding: var(--step-4) var(--step-4) var(--step-4) 0;
+    border-bottom: 1px solid var(--rule-faint);
+  }
+
+  .lx-table--stack tbody td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--step-4);
+    padding: var(--step-1) 0;
+    border: 0;
+    text-align: left;
+  }
+
+  .lx-table--stack tbody td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-family: var(--typeface-mono);
+    font-size: var(--size-micro);
+    letter-spacing: var(--tracking-micro);
+    color: var(--color-silver-500);
+  }
+
+  /* The name cell is the subject of the row, not one of its measurements. */
+  .lx-table--stack tbody td:first-child {
+    display: block;
+    padding-bottom: var(--step-3);
+  }
+
+  .lx-table--stack tbody td:first-child::before {
+    content: none;
+  }
+
+  .lx-table--stack tbody td.lx-table__num {
+    text-align: left;
+    justify-content: space-between;
+  }
+
+  /* The expanded body spans the row rather than the columns. */
+  .lx-table--stack tbody td.lx-table__expanded {
+    display: block;
+    padding: 0 !important;
+  }
+
+  /* The row's own action sits at the end of the row, not on its own line. */
+  .lx-table--stack tbody td.lx-table__num[data-label=''] {
+    justify-content: flex-end;
+    padding-top: var(--step-2);
+  }
+
+  /* The disclosure button lines up with the name, not the description. */
+  .lx-table--stack tbody td:first-child > .flex {
+    align-items: flex-start;
+  }
+
+  .lx-table--stack tbody td:first-child > .flex > .lx-icon-btn {
+    margin-top: -4px;
+  }
+}
+
+/* ── Record row ────────────────────────────────────────────────────────────
+ * A record with several measured columns: a name and then figures that
+ * line up in columns. The columns collapse to a stacked list on narrow
+ * screens, where the name carries the row.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-record {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--step-1) var(--step-4);
+  align-items: center;
+}
+
+@media (min-width: 768px) {
+  .lx-record {
+    grid-template-columns:
+      minmax(0, 2fr) 5rem 8rem 8rem 7rem 3rem;
+  }
+}
+
+.lx-record__name {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  min-width: 0;
+}
+
+.lx-record__value {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-silver-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lx-record__value--end {
+  display: flex;
+  justify-content: flex-end;
 }
 
 /* ── Grid helpers ─────────────────────────────────────────────────────────── */

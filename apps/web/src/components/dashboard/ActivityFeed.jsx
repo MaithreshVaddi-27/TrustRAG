@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Clock, ArrowRight, Check, CircleSlash, CircleDashed } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import { SkeletonRows } from '@/components/workbench/Skeleton'
 import { ReliabilityBadge } from '@/components/workbench/ReliabilityBadge'
 
 /**
@@ -35,7 +34,7 @@ function cleanSnippet(text) {
     .trim()
 }
 
-export function ActivityFeed({ analyses = [], isInitialLoad = false, kbNames = {} }) {
+export function ActivityFeed({ analyses = [], kbNames = {} }) {
   return (
     <section aria-labelledby="activity-heading">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
@@ -54,11 +53,7 @@ export function ActivityFeed({ analyses = [], isInitialLoad = false, kbNames = {
         </Link>
       </div>
 
-      {isInitialLoad ? (
-        <div className="lx-panel-block p-5" aria-busy="true">
-          <SkeletonRows rows={4} className="h-16 rounded-xl" gap="gap-3" />
-        </div>
-      ) : analyses.length === 0 ? (
+      {analyses.length === 0 ? (
         <div className="lx-panel-block">
           <div className="lx-empty">
             <Clock size={22} strokeWidth={1.5} className="lx-empty__icon" aria-hidden="true" />

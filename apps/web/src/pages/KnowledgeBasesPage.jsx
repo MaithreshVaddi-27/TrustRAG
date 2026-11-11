@@ -1,29 +1,26 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Database, File } from 'lucide-react'
+import { Plus, Search, Database, X } from 'lucide-react'
 import AppLayout from '@/layouts/AppLayout'
 import PageHeader from '@/components/ui/PageHeader'
 import AsyncState from '@/components/app/AsyncState'
-import KnowledgeBaseCard from '@/components/kb/KnowledgeBaseCard'
-import CreateKnowledgeBaseDialog from '@/components/kb/CreateKnowledgeBaseDialog'
+import CollectionLedger from '@/components/kb/CollectionLedger'
+import CreateCollectionForm from '@/components/kb/CreateCollectionForm'
 import { kbService } from '@/services/api'
 
-const FORMATS = [
-  'PDF (.pdf)',
-  'Word (.docx)',
-  'Markdown (.md)',
-  'Text (.txt)',
-  'CSV (.csv)',
-  'JSON (.json)',
-  'HTML (.html)',
+const SORTS = [
+  { id: 'newest', label: 'Newest first' },
+  { id: 'name', label: 'Name' },
+  { id: 'documents', label: 'Document count' },
 ]
 
 export default function KnowledgeBasesPage() {
   const queryClient = useQueryClient()
-  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
   const [newKbName, setNewKbName] = useState('')
   const [newKbDesc, setNewKbDesc] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
+  const [sortBy, setSortBy] = useState('newest')
   const [createError, setCreateError] = useState(null)
 
   const { data: knowledgeBases = [], isLoading, isError, error, refetch } = useQuery({
@@ -35,31 +32,51 @@ export default function KnowledgeBasesPage() {
     mutationFn: kbService.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['knowledgeBases'] })
-      setIsCreateOpen(false)
+      setIsCreating(false)
       setNewKbName('')
       setNewKbDesc('')
       setCreateError(null)
     },
     onError: (err) => {
-      setCreateError(err.message || 'Failed to create the knowledge base.')
+      setCreateError(err.message || 'Failed to create the collection.')
     },
   })
 
   const handleCreateSubmit = (event) => {
     event.preventDefault()
     if (!newKbName.trim()) return
-    createKbMutation.mutate({ name: newKbName, description: newKbDesc })
+    createKbMutation.mutate({ name: newKbName.trim(), description: newKbDesc.trim() })
   }
 
-  const filteredKbs = knowledgeBases.filter(
-    (kb) =>
-      !searchTerm ||
-      kb.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (kb.description || '').toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  const visibleCollections = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase()
+
+    const filtered = knowledgeBases.filter(
+      (kb) =>
+        !term ||
+        kb.name.toLowerCase().includes(term) ||
+        (kb.description || '').toLowerCase().includes(term),
+    )
+
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name)
+      if (sortBy === 'documents') {
+        return (b.document_count ?? 0) - (a.document_count ?? 0)
+      }
+      return (
+        new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+      )
+    })
+  }, [knowledgeBases, searchTerm, sortBy])
 
   const status =
-    isLoading ? 'loading' : isError ? 'error' : knowledgeBases.length === 0 ? 'empty' : 'ready'
+    isLoading
+      ? 'loading'
+      : isError
+        ? 'error'
+        : knowledgeBases.length === 0
+          ? 'empty'
+          : 'ready'
 
   return (
     <AppLayout>
@@ -72,14 +89,33 @@ export default function KnowledgeBasesPage() {
           actions={
             <button
               type="button"
-              onClick={() => setIsCreateOpen(true)}
+              onClick={() => {
+                setIsCreating(true)
+                setCreateError(null)
+              }}
               className="lx-btn lx-btn--primary"
             >
               <Plus size={15} strokeWidth={1.75} aria-hidden="true" />
-              <span>New knowledge base</span>
+              <span>New collection</span>
             </button>
           }
         />
+
+        {isCreating && (
+          <CreateCollectionForm
+            onSubmit={handleCreateSubmit}
+            onCancel={() => {
+              setIsCreating(false)
+              setCreateError(null)
+            }}
+            error={createError}
+            isPending={createKbMutation.isPending}
+            name={newKbName}
+            description={newKbDesc}
+            onNameChange={setNewKbName}
+            onDescriptionChange={setNewKbDesc}
+          />
+        )}
 
         {!isLoading && knowledgeBases.length > 0 && (
           <div className="lx-toolbar">
@@ -95,15 +131,46 @@ export default function KnowledgeBasesPage() {
                 name="kb-search"
                 type="search"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder="Filter by name or topic"
-                aria-label="Filter knowledge bases by name or topic"
-                className="lx-control pl-9"
+                aria-label="Filter collections by name or topic"
+                className="lx-control pl-9 pr-9"
               />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="lx-icon-btn absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
+                  title="Clear the filter"
+                  aria-label="Clear the filter"
+                >
+                  <X size={13} strokeWidth={1.75} aria-hidden="true" />
+                </button>
+              )}
             </div>
-            <span className="lx-micro">
-              {filteredKbs.length} of {knowledgeBases.length} collections
-            </span>
+
+            <div className="lx-toolbar__group">
+              <label className="lx-micro" htmlFor="kb-sort">
+                Sort
+              </label>
+              <select
+                id="kb-sort"
+                name="kb-sort"
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value)}
+                className="lx-control w-auto"
+              >
+                {SORTS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+
+              <span className="lx-micro">
+                {visibleCollections.length} of {knowledgeBases.length}
+              </span>
+            </div>
           </div>
         )}
 
@@ -114,12 +181,12 @@ export default function KnowledgeBasesPage() {
           errorMessage={error?.message}
           onRetry={refetch}
           emptyIcon={Database}
-          emptyTitle="No knowledge bases yet"
+          emptyTitle="No collections yet"
           emptyBody="Create a collection to upload documents, generate dense embeddings and run grounded queries."
           emptyAction={
             <button
               type="button"
-              onClick={() => setIsCreateOpen(true)}
+              onClick={() => setIsCreating(true)}
               className="lx-btn lx-btn--primary"
             >
               <Plus size={15} strokeWidth={1.75} aria-hidden="true" />
@@ -128,62 +195,29 @@ export default function KnowledgeBasesPage() {
           }
         />
 
-        {status === 'ready' && (
-          <div className="lx-stack">
-            {filteredKbs.length === 0 ? (
-              <div className="lx-panel-block">
-                <div className="lx-empty">
-                  <Search size={20} strokeWidth={1.5} className="lx-empty__icon" aria-hidden="true" />
-                  <p className="lx-empty__title">No collection matches that filter</p>
-                  <p className="lx-empty__body">
-                    Clear the filter to see all {knowledgeBases.length} collections.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              filteredKbs.map((kb) => <KnowledgeBaseCard key={kb.id} kb={kb} />)
-            )}
+        {status === 'ready' && visibleCollections.length === 0 && (
+          <div className="lx-panel-block">
+            <div className="lx-empty">
+              <Search size={20} strokeWidth={1.5} className="lx-empty__icon" aria-hidden="true" />
+              <p className="lx-empty__title">No collection matches that filter</p>
+              <p className="lx-empty__body">
+                Clear the filter to see all {knowledgeBases.length} collections.
+              </p>
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="lx-btn lx-btn--secondary"
+              >
+                Clear the filter
+              </button>
+            </div>
           </div>
         )}
 
-        <section className="lx-panel-block">
-          <div className="lx-panel-block__head">
-            <h2 className="lx-panel-block__title">Supported document formats</h2>
-          </div>
-          <div className="lx-panel-block__body">
-            <div className="flex flex-wrap gap-2">
-              {FORMATS.map((format) => (
-                <span key={format} className="lx-chip">
-                  <File size={11} strokeWidth={1.75} aria-hidden="true" />
-                  {format}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="lx-panel-block__foot">
-            <p className="lx-micro">
-              Documents undergo Porter stemming and zone weighting (title 3.0×,
-              abstract 2.0×), then are indexed with 384-dimensional dense
-              embeddings generated locally by BGE.
-            </p>
-          </div>
-        </section>
+        {status === 'ready' && visibleCollections.length > 0 && (
+          <CollectionLedger collections={visibleCollections} />
+        )}
       </div>
-
-      <CreateKnowledgeBaseDialog
-        open={isCreateOpen}
-        onClose={() => {
-          setIsCreateOpen(false)
-          setCreateError(null)
-        }}
-        onSubmit={handleCreateSubmit}
-        error={createError}
-        isPending={createKbMutation.isPending}
-        name={newKbName}
-        description={newKbDesc}
-        onNameChange={setNewKbName}
-        onDescriptionChange={setNewKbDesc}
-      />
     </AppLayout>
   )
 }

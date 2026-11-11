@@ -11,6 +11,7 @@ implemented and verified before the next begins.
 |---|---|---|---|
 | P4.1 | Application shell | — | Done |
 | P4.2 | Dashboard | shell | Done |
+| P4.3 | Knowledge bases | shell | Done |
 | P4.3 | Knowledge bases | shell |
 | P4.4 | Documents | knowledge bases |
 | P4.5 | Playground | shell, knowledge bases |
@@ -188,6 +189,84 @@ documents, vector space, last run.
 | Responsive | No page or top-bar overflow at 1440 / 1280 / 1024 / 768 / 390 / 320 |
 | Landmarks | One `<main>`, one `<h1>`, headings in order |
 | Console | 0 errors, 0 warnings |
+
+---
+
+## P4.3 — Knowledge bases
+
+The corpus manager. Where the collections are, what is in them, and how
+documents get into them.
+
+### What was wrong
+
+| # | Problem | Severity |
+|---|---|---|
+| 1 | The page was a stack of identical panels — one per collection. Twenty collections made a wall, not a list, and the information in each one is tabular. | High |
+| 2 | **Every collection carried a primary "Upload document" button.** N primary buttons on a page means no primary action. | High |
+| 3 | **The documents were hidden.** The list collapsed by default behind a disclosure, and opening it issued a query per collection. The content you uploaded was one click away and invisible. | High |
+| 4 | **A modal for a two-field form.** Creating a collection interrupted the work and hid the list it was about to change. | Medium |
+| 5 | The document row said "Indexed chunks" as a placeholder — the API returns no chunk count, so the label was a lie. | Medium |
+| 6 | The "Supported document formats" panel was permanent documentation at the bottom of every visit, duplicating the file input's own accept list. | Medium |
+| 7 | The upload result flashed for 3.5 seconds and was gone. Navigating away mid-ingest lost the outcome. | Medium |
+| 8 | Every collection had a 36px icon box before its name — decoration that added nothing. | Low |
+| 9 | The filter had no way to clear it other than selecting all and deleting. | Low |
+| 10 | The list had no sort, so the order was whatever the database returned. | Low |
+
+### What changed
+
+**The collections are a specification.** One table: collection and its
+description, document count, vector space, when it was created. Every column
+is a measurement the API actually returns. Below 768px the columns become
+labelled rows, so the table is readable at 320px without a horizontal scroll.
+
+**One collection opens at a time.** Opening it reveals the documents as a
+ruled record list — file and format, size, content hash, when it was
+indexed, its ingestion state — and the upload control moves inside it.
+There is exactly one upload button on the screen, in the one place where
+uploading makes sense.
+
+**The content hash replaced the fake chunk count.** The API returns the
+document's SHA-256 and no chunk count, so the hash is what the row shows.
+It is the value that pins the content, which is the point of showing a
+document at all.
+
+**Creation is inline.** The form opens above the ledger, takes the name
+first, and reports its error next to the field. No dialog, no focus trap,
+no interrupted list.
+
+**The ingestion state is honest.** The upload returns when the file is
+queued, not when it is embedded, so the confirmation says "uploaded —
+chunking and embedding it now" and the row's own chip says "Indexing" until
+the backend says otherwise.
+
+**Sorting and a clearable filter.** Newest, name, or document count, and
+an × that clears the filter.
+
+### Files
+
+| File | Change |
+|---|---|
+| `pages/KnowledgeBasesPage.jsx` | Rewritten around the ledger |
+| `components/kb/CollectionLedger.jsx` | New — the specification table |
+| `components/kb/DocumentTable.jsx` | New — the upload surface and document list |
+| `components/kb/DocumentRow.jsx` | Rewritten as a record row |
+| `components/kb/CreateCollectionForm.jsx` | New — the inline form |
+| `components/kb/CreateKnowledgeBaseDialog.jsx` | Deleted — replaced by the inline form |
+| `components/kb/KnowledgeBaseCard.jsx` | Deleted — replaced by the ledger |
+| `pages/KnowledgeBasesPage.test.jsx` | New — 5 tests over the ledger and the form |
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean |
+| `npm run test` | 10 files, 48 tests, all pass |
+| `npm run build` | Succeeds in ~2.4s |
+| Lighthouse — desktop and mobile | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
+| Responsive | No page or top-bar overflow at 1440 / 1280 / 1024 / 768 / 390 / 320 |
+| Landmarks | One `<main>`, one `<h1>` per route |
+| Console | 0 errors, 0 warnings |
+| Behaviour | Creating a collection, uploading a document, expanding a row, filtering, sorting and deleting all verified in the browser |
 
 ---
 

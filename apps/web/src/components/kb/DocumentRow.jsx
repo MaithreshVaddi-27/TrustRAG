@@ -1,45 +1,49 @@
 import { memo } from 'react'
-import { FileText, Check, AlertTriangle, Loader2, Trash2 } from 'lucide-react'
+import {
+  Check,
+  AlertTriangle,
+  Loader2,
+  Trash2,
+  FileText,
+} from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 
 /**
- * DocumentRow — one indexed document inside a knowledge base.
+ * DocumentRow — one document inside a collection.
  *
- * A row in a ruled list: the file, its measurements in mono, its ingestion
- * state, and the action. The state is a quiet chip; only a failed ingestion
+ * A ruled record row, not a card and not a nested table. The file, its
+ * size, the hash that pins its content, when it was indexed, its ingestion
+ * state and the action. The state is a quiet chip; only a failed ingestion
  * is an alarm.
  */
 const DocumentRow = memo(function DocumentRow({ doc, onDelete }) {
-  const isCompleted =
-    doc.status === 'completed' || doc.ingestion_status === 'completed' || !doc.status
-  const isFailed = doc.status === 'failed' || doc.ingestion_status === 'failed'
+  const status = doc.ingestion_status || doc.status || 'completed'
+  const isCompleted = status === 'completed'
+  const isFailed = status === 'failed'
+
+  const extension = (doc.filename || '').split('.').pop()?.toUpperCase() || 'FILE'
+  const hash = doc.content_hash || ''
 
   return (
     <li className="lx-list__item">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <span
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--radius-control)] border border-[color:var(--rule)] bg-surface-inset text-silver-400"
-            aria-hidden="true"
-          >
-            <FileText size={15} strokeWidth={1.5} />
-          </span>
-
-          <div className="min-w-0">
-            <p className="truncate text-[var(--size-body)] text-silver-100">{doc.filename}</p>
-            <div className="lx-list__meta">
-              <span>
-                {doc.chunk_count !== undefined ? `${doc.chunk_count} chunks` : 'Indexed chunks'}
-              </span>
-              <span>·</span>
-              <span>{doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : 'Document'}</span>
-              <span>·</span>
-              <span>{formatDistanceToNow(new Date(doc.created_at))} ago</span>
-            </div>
-          </div>
+      <div className="lx-record">
+        <div className="lx-record__name">
+          <FileText size={14} strokeWidth={1.5} className="shrink-0 text-silver-500" aria-hidden="true" />
+          <span className="truncate text-silver-100">{doc.filename}</span>
+          <span className="lx-chip shrink-0">{extension}</span>
         </div>
 
-        <div className="flex shrink-0 items-center gap-3 self-end sm:self-center">
+        <span className="lx-record__value">{doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : '—'}</span>
+
+        <span className="lx-record__value" title={hash || undefined}>
+          {hash ? hash.slice(0, 12) : '—'}
+        </span>
+
+        <span className="lx-record__value">
+          {formatDistanceToNow(new Date(doc.created_at))} ago
+        </span>
+
+        <span className="lx-record__value lx-record__value--end">
           {isCompleted ? (
             <span className="lx-chip">
               <Check size={11} strokeWidth={2} aria-hidden="true" />
@@ -59,7 +63,9 @@ const DocumentRow = memo(function DocumentRow({ doc, onDelete }) {
               Indexing
             </span>
           )}
+        </span>
 
+        <span className="lx-record__value lx-record__value--end">
           <button
             type="button"
             onClick={() => onDelete(doc)}
@@ -69,7 +75,7 @@ const DocumentRow = memo(function DocumentRow({ doc, onDelete }) {
           >
             <Trash2 size={14} strokeWidth={1.5} aria-hidden="true" />
           </button>
-        </div>
+        </span>
       </div>
     </li>
   )
