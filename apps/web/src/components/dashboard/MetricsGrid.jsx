@@ -45,7 +45,7 @@ const MetricCard = ({
         </div>
       </div>
       <div className="mt-4">
-        <p className="text-3xl font-extrabold text-white tracking-tight tabular-nums">{value}</p>
+        <p className="font-display text-3xl text-silver-050 tabular-nums leading-none">{value}</p>
         <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
           <span className="font-medium">{title}</span>
           <span className="font-mono text-[11px]">{meta}</span>

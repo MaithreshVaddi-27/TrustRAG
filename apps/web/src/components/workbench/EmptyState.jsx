@@ -72,7 +72,7 @@ export function EmptyState({ enableWebSearch = false }) {
             <span className="text-cyan-400 font-semibold">StateGraph v1.0</span>
           </div>
 
-          <h3 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+          <h3 className="lx-h2">
             Awaiting Pipeline Query
           </h3>
           <p className="text-slate-400 text-xs sm:text-sm max-w-lg mx-auto leading-relaxed">
@@ -88,7 +88,7 @@ export function EmptyState({ enableWebSearch = false }) {
           className="space-y-2.5"
         >
           <div className="flex items-center justify-between text-xs text-slate-400 px-1 font-mono">
-            <span className="flex items-center gap-1.5 font-semibold text-slate-300 uppercase tracking-wider text-[11px]">
+            <span className="flex items-center gap-1.5 font-semibold text-slate-300 text-[11px]">
               <Layers size={13} className="text-cyan-400" />
               <span>Reliability Pipeline Stages</span>
             </span>

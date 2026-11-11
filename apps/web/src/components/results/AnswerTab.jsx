@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
-import { Sparkles, Clock, Copy, Check, Download } from 'lucide-react'
+import { Sparkles, Clock, Copy, Check, Download, AlertTriangle } from 'lucide-react'
 import { SPRING_SNAPPY } from '@/lib/motionConfig'
 import { FormattedAnswer } from '@/components/workbench/FormattedAnswer'
 import { RecoveryTimeline } from '@/components/workbench/ExecutionTrace'
@@ -59,7 +59,7 @@ export function AnswerTab({ analysis, selectedProvider, recoveryRuns, onExportDo
               <span className="p-1.5 rounded-lg bg-cyan-950/80 border border-cyan-500/40 text-cyan-400">
                 <Sparkles size={14} />
               </span>
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-200">
+              <span className="text-xs font-semibold text-slate-200">
                 Grounded Synthesis
               </span>
               <span className="text-[11px] text-slate-500 font-mono flex items-center gap-1 ml-2">
@@ -99,9 +99,10 @@ export function AnswerTab({ analysis, selectedProvider, recoveryRuns, onExportDo
       )}
 
       {analysis.claims?.some(c => c.state === 'NEUTRAL' || c.state === 'CONTRADICTED') && (
-        <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 px-4 py-3">
-          <p className="text-xs text-amber-300">
-            ⚠ Some claims could not be verified against the citation corpus. Inspect the Claims tab for proposition-level breakdown.
+        <div className="flex items-start gap-2 rounded-xl border border-[color:rgba(212,21,20,0.35)] bg-[rgba(212,21,20,0.08)] px-4 py-3">
+          <AlertTriangle size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-crimson-400" aria-hidden="true" />
+          <p className="text-xs text-crimson-300">
+            Some claims could not be verified against the citation corpus. Inspect the Claims tab for proposition-level breakdown.
           </p>
         </div>
       )}

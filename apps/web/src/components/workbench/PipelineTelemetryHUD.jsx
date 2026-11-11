@@ -73,7 +73,7 @@ export function PipelineTelemetryHUD({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-mono font-bold tracking-wider text-cyan-300 uppercase">
+              <span className="text-[11px] font-mono font-bold text-cyan-300">
                 Autonomous Verification Engine
               </span>
               {query && (

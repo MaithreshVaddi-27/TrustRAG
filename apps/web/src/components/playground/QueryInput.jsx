@@ -74,7 +74,7 @@ export function QueryInput({ query, setQuery, loading, handleSubmit, handlePrese
       </div>
 
       <div className="space-y-2">
-        <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wider block">
+        <span className="text-[10px] text-slate-500 font-medium block">
           Quick Prompts
         </span>
         <div className="flex flex-wrap gap-1.5" role="list" aria-label="Quick prompt suggestions">

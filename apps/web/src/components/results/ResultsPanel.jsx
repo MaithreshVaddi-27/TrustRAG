@@ -174,7 +174,7 @@ export function ResultsPanel({
             ref={(el) => { tabRefs.current[tab.id] = el }}
             onClick={() => setActiveTab(tab.id)}
             whileTap={{ scale: 0.98, transition: SPRING_SNAPPY }}
-            className={`relative px-4 py-2.5 text-xs font-semibold uppercase tracking-wider ${
+            className={`relative px-4 py-2.5 text-xs font-semibold ${
               activeTab === tab.id
                 ? 'text-cyan-300'
                 : 'text-slate-500 hover:text-slate-300'

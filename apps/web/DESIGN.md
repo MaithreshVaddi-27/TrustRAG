@@ -1,5 +1,10 @@
 # TrustRAG — Frontend Design System
 
+> **Canonical documentation:** [`docs/design/dark-luxury/`](../docs/design/dark-luxury/)
+> — the complete system, split by concern: foundations, tokens, components,
+> patterns, accessibility, voice, migration and verification. This file is the
+> short version for working in the app.
+
 **Direction:** Obsidian Black × Chrome Silver × Laser Crimson.
 Luxury editorial × Apple precision × Linear simplicity × enterprise sophistication.
 **Strictly dark.** There is no light theme and the tokens expose no light values.

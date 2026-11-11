@@ -232,7 +232,7 @@ function CreateKbModal({
           )}
 
           <div className="space-y-1.5">
-            <label htmlFor="create-kb-name" className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <label htmlFor="create-kb-name" className="block text-xs font-semibold text-slate-400">
               Knowledge Base Name *
             </label>
             <input
@@ -249,7 +249,7 @@ function CreateKbModal({
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="create-kb-desc" className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <label htmlFor="create-kb-desc" className="block text-xs font-semibold text-slate-400">
               Description
             </label>
             <textarea

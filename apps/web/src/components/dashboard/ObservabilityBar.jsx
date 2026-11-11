@@ -50,7 +50,7 @@ export function ObservabilityBar({
           )}
         </motion.span>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-mono font-bold tracking-wider uppercase text-cyan-300">
+          <span className="text-xs font-mono font-bold text-cyan-300">
             Live Observability Stream
           </span>
           <motion.span

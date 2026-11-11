@@ -90,7 +90,7 @@ export function FormattedAnswer({ content, className = '' }) {
             </div>
           ),
           thead: ({ children }) => (
-            <thead className="bg-surface-950/90 text-cyan-300 uppercase tracking-wider font-mono text-[11px] border-b border-slate-700/80">
+            <thead className="bg-surface-950/90 text-cyan-300 font-mono text-[11px] border-b border-slate-700/80">
               {children}
             </thead>
           ),
@@ -100,7 +100,7 @@ export function FormattedAnswer({ content, className = '' }) {
             </tbody>
           ),
           th: ({ children }) => (
-            <th className="px-4 py-3 font-semibold text-slate-200 tracking-wider">
+            <th className="px-4 py-3 font-semibold text-slate-200">
               {children}
             </th>
           ),

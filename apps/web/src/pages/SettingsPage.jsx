@@ -8,24 +8,7 @@ import { useAuthStore } from '@/store/authStore'
 import { authService } from '@/services/auth'
 import { healthService, modelService } from '@/services/api'
 import { copyToClipboard } from '@/lib/clipboard'
-import {
-  Server,
-  ShieldCheck,
-  Cpu,
-  Database,
-  User,
-  Copy,
-  Check,
-  LogOut,
-  Layers,
-  Activity,
-  FileText,
-  Clock,
-  Loader2,
-  Terminal,
-  Sparkles,
-  Zap,
-} from 'lucide-react'
+import { Server, ShieldCheck, Cpu, Database, User, Copy, Check, LogOut, Layers, Activity, FileText, Clock, Loader2, Terminal, Sparkles, Zap, Lightbulb } from 'lucide-react'
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -280,7 +263,7 @@ export default function SettingsPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Accelerator */}
             <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-4 space-y-2">
-              <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Hardware Accelerator</span>
+              <span className="text-xs text-slate-400 font-semibold block">Hardware Accelerator</span>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-100 text-sm">
                   {providersData?.hardware?.accelerator_name || 'Detecting...'}
@@ -293,7 +276,7 @@ export default function SettingsPage() {
 
             {/* Memory & VRAM */}
             <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-4 space-y-2">
-              <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Host Memory (RAM)</span>
+              <span className="text-xs text-slate-400 font-semibold block">Host Memory (RAM)</span>
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-100 text-sm">
                   {providersData?.hardware?.memory?.used_gb || 0} / {providersData?.hardware?.memory?.total_gb || 8} GB
@@ -317,7 +300,7 @@ export default function SettingsPage() {
 
             {/* Hardware-Adaptive Recommendations */}
             <div className="bg-surface-800/60 border border-slate-700/60 rounded-xl p-4 space-y-2">
-              <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Auto-Tuned Recommendation</span>
+              <span className="text-xs text-slate-400 font-semibold block">Auto-Tuned Recommendation</span>
               <div className="space-y-1 text-xs text-slate-300">
                 <div>Optimal LLM: <code className="text-emerald-300 font-mono">{providersData?.hardware?.recommendations?.primary_llm || 'granite4.2:3b-q4_K_M'}</code></div>
                 <div>Optimal Embed: <code className="text-cyan-300 font-mono">{providersData?.hardware?.recommendations?.primary_embedding || 'BAAI/bge-small-en-v1.5'}</code></div>
@@ -367,8 +350,9 @@ export default function SettingsPage() {
               </div>
 
               {!providersData?.providers?.ollama?.connected && (
-                <div className="p-2.5 bg-amber-950/40 border border-amber-800/40 rounded-lg text-[11px] text-amber-300">
-                  💡 Start Ollama by running <code className="bg-surface-900 px-1 py-0.5 rounded text-amber-200 font-mono">ollama serve</code> and <code className="bg-surface-900 px-1 py-0.5 rounded text-amber-200 font-mono">ollama pull granite4.2:3b-q4_K_M</code>.
+                <div className="flex items-start gap-2 p-2.5 bg-surface-inset border border-[color:var(--rule)] rounded-lg text-[11px] text-silver-400">
+                  <Lightbulb size={13} strokeWidth={1.75} className="mt-0.5 shrink-0 text-silver-500" aria-hidden="true" />
+                  <span>Start Ollama by running <code className="bg-surface-900 px-1 py-0.5 rounded text-silver-200 font-mono">ollama serve</code> and <code className="bg-surface-900 px-1 py-0.5 rounded text-silver-200 font-mono">ollama pull granite4.2:3b-q4_K_M</code>.</span>
                 </div>
               )}
             </div>
@@ -400,8 +384,9 @@ export default function SettingsPage() {
               </div>
 
               {!providersData?.providers?.llama_cpp?.connected && (
-                <div className="p-2.5 bg-surface-900/60 border border-slate-700/50 rounded-lg text-[11px] text-slate-400">
-                  💡 Start server: <code className="bg-surface-950 px-1 py-0.5 rounded text-cyan-300 font-mono">./scripts/start_local_llm.sh --port 9931</code>
+                <div className="flex items-start gap-2 p-2.5 bg-surface-inset border border-[color:var(--rule)] rounded-lg text-[11px] text-silver-400">
+                  <Lightbulb size={13} strokeWidth={1.75} className="mt-0.5 shrink-0 text-silver-500" aria-hidden="true" />
+                  <span>Start server: <code className="bg-surface-950 px-1 py-0.5 rounded text-silver-200 font-mono">./scripts/start_local_llm.sh --port 9931</code></span>
                 </div>
               )}
             </div>
@@ -433,8 +418,9 @@ export default function SettingsPage() {
               </div>
 
               {!providersData?.providers?.mlx?.connected && (
-                <div className="p-2.5 bg-surface-900/60 border border-slate-700/50 rounded-lg text-[11px] text-slate-400">
-                  💡 Start server: <code className="bg-surface-950 px-1 py-0.5 rounded text-amber-300 font-mono">./scripts/start_mlx_server.sh --port 8080</code>
+                <div className="flex items-start gap-2 p-2.5 bg-surface-inset border border-[color:var(--rule)] rounded-lg text-[11px] text-silver-400">
+                  <Lightbulb size={13} strokeWidth={1.75} className="mt-0.5 shrink-0 text-silver-500" aria-hidden="true" />
+                  <span>Start server: <code className="bg-surface-950 px-1 py-0.5 rounded text-silver-200 font-mono">./scripts/start_mlx_server.sh --port 8080</code></span>
                 </div>
               )}
             </div>
@@ -517,7 +503,7 @@ export default function SettingsPage() {
           <div className="divide-y divide-slate-800/60 text-xs">
             <div className="py-2.5 flex items-center justify-between">
               <span className="text-slate-400 font-medium">Active LLM Engine</span>
-              <span className="font-mono text-emerald-300 bg-surface-800 px-2 py-0.5 rounded border border-slate-700/60 uppercase">
+              <span className="font-mono text-emerald-300 bg-surface-800 px-2 py-0.5 rounded border border-slate-700/60">
                 {healthUnknown ? 'Unknown' : `${models.llm_provider || 'llama_cpp'} (${models.llm_model || 'see models.yaml'})`}
               </span>
             </div>
@@ -561,7 +547,7 @@ export default function SettingsPage() {
               {supportedFormats.map((fmt) => (
                 <span
                   key={fmt}
-                  className="px-2.5 py-1 bg-surface-800/80 border border-slate-700/80 rounded-lg text-xs font-mono text-slate-300 uppercase tracking-wider"
+                  className="px-2.5 py-1 bg-surface-800/80 border border-slate-700/80 rounded-lg text-xs font-mono text-slate-300"
                 >
                   .{fmt}
                 </span>

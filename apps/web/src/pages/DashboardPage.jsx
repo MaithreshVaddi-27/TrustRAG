@@ -11,6 +11,7 @@ import { RecentAnalysesFeed } from '@/components/dashboard/RecentAnalysesFeed'
 import { PipelineArchitecture } from '@/components/dashboard/PipelineArchitecture'
 import { kbService, analysisService, claimService, conflictService } from '@/services/api'
 import { normalizeClaimState } from '@/lib/claimState'
+import { AlertTriangle } from 'lucide-react'
 
 export default function DashboardPage() {
   const [autoRefresh, setAutoRefresh] = useState(false)
@@ -160,7 +161,7 @@ export default function DashboardPage() {
             className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-red-800/50 bg-red-950/30"
           >
             <div className="flex items-start gap-2.5">
-              <span className="text-red-400 mt-0.5 shrink-0">⚠</span>
+              <AlertTriangle size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-crimson-400" aria-hidden="true" />
               <div>
                 <p className="text-xs font-semibold text-red-300">Some dashboard feeds failed to load</p>
                 <p className="text-[11px] text-red-400/80 mt-0.5">

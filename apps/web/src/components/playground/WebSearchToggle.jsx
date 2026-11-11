@@ -44,7 +44,7 @@ export function WebSearchToggle({ enableWebSearch, setEnableWebSearch, loading, 
               >
                 Web Search Grounding
               </span>
-              <span className="font-mono text-[9px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider bg-surface-900 text-cyan-400 border border-cyan-500/30 shrink-0">
+              <span className="font-mono text-[9px] font-semibold px-2 py-0.5 rounded-full bg-surface-900 text-cyan-400 border border-cyan-500/30 shrink-0">
                 MCP
               </span>
             </div>
