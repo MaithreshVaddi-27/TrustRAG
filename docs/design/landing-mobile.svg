@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 844" width="390" height="844" role="img" aria-labelledby="title desc">
+  <title id="title">TrustRAG — Landing Page (Mobile 390×844)</title>
+  <desc id="desc">Genuine designed mockup: TrustRAG premium landing page mobile — stacked hero, single crimson CTA, scrollable stat chips, compact pipeline, dark-only.</desc>
+  <defs>
+    <linearGradient id="mbGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#080808"/>
+      <stop offset="100%" stop-color="#121212"/>
+    </linearGradient>
+    <radialGradient id="mbSpot" cx="50%" cy="30%" r="60%">
+      <stop offset="0%" stop-color="#d41514" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#d41514" stop-opacity="0"/>
+    </radialGradient>
+    <style>
+      .bg { fill:url(#mbGrad); }
+      .hairline { fill:none; stroke:#1a1a1a; stroke-width:1; }
+      .serif { font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif; }
+      .sans { font-family:Inter, system-ui, sans-serif; }
+      .mono { font-family:'JetBrains Mono', monospace; }
+      .nav-text { fill:#cdcbc8; font-family:Inter,sans-serif; font-size:14; font-weight:600; letter-spacing:-0.01em; }
+      .hero-main { fill:#cdcbc8; font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif; font-size:38; font-weight:800; letter-spacing:-0.025em; line-height:1.15; }
+      .hero-sub { fill:#a8a8a8; font-family:Inter,sans-serif; font-size:15.5; line-height:1.65; }
+      .kicker { fill:#d41514; font-family:'JetBrains Mono',monospace; font-size:10.5; letter-spacing:0.05em; font-weight:700; }
+      .stat-val { fill:#cdcbc8; font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif; font-size:26; font-weight:700; letter-spacing:-0.02em; }
+      .stat-lbl { fill:#737373; font-family:'JetBrains Mono',monospace; font-size:10; letter-spacing:0.04em; }
+      .btn { rx:14; cursor:pointer; }
+      .btn-text { fill:#080808; font-family:Inter,sans-serif; font-size:16; font-weight:700; }
+      .card { fill:#121212; rx:18; stroke:#1a1a1a; stroke-width:1; }
+    </style>
+  </defs>
+  <rect class="bg" width="390" height="844"/>
+
+  <!-- Ambient flares -->
+  <circle cx="195" cy="-80" r="220" fill="#f0403f" opacity="0.06"/>
+  <circle cx="370" cy="320" r="180" fill="#d41514" opacity="0.05"/>
+
+  <!-- Navbar -->
+  <rect x="0" y="0" width="390" height="64" fill="#080808/0.7"/>
+  <line x1="0" y1="64" x2="390" y2="64" stroke="#1a1a1a" stroke-width="1" opacity="0.5"/>
+  <g transform="translate(16, 22)">
+    <rect x="0" y="-8" width="32" height="32" rx="8" fill="#121212" stroke="#d41514" stroke-width="1.5"/>
+    <text x="16" y="12" text-anchor="middle" fill="#d41514" font-family:Inter,sans-serif font-size="18" font-weight="800">T</text>
+    <text x="34" y="14" class="serif" fill="#cdcbc8" font-size="15" font-weight="700" letter-spacing="-0.02em">TrustRAG</text>
+  </g>
+  <text x="374" y="22" class="nav-text" text-anchor="end">☰</text>
+
+  <!-- Hero -->
+  <g transform="translate(16, 112)">
+    <text x="0" y="12" class="kicker">AI RELIABILITY &amp; HALLUCINATION AUDIT</text>
+    <text x="0" y="66" class="hero-main">Every claim,<br/>verified end to end.</text>
+    <text x="0" y="124" class="hero-sub" max-width="358">TrustRAG decomposes claims, retrieves sparse + dense evidence, and returns a verified, contradicted, or unsupported verdict — with full traceability.</text>
+    <rect x="0" y="158" width="1" height="26" stroke="#d41514" stroke-width="2" opacity="0.7"/>
+    <rect x="0" y="200" width="358" height="56" rx="14" class="btn" fill="#d41514"/>
+    <text x="179" y="230" text-anchor="middle" class="btn-text">Start a free audit</text>
+    <text x="0" y="272" class="mono" fill="#4d4d4d" font-size="10" letter-spacing="0.04em">SOC 2 · GDPR · on-prem · air-gapped</text>
+  </g>
+
+  <!-- Pipeline visual -->
+  <g transform="translate(16, 300)">
+    <rect x="0" y="0" width="358" height="220" rx="20" class="card"/>
+    <rect x="0" y="0" width="358" height="1" fill="#d41514" opacity="0.35"/>
+    <text x="22" y="26" class="serif" fill="#cdcbc8" font-size="17" font-weight="600">Live pipeline</text>
+    <text x="22" y="46" class="mono" fill="#737373" font-size="10">claim → decompose → retrieve → verify → verdict</text>
+    <g transform="translate(22, 74)">
+      <rect x="0" y="0" width="92" height="32" rx="6" class="surface" fill="#1a1a1a" stroke="#3a3a3a" stroke-width="1"/>
+      <text x="12" y="22" class="mono" fill="#a8a8a8" font-size="9">claim</text>
+      <line x1="104" y1="16" x2="124" y2="16" stroke="#3a3a3a" stroke-width="1"/>
+      <rect x="130" y="0" width="92" height="32" rx="6" class="surface" fill="#1a1a1a" stroke="#3a3a3a" stroke-width="1"/>
+      <text x="142" y="22" class="mono" fill="#a8a8a8" font-size="9">verify</text>
+      <line x1="234" y1="16" x2="254" y2="16" stroke="#3a3a3a" stroke-width="1"/>
+      <rect x="260" y="0" width="76" height="32" rx="6" class="surface" fill="#1a1a1a" stroke="#3a3a3a" stroke-width="1"/>
+      <text x="272" y="22" class="mono" fill="#a8a8a8" font-size="9">verdict</text>
+    </g>
+    <rect x="22" y="126" width="314" height="72" rx="12" fill="#080808" stroke="#1a1a1a" stroke-width="1"/>
+    <text x="42" y="152" class="serif" fill="#cdcbc8" font-size="24" font-weight="700">94%</text>
+    <text x="42" y="174" class="mono" fill="#737373" font-size="9">claims → correct verdict</text>
+  </g>
+
+  <!-- Stat chips (horizontally scrollable) -->
+  <g transform="translate(16, 552)">
+    <text x="0" y="14" class="sans" fill="#d41514" font-size="12" font-weight="700" letter-spacing="0.02em">Benchmarks</text>
+    <g transform="translate(0, 30)">
+      <rect x="0" y="0" width="108" height="88" rx="14" class="card"/>
+      <text x="16" y="34" class="stat-val">14k+</text>
+      <text x="16" y="58" class="stat-lbl">claims audited</text>
+      <rect x="122" y="0" width="108" height="88" rx="14" class="card"/>
+      <text x="138" y="34" class="stat-val">99.2%</text>
+      <text x="138" y="58" class="stat-lbl">verdict accuracy</text>
+      <rect x="244" y="0" width="108" height="88" rx="14" class="card"/>
+      <text x="260" y="34" class="stat-val">2.3s</text>
+      <text x="260" y="58" class="stat-lbl">median latency</text>
+      <rect x="366" y="0" width="108" height="88" rx="14" class="card"/>
+      <text x="382" y="34" class="stat-val">0</text>
+      <text x="382" y="58" class="stat-lbl">fabricated</text>
+    </g>
+    <text x="0" y="142" class="mono" fill="#4d4d4d" font-size="9" letter-spacing="0.04em">Swipe → · 44px touch targets throughout</text>
+  </g>
+
+  <text x="16" y="824" class="mono" fill="#4d4d4d" font-size="9.5" letter-spacing="0.04em">TrustRAG · The Ledger v3 · Mobile 390×844 · Dark-only · Visual deliverable only · No source modified</text>
+</svg>

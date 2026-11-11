@@ -1,0 +1,207 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" width="1440" height="900" role="img" aria-labelledby="title desc">
+  <title id="title">TrustRAG — Responsive Comparison</title>
+  <desc id="desc">Genuine designed mockup: TrustRAG landing page across six breakpoints — 1440, 1280, 1024, 768, 390, 320px — dark-only, same composition reflowed.</desc>
+  <defs>
+    <linearGradient id="rcGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#080808"/>
+      <stop offset="100%" stop-color="#121212"/>
+    </linearGradient>
+    <style>
+      .bg { fill:#080808; }
+      .hairline { fill:none; stroke:#1a1a1a; stroke-width:1; }
+      .serif { font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif; }
+      .sans { font-family:Inter, system-ui, sans-serif; }
+      .mono { font-family:'JetBrains Mono', monospace; }
+      .title { fill:#cdcbc8; font-family:Inter,sans-serif; font-size:24; font-weight:700; letter-spacing:-0.01em; }
+      .sub { fill:#737373; font-family:Inter,sans-serif; font-size:13; }
+      .label { fill:#737373; font-family:'JetBrains Mono',monospace; font-size=10; letter-spacing:0.04em; }
+      .bp { fill:#d41514; font-family:'JetBrains Mono',monospace; font-size=11; font-weight:700; }
+      .frame { rx:12; stroke:#1a1a1a; stroke-width:1; }
+      .nav-text { fill:#cdcbc8; font-family:Inter,sans-serif; font-size=13; font-weight=600; }
+      .hero-main { fill:#cdcbc8; font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif; font-weight=800; letter-spacing=-0.025em; }
+      .hero-sub { fill:#a8a8a8; font-family:Inter,sans-serif; }
+      .kicker { fill:#d41514; font-family:'JetBrains Mono',monospace; font-size=10; letter-spacing:0.05em; font-weight=700; }
+      .btn { rx:10; cursor=pointer; }
+      .btn-text { fill:#080808; font-family:Inter,sans-serif; font-weight=700; }
+      .stat-val { fill:#cdcbc8; font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif; font-weight=700; letter-spacing=-0.02em; }
+      .stat-lbl { fill:#737373; font-family:'JetBrains Mono',monospace; font-size=9.5; letter-spacing:0.04em; }
+    </style>
+  </defs>
+  <rect class="bg" width="1440" height="900"/>
+  <line x1="40" y1="1" x2="1400" y2="1" stroke="#1a1a1a" stroke-width="1" opacity="0.6"/>
+
+  <text x="40" y="44" class="title">Responsive review</text>
+  <text x="40" y="64" class="sub">Same composition at six breakpoints — 1440 · 1280 · 1024 · 768 · 390 · 320px · dark-only · 44px touch targets throughout</text>
+
+  <!-- Helper group for a breakpoint card -->
+  <g id="bp-card">
+    <!-- frame, navbar, hero, stats drawn per instance via transform -->
+  </g>
+
+  <!-- 1440px desktop -->
+  <g transform="translate(40, 96)">
+    <rect x="0" y="0" width="224" height="700" rx="12" class="frame" fill="#121212"/>
+    <rect x="0" y="0" width="224" height="1" fill="#1a1a1a"/>
+    <text x="14" y="18" class="bp">1440px</text>
+    <g transform="translate(14, 28)">
+      <rect x="0" y="-8" width="28" height="28" rx="7" fill="#1a1a1a" stroke="#d41514" stroke-width="1.5"/>
+      <text x="14" y="10" text-anchor="middle" fill="#d41514" font-family:Inter,sans-serif font-size="14" font-weight="800">T</text>
+      <text x="28" y="12" class="nav-text" font-size="12">TrustRAG</text>
+      <rect x="150" y="-8" width="60" height="28" rx="7" class="btn" fill="#d41514"/>
+      <text x="180" y="8" text-anchor="middle" class="btn-text" font-size="11" fill="#080808">Get started</text>
+    </g>
+    <g transform="translate(14, 74)">
+      <text x="0" y="14" class="kicker">AI RELIABILITY &amp; HALLUCINATION AUDIT</text>
+      <text x="0" y="46" class="hero-main" font-size="30">Every claim,<br/>verified end to end.</text>
+      <text x="0" y="76" class="hero-sub" font-size="13" max-width="190">TrustRAG decomposes claims, retrieves evidence, returns a verified, contradicted, or unsupported verdict.</text>
+      <rect x="0" y="98" width="1" height="20" stroke="#d41514" stroke-width="1.5"/>
+      <rect x="0" y="126" width="106" height="34" rx="8" class="btn" fill="#d41514"/>
+      <text x="53" y="150" text-anchor="middle" class="btn-text" font-size="11" fill="#080808">Start audit</text>
+    </g>
+    <g transform="translate(14, 176)">
+      <rect x="0" y="0" width="196" height="64" rx="10" fill="#121212" stroke="#1a1a1a" stroke-width="1"/>
+      <text x="16" y="26" class="stat-val" font-size="20">14k+</text>
+      <text x="16" y="46" class="stat-lbl">claims audited</text>
+    </g>
+    <text x="14" y="678" class="label">Desktop 1440 · hero left + stats below</text>
+  </g>
+
+  <!-- 1280px -->
+  <g transform="translate(278, 96)">
+    <rect x="0" y="0" width="198" height="700" rx="12" class="frame" fill="#121212"/>
+    <rect x="0" y="0" width="198" height="1" fill="#1a1a1a"/>
+    <text x="14" y="18" class="bp">1280px</text>
+    <g transform="translate(14, 28)">
+      <rect x="0" y="-8" width="28" height="28" rx="7" fill="#1a1a1a" stroke="#d41514" stroke-width="1.5"/>
+      <text x="14" y="10" text-anchor="middle" fill="#d41514" font-family:Inter,sans-serif font-size="14" font-weight="800">T</text>
+      <text x="28" y="12" class="nav-text" font-size="12">TrustRAG</text>
+      <rect x="126" y="-8" width="58" height="28" rx="7" class="btn" fill="#d41514"/>
+      <text x="155" y="8" text-anchor="middle" class="btn-text" font-size="11" fill="#080808">Get started</text>
+    </g>
+    <g transform="translate(14, 74)">
+      <text x="0" y="14" class="kicker">AI RELIABILITY &amp; HALLUCINATION AUDIT</text>
+      <text x="0" y="46" class="hero-main" font-size="27">Every claim,<br/>verified end to end.</text>
+      <text x="0" y="76" class="hero-sub" font-size="12.5" max-width="168">TrustRAG decomposes claims, retrieves evidence, returns a verified, contradicted, or unsupported verdict.</text>
+      <rect x="0" y="98" width="1" height="20" stroke="#d41514" stroke-width="1.5"/>
+      <rect x="0" y="126" width="96" height="34" rx="8" class="btn" fill="#d41514"/>
+      <text x="48" y="150" text-anchor="middle" class="btn-text" font-size="11" fill="#080808">Start audit</text>
+    </g>
+    <g transform="translate(14, 176)">
+      <rect x="0" y="0" width="170" height="64" rx="10" fill="#121212" stroke="#1a1a1a" stroke-width="1"/>
+      <text x="16" y="26" class="stat-val" font-size="20">14k+</text>
+      <text x="16" y="46" class="stat-lbl">claims audited</text>
+    </g>
+    <text x="14" y="678" class="label">Laptop 1280 · slightly tighter hero</text>
+  </g>
+
+  <!-- 1024px -->
+  <g transform="translate(490, 96)">
+    <rect x="0" y="0" width="158" height="700" rx="12" class="frame" fill="#121212"/>
+    <rect x="0" y="0" width="158" height="1" fill="#1a1a1a"/>
+    <text x="14" y="18" class="bp">1024px</text>
+    <g transform="translate(14, 28)">
+      <rect x="0" y="-8" width="26" height="26" rx="7" fill="#1a1a1a" stroke="#d41514" stroke-width="1.5"/>
+      <text x="13" y="10" text-anchor="middle" fill="#d41514" font-family:Inter,sans-serif font-size="13" font-weight="800">T</text>
+      <text x="25" y="12" class="nav-text" font-size="11">TrustRAG</text>
+      <rect x="94" y="-8" width="50" height="26" rx="7" class="btn" fill="#d41514"/>
+      <text x="119" y="8" text-anchor="middle" class="btn-text" font-size="10" fill="#080808">Start</text>
+    </g>
+    <g transform="translate(14, 70)">
+      <text x="0" y="14" class="kicker">AI RELIABILITY &amp; AUDIT</text>
+      <text x="0" y="44" class="hero-main" font-size="23">Every claim,<br/>verified end to end.</text>
+      <text x="0" y="70" class="hero-sub" font-size="12" max-width="130">TrustRAG decomposes claims, retrieves evidence, returns a verdict.</text>
+      <rect x="0" y="90" width="1" height="18" stroke="#d41514" stroke-width="1.5"/>
+      <rect x="0" y="116" width="82" height="32" rx="8" class="btn" fill="#d41514"/>
+      <text x="41" y="138" text-anchor="middle" class="btn-text" font-size="10" fill="#080808">Start audit</text>
+    </g>
+    <g transform="translate(14, 164)">
+      <rect x="0" y="0" width="130" height="56" rx="10" fill="#121212" stroke="#1a1a1a" stroke-width="1"/>
+      <text x="14" y="22" class="stat-val" font-size="18">14k+</text>
+      <text x="14" y="40" class="stat-lbl">claims audited</text>
+    </g>
+    <text x="14" y="678" class="label">Tablet 1024 · condensed CTA</text>
+  </g>
+
+  <!-- 768px -->
+  <g transform="translate(662, 96)">
+    <rect x="0" y="0" width="118" height="700" rx="12" class="frame" fill="#121212"/>
+    <rect x="0" y="0" width="118" height="1" fill="#1a1a1a"/>
+    <text x="14" y="18" class="bp">768px</text>
+    <g transform="translate(14, 28)">
+      <rect x="0" y="-8" width="26" height="26" rx="7" fill="#1a1a1a" stroke="#d41514" stroke-width="1.5"/>
+      <text x="13" y="10" text-anchor="middle" fill="#d41514" font-family:Inter,sans-serif font-size="13" font-weight="800">T</text>
+      <text x="25" y="12" class="nav-text" font-size="11">TrustRAG</text>
+      <text x="94" y="12" class="nav-text" font-size="11">☰</text>
+    </g>
+    <g transform="translate(14, 64)">
+      <text x="0" y="14" class="kicker">AI RELIABILITY &amp; AUDIT</text>
+      <text x="0" y="42" class="hero-main" font-size="20">Every claim,<br/>verified end to end.</text>
+      <text x="0" y="66" class="hero-sub" font-size="11.5" max-width="92">TrustRAG decomposes claims, retrieves evidence, returns a verdict.</text>
+      <rect x="0" y="86" width="1" height="16" stroke="#d41514" stroke-width="1.5"/>
+      <rect x="0" y="110" width="66" height="30" rx="8" class="btn" fill="#d41514"/>
+      <text x="33" y="132" text-anchor="middle" class="btn-text" font-size="10" fill="#080808">Start</text>
+    </g>
+    <g transform="translate(14, 154)">
+      <rect x="0" y="0" width="90" height="48" rx="10" fill="#121212" stroke="#1a1a1a" stroke-width="1"/>
+      <text x="12" y="18" class="stat-val" font-size="16">14k+</text>
+      <text x="12" y="34" class="stat-lbl">claims audited</text>
+    </g>
+    <text x="14" y="678" class="label">Tablet 768 · hamburger menu</text>
+  </g>
+
+  <!-- 390px mobile -->
+  <g transform="translate(794, 96)">
+    <rect x="0" y="0" width="60" height="700" rx="12" class="frame" fill="#121212"/>
+    <rect x="0" y="0" width="60" height="1" fill="#1a1a1a"/>
+    <text x="14" y="18" class="bp">390px</text>
+    <g transform="translate(14, 28)">
+      <rect x="0" y="-8" width="24" height="24" rx="7" fill="#1a1a1a" stroke="#d41514" stroke-width="1.5"/>
+      <text x="12" y="10" text-anchor="middle" fill="#d41514" font-family:Inter,sans-serif font-size="12" font-weight="800">T</text>
+      <text x="24" y="12" class="nav-text" font-size="10">TrustRAG</text>
+      <text x="52" y="12" class="nav-text" font-size="10">☰</text>
+    </g>
+    <g transform="translate(14, 58)">
+      <text x="0" y="12" class="kicker">AI RELIABILITY &amp; AUDIT</text>
+      <text x="0" y="36" class="hero-main" font-size="18">Every claim,<br/>verified end to end.</text>
+      <text x="0" y="58" class="hero-sub" font-size="10.5" max-width="44">TrustRAG decomposes claims, retrieves evidence, returns a verdict.</text>
+      <rect x="0" y="78" width="1" height="16" stroke="#d41514" stroke-width="1.5"/>
+      <rect x="0" y="102" width="32" height="28" rx="8" class="btn" fill="#d41514"/>
+      <text x="16" y="122" text-anchor="middle" class="btn-text" font-size="9" fill="#080808">Start</text>
+    </g>
+    <g transform="translate(14, 144)">
+      <rect x="0" y="0" width="44" height="44" rx="10" fill="#121212" stroke="#1a1a1a" stroke-width="1"/>
+      <text x="6" y="16" class="stat-val" font-size="14">14k+</text>
+      <text x="6" y="30" class="stat-lbl">claims</text>
+    </g>
+    <text x="14" y="678" class="label">Mobile 390 · stacked, 44px touch</text>
+  </g>
+
+  <!-- 320px mobile -->
+  <g transform="translate(868, 96)">
+    <rect x="0" y="0" width="52" height="700" rx="12" class="frame" fill="#121212"/>
+    <rect x="0" y="0" width="52" height="1" fill="#1a1a1a"/>
+    <text x="14" y="18" class="bp">320px</text>
+    <g transform="translate(14, 28)">
+      <rect x="0" y="-8" width="24" height="24" rx="7" fill="#1a1a1a" stroke="#d41514" stroke-width="1.5"/>
+      <text x="12" y="10" text-anchor="middle" fill="#d41514" font-family:Inter,sans-serif font-size="12" font-weight="800">T</text>
+      <text x="24" y="12" class="nav-text" font-size="9">TrustRAG</text>
+      <text x="44" y="12" class="nav-text" font-size="9">☰</text>
+    </g>
+    <g transform="translate(14, 58)">
+      <text x="0" y="12" class="kicker">AI RELIABILITY</text>
+      <text x="0" y="34" class="hero-main" font-size="16">Every claim,<br/>verified end to end.</text>
+      <text x="0" y="54" class="hero-sub" font-size="10" max-width="36">TrustRAG decomposes claims, retrieves evidence, returns a verdict.</text>
+      <rect x="0" y="72" width="1" height="14" stroke="#d41514" stroke-width="1.5"/>
+      <rect x="0" y="94" width="28" height="26" rx="8" class="btn" fill="#d41514"/>
+      <text x="14" y="114" text-anchor="middle" class="btn-text" font-size="9" fill="#080808">Start</text>
+    </g>
+    <g transform="translate(14, 134)">
+      <rect x="0" y="0" width="40" height="42" rx="10" fill="#121212" stroke="#1a1a1a" stroke-width="1"/>
+      <text x="5" y="14" class="stat-val" font-size="13">14k+</text>
+      <text x="5" y="28" class="stat-lbl">claims</text>
+    </g>
+    <text x="14" y="678" class="label">Mobile 320 · smallest breakpoint</text>
+  </g>
+
+  <text x="40" y="842" class="label">TrustRAG · The Ledger v3 · Responsive comparison · Dark-only · Visual deliverable only · No source modified</text>
+</svg>

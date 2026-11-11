@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" width="1440" height="900" role="img" aria-labelledby="title desc">
+  <title id="title">TrustRAG — Color &amp; Typography</title>
+  <desc id="desc">Genuine designed mockup: Obsidian × Chrome Silver × Laser Crimson color tokens with contrast ratios and typography specimens, dark-only.</desc>
+  <defs>
+    <style>
+      .bg { fill:#080808; }
+      .hairline { fill:none; stroke:#1a1a1a; stroke-width:1; }
+      .serif { font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif; }
+      .sans { font-family:Inter, system-ui, sans-serif; }
+      .mono { font-family:'JetBrains Mono', monospace; }
+      .title { fill:#cdcbc8; font-family:Inter,sans-serif; font-size:24; font-weight:700; letter-spacing:-0.01em; }
+      .sub { fill:#737373; font-family:Inter,sans-serif; font-size:13; }
+      .swatch { rx:8; stroke:#1a1a1a; stroke-width:1; }
+      .hex { fill:#d41514; font-family:'JetBrains Mono',monospace; font-size:11; font-weight:700; }
+      .name { fill:#cdcbc8; font-family:Inter,sans-serif; font-size:12.5; font-weight:600; letter-spacing:-0.01em; }
+      .ratio { fill:#737373; font-family:'JetBrains Mono',monospace; font-size:10.5; }
+      .spec { fill:#d41514; font-family:Inter,sans-serif; font-size:11.5; font-weight:600; }
+    </style>
+  </defs>
+  <rect class="bg" width="1440" height="900"/>
+  <line x1="40" y1="1" x2="1400" y2="1" stroke="#1a1a1a" stroke-width="1" opacity="0.6"/>
+
+  <text x="40" y="44" class="title">Color tokens</text>
+  <text x="40" y="64" class="sub">One controlled crimson primary · chrome silver text · obsidian surfaces · restrained semantic bands · dark-only</text>
+
+  <g transform="translate(40, 100)">
+    <text x="0" y="18" class="spec">Surfaces</text>
+    <g transform="translate(0, 34)">
+      <rect x="0" y="0" width="170" height="56" rx="10" class="swatch" fill="#080808"/>
+      <text x="16" y="24" class="name">surface-950</text>
+      <text x="16" y="42" class="hex">#080808 · base</text>
+      <rect x="190" y="0" width="170" height="56" rx="10" class="swatch" fill="#121212"/>
+      <text x="206" y="24" class="name">surface-900</text>
+      <text x="206" y="42" class="hex">#121212 · card</text>
+      <rect x="380" y="0" width="170" height="56" rx="10" class="swatch" fill="#1a1a1a"/>
+      <text x="396" y="24" class="name">surface-800</text>
+      <text x="396" y="42" class="hex">#1a1a1a · input</text>
+      <rect x="570" y="0" width="170" height="56" rx="10" class="swatch" fill="#262626"/>
+      <text x="586" y="24" class="name">surface-700</text>
+      <text x="586" y="42" class="hex">#262626 · hairline-strong</text>
+    </g>
+    <text x="0" y="114" class="spec">Brand &amp; luxury</text>
+    <g transform="translate(0, 130)">
+      <rect x="0" y="0" width="170" height="56" rx="10" class="swatch" fill="#d41514"/>
+      <text x="16" y="24" class="name" fill="#fff" font-weight="700">laser-crimson</text>
+      <text x="16" y="42" class="hex" fill="#fff" font-weight="700">#d41514 · 4.6:1</text>
+      <rect x="190" y="0" width="170" height="56" rx="10" class="swatch" fill="#f0403f"/>
+      <text x="206" y="24" class="name" fill="#fff" font-weight="700">crimson-light</text>
+      <text x="206" y="42" class="hex" fill="#fff" font-weight="700">#f0403f · hover</text>
+      <rect x="380" y="0" width="170" height="56" rx="10" class="swatch" fill="#cdcbc8"/>
+      <text x="396" y="24" class="name" fill="#080808" font-weight="700">chrome-silver</text>
+      <text x="396" y="42" class="hex" fill="#080808" font-weight="700">#cdcbc8 · primary text</text>
+      <rect x="570" y="0" width="170" height="56" rx="10" class="swatch" fill="#a8a8a8"/>
+      <text x="586" y="24" class="name">chrome-muted</text>
+      <text x="586" y="42" class="hex">#a8a8a8 · secondary</text>
+    </g>
+    <text x="0" y="210" class="spec">Semantic trust bands</text>
+    <g transform="translate(0, 226)">
+      <rect x="0" y="0" width="170" height="56" rx="10" class="swatch" fill="#22c55e"/>
+      <text x="16" y="24" class="name">verified</text>
+      <text x="16" y="42" class="hex">#22c55e · emerald · 4.9:1</text>
+      <rect x="190" y="0" width="170" height="56" rx="10" class="swatch" fill="#d41514"/>
+      <text x="206" y="24" class="name" fill="#fff" font-weight="700">contradicted</text>
+      <text x="206" y="42" class="hex" fill="#fff" font-weight="700">#d41514 · crimson · 4.6:1</text>
+      <rect x="380" y="0" width="170" height="56" rx="10" class="swatch" fill="#f59e0b"/>
+      <text x="396" y="24" class="name">unsupported</text>
+      <text x="396" y="42" class="hex">#f59e0b · amber · large only</text>
+      <rect x="570" y="0" width="170" height="56" rx="10" class="swatch" fill="#737373"/>
+      <text x="586" y="24" class="name">unknown</text>
+      <text x="586" y="42" class="hex">#737373 · slate</text>
+    </g>
+    <text x="0" y="308" class="spec">Display text (chrome silver on obsidian)</text>
+    <g transform="translate(0, 324)">
+      <rect x="0" y="0" width="170" height="56" rx="10" class="swatch" fill="#cdcbc8"/>
+      <text x="16" y="24" class="name" fill="#080808" font-weight="700">chrome-silver</text>
+      <text x="16" y="42" class="hex" fill="#080808" font-weight="700">#cdcbc8 · 21:1</text>
+      <rect x="190" y="0" width="170" height="56" rx="10" class="swatch" fill="#a8a8a8"/>
+      <text x="206" y="24" class="name" fill="#080808" font-weight="700">chrome-muted</text>
+      <text x="206" y="42" class="hex" fill="#080808" font-weight="700">#a8a8a8 · body · 16.3:1</text>
+      <rect x="380" y="0" width="170" height="56" rx="10" class="swatch" fill="#737373"/>
+      <text x="396" y="24" class="name" fill="#080808" font-weight="700">chrome-dim</text>
+      <text x="396" y="42" class="hex" fill="#080808" font-weight="700">#737373 · muted · 11.6:1</text>
+      <rect x="570" y="0" width="170" height="56" rx="10" class="swatch" fill="#4d4d4d"/>
+      <text x="586" y="24" class="name" fill="#080808" font-weight="700">chrome-dark</text>
+      <text x="586" y="42" class="hex" fill="#080808" font-weight="700">#4d4d4d · caption · 7.6:1</text>
+    </g>
+  </g>
+
+  <!-- Right column: Typography -->
+  <g transform="translate(780, 100)">
+    <text x="0" y="18" class="title">Typography scale</text>
+    <text x="0" y="38" class="sub">Editorial serif display · Inter body · JetBrains Mono telemetry · size-specific tracking</text>
+
+    <g transform="translate(0, 70)">
+      <text x="0" y="0" class="serif" fill="#cdcbc8" font-size="46" font-weight="700" letter-spacing="-0.025em">TrustRAG</text>
+      <text x="0" y="30" class="mono" fill="#737373" font-size="11">Display · clamp(2.5rem, 5vw, 4.5rem) · serif 700 · -0.025em</text>
+    </g>
+    <g transform="translate(0, 90)">
+      <text x="0" y="0" class="serif" fill="#cdcbc8" font-size="30" font-weight="600" letter-spacing="-0.015em">Analysis completed — 14 claims verified</text>
+      <text x="0" y="26" class="mono" fill="#737373" font-size="11">Heading-1 · clamp(1.875rem, 3vw, 2.5rem) · serif 600</text>
+    </g>
+    <g transform="translate(0, 140)">
+      <text x="0" y="0" class="serif" fill="#a8a8a8" font-size="22" font-weight="600" letter-spacing="-0.01em">Section kicker — MONO UPPERCASE</text>
+      <text x="0" y="22" class="mono" fill="#737373" font-size="11">Heading-2 · clamp(1.5rem, 2.5vw, 2rem)</text>
+    </g>
+    <g transform="translate(0, 190)">
+      <text x="0" y="0" class="sans" fill="#cdcbc8" font-size="17" line-height="1.65" max-width="360">Body copy in Inter at 1rem with comfortable 1.65 leading for long-form audit narratives.</text>
+      <text x="0" y="32" class="mono" fill="#737373" font-size="11">Body · 1rem / 1.65 · Inter · tracking 0</text>
+    </g>
+    <g transform="translate(0, 250)">
+      <text x="0" y="0" class="sans" fill="#a8a8a8" font-size="13.5" letter-spacing="0.01em">Muted caption / meta data · small text</text>
+      <text x="0" y="20" class="mono" fill="#737373" font-size="11">Caption · 0.75rem / 1.5 · Inter</text>
+    </g>
+    <g transform="translate(0, 310)">
+      <text x="0" y="0" class="mono" fill="#d41514" font-size="15" letter-spacing="0.04em">0x7F3A → claim.verified = true</text>
+      <text x="0" y="22" class="mono" fill="#737373" font-size="11">Mono · 0.875rem / 1.55 · JetBrains Mono · 0.04em tracking</text>
+    </g>
+
+    <!-- Spec card -->
+    <rect x="0" y="370" width="640" height="130" rx="12" class="surface" fill="#121212" stroke="#1a1a1a" stroke-width="1"/>
+    <text x="16" y="394" class="spec">Token rules</text>
+    <text x="16" y="416" class="sub" fill="#cdcbc8">• Display: negative tracking (−0.025em), tight leading (1.05), serif weights 600–700</text>
+    <text x="16" y="436" class="sub" fill="#cdcbc8">• Body: tracking 0, leading 1.65, Inter, rem-based spacing scales with text size</text>
+    <text x="16" y="456" class="sub" fill="#cdcbc8">• Mono: +0.04em tracking, hashes/telemetry only, never status</text>
+    <text x="16" y="476" class="sub" fill="#cdcbc8">• .text-balance / .text-pretty for wrapping; .stat-value serif tabular numerals</text>
+  </g>
+
+  <text x="40" y="882" class="sub" fill="#4d4d4d">TrustRAG · The Ledger v3 · Contrast verified ≥ 4.5:1 body on obsidian · Dark-only · Visual deliverable only</text>
+</svg>
