@@ -44,11 +44,11 @@
 
 @keyframes borderGlow {
   0%, 100% {
-    border-color: rgba(14, 165, 233, 0.3);
+    border-color: var(--color-primary-400);
     box-shadow: 0 0 15px rgba(14, 165, 233, 0.15);
   }
   50% {
-    border-color: rgba(6, 182, 212, 0.7);
+    border-color: var(--color-cyber-400);
     box-shadow: 0 0 25px rgba(6, 182, 212, 0.35);
   }
 }
@@ -76,12 +76,12 @@
 /* ── Animation Utility Classes ─────────────────────────────────────────────── */
 
 .animate-fade-in {
-  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: fadeIn var(--duration-fast) var(--ease-out-expo) both;
   animation-delay: var(--stagger-delay, 0s);
 }
 
 .animate-slide-up {
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: slideUp var(--duration-base) var(--ease-out-expo) both;
   animation-delay: var(--stagger-delay, 0s);
 }
 
@@ -131,23 +131,49 @@
   animation: borderGlow 3s ease-in-out infinite;
 }
 
+/* Spring-based animations (Apple Design: damping=1, response=0.3-0.4s) */
+.animate-spring-in {
+  animation: springIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--stagger-delay, 0s);
+}
+
+.animate-spring-up {
+  animation: springUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--stagger-delay, 0s);
+}
+
 /* ── Spring Transition Utilities ───────────────────────────────────────────── */
 /* Apple Design: spring = cubic-bezier(0.34, 1.56, 0.64, 1) for overshoot feel */
+/* Critically damped (damping=1) = var(--ease-out-expo) = cubic-bezier(0.16, 1, 0.3, 1) */
+/* Momentum-driven (damping=0.8) = var(--ease-spring) = cubic-bezier(0.34, 1.56, 0.64, 1) */
 
 .spring-interactive {
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
-              background-color 0.15s ease,
-              border-color 0.15s ease,
-              box-shadow 0.2s ease;
+  transition: transform var(--duration-base) var(--ease-spring),
+              background-color var(--duration-fast) var(--ease-out-expo),
+              border-color var(--duration-fast) var(--ease-out-expo),
+              box-shadow var(--duration-fast) var(--ease-out-expo);
 }
 
 .spring-scale {
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform var(--duration-base) var(--ease-spring);
 }
 
 .spring-fast {
-  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
-              opacity 0.15s ease;
+  transition: transform var(--duration-fast) var(--ease-spring),
+              opacity var(--duration-fast) var(--ease-out-expo);
+}
+
+/* Critically damped transitions (Apple default: damping=1, response=0.4s) */
+.spring-critical {
+  transition: transform var(--duration-base) var(--ease-out-expo),
+              opacity var(--duration-fast) var(--ease-out-expo),
+              background-color var(--duration-fast) var(--ease-out-expo),
+              border-color var(--duration-fast) var(--ease-out-expo);
+}
+
+/* Momentum transitions (Apple: damping=0.8, response=0.3s) for flicked elements */
+.spring-momentum {
+  transition: transform var(--duration-fast) var(--ease-spring);
 }
 
 /* ── Shimmer Text ──────────────────────────────────────────────────────────── */
@@ -155,11 +181,11 @@
 .shimmer-text {
   background: linear-gradient(
     90deg,
-    #38bdf8 0%,
-    #22d3ee 25%,
+    var(--color-primary-400) 0%,
+    var(--color-cyber-400) 25%,
     #ffffff 50%,
-    #22d3ee 75%,
-    #38bdf8 100%
+    var(--color-cyber-400) 75%,
+    var(--color-primary-400) 100%
   );
   background-size: 200% auto;
   color: transparent;
@@ -178,9 +204,9 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    #38bdf8 20%,
-    #06b6d4 50%,
-    #38bdf8 80%,
+    var(--color-primary-400) 20%,
+    var(--color-cyber-500) 50%,
+    var(--color-primary-400) 80%,
     transparent 100%
   );
   box-shadow: 0 0 16px rgba(6, 182, 212, 0.9);
@@ -194,7 +220,7 @@
 .cyber-radar-screen {
   position: relative;
   overflow: hidden;
-  background: radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.08) 0%, rgba(4, 7, 17, 0.95) 75%);
+  background: radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.08) 0%, var(--color-ink-950) 75%);
   border: 1px solid rgba(6, 182, 212, 0.25);
   box-shadow: 0 0 35px rgba(6, 182, 212, 0.12) inset;
 }
@@ -228,19 +254,19 @@
 /* ── Neon Verdict Cards ────────────────────────────────────────────────────── */
 
 .neon-verdict-supported {
-  background: linear-gradient(135deg, rgba(6, 78, 59, 0.15) 0%, rgba(8, 12, 22, 0.85) 100%);
+  background: linear-gradient(135deg, rgba(6, 78, 59, 0.15) 0%, var(--color-ink-900) 100%);
   border: 1px solid rgba(16, 185, 129, 0.4);
   box-shadow: 0 4px 20px -2px rgba(16, 185, 129, 0.15);
 }
 
 .neon-verdict-contradicted {
-  background: linear-gradient(135deg, rgba(127, 29, 29, 0.18) 0%, rgba(8, 12, 22, 0.85) 100%);
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.18) 0%, var(--color-ink-900) 100%);
   border: 1px solid rgba(239, 68, 68, 0.45);
   box-shadow: 0 4px 20px -2px rgba(239, 68, 68, 0.2);
 }
 
 .neon-verdict-neutral {
-  background: linear-gradient(135deg, rgba(120, 53, 15, 0.15) 0%, rgba(8, 12, 22, 0.85) 100%);
+  background: linear-gradient(135deg, rgba(120, 53, 15, 0.15) 0%, var(--color-ink-900) 100%);
   border: 1px solid rgba(245, 158, 11, 0.35);
   box-shadow: 0 4px 20px -2px rgba(245, 158, 11, 0.12);
 }
@@ -294,17 +320,17 @@ input[type="submit"]:active,
 input[type="reset"]:active,
 select:active {
   transform: scale(0.97);
-  transition: transform 80ms ease-out;
+  transition: transform var(--duration-instant) ease-out;
 }
 
 .btn-primary:active {
   transform: scale(0.97);
-  transition: transform 80ms ease-out;
+  transition: transform var(--duration-instant) ease-out;
 }
 
 .btn-secondary:active {
   transform: scale(0.97);
-  transition: transform 80ms ease-out;
+  transition: transform var(--duration-instant) ease-out;
 }
 
 /* Action pulse: brief scale flash after press */
@@ -343,7 +369,9 @@ select:active {
   /* Disable spring transitions on decorative elements */
   .spring-interactive,
   .spring-scale,
-  .spring-fast {
+  .spring-fast,
+  .spring-critical,
+  .spring-momentum {
     transition: none !important;
   }
 
@@ -354,7 +382,7 @@ select:active {
   .shimmer-text {
     animation: none !important;
     background: none !important;
-    color: #38bdf8;
+    color: var(--color-primary-400);
     -webkit-background-clip: unset;
     background-clip: unset;
   }
@@ -392,6 +420,6 @@ select:active {
   .btn-primary:active,
   .btn-secondary:active {
     transform: scale(0.97) !important;
-    transition: transform 80ms ease-out !important;
+    transition: transform var(--duration-instant) ease-out !important;
   }
 }

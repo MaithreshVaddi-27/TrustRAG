@@ -113,3 +113,39 @@
   }
 }
 }
+
+/* Reduced transparency: make glass surfaces more opaque */
+@media (prefers-reduced-transparency: reduce) {
+  .glass-card,
+  .glass-card-elevated,
+  [class*="bg-surface-"]\/80,
+  [class*="bg-surface-"]\/90 {
+    background-color: var(--color-surface-900) !important;
+    backdrop-filter: none !important;
+  }
+  .backdrop-blur-xl,
+  .backdrop-blur-md,
+  .backdrop-blur-sm {
+    backdrop-filter: none !important;
+  }
+}
+
+/* High contrast: strengthen borders and focus */
+@media (prefers-contrast: more) {
+  :root {
+    --color-hairline: rgba(148, 163, 184, 0.3);
+    --color-hairline-strong: rgba(148, 163, 184, 0.5);
+    --focus-ring: rgba(56, 189, 248, 1);
+  }
+  .border-slate-800,
+  .border-slate-700,
+  .border-slate-600 {
+    border-color: var(--color-hairline-strong) !important;
+  }
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible {
+    outline: 3px solid var(--focus-ring) !important;
+    outline-offset: 2px !important;
+  }
+}

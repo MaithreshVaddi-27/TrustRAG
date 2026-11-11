@@ -1,10 +1,15 @@
 import { useMemo } from 'react'
+import { motion } from 'motion/react'
 import { Activity } from 'lucide-react'
+import { useReducedMotion } from 'motion/react'
 import {
   ResponsiveContainer, AreaChart, Area,
   XAxis, YAxis, Tooltip, ReferenceLine
 } from 'recharts'
 import { format } from 'date-fns'
+
+const SPRING_SNAPPY = { type: 'spring', damping: 28, stiffness: 220 }
+const PRESS_TRANSITION = { duration: 0.08, ease: 'easeOut' }
 
 /**
  * ReliabilityChart - Reliability progression area chart
@@ -14,6 +19,10 @@ import { format } from 'date-fns'
  * User instruction: "continue and Use asynchronous methods for better working with async and await"
  */
 export function ReliabilityChart({ analyses, historyWindow, setHistoryWindow }) {
+  const reduced = useReducedMotion()
+  const springTransition = reduced ? { duration: 0.01 } : SPRING_SNAPPY
+  const pressTransition = reduced ? { duration: 0.01 } : PRESS_TRANSITION
+
   const timelineData = useMemo(() => {
     if (!analyses || !analyses.length) return []
 
@@ -43,11 +52,16 @@ export function ReliabilityChart({ analyses, historyWindow, setHistoryWindow }) 
   }, [analyses, historyWindow])
 
   return (
-    <div className="lg:col-span-2 glass-card p-6 flex flex-col justify-between">
+    <motion.div
+      initial={reduced ? { opacity: 1 } : { opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={springTransition}
+      className="lg:col-span-2 glass-card p-6 flex flex-col justify-between"
+    >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
           <h3 className="font-bold text-white text-base flex items-center gap-2">
-            <Activity size={16} className="text-cyan-400" />
+            <Activity size={16} className="text-cyan-400" aria-hidden="true" />
             Reliability Progression Curve
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">Chronological execution history trajectory vs. safety threshold (75%)</p>
@@ -55,45 +69,54 @@ export function ReliabilityChart({ analyses, historyWindow, setHistoryWindow }) 
 
         {/* History Window Filter Pills */}
         <div className="flex items-center gap-1.5 bg-surface-950 p-1 rounded-xl border border-slate-800 text-[11px] font-mono shrink-0">
-          <button
+          <motion.button
             type="button"
             onClick={() => setHistoryWindow('10')}
+            whileHover={{ scale: 1.02, transition: springTransition }}
+            whileTap={{ scale: 0.97, transition: pressTransition }}
             className={`px-2.5 py-1 rounded-lg transition-all ${
               historyWindow === '10'
                 ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-800/60 shadow-sm'
                 : 'text-slate-400 hover:text-white'
             }`}
+            style={{ minHeight: '44px', minWidth: '44px' }}
           >
             Last 10
-          </button>
-          <button
+          </motion.button>
+          <motion.button
             type="button"
             onClick={() => setHistoryWindow('20')}
+            whileHover={{ scale: 1.02, transition: springTransition }}
+            whileTap={{ scale: 0.97, transition: pressTransition }}
             className={`px-2.5 py-1 rounded-lg transition-all ${
               historyWindow === '20'
                 ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-800/60 shadow-sm'
                 : 'text-slate-400 hover:text-white'
             }`}
+            style={{ minHeight: '44px', minWidth: '44px' }}
           >
             Last 20
-          </button>
-          <button
+          </motion.button>
+          <motion.button
             type="button"
             onClick={() => setHistoryWindow('all')}
+            whileHover={{ scale: 1.02, transition: springTransition }}
+            whileTap={{ scale: 0.97, transition: pressTransition }}
             className={`px-2.5 py-1 rounded-lg transition-all ${
               historyWindow === 'all'
                 ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-800/60 shadow-sm'
                 : 'text-slate-400 hover:text-white'
             }`}
+            style={{ minHeight: '44px', minWidth: '44px' }}
           >
             All ({analyses.length})
-          </button>
+          </motion.button>
         </div>
       </div>
 
       {timelineData.length === 0 ? (
         <div className="h-64 w-full flex flex-col items-center justify-center text-center p-6 border border-dashed border-slate-800 rounded-xl bg-surface-900/40">
-          <Activity size={24} className="text-slate-600 mb-2" />
+          <Activity size={24} className="text-slate-600 mb-2" aria-hidden="true" />
           <p className="text-xs text-slate-300 font-medium">No reliability analyses recorded yet</p>
           <p className="text-[11px] text-slate-500 mt-1 max-w-sm">
             Run an analysis in the Playground to generate telemetry progression and claim audit benchmarks.
@@ -149,7 +172,7 @@ export function ReliabilityChart({ analyses, historyWindow, setHistoryWindow }) 
           </ResponsiveContainer>
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }
 

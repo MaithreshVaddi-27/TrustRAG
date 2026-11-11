@@ -33,7 +33,7 @@ export const SCENARIOS = {
       },
     ],
     recovery: {
-      action: 'LangGraph intercepted Claim 2 contradiction $\\to$ Rewrote sub-query for NLI evaluation pipeline $\\to$ Replaced heuristic assertion with verified batch cross-examination clause.',
+      action: 'LangGraph intercepted Claim 2 contradiction → Rewrote sub-query for NLI evaluation pipeline → Replaced heuristic assertion with verified batch cross-examination clause.',
       finalScore: '98.4%',
       healedText: 'Verification executes batch Natural Language Inference (NLI) cross-examination across all cited context chunks, scoring premise-hypothesis entailment before token emission.',
     },
@@ -67,7 +67,7 @@ export const SCENARIOS = {
       },
     ],
     recovery: {
-      action: 'Cyclical recovery edge activated on threshold breach (0.587 < 0.70) $\\to$ Expanded candidate retrieval to top-40 vectors with RRF $\\to$ Re-evaluated entailment matrix.',
+      action: 'Cyclical recovery edge activated on threshold breach (0.587 < 0.70) → Expanded candidate retrieval to top-40 vectors with RRF → Re-evaluated entailment matrix.',
       finalScore: '97.2%',
       healedText: 'When confidence breaches safety boundaries, LangGraph executes an adaptive query expansion loop to retrieve supplementary corroborating evidence, avoiding ungrounded output.',
     },
@@ -101,7 +101,7 @@ export const SCENARIOS = {
       },
     ],
     recovery: {
-      action: 'Triggered cryptographic provenance validator $\\to$ Filtered unverified chunk vectors $\\to$ Injected SHA-256 verified evidence with ISO 8601 temporal bounds.',
+      action: 'Triggered cryptographic provenance validator → Filtered unverified chunk vectors → Injected SHA-256 verified evidence with ISO 8601 temporal bounds.',
       finalScore: '99.1%',
       healedText: 'Every retrieved context chunk is cryptographically validated against parent SHA-256 root checksums and verified for active temporal validity prior to ranking.',
     },

@@ -2,23 +2,6 @@
 /* Note: Common keyframes (fadeIn, slideUp, float, scanlineMove, rotateBeam, etc.)
    are defined in animations.css. Only landing-specific overrides live here.      */
 
-/* Shimmer text effect — landing-only variant with different gradient */
-.shimmer-text {
-  background: linear-gradient(
-    90deg,
-    var(--cyan-400, #22d3ee) 0%,
-    var(--sky-300, #7dd3fc) 25%,
-    #fff 50%,
-    var(--sky-300, #7dd3fc) 75%,
-    var(--cyan-400, #22d3ee) 100%
-  );
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: shimmer 3s linear infinite;
-}
-
 /* Cyber grid background — landing variant with 60px grid */
 .bg-cyber-grid {
   background-image:
@@ -33,8 +16,8 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, var(--cyan-400, #22d3ee), transparent);
-  box-shadow: 0 0 12px 2px var(--cyan-500, #06b6d4);
+  background: linear-gradient(90deg, transparent, var(--color-cyber-400), transparent);
+  box-shadow: 0 0 12px 2px var(--color-cyber-500);
   z-index: 10;
   animation: scanlineMove 2s ease-in-out infinite;
   pointer-events: none;
@@ -54,9 +37,9 @@
   background: conic-gradient(
     from var(--beam-angle, 0deg) at 50% 50%,
     transparent 0%,
-    #0284c7 15%,
-    #06b6d4 25%,
-    #38bdf8 35%,
+    var(--color-primary-600) 15%,
+    var(--color-cyber-500) 25%,
+    var(--color-primary-400) 35%,
     transparent 50%
   );
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);

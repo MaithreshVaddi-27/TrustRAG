@@ -4,7 +4,7 @@ import { motion, useMotionValue, useMotionTemplate } from 'motion/react'
 import {
   LandingNavbar, HeroSection, SimulationSandbox,
   CapabilitiesExplorer, BentoArchitecture, BenchmarksSection,
-  ComparisonMatrix, LandingFooter
+  ComparisonMatrix, AnimatedPipeline, LandingFooter
 } from '@/components/landing'
 
 export default function LandingPage() {
@@ -50,6 +50,23 @@ export default function LandingPage() {
       <BentoArchitecture />
       <BenchmarksSection />
       <ComparisonMatrix />
+
+      {/* Pipeline Architecture Showcase */}
+      <section id="pipeline" className="relative z-20 py-20 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8" aria-labelledby="pipeline-heading">
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full glass-card border border-cyan-500/20 text-xs font-mono text-cyan-400 mb-3 shadow-md spring-critical">
+            <span className="text-cyan-400" aria-hidden="true">⚡</span>
+            <span>REAL-TIME PIPELINE EXECUTION</span>
+          </div>
+          <h2 id="pipeline-heading" className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mb-4">
+            Live Autonomous Verification Pipeline
+          </h2>
+          <p className="text-slate-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
+            Watch the closed-loop verification pipeline execute in real-time — from hybrid retrieval through NLI audit to self-healing recovery.
+          </p>
+        </div>
+        <AnimatedPipeline />
+      </section>
 
       {/* Final CTA */}
       <section className="relative z-20 py-24 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">

@@ -3,52 +3,71 @@
 /* Heavier blur + deeper shadow = structural; lighter = interactive            */
 
 .glass-card {
-  background: rgba(8, 12, 22, 0.8);
-  backdrop-filter: blur(12px) saturate(150%);
-  -webkit-backdrop-filter: blur(12px) saturate(150%);
-  border: 1px solid rgba(30, 41, 59, 0.8);
-  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(8, 12, 22, 0.85), rgba(4, 7, 17, 0.9));
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-xl);
   /* Bright top edge: light catching the material (Apple Design §12) */
-  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: var(--shadow-card);
+  transition: border-color var(--duration-fast) var(--ease-out-expo),
+              box-shadow var(--duration-fast) var(--ease-out-expo),
+              transform var(--duration-fast) var(--ease-out-expo);
 }
 
 .glass-card-hover:hover {
-  border-color: rgba(14, 165, 233, 0.4);
-  box-shadow: 0 10px 40px -10px rgba(14, 165, 233, 0.15);
+  border-color: var(--color-hairline-strong);
+  box-shadow: var(--shadow-lift);
   transform: translateY(-2px);
+}
+
+.glass-card-elevated {
+  background: linear-gradient(180deg, rgba(8, 12, 22, 0.9), rgba(4, 7, 17, 0.95));
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-lift);
 }
 
 .glass-nav {
   position: sticky;
   top: 0;
-  z-index: 40;
-  background: rgba(4, 7, 17, 0.72);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border-bottom: 1px solid rgba(30, 41, 59, 0.8);
+  z-index: var(--z-nav);
+  background: linear-gradient(180deg, rgba(4, 7, 17, 0.8), rgba(4, 7, 17, 0.95));
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border-bottom: 1px solid var(--color-hairline);
   /* Heavier shadow: nav floats over busy scrolling content (Apple Design §12) */
-  box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.6),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: var(--shadow-nav);
 }
 
 .glass-sidebar {
-  background: rgba(8, 12, 22, 0.92);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  border: 1px solid rgba(30, 41, 59, 0.6);
+  background: linear-gradient(180deg, rgba(8, 12, 22, 0.95), rgba(4, 7, 17, 0.98));
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--color-hairline);
   border-left: none;
-  border-radius: 0 1.25rem 1.25rem 0;
+  border-radius: 0 var(--radius-2xl) var(--radius-2xl) 0;
   box-shadow:
-    4px 0 24px -4px rgba(0, 0, 0, 0.4),
+    8px 0 32px -8px rgba(0, 0, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .glass-surface {
   background: rgba(18, 24, 38, 0.6);
-  backdrop-filter: blur(8px) saturate(120%);
-  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+/* Elevated glass for modals, drawers, popovers */
+.glass-overlay {
+  background: linear-gradient(180deg, rgba(8, 12, 22, 0.92), rgba(4, 7, 17, 0.96));
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-lift);
 }
 
 /* ── Border Beam ───────────────────────────────────────────────────────────── */
@@ -66,9 +85,9 @@
   background: conic-gradient(
     from var(--beam-angle, 0deg) at 50% 50%,
     transparent 0%,
-    #0284c7 15%,
-    #06b6d4 25%,
-    #38bdf8 35%,
+    var(--color-primary-600) 15%,
+    var(--color-cyber-500) 25%,
+    var(--color-primary-400) 35%,
     transparent 50%
   );
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -91,10 +110,32 @@
               0 0 20px rgba(16, 185, 129, 0.12);
 }
 
+.border-glow-crimson {
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.35),
+              0 0 20px rgba(239, 68, 68, 0.12);
+}
+
+.border-glow-amber {
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35),
+              0 0 20px rgba(245, 158, 11, 0.12);
+}
+
+.border-glow-gold {
+  box-shadow: 0 0 0 1px rgba(201, 171, 110, 0.35),
+              0 0 20px rgba(201, 171, 110, 0.12);
+}
+
 /* ── Text Gradient ─────────────────────────────────────────────────────────── */
 
 .text-gradient {
-  background: linear-gradient(135deg, #38bdf8, #22d3ee, #2dd4bf);
+  background: linear-gradient(135deg, var(--color-primary-400), var(--color-cyber-400));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.text-gradient-gold {
+  background: linear-gradient(135deg, var(--color-gold-300), var(--color-gold-500));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -103,22 +144,22 @@
 /* ── Scrollbar ─────────────────────────────────────────────────────────────── */
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #040711;
+  background: var(--color-ink-950);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: var(--color-ink-700);
+  border-radius: var(--radius-full);
+  border: 2px solid var(--color-ink-950);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #0284c7;
+  background: var(--color-primary-600);
   box-shadow: 0 0 10px rgba(2, 132, 199, 0.5);
 }
 
@@ -126,10 +167,8 @@
 
 ::selection {
   background: rgba(2, 132, 199, 0.35);
-  color: #38bdf8;
+  color: var(--color-primary-300);
 }
-
-/* ── Focus Ring lives once in index.css (consolidated from 3 definitions) ── */
 
 /* ── Safe Area Insets ──────────────────────────────────────────────────────── */
 
@@ -165,7 +204,8 @@
   .glass-card,
   .glass-nav,
   .glass-sidebar,
-  .glass-surface {
+  .glass-surface,
+  .glass-overlay {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     background-color: rgba(4, 7, 17, 0.98) !important;

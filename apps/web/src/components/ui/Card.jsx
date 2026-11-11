@@ -1,10 +1,12 @@
 import { clsx } from 'clsx'
+import { motion } from 'motion/react'
 
 /**
  * Card — Enhanced glass surface with elevation variants (Ledger v3).
  * `hover` adds premium lift with spring transition; `dashed` for empty states.
  * `elevation` controls shadow depth: 'flat' | 'raised' | 'lift' | 'premium'
  * `interactive` enables press feedback and magnetic hover zones.
+ * Spring config: damping 25, stiffness 200 (critically damped).
  */
 export default function Card({
   className = '',
@@ -23,12 +25,15 @@ export default function Card({
     premium: 'shadow-2xl shadow-primary-950/40 border-cyan-500/20',
   }
 
+  const springTransition = { type: 'spring', damping: 25, stiffness: 200 }
+  const pressTransition = { duration: 0.08, ease: 'easeOut' }
+
   const hoverStyles = hover
     ? 'glass-card-hover lift-hover transition-all duration-300 ease-out-expo'
     : 'transition-all duration-200 ease-out-expo'
 
   const interactiveStyles = interactive
-    ? 'cursor-pointer touch-manipulation select-none active:scale-[0.99] active:transition-transform active:duration-80'
+    ? 'cursor-pointer touch-manipulation select-none'
     : ''
 
   const magneticStyles = magnetic && interactive ? 'group' : ''
@@ -43,8 +48,13 @@ export default function Card({
     className
   )
 
+  const motionProps = interactive ? {
+    whileHover: magnetic ? { scale: 1.015, transition: springTransition } : undefined,
+    whileTap: { scale: 0.99, transition: pressTransition },
+  } : {}
+
   return (
-    <div className={classes} {...rest}>
+    <motion.div className={classes} {...motionProps} {...rest}>
       {children}
       {interactive && magnetic && (
         <div
@@ -52,6 +62,6 @@ export default function Card({
           aria-hidden="true"
         />
       )}
-    </div>
+    </motion.div>
   )
 }

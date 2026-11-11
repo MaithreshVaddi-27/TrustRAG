@@ -16,13 +16,6 @@ export default function DashboardPage() {
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [historyWindow, setHistoryWindow] = useState('10') // '10' | '20' | 'all'
   const [lastSync, setLastSync] = useState(new Date())
-  const [, setTick] = useState(0)
-
-  // Re-render every 30s so "Synced x ago" never freezes (N-82).
-  useEffect(() => {
-    const t = setInterval(() => setTick(x => x + 1), 30000)
-    return () => clearInterval(t)
-  }, [])
 
   // Real-time live polling every 3 seconds for active telemetry
   const {
@@ -79,15 +72,21 @@ export default function DashboardPage() {
   const loadError = analysesError || kbsError || claimsError || conflictsError
   const hasLoadError = isErrorAnalyses || isErrorKbs || isErrorClaims || isErrorConflicts
 
+  // Update lastSync on manual sync + the 30s tick (N-82) — avoid infinite loop from auto-refresh data changes
+  const updateLastSync = () => setLastSync(new Date())
+
+  // Re-render every 30s so "Synced x ago" never freezes (N-82).
   useEffect(() => {
-    setLastSync(new Date())
-  }, [analyses, claims])
+    const t = setInterval(updateLastSync, 30000)
+    return () => clearInterval(t)
+  }, [])
 
   const handleManualSync = () => {
     refetchAnalyses()
     refetchClaims()
     refetchConflicts()
     refetchKbs()
+    updateLastSync()
   }
 
   // Aggregate statistics computed from real live history
@@ -148,7 +147,6 @@ export default function DashboardPage() {
           autoRefresh={autoRefresh}
           setAutoRefresh={setAutoRefresh}
           lastSync={lastSync}
-          setLastSync={setLastSync}
           isFetchingAnalyses={isFetchingAnalyses}
           handleManualSync={handleManualSync}
           analyses={analyses}

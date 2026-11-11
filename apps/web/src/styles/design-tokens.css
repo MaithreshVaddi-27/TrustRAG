@@ -1,4 +1,4 @@
-/* ── TrustRAG Design Tokens v2 — "The Ledger" ────────────────────────────────
+/* ── TrustRAG Design Tokens v3 — "The Ledger" ────────────────────────────────
  * Editorial evidence ledger: ink-black surfaces, ivory display type,
  * restrained cyan (one accent), hairlines, tabular mono telemetry.
  * Mirrors tailwind.config.js. Change here and in tailwind config together.
@@ -82,21 +82,25 @@
   --tracking-heading: -0.015em;
 
   /* ── Spacing (4pt grid) ────────────────────────────────────────────────── */
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-  --space-section: 2rem;
-  --space-chapter: 3rem;
+  --space-1: 0.25rem;   /* 4px */
+  --space-2: 0.5rem;    /* 8px */
+  --space-3: 0.75rem;   /* 12px */
+  --space-4: 1rem;      /* 16px */
+  --space-5: 1.25rem;   /* 20px */
+  --space-6: 1.5rem;    /* 24px */
+  --space-8: 2rem;      /* 32px */
+  --space-10: 2.5rem;   /* 40px */
+  --space-12: 3rem;     /* 48px */
+  --space-16: 4rem;     /* 64px */
+  --space-section: 2rem;  /* 32px - section vertical padding */
+  --space-chapter: 3rem;  /* 48px - major section separation */
 
   /* ── Radius / Elevation ────────────────────────────────────────────────── */
-  --radius-sm: 0.5rem;
-  --radius-md: 0.75rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.25rem;
+  --radius-sm: 0.5rem;      /* 8px */
+  --radius-md: 0.75rem;     /* 12px */
+  --radius-lg: 1rem;        /* 16px */
+  --radius-xl: 1.25rem;     /* 20px */
+  --radius-2xl: 1.5rem;     /* 24px */
   --radius-full: 9999px;
 
   --shadow-card: 0 10px 40px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
@@ -111,6 +115,7 @@
   --icon-sm: 16px;
   --icon-md: 20px;
   --icon-lg: 24px;
+  --icon-xl: 28px;
   --icon-stroke: 1.5px;
 
   /* ── Motion ────────────────────────────────────────────────────────────── */
@@ -122,6 +127,12 @@
   --duration-slow: 300ms;
   --duration-route: 200ms;
 
+  /* Spring configs (Motion/Framer) */
+  --spring-critical: { type: 'spring', bounce: 0, duration: 0.35 };
+  --spring-momentum: { type: 'spring', bounce: 0.15, duration: 0.35 };
+  --spring-snappy: { type: 'spring', damping: 25, stiffness: 200 };
+  --spring-gentle: { type: 'spring', damping: 30, stiffness: 180 };
+
   /* ── Z-index ───────────────────────────────────────────────────────────── */
   --z-base: 0;
   --z-raised: 10;
@@ -129,6 +140,9 @@
   --z-nav: 40;
   --z-sidebar: 50;
   --z-overlay: 100;
+  --z-toast: 200;
+  --z-modal: 300;
+  --z-tooltip: 400;
 
   color-scheme: dark;
 }
@@ -142,5 +156,28 @@
     --duration-base: 1ms;
     --duration-slow: 1ms;
     --duration-route: 1ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --shadow-card: 0 10px 40px -10px rgba(0, 0, 0, 0.6);
+    --shadow-nav: 0 8px 32px -8px rgba(0, 0, 0, 0.7);
+    --shadow-lift: 0 20px 50px -12px rgba(0, 0, 0, 0.7);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --color-hairline: rgba(148, 163, 184, 0.3);
+    --color-hairline-strong: rgba(148, 163, 184, 0.5);
+    --focus-ring: rgba(56, 189, 248, 1);
   }
 }

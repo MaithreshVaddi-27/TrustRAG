@@ -8,7 +8,7 @@
 .thinking-orbs {
   display: inline-flex;
   align-items: center;
-  gap: 0.45em;
+  gap: calc(var(--icon-stroke) * 0.3);
   font-size: 10px; /* base unit: sm */
 }
 
@@ -19,7 +19,7 @@
   width: 1em;
   height: 1em;
   border-radius: 9999px;
-  background: radial-gradient(circle at 35% 35%, #a5f3fc 0%, #22d3ee 45%, #0284c7 100%);
+  background: radial-gradient(circle at 35% 35%, var(--color-cyber-300) 0%, var(--color-cyber-400) 45%, var(--color-primary-600) 100%);
   box-shadow: 0 0 0.9em rgba(34, 211, 238, 0.55);
   opacity: 0.45;
   transform: scale(0.72);
@@ -39,8 +39,8 @@
 .skel {
   position: relative;
   overflow: hidden;
-  border-radius: 0.5rem;
-  background: rgba(30, 41, 59, 0.7); /* slate-800/70 */
+  border-radius: var(--radius-md);
+  background: var(--color-ink-700);
   border: 1px solid rgba(51, 65, 85, 0.5);
 }
 
@@ -83,5 +83,5 @@
 /* ── Reduced transparency: solid fills, no glow ────────────────────────────── */
 @media (prefers-reduced-transparency: reduce) {
   .thinking-orbs .orb { box-shadow: none; }
-  .skel { background: rgba(30, 41, 59, 1); }
+  .skel { background: var(--color-ink-700); }
 }

@@ -1,18 +1,24 @@
 import { motion } from 'motion/react'
 import { ShieldCheck } from 'lucide-react'
+import { useReducedMotion } from 'motion/react'
 import {
   ResponsiveContainer, BarChart, Bar,
   XAxis, YAxis, Tooltip, Cell
 } from 'recharts'
 
+const SPRING_SNAPPY = { type: 'spring', damping: 28, stiffness: 220 }
+
 /**
  * ClaimDistributionChart - Claim verification breakdown bar chart
- * Called by: DashboardPage.jsx (line 544-603 in current implementation)
+ * Called by: DashboardPage.jsx (line 202)
  * No existing file serves this purpose - extracted from DashboardPage
  * Reads/writes: Receives stats object as prop
  * User instruction: "continue and Use asynchronous methods for better working with async and await"
  */
 export function ClaimDistributionChart({ stats }) {
+  const reduced = useReducedMotion()
+  const springTransition = reduced ? { duration: 0.01 } : SPRING_SNAPPY
+
   const claimDistributionData = [
     { name: 'Supported', count: stats.supportedClaims, color: '#10b981' },
     { name: 'Neutral', count: stats.neutralClaims, color: '#f59e0b' },
@@ -21,14 +27,14 @@ export function ClaimDistributionChart({ stats }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
+      initial={reduced ? { opacity: 1 } : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ type: 'spring', damping: 25, stiffness: 200, delay: 0.2 }}
+      transition={springTransition}
       className="glass-card p-6 flex flex-col justify-between"
     >
       <div className="mb-4">
         <h3 className="font-bold text-white text-base flex items-center gap-2">
-          <ShieldCheck size={16} className="text-emerald-400" />
+          <ShieldCheck size={16} className="text-emerald-400" aria-hidden="true" />
           Claim Verification Audit
         </h3>
         <p className="text-xs text-slate-400 mt-0.5">
@@ -38,7 +44,7 @@ export function ClaimDistributionChart({ stats }) {
 
       {stats.totalClaimsCount === 0 ? (
         <div className="h-48 w-full flex flex-col items-center justify-center text-center p-4 border border-dashed border-slate-800 rounded-xl bg-surface-900/40">
-          <ShieldCheck size={24} className="text-slate-600 mb-2" />
+          <ShieldCheck size={24} className="text-slate-600 mb-2" aria-hidden="true" />
           <p className="text-xs text-slate-300 font-medium">No claims decomposed yet</p>
           <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
             Run a query in the Playground to extract and verify atomic assertions.

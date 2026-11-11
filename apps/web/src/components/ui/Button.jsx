@@ -1,11 +1,13 @@
 import { forwardRef } from 'react'
 import { clsx } from 'clsx'
 import { Slot } from '@radix-ui/react-slot'
+import { motion } from 'motion/react'
 
 /**
  * Button — Unified button primitive (Ledger v3).
  * All variants meet 44×44px minimum touch target.
- * Springs for press feedback, magnetic hover on primary.
+ * Springs for press feedback, magnetic hover on primary/luxury.
+ * Spring config: damping 25, stiffness 200 (critically damped, no overshoot).
  */
 const Button = forwardRef(function Button({
   variant = 'primary',
@@ -95,24 +97,35 @@ const Button = forwardRef(function Button({
   }
 
   const iconEl = icon && (
-    <span
+    <motion.span
       className={clsx(
-        'flex-shrink-0 transition-transform duration-200',
+        'flex-shrink-0',
         iconPosition === 'right' && 'group-hover:translate-x-1',
         iconPosition === 'left' && '-group-hover:translate-x-1'
       )}
       aria-hidden="true"
+      whileHover={{ x: iconPosition === 'right' ? 4 : -4, transition: { type: 'spring', damping: 25, stiffness: 200 } }}
     >
       {typeof icon === 'function' ? icon({ size: size === 'sm' ? 14 : 16 }) : icon}
-    </span>
+    </motion.span>
   )
 
+  const pressTransition = { duration: 0.08, ease: 'easeOut' }
+  const springTransition = { type: 'spring', damping: 25, stiffness: 200 }
+
+  const motionProps = {
+    whileHover: magnetic && (variant === 'primary' || variant === 'luxury') ? { scale: 1.03, transition: springTransition } : undefined,
+    whileTap: { scale: 0.97, transition: pressTransition },
+  }
+
   return (
-    <Comp
+    <motion.button
       ref={ref}
+      as={Comp}
       className={clsx(baseStyles, variantStyles[variant], sizeStyles[size], className)}
       disabled={disabled || loading}
-      style={{ ...(magnetic && variant === 'primary' ? { '--magnetic-strength': '0.3' } : {}) }}
+      style={{ ...(magnetic && (variant === 'primary' || variant === 'luxury') ? { '--magnetic-strength': '0.3' } : {}) }}
+      {...motionProps}
       {...props}
     >
       {loading ? (
@@ -136,7 +149,7 @@ const Button = forwardRef(function Button({
           {iconPosition === 'right' && iconEl}
         </>
       )}
-    </Comp>
+    </motion.button>
   )
 })
 
