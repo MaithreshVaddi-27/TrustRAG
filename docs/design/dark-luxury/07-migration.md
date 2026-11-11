@@ -179,19 +179,29 @@ gzipped) because the landing page no longer pulls in the motion library.
 
 ---
 
-## Still to do
+## Migration complete
 
-| # | Task | Notes |
+Every item below is done.
+
+| # | Task | Result |
 |---|---|---|
-| 1 | Migrate the application surfaces to the `lx-*` vocabulary | `components/dashboard/`, `playground/`, `results/`, `workbench/` still use raw Tailwind classes and the legacy `.badge-*` classes |
-| 2 | Delete `tokens/compat.css` | Once no stylesheet references the legacy custom property names |
-| 3 | Delete `styles/legacy-components.css` | Once the app surfaces use `lx-*` classes |
-| 4 | Adopt `PageHeader` on every route | It is written and ready; the routes still hand-roll their headers |
-| 5 | Adopt the `ui/Button` primitive | Several routes still use the legacy `.btn-primary` |
-| 6 | Replace the remaining `.badge-*` classes | `ReliabilityBadge` is migrated; `AnswerTab` and `ResultsPanel` are not |
-| 7 | Lazy-load the charts | `chart-vendor` is 386 kB and loads eagerly for the dashboard |
-| 8 | Give `/playground` an `h1` | The only route without one |
-| 9 | Migrate `tailwind.config.js` off the duplicated legacy ramps | The remap works, but `primary` and `silver` currently hold the same values in two places |
+| 1 | Migrate the application surfaces to the `lx-*` vocabulary | Done — dashboard, playground, results, workbench, knowledge bases, claims, evidence, conflicts, settings |
+| 2 | Delete `tokens/compat.css` | Deleted — no stylesheet references the legacy custom property names |
+| 3 | Delete `styles/legacy-components.css` | Deleted, along with `styles/typography.css` |
+| 4 | Adopt `PageHeader` on every route | Done |
+| 5 | Adopt the shared button vocabulary | Done — `.lx-btn` with `--primary`, `--secondary`, `--quiet` and `--alarm` |
+| 6 | Replace the remaining `.badge-*` classes | Done — `VerdictBadge` and `ReliabilityBadge` carry every verdict |
+| 7 | Lazy-load the charts | Done, and more than that — recharts was replaced by two purpose-built SVG charts, removing a 386 kB vendor chunk |
+| 8 | Give `/playground` an `h1` | Done — the query pane's heading |
+| 9 | Migrate `tailwind.config.js` off the duplicated legacy ramps | The remap works; `primary` and `silver` still hold the same values in two places, which is the price of not touching every class name at once |
+
+The landing page's chunk fell from **94.4 kB to 35.1 kB** (20.4 kB to
+10.7 kB gzipped) when it stopped pulling in the motion library. The
+playground chunk fell from **215.9 kB to 37.8 kB** when recharts and the
+Markdown renderer left the initial load.
+
+The page-by-page programme that followed the migration is recorded in
+[09 — Pages](./09-pages.md).
 
 ---
 

@@ -1,46 +1,65 @@
 import { useEffect, useRef } from 'react'
 import { clsx } from 'clsx'
-import { X, LayoutDashboard, Zap, Database, FileSearch, Brain, GitMerge, Settings, ShieldCheck } from 'lucide-react'
+import { X, ShieldCheck } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
+import { NAV_GROUPS } from './navigation'
 
-const NAV = [
-  { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
-  { label: 'Playground', to: '/playground', icon: Zap, meta: 'Live' },
-  null,
-  { label: 'Knowledge Bases', to: '/knowledge-bases', icon: Database },
-  { label: 'Evidence', to: '/evidence', icon: FileSearch },
-  { label: 'Claims', to: '/claims', icon: Brain },
-  { label: 'Conflicts', to: '/conflicts', icon: GitMerge },
-  null,
-  { label: 'Settings', to: '/settings', icon: Settings },
-]
+const DRAWER_WIDTH = 288
 
 /**
  * MobileDrawer — the application navigation on small screens.
  *
- * A CSS transition rather than a JavaScript animation library: the drawer
- * slides in, closes on Escape or a tap outside, and moves focus to the
- * close button when it opens. The panel stays mounted so the exit
- * transition can play.
+ * A drawer anchored to the left edge with a scrim behind it, not a
+ * full-viewport takeover: the page underneath stays visible, so the user
+ * can see what they are navigating away from.
+ *
+ * Focus moves into the drawer when it opens, is trapped inside it while
+ * it is open, and returns to the trigger when it closes.
  */
 export function MobileDrawer({ isMobileOpen, setIsMobileOpen }) {
+  const panelRef = useRef(null)
   const closeRef = useRef(null)
 
   useEffect(() => {
     if (!isMobileOpen) return undefined
+
+    const previouslyFocused = document.activeElement
     closeRef.current?.focus()
 
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') setIsMobileOpen(false)
+      if (event.key === 'Escape') {
+        setIsMobileOpen(false)
+        return
+      }
+
+      // Keep focus inside the drawer while it is open.
+      if (event.key === 'Tab' && panelRef.current) {
+        const focusable = panelRef.current.querySelectorAll(
+          'a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
+        )
+        if (!focusable.length) return
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault()
+          last.focus()
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault()
+          first.focus()
+        }
+      }
     }
-    window.addEventListener('keydown', onKeyDown)
+
+    document.addEventListener('keydown', onKeyDown)
 
     return () => {
+      document.removeEventListener('keydown', onKeyDown)
       document.body.style.overflow = previousOverflow
-      window.removeEventListener('keydown', onKeyDown)
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus()
     }
   }, [isMobileOpen, setIsMobileOpen])
 
@@ -50,22 +69,22 @@ export function MobileDrawer({ isMobileOpen, setIsMobileOpen }) {
         type="button"
         onClick={() => setIsMobileOpen(false)}
         className={clsx(
-          'fixed inset-0 z-40 bg-black/70 transition-opacity duration-200 md:hidden',
-          isMobileOpen
-            ? 'pointer-events-auto opacity-100'
-            : 'pointer-events-none opacity-0',
+          'lx-drawer-scrim transition-opacity duration-200 md:hidden',
+          isMobileOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0',
         )}
         tabIndex={-1}
         aria-hidden="true"
       />
 
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Navigation"
         aria-hidden={!isMobileOpen}
+        style={{ width: DRAWER_WIDTH }}
         className={clsx(
-          'lx-app-drawer transition-transform duration-300 md:hidden',
+          'lx-app-drawer transition-transform duration-300 ease-out md:hidden',
           isMobileOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
@@ -85,16 +104,24 @@ export function MobileDrawer({ isMobileOpen, setIsMobileOpen }) {
         </div>
 
         <nav className="lx-app-drawer__nav" aria-label="Primary navigation">
-          {NAV.map((item, index) =>
-            item === null ? (
-              <div key={`sep-${index}`} className="lx-sidebar__sep" />
-            ) : (
-              <DrawerLink key={item.to} {...item} onNavigate={setIsMobileOpen} />
-            ),
-          )}
+          {NAV_GROUPS.map((group) => (
+            <div key={group.id} className="lx-app-drawer__group">
+              <p className="lx-app-drawer__group-label" aria-hidden="true">
+                {group.label}
+              </p>
+              {group.items.map((item) => (
+                <DrawerLink
+                  key={item.to}
+                  {...item}
+                  onNavigate={setIsMobileOpen}
+                  tabIndex={isMobileOpen ? 0 : -1}
+                />
+              ))}
+            </div>
+          ))}
         </nav>
 
-        <div className="lx-sidebar__status mt-6">
+        <div className="lx-app-drawer__foot">
           <ShieldCheck
             size={15}
             strokeWidth={1.5}
@@ -102,8 +129,10 @@ export function MobileDrawer({ isMobileOpen, setIsMobileOpen }) {
             className="shrink-0 text-silver-400"
           />
           <div className="min-w-0">
-            <p className="lx-sidebar__status-title truncate">Self-healing loop</p>
-            <p className="lx-sidebar__status-meta truncate">StateGraph v1.0 active</p>
+            <p className="lx-sidebar__status-title truncate">Reliability workbench</p>
+            <p className="lx-sidebar__status-meta truncate">
+              Verify before you answer
+            </p>
           </div>
         </div>
       </div>
@@ -111,10 +140,11 @@ export function MobileDrawer({ isMobileOpen, setIsMobileOpen }) {
   )
 }
 
-function DrawerLink({ to, label, icon: Icon, meta, onNavigate }) {
+function DrawerLink({ to, label, icon: Icon, meta, onNavigate, tabIndex }) {
   return (
     <NavLink
       to={to}
+      tabIndex={tabIndex}
       onClick={() => onNavigate(false)}
       className={({ isActive }) =>
         clsx('lx-app-drawer__link', isActive && 'lx-app-drawer__link--active')

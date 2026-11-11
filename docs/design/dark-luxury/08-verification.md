@@ -94,29 +94,40 @@ the first focusable element.
 | Check | Result |
 |---|---|
 | `npm run lint` | Clean — 0 warnings, 0 errors |
-| `npm run test` | 8 files, 33 tests, all pass |
-| `npm run build` | Succeeds in ~2.8s |
-| Lighthouse — landing | Accessibility 100 · Best Practices 100 · SEO 100 · Agentic Browsing 97 |
-| Lighthouse — app routes | 0 console errors, 0 invisible text, 1 `<main>`, no overflow |
-| Responsive | No horizontal overflow at 1440 / 1280 / 1024 / 768 / 390 / 320 |
+| `npm run test` | 8 files, 34 tests, all pass |
+| `npm run build` | Succeeds in ~2.1s |
+| Lighthouse — landing | Accessibility 100 · Best Practices 100 · SEO 100 · Agentic Browsing 100 |
+| Lighthouse — all ten routes | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
+| Lighthouse — SEO on app routes | 63 — `robots.txt` disallows the authenticated routes on purpose |
+| Lighthouse — Best Practices on `/evidence` | 96 — the backend's `GET /api/v1/evidence` returns HTTP 500 |
+| Responsive | No page overflow and no top-bar overflow at 1440 / 1280 / 1024 / 768 / 390 / 320 |
+| Landmarks | Exactly one `<main>` and one `<h1>` per route, including the auth routes |
+| Target size | No interactive target below 24px, except inline text links covered by WCAG 2.5.8 |
 | Focus | 2px Laser Crimson, 5.5:1 on obsidian |
-| Console | 0 errors across landing and all seven app routes |
+| Console | 0 errors and 0 warnings across landing and all nine app routes |
 | Route coverage | `/`, `/login`, `/register`, `/dashboard`, `/playground`, `/knowledge-bases`, `/claims`, `/evidence`, `/conflicts`, `/settings` |
 
 ### Bundle
 
 | Chunk | Raw | Gzipped |
 |---|---|---|
-| CSS | 110.6 kB | 19.0 kB |
-| LandingPage | 35.1 kB | 10.6 kB |
-| PlaygroundPage | 215.9 kB | 63.6 kB |
-| chart-vendor | 386.4 kB | 106.8 kB |
-| motion-vendor | 131.0 kB | 43.3 kB |
-| react-vendor | 180.0 kB | 59.3 kB |
+| LandingPage | 35.1 kB | 10.7 kB |
+| PlaygroundPage | 37.8 kB | 10.7 kB |
+| AppLayout | 22.0 kB | 6.8 kB |
+| DashboardPage | 20.3 kB | 6.8 kB |
+| SettingsPage | 16.8 kB | 4.5 kB |
+| KnowledgeBasesPage | 15.2 kB | 4.6 kB |
+| FormattedAnswer (lazy) | 158.7 kB | 48.1 kB |
+| query-vendor | 41.7 kB | 12.6 kB |
+| http-vendor | 51.4 kB | 19.5 kB |
+| ui-vendor | 52.7 kB | 12.5 kB |
+| react-vendor | 179.9 kB | 59.2 kB |
 
-The landing page's chunk fell from 94.4 kB to 35.1 kB because it no longer
-pulls in the motion library. `chart-vendor` is the largest remaining
-weight and is a known follow-up.
+Two vendor chunks are gone. `chart-vendor` (386 kB) was replaced by two
+purpose-built SVG charts, and `motion-vendor` (131 kB) by CSS transitions
+plus a `prefers-reduced-motion` hook. The playground chunk fell from
+215.9 kB to 37.8 kB, and the Markdown renderer moved into an on-demand
+chunk that loads only when an answer is rendered.
 
 ---
 

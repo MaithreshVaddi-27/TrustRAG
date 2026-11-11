@@ -86,7 +86,7 @@ export function RecentAnalysesFeed({ analyses, isInitialLoad }) {
                   )}
                   <Link
                     to="/playground"
-                    className="inline-flex items-center gap-1 text-silver-400 hover:text-silver-100 transition-colors"
+                    className="lx-inline-action"
                   >
                     Inspect
                     <ArrowRight size={11} strokeWidth={1.5} aria-hidden="true" />

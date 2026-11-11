@@ -1,15 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import {
-  LogOut, Zap, Menu,
-  Cpu, Layers, RefreshCw, PanelLeft, PanelLeftOpen
-} from 'lucide-react'
+import { Zap, Menu, Cpu, Layers, RefreshCw } from 'lucide-react'
 import { TrustRagEmblem } from '@/components/common/TrustRagLogo'
-import { useAuthStore } from '@/store/authStore'
-import { authService } from '@/services/auth'
 import { modelService } from '@/services/api'
 import { shortModelId, providerShortLabel } from '@/lib/modelLabels'
 import { useQuery } from '@tanstack/react-query'
+import { AccountMenu } from './AccountMenu'
 
 function readPlaygroundEngine() {
   try {
@@ -23,21 +19,16 @@ function readPlaygroundEngine() {
 /**
  * Navbar — the application top bar.
  *
- * A brand, quiet engine telemetry, one primary action and the account
- * control. The telemetry is mono text with a status dot, not a row of
- * coloured pills.
+ * The header carries three things and nothing else: the brand, the state
+ * of the engine, and the account. The telemetry is quiet mono text with a
+ * status dot, and it sheds items as the bar narrows rather than
+ * overflowing — the API state is the one that must survive, so it is the
+ * last to go.
  */
-export function Navbar({
-  isOnline,
-  recheck,
-  setIsMobileOpen,
-  isCollapsed,
-  toggleSidebar,
-}) {
+export function Navbar({ isOnline, recheck, setIsMobileOpen }) {
   const navigate = useNavigate()
   const location = useLocation()
   const isPlayground = location.pathname === '/playground'
-  const { user } = useAuthStore()
 
   const [playgroundEngine, setPlaygroundEngine] = useState(readPlaygroundEngine)
   useEffect(() => {
@@ -60,18 +51,23 @@ export function Navbar({
   const serverModel = providersData?.active_model
   const effProvider = playgroundEngine?.provider || serverProvider
   const effModel = playgroundEngine?.model || serverModel
-  const isEngineOverride = !!playgroundEngine?.model && playgroundEngine.model !== serverModel
-  const effEmbeddingModel = providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
+  const isEngineOverride = Boolean(
+    playgroundEngine?.model && playgroundEngine.model !== serverModel,
+  )
+  const effEmbeddingModel =
+    providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
   const accelerator = providersData?.hardware?.accelerator
 
-  async function handleLogout() {
-    await authService.logout()
-    navigate('/login')
-  }
+  const acceleratorLabel =
+    accelerator === 'mps'
+      ? 'Metal (MPS)'
+      : accelerator === 'cuda'
+        ? 'CUDA GPU'
+        : 'Multi-thread CPU'
 
   return (
     <header className="lx-topbar">
-      <div className="flex items-center gap-3">
+      <div className="lx-topbar__left">
         <button
           type="button"
           onClick={() => setIsMobileOpen(true)}
@@ -82,32 +78,15 @@ export function Navbar({
           <Menu size={18} strokeWidth={1.5} aria-hidden="true" />
         </button>
 
-        <Link to="/dashboard" className="lx-topbar__brand">
+        <Link to="/dashboard" className="lx-topbar__brand" aria-label="TrustRAG home">
           <TrustRagEmblem size={28} framed />
-          <span className="flex flex-col">
-            <span className="lx-topbar__wordmark">TRUSTRAG</span>
-            <span className="lx-topbar__meta hidden sm:block">Reliability workbench</span>
-          </span>
+          <span className="lx-topbar__wordmark">TRUSTRAG</span>
+          <span className="lx-topbar__meta">Reliability workbench</span>
         </Link>
-
-        {toggleSidebar && (
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            className="lx-icon-btn hidden md:inline-flex ml-1"
-            title={isCollapsed ? 'Expand sidebar (⌘B)' : 'Collapse sidebar (⌘B)'}
-            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {isCollapsed ? (
-              <PanelLeftOpen size={16} strokeWidth={1.5} aria-hidden="true" />
-            ) : (
-              <PanelLeft size={16} strokeWidth={1.5} aria-hidden="true" />
-            )}
-          </button>
-        )}
       </div>
 
-      {/* Engine telemetry — quiet mono text with a status dot. */}
+      {/* Engine telemetry — quiet mono text with a status dot. The API state
+          is always present; the rest steps down with the width. */}
       <div className="lx-telemetry">
         <span
           className="lx-telemetry__item"
@@ -122,20 +101,28 @@ export function Navbar({
           <span
             className={[
               'lx-dot',
-              isOnline === false ? 'lx-dot--alarm' : isOnline === null ? '' : 'lx-dot--live',
+              isOnline === false
+                ? 'lx-dot--alarm'
+                : isOnline === null
+                  ? ''
+                  : 'lx-dot--live',
             ]
               .filter(Boolean)
               .join(' ')}
             aria-hidden="true"
           />
           <strong>
-            {isOnline === false ? 'API offline' : isOnline === null ? 'Checking' : 'API online'}
+            {isOnline === false
+              ? 'API offline'
+              : isOnline === null
+                ? 'Checking'
+                : 'API online'}
           </strong>
           {isOnline === false && (
             <button
               type="button"
               onClick={recheck}
-              className="ml-1 text-crimson-400 hover:text-crimson-300 transition-colors"
+              className="lx-telemetry__action"
               title="Reconnect to backend"
               aria-label="Reconnect to backend"
             >
@@ -145,7 +132,7 @@ export function Navbar({
         </span>
 
         <span
-          className="lx-telemetry__item"
+          className="lx-telemetry__item lx-telemetry__item--engine"
           title={
             effModel
               ? `${providerShortLabel(effProvider)}: ${effModel} · ${
@@ -155,14 +142,14 @@ export function Navbar({
           }
         >
           <Cpu size={12} strokeWidth={1.5} aria-hidden="true" />
-          <span className="max-w-[220px] truncate">
+          <span className="lx-truncate">
             {providerShortLabel(effProvider)}: {shortModelId(effModel) || 'Local LLM'}
           </span>
           {isEngineOverride && <span className="lx-dot lx-dot--live" aria-hidden="true" />}
         </span>
 
         <span
-          className="lx-telemetry__item"
+          className="lx-telemetry__item lx-telemetry__item--embed"
           title={
             effEmbeddingModel
               ? `${effEmbeddingModel} · Server default (single engine)`
@@ -170,54 +157,35 @@ export function Navbar({
           }
         >
           <Layers size={12} strokeWidth={1.5} aria-hidden="true" />
-          <span className="max-w-[210px] truncate">
+          <span className="lx-truncate">
             {shortModelId(effEmbeddingModel) || 'bge-small-en-v1.5'}
           </span>
         </span>
 
         <span
-          className="lx-telemetry__item"
+          className="lx-telemetry__item lx-telemetry__item--accel"
           title={`${providersData?.hardware?.accelerator_name || 'Hardware'} · Memory: ${
             providersData?.hardware?.memory?.total_gb || 8
           }GB`}
         >
           <Zap size={12} strokeWidth={1.5} aria-hidden="true" />
-          <span>
-            {accelerator === 'mps'
-              ? 'Metal (MPS)'
-              : accelerator === 'cuda'
-                ? 'CUDA GPU'
-                : 'Multi-thread CPU'}
-          </span>
+          <span>{acceleratorLabel}</span>
         </span>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="lx-topbar__right">
         {!isPlayground && (
           <button
             type="button"
             onClick={() => navigate('/playground')}
-            className="lx-btn lx-btn--primary hidden sm:inline-flex"
+            className="lx-btn lx-btn--primary lx-topbar__run"
           >
             <Zap size={13} strokeWidth={1.5} aria-hidden="true" />
-            Run analysis
+            <span className="lx-topbar__run-label">Run analysis</span>
           </button>
         )}
 
-        <div className="lx-userchip">
-          <span className="lx-userchip__avatar" aria-hidden="true">
-            {user?.email ? user.email.slice(0, 2).toUpperCase() : 'TR'}
-          </span>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="lx-icon-btn lx-icon-btn--alarm"
-            title="Sign out"
-            aria-label="Sign out"
-          >
-            <LogOut size={16} strokeWidth={1.5} aria-hidden="true" />
-          </button>
-        </div>
+        <AccountMenu />
       </div>
     </header>
   )

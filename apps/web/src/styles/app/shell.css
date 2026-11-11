@@ -34,6 +34,23 @@
   z-index: 40;
 }
 
+.lx-topbar__left,
+.lx-topbar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--step-3);
+  min-width: 0;
+}
+
+.lx-topbar__left {
+  flex-shrink: 0;
+}
+
+.lx-topbar__right {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
 .lx-topbar__brand {
   display: inline-flex;
   align-items: center;
@@ -48,6 +65,7 @@
   letter-spacing: 0.06em;
   color: var(--color-silver-050);
   line-height: 1;
+  white-space: nowrap;
 }
 
 .lx-topbar__meta {
@@ -55,20 +73,41 @@
   font-size: 0.6875rem;
   letter-spacing: 0.04em;
   color: var(--color-silver-500);
-  margin-top: 3px;
+  white-space: nowrap;
+}
+
+/* The bar sheds its optional text before it sheds anything structural. */
+@media (max-width: 1279px) {
+  .lx-topbar__meta {
+    display: none;
+  }
+}
+
+/* Below 640px the header keeps only the mark. The drawer's wordmark is
+ * scoped out of this rule — it has the whole panel to itself. */
+@media (max-width: 639px) {
+  .lx-topbar .lx-topbar__wordmark {
+    display: none;
+  }
 }
 
 /* ── Telemetry ──────────────────────────────────────────────────────────────
  * Quiet mono text with a status dot. Not pills, not glows.
+ *
+ * The API state is the one that must always be present, so it is the last
+ * to survive: the engine, the embedding model and the accelerator step
+ * down as the bar narrows.
  * ─────────────────────────────────────────────────────────────────────────── */
 
 .lx-telemetry {
   display: none;
   align-items: center;
   gap: var(--step-5);
+  min-width: 0;
+  overflow: hidden;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 768px) {
   .lx-telemetry {
     display: flex;
   }
@@ -83,6 +122,7 @@
   letter-spacing: 0.01em;
   color: var(--color-silver-500);
   white-space: nowrap;
+  min-width: 0;
 }
 
 .lx-telemetry__item svg {
@@ -93,6 +133,48 @@
 .lx-telemetry__item strong {
   color: var(--color-silver-300);
   font-weight: var(--weight-regular);
+}
+
+.lx-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* The reconnect control inside the API status. */
+.lx-telemetry__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 2px;
+  border-radius: 4px;
+  color: var(--color-crimson-300);
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-telemetry__action:hover {
+  background-color: rgba(212, 21, 20, 0.12);
+}
+
+@media (max-width: 1023px) {
+  .lx-telemetry__item--engine {
+    display: none;
+  }
+}
+
+@media (max-width: 1279px) {
+  .lx-telemetry__item--embed {
+    display: none;
+  }
+}
+
+@media (max-width: 1439px) {
+  .lx-telemetry__item--accel {
+    display: none;
+  }
 }
 
 /* ── Status dot ─────────────────────────────────────────────────────────────
@@ -148,7 +230,9 @@
   background-color: rgba(212, 21, 20, 0.07);
 }
 
-/* ── User chip ────────────────────────────────────────────────────────────── */
+/* ── User chip ──────────────────────────────────────────────────────────────
+ * The avatar is now a menu trigger, not a sign-out button.
+ * ─────────────────────────────────────────────────────────────────────────── */
 
 .lx-userchip {
   display: flex;
@@ -161,15 +245,103 @@
 .lx-userchip__avatar {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: 1px solid var(--rule);
   background-color: var(--surface-card);
   font-family: var(--typeface-mono);
   font-size: 0.6875rem;
   font-weight: var(--weight-medium);
+  letter-spacing: 0.02em;
   color: var(--color-silver-300);
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-userchip__avatar:hover {
+  border-color: var(--rule-strong);
+  color: var(--color-silver-050);
+}
+
+.lx-userchip__avatar:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── Account menu ─────────────────────────────────────────────────────────── */
+
+.lx-account {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.lx-account__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 70;
+  width: 15rem;
+  padding: var(--step-2);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--rule);
+  background-color: var(--surface-panel);
+  box-shadow: 0 24px 48px -24px rgba(0, 0, 0, 0.9);
+}
+
+.lx-account__identity {
+  padding: var(--step-3) var(--step-3) var(--step-2);
+}
+
+.lx-account__name {
+  font-size: var(--size-body-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-silver-100);
+  line-height: 1.35;
+}
+
+.lx-account__rule {
+  height: 1px;
+  margin: var(--step-1) 0;
+  background-color: var(--rule-faint);
+}
+
+.lx-account__item {
+  display: flex;
+  align-items: center;
+  gap: var(--step-3);
+  width: 100%;
+  min-height: 40px;
+  padding-inline: var(--step-3);
+  border-radius: var(--radius-control);
+  font-size: var(--size-body-sm);
+  color: var(--color-silver-300);
+  text-align: left;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-account__item:hover {
+  color: var(--color-silver-050);
+  background-color: rgba(205, 203, 202, 0.05);
+}
+
+.lx-account__item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.lx-account__item--alarm:hover {
+  color: var(--color-crimson-300);
+  background-color: rgba(212, 21, 20, 0.08);
+}
+
+.lx-account__caret {
+  position: absolute;
+  top: -6px;
+  right: 14px;
+  color: var(--color-silver-500);
+  transform: rotate(180deg);
 }
 
 /* ── Sidebar ──────────────────────────────────────────────────────────────── */
@@ -200,9 +372,21 @@
   padding: var(--step-3) var(--step-2);
 }
 
-.lx-sidebar__sep {
-  margin-block: var(--step-2);
+/* A named group. The label says what the rows below it are for; a bare
+ * separator only says that something changes. */
+.lx-sidebar__group + .lx-sidebar__group {
+  margin-top: var(--step-4);
+  padding-top: var(--step-3);
   border-top: 1px solid var(--rule-faint);
+}
+
+.lx-sidebar__group-label {
+  padding-inline: var(--step-3);
+  margin-bottom: var(--step-2);
+  font-family: var(--typeface-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  color: var(--color-silver-500);
 }
 
 /* A link row. 36px tall, icon in one column, label on one line. */
@@ -308,6 +492,17 @@
   margin-top: 2px;
 }
 
+/* The engine is unreachable. This is the one place in the shell where
+ * crimson means a failure rather than a live state. */
+.lx-sidebar__status--alarm {
+  border-color: rgba(212, 21, 20, 0.42);
+  background-color: rgba(212, 21, 20, 0.07);
+}
+
+.lx-sidebar__status--alarm .lx-sidebar__status-title {
+  color: var(--color-crimson-300);
+}
+
 .lx-collapse-btn {
   display: flex;
   align-items: center;
@@ -391,6 +586,14 @@
 
 /* ── Main content ─────────────────────────────────────────────────────────── */
 
+.lx-shell__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
 .lx-main {
   position: relative;
   flex: 1;
@@ -402,33 +605,62 @@
   flex-direction: column;
 }
 
-/* ── Mobile drawer (application) ──────────────────────────────────────────── */
+/* ── Mobile drawer (application) ────────────────────────────────────────────
+ * A drawer, anchored to the left edge, with the page still visible behind
+ * a scrim. It used to cover the entire viewport, which hid the very
+ * thing the user was navigating away from.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background-color: rgba(0, 0, 0, 0.72);
+}
 
 .lx-app-drawer {
   position: fixed;
-  inset: 0;
+  inset: 0 auto 0 0;
   z-index: 60;
   display: flex;
   flex-direction: column;
-  background-color: rgba(8, 8, 8, 0.97);
+  max-width: 86vw;
+  background-color: rgba(8, 8, 8, 0.98);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  padding: var(--step-4) var(--gutter) var(--step-8);
+  border-right: 1px solid var(--rule);
+  padding: var(--step-4) var(--step-4) var(--step-8);
   overflow-y: auto;
+  box-shadow: 32px 0 64px -32px rgba(0, 0, 0, 0.9);
 }
 
 .lx-app-drawer__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 60px;
+  height: 52px;
+  flex-shrink: 0;
 }
 
 .lx-app-drawer__nav {
   display: flex;
   flex-direction: column;
   margin-top: var(--step-4);
-  border-top: 1px solid var(--rule);
+}
+
+.lx-app-drawer__group + .lx-app-drawer__group {
+  margin-top: var(--step-4);
+  padding-top: var(--step-3);
+  border-top: 1px solid var(--rule-faint);
+}
+
+.lx-app-drawer__group-label {
+  margin-bottom: var(--step-2);
+  padding-inline: var(--step-1);
+  font-family: var(--typeface-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  color: var(--color-silver-500);
 }
 
 .lx-app-drawer__link {
@@ -439,6 +671,7 @@
   border-bottom: 1px solid var(--rule-faint);
   font-size: var(--size-body);
   color: var(--color-silver-300);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
 .lx-app-drawer__link--active {
@@ -447,4 +680,12 @@
 
 .lx-app-drawer__link--active .lx-navlink__icon {
   color: var(--color-crimson-400);
+}
+
+.lx-app-drawer__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  margin-top: auto;
+  padding-top: var(--step-6, 1.5rem);
 }

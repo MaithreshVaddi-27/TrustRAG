@@ -10,7 +10,7 @@ import { TrustRagEmblem } from '@/components/common/TrustRagLogo'
  */
 export default function AuthLayout({ children, title, subtitle }) {
   return (
-    <div className="lx-auth">
+    <main id="main-content" className="lx-auth" aria-label="Main content">
       <div className="lx-auth__column">
         <Link to="/" className="lx-auth__back">
           <ArrowLeft size={14} strokeWidth={1.5} aria-hidden="true" />
@@ -37,6 +37,6 @@ export default function AuthLayout({ children, title, subtitle }) {
           {children}
         </div>
       </div>
-    </div>
+    </main>
   )
 }

@@ -802,6 +802,30 @@ select.lx-control {
   white-space: nowrap;
 }
 
+/* ── Inline action ─────────────────────────────────────────────────────────
+ * A text link inside a row of meta. It reads as text, so it keeps the
+ * sentence's rhythm, but it still meets the minimum target size.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-inline-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-1);
+  min-height: 24px;
+  color: var(--color-silver-400);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-inline-action:hover {
+  color: var(--color-silver-100);
+}
+
+.lx-inline-action:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* ── Grid helpers ─────────────────────────────────────────────────────────── */
 
 .lx-grid-2 {

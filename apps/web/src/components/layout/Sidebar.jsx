@@ -1,23 +1,8 @@
 import { NavLink } from 'react-router-dom'
 import { clsx } from 'clsx'
-import {
-  Brain, Database, FileSearch,
-  GitMerge, LayoutDashboard,
-  Settings, Zap, ShieldCheck,
-  PanelLeftClose, PanelLeftOpen,
-} from 'lucide-react'
-
-const NAV = [
-  { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
-  { label: 'Playground', to: '/playground', icon: Zap, meta: 'Live' },
-  null,
-  { label: 'Knowledge Bases', to: '/knowledge-bases', icon: Database },
-  { label: 'Evidence', to: '/evidence', icon: FileSearch },
-  { label: 'Claims', to: '/claims', icon: Brain },
-  { label: 'Conflicts', to: '/conflicts', icon: GitMerge },
-  null,
-  { label: 'Settings', to: '/settings', icon: Settings },
-]
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { NAV_GROUPS } from './navigation'
+import { EngineStatus } from './EngineStatus'
 
 /**
  * Sidebar — the primary navigation.
@@ -25,8 +10,18 @@ const NAV = [
  * Rows are 36px, the icon column is fixed, and the label never wraps. The
  * active row is marked with a Laser Crimson rule on its left edge, because
  * crimson is the selection colour in this system.
+ *
+ * The groups are named. A separator says "something changes here"; a label
+ * says what.
  */
-export function Sidebar({ isCollapsed, sidebarWidth, toggleSidebar }) {
+export function Sidebar({
+  isCollapsed,
+  sidebarWidth,
+  toggleSidebar,
+  isOnline,
+  isChecking,
+  providersData,
+}) {
   return (
     <aside
       style={{ width: sidebarWidth }}
@@ -34,17 +29,28 @@ export function Sidebar({ isCollapsed, sidebarWidth, toggleSidebar }) {
       aria-label="Primary navigation"
     >
       <nav className="lx-sidebar__nav">
-        {NAV.map((item, index) =>
-          item === null ? (
-            <div key={`sep-${index}`} className="lx-sidebar__sep" />
-          ) : (
-            <SidebarLink key={item.to} {...item} isCollapsed={isCollapsed} />
-          ),
-        )}
+        {NAV_GROUPS.map((group) => (
+          <div key={group.id} className="lx-sidebar__group">
+            {!isCollapsed && (
+              <p className="lx-sidebar__group-label" aria-hidden="true">
+                {group.label}
+              </p>
+            )}
+            {group.items.map((item) => (
+              <SidebarLink key={item.to} {...item} isCollapsed={isCollapsed} />
+            ))}
+          </div>
+        ))}
       </nav>
 
       <div className="lx-sidebar__footer">
-        <SidebarStatus isCollapsed={isCollapsed} />
+        {!isCollapsed && (
+          <EngineStatus
+            isOnline={isOnline}
+            isChecking={isChecking}
+            providersData={providersData}
+          />
+        )}
 
         <button
           type="button"
@@ -107,30 +113,5 @@ function SidebarLink({ to, label, icon: Icon, meta, isCollapsed }) {
         </>
       )}
     </NavLink>
-  )
-}
-
-function SidebarStatus({ isCollapsed }) {
-  return (
-    <div className={clsx('lx-sidebar__status', isCollapsed && 'justify-center px-2')}>
-      <ShieldCheck
-        size={15}
-        strokeWidth={1.5}
-        aria-hidden="true"
-        focusable="false"
-        className="shrink-0 text-silver-400"
-      />
-
-      {!isCollapsed && (
-        <div className="min-w-0">
-          <p className="lx-sidebar__status-title truncate">Self-healing loop</p>
-          <p className="lx-sidebar__status-meta truncate">StateGraph v1.0 active</p>
-        </div>
-      )}
-
-      {isCollapsed && (
-        <span className="lx-sr-only">Self-healing loop, StateGraph v1.0 active</span>
-      )}
-    </div>
   )
 }
