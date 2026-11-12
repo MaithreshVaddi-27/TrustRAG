@@ -16,6 +16,7 @@ implemented and verified before the next begins.
 | P4.5 | Playground | shell | Done |
 | P4.6 | Evidence, claims, conflicts | shell | Done |
 | P4.8 | Execution trace | shell | Done |
+| P4.9 | Settings | shell | Done |
 | P4.3 | Knowledge bases | shell |
 | P4.4 | Documents | knowledge bases |
 | P4.5 | Playground | shell, knowledge bases |
@@ -535,6 +536,56 @@ third attempt.
 | `npm run build` | Succeeds |
 | Lighthouse — desktop and mobile | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
 | Responsive | No overflow at 1440 or 390; no target under 24px |
+
+---
+
+## P4.9 — Settings
+
+The diagnostics screen: what the machine is, what the engines are doing,
+and what the platform is configured to run.
+
+### What was wrong
+
+| # | Problem | Severity |
+|---|---|---|
+| 1 | **The hardware panel reported zeros.** "Host memory 0 / 8 GB · 0%", "Process RSS 0 MB" — these were the fallback for a registry that had not answered yet. A reading of zero is a measurement; printing one for a machine nobody had measured yet is a claim the page cannot support. | High |
+| 2 | **Ollama was reported as "Not running" while it was running.** The panel read the engine state before the registry arrived and reported the absence as fact. | High |
+| 3 | **The engine and machine were guessed.** "CPU · arm64" was a hardcoded guess about the host, printed as a reading. | High |
+| 4 | **The embedding panel described one deployment as if it were a reading.** "384d · offline", "ONNX Runtime / CPU", "Zero API cost · torch-free" — all fixed strings, none of them read from the registry. | Medium |
+| 5 | **The model registry printed two rows it could not source.** It claims to report `config/models.yaml` and nothing else, but it also printed a fusion constant and a recovery ceiling that the registry never reported. | Medium |
+
+### What changed
+
+**Nothing is measured until it is measured.** The hardware readings, the
+engine states and the embedding facts now read "Detecting…" until the
+registry answers, and every one of them is a live value afterwards.
+
+**The registry reports the registry.** The model registry's rows are the
+identifiers the registry reports. The two it could not source — a fusion
+constant and a recovery ceiling — are gone, because a panel that claims
+to report the configuration should not print configuration it does not
+have.
+
+### Files
+
+| File | Change |
+|---|---|
+| `components/settings/HardwarePanel.jsx` | Real readings, or "Detecting…" |
+| `components/settings/LocalLLMPanel.jsx` | An engine that is unknown is not an engine that is stopped |
+| `components/settings/EmbeddingPanel.jsx` | Provider, dimension, execution and cost read from the registry |
+| `components/settings/ModelRegistryPanel.jsx` | Only rows the registry can source |
+| `pages/SettingsPage.jsx` | Passes the loading state and the embedding record |
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean |
+| `npm run test` | 13 files, 63 tests, all pass |
+| `npm run build` | Succeeds |
+| Lighthouse — desktop and mobile | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
+| Responsive | No overflow at 1440 or 390; no target under 24px |
+| Readings | Host memory 6 / 8 GB · 75%, process RSS 578.31 MB, Ollama Online, provider ONNX, dimension 384d — all live values, verified in the browser |
 
 ---
 

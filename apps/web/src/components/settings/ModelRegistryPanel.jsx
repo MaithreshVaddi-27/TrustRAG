@@ -18,32 +18,56 @@ const FALLBACK_FORMATS = [
 ]
 
 export default function ModelRegistryPanel({ models, supportedFormats, healthUnknown }) {
+  // Every row is read from the registry. The panel's own claim is that it
+  // reports config/models.yaml and nothing else, so a row that cannot be
+  // sourced from it does not belong here — it used to print a fusion
+  // constant and a recovery ceiling that the registry never reported.
   const rows = [
     {
       key: 'Active LLM engine',
       value: healthUnknown
         ? 'Unknown'
-        : `${models.llm_provider || 'llama_cpp'} (${models.llm_model || 'see models.yaml'})`,
+        : `${models.llm_provider ?? 'Unknown'} (${models.llm_model ?? 'Unknown'})`,
     },
     {
       key: 'Dense vector embeddings',
-      value: `${models.embedding_model || 'BAAI/bge-small-en-v1.5'} (384-dim)`,
+      value: healthUnknown
+        ? 'Unknown'
+        : `${models.embedding_model ?? 'Unknown'} (${
+            models.embedding_dimensionality ?? '?'
+          }-dim)`,
     },
     {
       key: 'NLI claim verifier',
-      value: healthUnknown ? 'Unknown' : `${models.verification_model || 'see models.yaml'} (temp=0.0)`,
+      value: healthUnknown
+        ? 'Unknown'
+        : `${models.verification_provider ?? 'Unknown'} (${
+            models.verification_model ?? 'Unknown'
+          })`,
     },
     {
       key: 'CrossEncoder neural reranker',
-      value: models.reranker_enabled ? models.reranker_model : 'Disabled (on-demand)',
+      value: healthUnknown
+        ? 'Unknown'
+        : models.reranker_enabled
+          ? (models.reranker_model ?? 'Enabled')
+          : 'Disabled (on-demand)',
     },
     {
-      key: 'Retrieval fusion strategy',
-      value: 'Reciprocal Rank Fusion (RRF, k=60)',
+      key: 'Web search provider',
+      value: healthUnknown
+        ? 'Unknown'
+        : `${models.search_provider ?? 'Unknown'} · ${
+            models.tavily_configured
+              ? 'Tavily configured'
+              : 'Tavily not configured'
+          }`,
     },
     {
-      key: 'Adaptive recovery ceiling',
-      value: 'Max 2 rewrites · max 2 context expansions',
+      key: 'Registry version',
+      value: healthUnknown
+        ? 'Unknown'
+        : `models.yaml ${models.config_version ?? '?'}`,
     },
   ]
 

@@ -56,7 +56,7 @@ const RECOVERY_COMMANDS = {
   mlx: './scripts/start_mlx_server.sh --port 8080',
 }
 
-export default function LocalLLMPanel({ providers }) {
+export default function LocalLLMPanel({ providers, providersPending = false }) {
   return (
     <section className="lx-panel-block" aria-labelledby="local-llm-heading">
       <div className="lx-panel-block__head">
@@ -72,6 +72,9 @@ export default function LocalLLMPanel({ providers }) {
           {ENGINES.map(({ key, label, icon: Icon, endpoint, offlineLabel }) => {
             const engine = providers?.[key]
             const online = Boolean(engine?.connected)
+            // Before the registry answers, an engine is neither running nor
+            // stopped. It is unknown.
+            const state = providersPending ? 'Detecting…' : online ? 'Online' : offlineLabel
             return (
               <div key={key} className="lx-deflist__row">
                 <dt className="lx-deflist__key flex items-center gap-2">
@@ -83,7 +86,7 @@ export default function LocalLLMPanel({ providers }) {
                   className="lx-deflist__value"
                   style={!online ? { color: 'var(--color-silver-500)' } : undefined}
                 >
-                  {online ? 'Online' : offlineLabel}
+                  {state}
                   {engine?.default_model && (
                     <span className="ml-2 text-silver-500">{engine.default_model}</span>
                   )}
@@ -96,7 +99,7 @@ export default function LocalLLMPanel({ providers }) {
 
       <div className="lx-panel-block__foot">
         <ul className="space-y-2">
-          {ENGINES.filter(({ key }) => !providers?.[key]?.connected).map(({ key, discovery, recovery }) => (
+          {ENGINES.filter(({ key }) => !providersPending && !providers?.[key]?.connected).map(({ key, discovery, recovery }) => (
             <li key={key} className="lx-micro flex items-start gap-2">
               <Lightbulb
                 size={13}
@@ -110,9 +113,10 @@ export default function LocalLLMPanel({ providers }) {
               </span>
             </li>
           ))}
-          {ENGINES.every(({ key }) => providers?.[key]?.connected) && (
-            <li className="lx-micro">Every local engine is reachable.</li>
-          )}
+          {!providersPending &&
+            ENGINES.every(({ key }) => providers?.[key]?.connected) && (
+              <li className="lx-micro">Every local engine is reachable.</li>
+            )}
         </ul>
       </div>
     </section>

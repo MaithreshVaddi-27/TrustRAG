@@ -17,6 +17,10 @@ export default function HardwarePanel({
   const memory = hardware?.memory ?? {}
   const usage = memory.usage_pct ?? 0
   const pressure = usage > 85
+  // Nothing is known until the registry answers. A reading of zero is a
+  // measurement, and reporting one for a machine we have not measured is a
+  // claim the page cannot support.
+  const known = Boolean(hardware)
 
   return (
     <section className="lx-panel-block" aria-labelledby="hardware-heading">
@@ -60,14 +64,16 @@ export default function HardwarePanel({
           <div className="lx-deflist__row">
             <dt className="lx-deflist__key">Hardware accelerator</dt>
             <dd className="lx-deflist__value">
-              {hardware?.accelerator_name || 'Detecting…'}
+              {known ? hardware.accelerator_name : 'Detecting…'}
             </dd>
           </div>
 
           <div className="lx-deflist__row">
             <dt className="lx-deflist__key">Engine / machine</dt>
             <dd className="lx-deflist__value">
-              {(hardware?.accelerator || 'cpu').toUpperCase()} · {hardware?.machine || 'arm64'}
+              {known
+                ? `${(hardware.accelerator || 'cpu').toUpperCase()} · ${hardware.machine}`
+                : 'Detecting…'}
             </dd>
           </div>
 
@@ -77,7 +83,9 @@ export default function HardwarePanel({
               className="lx-deflist__value"
               style={pressure ? { color: 'var(--color-crimson-300)' } : undefined}
             >
-              {memory.used_gb || 0} / {memory.total_gb || 8} GB · {usage}%
+              {known
+                ? `${memory.used_gb ?? '—'} / ${memory.total_gb ?? '—'} GB · ${usage}%`
+                : 'Detecting…'}
             </dd>
           </div>
 
@@ -89,21 +97,27 @@ export default function HardwarePanel({
           <div className="lx-deflist__row">
             <dt className="lx-deflist__key">Optimal LLM</dt>
             <dd className="lx-deflist__value">
-              {hardware?.recommendations?.primary_llm || 'granite4.2:3b-q4_K_M'}
+              {known
+                ? (hardware.recommendations?.primary_llm ?? '—')
+                : 'Detecting…'}
             </dd>
           </div>
 
           <div className="lx-deflist__row">
             <dt className="lx-deflist__key">Optimal embedding</dt>
             <dd className="lx-deflist__value">
-              {hardware?.recommendations?.primary_embedding || 'BAAI/bge-small-en-v1.5'}
+              {known
+                ? (hardware.recommendations?.primary_embedding ?? '—')
+                : 'Detecting…'}
             </dd>
           </div>
 
           <div className="lx-deflist__row">
             <dt className="lx-deflist__key">Safe concurrency</dt>
             <dd className="lx-deflist__value">
-              {hardware?.recommendations?.max_concurrency || 2} concurrent runs
+              {known
+                ? `${hardware.recommendations?.max_concurrency ?? '—'} concurrent runs`
+                : 'Detecting…'}
             </dd>
           </div>
         </dl>

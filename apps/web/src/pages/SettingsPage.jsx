@@ -36,7 +36,7 @@ export default function SettingsPage() {
     refetchInterval: 30000,
   })
 
-  const { data: providersData, isError: providersError } = useQuery({
+  const { data: providersData, isLoading: providersLoading, isError: providersError } = useQuery({
     queryKey: ['model-providers'],
     queryFn: modelService.getProviders,
     refetchInterval: 30000,
@@ -100,9 +100,15 @@ export default function SettingsPage() {
           onTrim={handleTrimMemory}
         />
 
-        <LocalLLMPanel providers={providersData?.providers} />
+        <LocalLLMPanel
+          providers={providersData?.providers}
+          providersPending={providersLoading && !providersData}
+        />
 
-        <EmbeddingPanel activeModel={providersData?.active_embedding_model} />
+        <EmbeddingPanel
+          activeModel={providersData?.active_embedding_model}
+          embedding={providersData?.embedding}
+        />
 
         <ModelRegistryPanel
           models={models}
