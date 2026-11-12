@@ -6,7 +6,15 @@ import { copyToClipboard } from '@/lib/clipboard'
 // The Markdown renderer and its parser stack are the heaviest dependency in
 // the app, and the answer is the only thing that needs them. Loading it on
 // demand keeps it out of the playground's initial chunk.
-const FormattedAnswer = lazy(() => import('@/components/workbench/FormattedAnswer'))
+//
+// The module exports the component by name, so the chunk is mapped onto the
+// default shape React.lazy expects. Passing the namespace straight through
+// left React.lazy with no component to render.
+const FormattedAnswer = lazy(() =>
+  import('@/components/workbench/FormattedAnswer').then((module) => ({
+    default: module.FormattedAnswer,
+  })),
+)
 
 /**
  * AnswerTab — the grounded synthesis.

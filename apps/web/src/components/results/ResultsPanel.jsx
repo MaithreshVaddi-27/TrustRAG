@@ -65,7 +65,7 @@ export function ResultsPanel({
 
   if (!analysis && !loading) {
     return (
-      <div className="lx-workbench__pane lx-workbench__pane--flush">
+      <div className="lx-workbench__pane lx-workbench__pane--flush flex flex-col">
         <EmptyState enableWebSearch={enableWebSearch} />
       </div>
     )

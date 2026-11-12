@@ -433,14 +433,60 @@
   background-color: var(--surface-raised);
 }
 
+/* Beside the results, the query pane is a column with a fixed query and
+ * run control at its foot. The pane has to be a flex column for that
+ * anchoring to work — as a plain block the form grew to its content and
+ * the run button fell below the fold. */
+@media (min-width: 1024px) {
+  .lx-workbench__pane {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+}
+
 .lx-workbench__pane--flush {
   background-color: transparent;
   border-right: 0;
 }
 
+/* Stacked, the two panes are the page. They were being squeezed into the
+ * viewport height — the configuration was clipped away and the query
+ * control ended up covering the results. The page scrolls instead, and the
+ * pane stops being a scroll container so the compose bar can stick to the
+ * bottom of the window while the reader moves through the configuration. */
+@media (max-width: 1023px) {
+  .lx-workbench {
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+
+  .lx-workbench__pane {
+    overflow: visible;
+  }
+}
+
 .lx-workbench__section {
   padding: var(--step-5);
   border-bottom: 1px solid var(--rule-faint);
+}
+
+/* The compose bar is a solid surface. It used to ask Tailwind for
+ * `bg-surface-raised`, a colour the theme does not define — so the bar was
+ * transparent and the configuration scrolled through it. */
+.lx-workbench__compose {
+  background-color: var(--surface-raised);
+}
+
+/* Stacked under the breakpoint, the query and the run control sit at the
+ * end of a long column. They follow the reader down instead of waiting at
+ * the bottom of it. */
+@media (max-width: 1023px) {
+  .lx-workbench__compose {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+  }
 }
 
 .lx-workbench__label {

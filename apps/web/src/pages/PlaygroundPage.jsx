@@ -37,7 +37,11 @@ export default function PlaygroundPage() {
     refetchInterval: 8000,
   })
 
-  const providersUnresolved = !providersLoading && providersError && !providersData
+  // Three different things, and the interface must not confuse them:
+  // the registry has not come back yet, the registry could not be read,
+  // or the registry was read and names a provider that is answering.
+  const providersPending = providersLoading && !providersData
+  const providersFailed = !providersLoading && providersError && !providersData
 
   const {
     selectedProvider,
@@ -46,10 +50,10 @@ export default function PlaygroundPage() {
     setSelectedModel,
     activeProviderInfo,
     availableModels,
-    providersUnresolved: modelProvidersUnresolved,
   } = useModelSelection(providersData)
 
-  const selectedEmbeddingModel = providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
+  const selectedEmbeddingModel = providersData?.active_embedding_model
+  const embeddingInfo = providersData?.embedding
 
   const {
     kbId,
@@ -177,6 +181,7 @@ export default function PlaygroundPage() {
           selectedModel={selectedModel}
           setSelectedModel={setSelectedModel}
           selectedEmbeddingModel={selectedEmbeddingModel}
+          embedding={embeddingInfo}
           enableWebSearch={enableWebSearch}
           setEnableWebSearch={setEnableWebSearch}
           providersData={providersData}
@@ -184,7 +189,8 @@ export default function PlaygroundPage() {
           activeProviderInfo={activeProviderInfo}
           availableModels={availableModels}
           refetchProviders={refetchProviders}
-          providersUnresolved={providersUnresolved || modelProvidersUnresolved}
+          providersPending={providersPending}
+          providersFailed={providersFailed}
           selectedKb={selectedKb}
           knowledgeBases={knowledgeBases}
           kbEmbeddingPin={kbEmbeddingPin}

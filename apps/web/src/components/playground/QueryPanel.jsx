@@ -34,10 +34,12 @@ export function QueryPanel({
   selectedModel,
   setSelectedModel,
   selectedEmbeddingModel,
+  embedding,
   activeProviderInfo,
   availableModels,
   refetchProviders,
-  providersUnresolved,
+  providersPending,
+  providersFailed,
   kbEmbeddingPin,
   embeddingMismatch,
   elapsedSec,
@@ -88,11 +90,13 @@ export function QueryPanel({
               selectedModel={selectedModel}
               setSelectedModel={setSelectedModel}
               loading={loading}
-              providersUnresolved={providersUnresolved}
+              providersPending={providersPending}
+              providersFailed={providersFailed}
               refetchProviders={refetchProviders}
             />
 
             <EmbeddingModelDisplay
+              embedding={embedding}
               selectedEmbeddingModel={selectedEmbeddingModel}
               selectedKb={selectedKb}
               kbEmbeddingPin={kbEmbeddingPin}
@@ -107,24 +111,30 @@ export function QueryPanel({
             />
           </div>
         </div>
-
-        <div className="shrink-0 space-y-3 border-t border-[color:var(--rule)] bg-surface-raised px-5 py-5">
-          <QueryInput
-            query={query}
-            setQuery={setQuery}
-            loading={loading}
-            handleSubmit={handleSubmit}
-            handlePresetSelect={handlePresetSelect}
-          />
-
-          <RunButton
-            loading={loading}
-            elapsedSec={elapsedSec}
-            disabled={!query.trim() || !kbId || !selectedProvider || !selectedModel}
-            onClick={handleSubmit}
-          />
-        </div>
       </form>
+
+      {/* The query and the run control sit outside the form so that they can
+          stick to the foot of the pane. A sticky element cannot leave its
+          containing block, and as the form's last child the compose bar
+          could never move — on a phone the run button was always a scroll
+          away. The button drives the run itself, so it does not need to be
+          inside the form. */}
+      <div className="lx-workbench__compose shrink-0 space-y-3 border-t border-[color:var(--rule)] px-5 py-5">
+        <QueryInput
+          query={query}
+          setQuery={setQuery}
+          loading={loading}
+          handleSubmit={handleSubmit}
+          handlePresetSelect={handlePresetSelect}
+        />
+
+        <RunButton
+          loading={loading}
+          elapsedSec={elapsedSec}
+          disabled={!query.trim() || !kbId || !selectedProvider || !selectedModel}
+          onClick={handleSubmit}
+        />
+      </div>
     </div>
   )
 }

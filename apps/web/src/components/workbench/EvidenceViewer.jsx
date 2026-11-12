@@ -20,7 +20,7 @@ const SOURCES = [
   { id: 'WEB', label: 'MCP web', icon: Globe },
 ]
 
-export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
+export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [], unavailable = false }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [sourceFilter, setSourceFilter] = useState('ALL')
   const [methodFilter, setMethodFilter] = useState('ALL')
@@ -69,15 +69,31 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [] }) {
   }
 
   if (chunks.length === 0) {
+    // An empty list and a list that could not be read are different facts.
+    // Saying "nothing was retrieved" when the request failed is a claim the
+    // interface cannot support.
     return (
       <div className="lx-panel-block">
         <div className="lx-empty">
           <BookOpen size={22} strokeWidth={1.5} className="lx-empty__icon" aria-hidden="true" />
-          <p className="lx-empty__title">No evidence segments retrieved</p>
-          <p className="lx-empty__body">
-            No passages matched the hybrid search thresholds, or the knowledge
-            base has not been indexed yet.
-          </p>
+          {unavailable ? (
+            <>
+              <p className="lx-empty__title">The evidence could not be loaded</p>
+              <p className="lx-empty__body">
+                The evidence endpoint did not return, so the passages this run
+                retrieved are not shown here. The run&rsquo;s own trace still
+                records what it retrieved.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="lx-empty__title">No evidence segments retrieved</p>
+              <p className="lx-empty__body">
+                No passages matched the hybrid search thresholds, or the
+                knowledge base has not been indexed yet.
+              </p>
+            </>
+          )}
         </div>
       </div>
     )

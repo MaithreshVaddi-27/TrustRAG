@@ -111,4 +111,58 @@ describe('PlaygroundPage engine selection', () => {
       expect(screen.getByText('Inference server offline')).toBeTruthy()
     })
   })
+
+  it('does not call the engine offline before it has asked', async () => {
+    // Regression: the panel used to treat "the registry has not arrived yet"
+    // as "the registry could not be read", so a crimson alarm appeared on
+    // every cold load — before a single request had failed.
+    const { modelService } = await import('@/services/api')
+    // Every caller of the shared query hangs, so the registry stays unknown.
+    vi.mocked(modelService.getProviders).mockReturnValue(new Promise(() => {}))
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('AI engine')).toBeTruthy()
+    })
+
+    expect(screen.queryByText('Inference server offline')).toBeNull()
+    // The engine chip says it is still finding out, rather than pretending
+    // the server is down.
+    const engineChip = screen
+      .getAllByRole('status')
+      .find((el) => el.textContent === 'Detecting')
+    expect(engineChip).toBeTruthy()
+  })
+
+  it('reports the embedding engine from the registry, not from a fixed string', async () => {
+    // Regression: the panel said "ONNX runtime" and "384d · offline" in
+    // hardcoded strings, whatever the registry actually said.
+    const { modelService } = await import('@/services/api')
+    vi.mocked(modelService.getProviders).mockResolvedValueOnce({
+      active_provider: 'ollama',
+      active_model: 'gemma3:1b',
+      active_embedding_model: 'BAAI/bge-small-en-v1.5',
+      providers: {
+        ollama: {
+          connected: true,
+          default_model: 'gemma3:1b',
+          models: ['gemma3:1b'],
+        },
+      },
+      embedding: {
+        provider: 'onnx',
+        type: 'local',
+        connected: true,
+        model: 'BAAI/bge-small-en-v1.5',
+        dim: 384,
+      },
+    })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('ONNX · 384d · local')).toBeTruthy()
+    })
+  })
 })

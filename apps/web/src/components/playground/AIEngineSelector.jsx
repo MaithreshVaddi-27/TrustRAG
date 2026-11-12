@@ -40,16 +40,26 @@ export function AIEngineSelector({
   selectedModel,
   setSelectedModel,
   loading,
-  providersUnresolved,
+  providersPending,
+  providersFailed,
   refetchProviders,
 }) {
-  // The engine is offline when the provider registry could not be read at
-  // all, or when the selected local provider is not answering.
+  // Three states, and they are not the same thing. While the registry is
+  // still coming back we know nothing, and the interface says so. An alarm
+  // before a single request has failed is a false alarm.
   const isOffline =
-    providersUnresolved ||
+    providersFailed ||
     (['ollama', 'llama_cpp', 'mlx'].includes(selectedProvider) &&
       Boolean(activeProviderInfo) &&
       !activeProviderInfo.connected)
+
+  const engineState = providersPending
+    ? 'Detecting'
+    : isOffline
+      ? 'Standby'
+      : activeProviderInfo?.connected
+        ? 'Connected'
+        : 'Standby'
 
   return (
     <div className="space-y-3">
@@ -58,8 +68,11 @@ export function AIEngineSelector({
           <Cpu size={14} strokeWidth={1.5} aria-hidden="true" className="text-silver-500" />
           AI engine
         </span>
-        <span className="lx-chip">
-          {activeProviderInfo?.connected ? 'Connected' : 'Standby'}
+        <span
+          className={`lx-chip${isOffline && !providersPending ? ' lx-chip--alarm' : ''}`}
+          role="status"
+        >
+          {engineState}
         </span>
       </div>
 

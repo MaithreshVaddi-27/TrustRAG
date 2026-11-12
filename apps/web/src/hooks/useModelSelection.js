@@ -17,8 +17,6 @@ const LOCAL_PROVIDERS = ['ollama', 'llama_cpp', 'mlx']
 export function useModelSelection(providersData) {
   const [selectedProvider, setSelectedProviderState] = useState(null)
   const [selectedModel, setSelectedModel] = useState('')
-  const [providersUnresolved, setProvidersUnresolved] = useState(false)
-  const [refetchTrigger, setRefetchTrigger] = useState(0)
 
   const providers = providersData?.providers
 
@@ -83,9 +81,11 @@ export function useModelSelection(providersData) {
   }, [selectedProvider, selectedModel])
 
   // Detect unresolved providers (backend down).
-  useEffect(() => {
-    setProvidersUnresolved(!providersData && !providersData?.providers)
-  }, [providersData])
+  // The hook no longer decides this. "The registry has not arrived yet" and
+  // "the registry could not be read" are different answers, and only the
+  // caller — which can see whether the request actually failed — knows
+  // which one it is. Guessing "unresolved" here put an offline alarm on
+  // the screen before the first request had even returned.
 
   const handleProviderChange = useCallback(
     (providerKey) => {
@@ -97,10 +97,6 @@ export function useModelSelection(providersData) {
     [modelsFor, providers],
   )
 
-  const refetchProviders = useCallback(() => {
-    setRefetchTrigger((t) => t + 1)
-  }, [])
-
   return {
     selectedProvider,
     setSelectedProvider: handleProviderChange,
@@ -108,9 +104,6 @@ export function useModelSelection(providersData) {
     setSelectedModel,
     activeProviderInfo,
     availableModels,
-    providersUnresolved,
-    refetchProviders,
-    refetchTrigger,
     isLocalProvider: LOCAL_PROVIDERS.includes(selectedProvider),
   }
 }

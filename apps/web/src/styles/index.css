@@ -25,6 +25,7 @@
 @import './app/shell.css';
 @import './app/auth.css';
 @import './app/surfaces.css';
+@import './app/layers.css';
 @import './app/markdown.css';
 
 @tailwind base;

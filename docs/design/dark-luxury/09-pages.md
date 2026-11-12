@@ -13,6 +13,7 @@ implemented and verified before the next begins.
 | P4.2 | Dashboard | shell | Done |
 | P4.3 | Knowledge bases | shell | Done |
 | P4.4 | Documents | shell | Done |
+| P4.5 | Playground | shell | Done |
 | P4.3 | Knowledge bases | shell |
 | P4.4 | Documents | knowledge bases |
 | P4.5 | Playground | shell, knowledge bases |
@@ -344,6 +345,90 @@ is not running is worse than no status at all. It now reports
 | Lighthouse — desktop and mobile | Accessibility 100 · Best Practices 100 · SEO 100 · Agentic Browsing 100 |
 | Layout stability | Zero layout shifts at 1440 / 1280 / 1024 / 768 / 390 / 320 — measured, not assumed |
 | Responsive | No page or top-bar overflow at any width; the full route sweep is clean |
+| Console | 0 errors, 0 warnings |
+
+---
+
+## P4.5 — Playground
+
+The workbench. The product's primary interaction, and the surface that had
+been taken furthest apart from the ground up.
+
+### What was wrong
+
+| # | Problem | Severity |
+|---|---|---|
+| 1 | **The answer could never be displayed.** The answer is rendered through a lazy import, and the module exports the component by name rather than by default. `React.lazy` resolved to nothing and the view crashed the moment a run finished — with "Cannot convert object to primitive value". The product's one output was unreachable. | Critical |
+| 2 | **The run button was below the fold.** The query panel claimed to anchor the query and the run control at its foot. The pane was a plain block, so the form grew to its content and the button sat 259px below the viewport on a 900px screen. | Critical |
+| 3 | **A finished run stayed on "Pipeline running…".** The completion path waited on the evidence endpoint, which can take minutes to fail. Nothing bounded the wait, so the run never appeared to finish. | High |
+| 4 | **The engine panel called itself offline before it had asked.** The hook treated "the registry has not arrived" as "the registry could not be read", so a crimson alarm appeared on every cold load — before a single request had failed. | High |
+| 5 | **The empty state was unstyled.** `styles/app/layers.css` — the vocabulary of the five pipeline stages — was never imported. The stages rendered as bare stacked text. | High |
+| 6 | **The embedding panel was hardcoded.** It said "ONNX runtime" and "384d · offline" in fixed strings, whatever the registry actually said. | Medium |
+| 7 | **The compose bar was transparent.** It asked Tailwind for `bg-surface-raised`, a colour the theme does not define. On a phone the configuration scrolled through the run control. | Medium |
+| 8 | **The stacked layout squeezed both panes into the viewport.** The configuration was clipped away and the query control covered the results. | Medium |
+| 9 | "1 docs" — a plural on a count of one. | Low |
+
+### What changed
+
+**The answer renders.** The lazy chunk is mapped onto the shape React.lazy
+expects. A test now renders the answer tab and asserts the prose appears.
+
+**The run control is anchored, on every width.** The pane is a flex column
+beside the results, so the query and the run button sit at its foot. Below
+the breakpoint the page scrolls instead of the pane, and the compose bar —
+moved out of the form so it has a containing block tall enough to stick —
+follows the reader down the window.
+
+**A finished run finishes.** No request may hang: the client has a
+30-second timeout, and the completion path races the detail bundle against
+a deadline. The run reaches its result whether or not the evidence
+endpoint ever answers.
+
+**Three engine states, not two.** *Detecting* while the registry is still
+coming back, *Connected* or *Standby* once it has, and the alarm only when
+the request has actually failed.
+
+**The embedding panel reads the registry.** The provider, the model and the
+dimension come from the registry; nothing about the vector engine is
+written down in the interface.
+
+**An empty list and an unreadable list are different facts.** The evidence
+tab says which one it is.
+
+**The pipeline stages are styled again** — the dead stylesheet is
+imported, and the five stages read as the ordered plates they were meant
+to be.
+
+### Files
+
+| File | Change |
+|---|---|
+| `components/results/AnswerTab.jsx` | Fixed the lazy import — the answer renders |
+| `components/results/AnswerTab.test.jsx` | New — 2 tests, one of them the crash regression |
+| `components/results/EvidenceTab.jsx` | Passes the load-failure state through |
+| `components/workbench/EvidenceViewer.jsx` | "Could not be loaded" is not "nothing was retrieved" |
+| `components/playground/QueryPanel.jsx` | The compose bar left the form so it can stick |
+| `components/playground/AIEngineSelector.jsx` | Three honest engine states |
+| `components/playground/EmbeddingModelDisplay.jsx` | Reads the registry instead of fixed strings |
+| `components/playground/KnowledgeBaseSelector.jsx` | "1 doc", not "1 docs" |
+| `hooks/useModelSelection.js` | Removed the state that guessed "offline" and the dead refetch trigger |
+| `hooks/useAnalysisStream.js` | The completion path is bounded |
+| `lib/api.js` | A 30-second request timeout |
+| `styles/index.css` | Imported the orphaned `app/layers.css` |
+| `styles/app/surfaces.css` | The pane is a flex column; the stacked layout scrolls the page; the compose bar is solid and sticky |
+| `pages/PlaygroundPage.test.jsx` | 2 new tests — no false alarm, no hardcoded embedding |
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean |
+| `npm run test` | 12 files, 60 tests, all pass (4 new) |
+| `npm run build` | Succeeds in ~2.0s |
+| Lighthouse — desktop and mobile | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
+| Responsive | No overflow on any of the nine routes at 1440 / 1280 / 1024 / 768 / 390 / 320 |
+| Run control | Visible without scrolling at 1440, 1280, 1024, 390 and 320 |
+| Behaviour | A full analysis run exercised end to end — the answer renders, the four tabs open, the trace streams, the export is offered |
 | Console | 0 errors, 0 warnings |
 
 ---

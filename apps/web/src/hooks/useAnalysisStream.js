@@ -11,6 +11,47 @@ const TERMINAL_EVENTS = new Set([
 
 const MAX_POLL_ATTEMPTS = 45
 
+// How long the run waits for the detail bundle before it finishes without
+// it. The answer, the claims and the evidence are worth having, but a run
+// that has already completed must not sit on "Pipeline running…" because
+// one of those endpoints is slow.
+const DETAIL_WAIT_MS = 10_000
+
+/**
+ * Race a promise against a deadline.
+ *
+ * Rejects with a timeout when the deadline passes first, so a caller can
+ * treat "too slow" the same way it treats "failed". The loser is
+ * abandoned, not cancelled — the caller has already moved on.
+ */
+function withDeadline(promise, ms) {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        reject(new Error(`Timed out after ${ms}ms`))
+      }
+    }, ms)
+    promise.then(
+      (value) => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timer)
+          resolve(value)
+        }
+      },
+      (error) => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timer)
+          reject(error)
+        }
+      },
+    )
+  })
+}
+
 export function useAnalysisStream() {
   const streamRef = useRef(null)
   const pollTimerRef = useRef(null)
@@ -62,20 +103,28 @@ export function useAnalysisStream() {
           let claims = []
           let evidence = []
           let trace = []
+          // Whether the evidence list is genuinely empty or simply could not
+          // be read. The two are different answers, and only the request
+          // knows which one it is.
+          let evidenceUnavailable = false
           try {
-            const detail = await analysisService.detail(analysisId)
-            claims = detail.claims || []
-            evidence = detail.evidence || []
-            trace = detail.trace || []
+            const detail = await withDeadline(
+              analysisService.detail(analysisId),
+              DETAIL_WAIT_MS,
+            )
+            claims = detail?.claims || []
+            evidence = detail?.evidence || []
+            trace = detail?.trace || []
           } catch {
             const [claimsRes, evidenceRes, traceRes] = await Promise.allSettled([
-              analysisService.claims(analysisId),
-              analysisService.evidence(analysisId),
-              analysisService.trace(analysisId),
+              withDeadline(analysisService.claims(analysisId), DETAIL_WAIT_MS),
+              withDeadline(analysisService.evidence(analysisId), DETAIL_WAIT_MS),
+              withDeadline(analysisService.trace(analysisId), DETAIL_WAIT_MS),
             ])
-            claims = claimsRes.status === 'fulfilled' ? claimsRes.value : []
-            evidence = evidenceRes.status === 'fulfilled' ? evidenceRes.value : []
-            trace = traceRes.status === 'fulfilled' ? traceRes.value : []
+            claims = claimsRes.status === 'fulfilled' ? claimsRes.value || [] : []
+            evidence = evidenceRes.status === 'fulfilled' ? evidenceRes.value || [] : []
+            trace = traceRes.status === 'fulfilled' ? traceRes.value || [] : []
+            evidenceUnavailable = evidenceRes.status !== 'fulfilled'
           }
 
           const fullAnalysis = {
@@ -83,6 +132,7 @@ export function useAnalysisStream() {
             claims: claims || [],
             evidence: evidence || [],
             trace: (trace && trace.length > 0) ? trace : traceEventsRef.current,
+            evidenceUnavailable,
           }
 
           onComplete?.(fullAnalysis)

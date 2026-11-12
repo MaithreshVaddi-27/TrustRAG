@@ -24,7 +24,10 @@ export function KnowledgeBaseSelector({
           Knowledge base
         </label>
         {selectedKb && (
-          <span className="lx-micro">{selectedKb.document_count ?? 0} docs</span>
+          <span className="lx-micro">
+            {selectedKb.document_count ?? 0}{' '}
+            {selectedKb.document_count === 1 ? 'doc' : 'docs'}
+          </span>
         )}
       </div>
 
@@ -47,7 +50,8 @@ export function KnowledgeBaseSelector({
           <option value="">Select a knowledge base</option>
           {knowledgeBases?.map((kb) => (
             <option key={kb.id} value={kb.id}>
-              {kb.name} ({kb.document_count ?? 0} docs)
+              {kb.name} ({kb.document_count ?? 0}{' '}
+              {kb.document_count === 1 ? 'doc' : 'docs'})
             </option>
           ))}
         </select>
