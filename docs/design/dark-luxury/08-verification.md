@@ -91,21 +91,39 @@ the first focusable element.
 
 ## Current result
 
+Measured after the page-by-page programme closed. Every figure below was
+read from the running application.
+
 | Check | Result |
 |---|---|
 | `npm run lint` | Clean — 0 warnings, 0 errors |
-| `npm run test` | 8 files, 34 tests, all pass |
+| `npm run test` | 14 files, 69 tests, all pass |
 | `npm run build` | Succeeds in ~2.1s |
-| Lighthouse — landing | Accessibility 100 · Best Practices 100 · SEO 100 · Agentic Browsing 100 |
-| Lighthouse — all ten routes | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
-| Lighthouse — SEO on app routes | 63 — `robots.txt` disallows the authenticated routes on purpose |
-| Lighthouse — Best Practices on `/evidence` | 96 — the backend's `GET /api/v1/evidence` returns HTTP 500 |
+| Lighthouse — every route, desktop and mobile | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
+| Lighthouse — landing | SEO 100 |
+| Lighthouse — SEO on the other routes | 63 — `robots.txt` disallows the authenticated routes on purpose |
+| Layout stability | Cumulative Layout Shift 0 on every route at every width, measured rather than assumed |
 | Responsive | No page overflow and no top-bar overflow at 1440 / 1280 / 1024 / 768 / 390 / 320 |
 | Landmarks | Exactly one `<main>` and one `<h1>` per route, including the auth routes |
 | Target size | No interactive target below 24px, except inline text links covered by WCAG 2.5.8 |
 | Focus | 2px Laser Crimson, 5.5:1 on obsidian |
-| Console | 0 errors and 0 warnings across landing and all nine app routes |
-| Route coverage | `/`, `/login`, `/register`, `/dashboard`, `/playground`, `/knowledge-bases`, `/claims`, `/evidence`, `/conflicts`, `/settings` |
+| Console | 0 errors and 0 warnings across all twelve routes |
+| Route coverage | `/`, `/login`, `/register`, `/dashboard`, `/playground`, `/knowledge-bases`, `/claims`, `/evidence`, `/conflicts`, `/settings`, `/documents/:id`, `/traces/:id` |
+
+### Known backend defect
+
+`GET /api/v1/evidence`, `GET /api/v1/claims` and
+`GET /api/v1/analyses/{id}/detail` return HTTP 500: the response model
+requires `analysis_id` and a string `document_id`, and the persisted
+evidence documents carry neither in that shape. The failure takes
+twelve seconds to serialise — 64 validation errors, each carrying a
+whole chunk of the document.
+
+The frontend cannot repair this and does not pretend to. It bounds the
+wait at ten seconds, makes one attempt, and reports the failure with a
+Retry button. The evidence vault, the claims list and the playground's
+evidence tab therefore show their error states rather than records,
+until the response model matches the stored documents.
 
 ### Bundle
 

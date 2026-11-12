@@ -201,7 +201,11 @@ playground chunk fell from **215.9 kB to 37.8 kB** when recharts and the
 Markdown renderer left the initial load.
 
 The page-by-page programme that followed the migration is recorded in
-[09 — Pages](./09-pages.md).
+[09 — Pages](./09-pages.md). It ran from P4.1 (the application shell)
+through P4.10 (authentication) and closed with P4.11, a layout-stability
+pass over every route. Two surfaces were added along the way: a document
+record at `/documents/:id`, and the trace page's account of the run it
+belongs to.
 
 ---
 
