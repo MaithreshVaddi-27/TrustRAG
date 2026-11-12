@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Loader2, Eye, EyeOff, AlertTriangle } from 'lucide-react'
 import AuthLayout from '@/layouts/AuthLayout'
+import { PasswordRules } from '@/components/auth/PasswordRules'
+import { passwordRuleFailures } from '@/lib/passwordRules'
 import { authService } from '@/services/auth'
 
 export default function RegisterPage() {
@@ -9,26 +11,24 @@ export default function RegisterPage() {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const passwordRef = useRef(null)
+  const confirmRef = useRef(null)
 
   async function handleSubmit(e) {
     e.preventDefault()
-    const pwError =
-      password.length < 12
-        ? 'Password must be at least 12 characters.'
-        : !/[A-Z]/.test(password)
-          ? 'Password must contain at least one uppercase letter.'
-          : !/[a-z]/.test(password)
-            ? 'Password must contain at least one lowercase letter.'
-            : !/\d/.test(password)
-              ? 'Password must contain at least one digit.'
-              : !/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)
-                ? 'Password must contain at least one special character.'
-                : null
-    if (pwError) {
-      setError(pwError)
+    const failures = passwordRuleFailures(password)
+    if (failures.length > 0) {
+      setError(`The password still needs: ${failures.map((f) => f.label.toLowerCase()).join(', ')}.`)
+      passwordRef.current?.focus()
+      return
+    }
+    if (confirmPassword !== password) {
+      setError('The two passwords do not match.')
+      confirmRef.current?.focus()
       return
     }
     setError('')
@@ -113,6 +113,7 @@ export default function RegisterPage() {
             <input
               id="reg-password"
               name="password"
+              ref={passwordRef}
               type={showPw ? 'text' : 'password'}
               autoComplete="new-password"
               required
@@ -135,9 +136,40 @@ export default function RegisterPage() {
               )}
             </button>
           </div>
-          <p className="lx-field__hint">
-            At least 12 characters, with upper and lower case, a digit and a symbol.
-          </p>
+          <PasswordRules value={password} />
+        </div>
+
+        <div className="lx-field">
+          <label className="lx-field__label" htmlFor="reg-confirm">
+            Confirm password
+          </label>
+          <div className="lx-field__wrap">
+            <input
+              id="reg-confirm"
+              name="confirmPassword"
+              ref={confirmRef}
+              type={showPw ? 'text' : 'password'}
+              autoComplete="new-password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="••••••••"
+              className="lx-field__input lx-field__input--with-affix"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw((v) => !v)}
+              className="lx-field__affix"
+              aria-label={showPw ? 'Hide password' : 'Show password'}
+              aria-pressed={showPw}
+            >
+              {showPw ? (
+                <EyeOff size={15} strokeWidth={1.5} aria-hidden="true" />
+              ) : (
+                <Eye size={15} strokeWidth={1.5} aria-hidden="true" />
+              )}
+            </button>
+          </div>
         </div>
 
         <button

@@ -30,7 +30,10 @@ export default function AuthLayout({ children, title, subtitle }) {
         <div className="lx-auth__card">
           {title && (
             <div className="mb-6">
-              <h2 className="lx-auth__title">{title}</h2>
+              {/* The page's heading is its first-level heading. Every other
+                  route opens with one <h1>; the auth surface opened with an
+                  <h2> and had none. */}
+              <h1 className="lx-auth__title">{title}</h1>
               {subtitle && <p className="lx-auth__subtitle">{subtitle}</p>}
             </div>
           )}

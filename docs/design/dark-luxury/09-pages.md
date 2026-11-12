@@ -17,6 +17,7 @@ implemented and verified before the next begins.
 | P4.6 | Evidence, claims, conflicts | shell | Done |
 | P4.8 | Execution trace | shell | Done |
 | P4.9 | Settings | shell | Done |
+| P4.10 | Authentication | shell | Done |
 | P4.3 | Knowledge bases | shell |
 | P4.4 | Documents | knowledge bases |
 | P4.5 | Playground | shell, knowledge bases |
@@ -586,6 +587,61 @@ have.
 | Lighthouse — desktop and mobile | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
 | Responsive | No overflow at 1440 or 390; no target under 24px |
 | Readings | Host memory 6 / 8 GB · 75%, process RSS 578.31 MB, Ollama Online, provider ONNX, dimension 384d — all live values, verified in the browser |
+
+---
+
+## P4.10 — Authentication
+
+The sign-in and account-creation surfaces.
+
+### What was wrong
+
+| # | Problem | Severity |
+|---|---|---|
+| 1 | **The password's rules were checked only after the form was submitted.** A sentence described five requirements; a reader who missed one learned about it by failing. | High |
+| 2 | **A password was never confirmed.** A typo in twelve characters with five classes of rule is a failed registration and no way to find the typo. | High |
+| 3 | **The page had no `<h1>`.** Every other route in the product opens with one; the auth surface opened with an `<h2>` and had none. | Medium |
+| 4 | **`?registered=1` was a dead flag.** The register page sent the reader to the login screen carrying it; nothing read it. | Medium |
+
+### What changed
+
+**The requirements report themselves.** The five rules are a list under
+the field, and each one is marked as it is met. An unmet rule is a
+requirement, not an alarm, so it is written in the same quiet silver as
+the rest of the screen — only a met rule is marked.
+
+**A failure names what is still missing.** Submitting with an unmet rule
+says which ones, and focuses the password field. Submitting with two
+different passwords says so, and focuses the confirmation.
+
+**The password is confirmed**, so a typo is visible while it can still be
+corrected.
+
+**A new account is acknowledged.** The login page reads the flag the
+register page has always been sending.
+
+### Files
+
+| File | Change |
+|---|---|
+| `lib/passwordRules.js` | New — the five requirements in one place |
+| `components/auth/PasswordRules.jsx` | New — the list, reporting itself |
+| `pages/RegisterPage.jsx` | The rules, a confirmation field, and failures that name the field |
+| `pages/LoginPage.jsx` | Acknowledges an account that was just created |
+| `layouts/AuthLayout.jsx` | The heading is the page's `<h1>` |
+| `styles/app/auth.css` | The requirement list |
+| `pages/AuthPages.test.jsx` | New — 6 tests over both auth surfaces |
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean |
+| `npm run test` | 14 files, 69 tests, all pass (6 new) |
+| `npm run build` | Succeeds |
+| Lighthouse — desktop and mobile, both pages | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
+| Landmarks | One `<main>`, one `<h1>` on both pages |
+| Behaviour | A full registration was exercised against the live backend — 201, automatic sign-in, and the dashboard with the new account |
 
 ---
 

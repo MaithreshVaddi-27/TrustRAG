@@ -156,6 +156,37 @@
   color: var(--color-silver-500);
 }
 
+/* ── Requirement list ──────────────────────────────────────────────────────
+ * The password's rules, reported one by one. An unmet rule is a
+ * requirement, not an alarm, so it is written in the same quiet silver as
+ * the rest of the screen; only a met rule is marked.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-rules {
+  display: grid;
+  gap: var(--step-1);
+  margin-top: var(--step-3);
+}
+
+.lx-rules__item {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  font-size: var(--size-micro);
+  line-height: 1.4;
+  color: var(--color-silver-500);
+}
+
+.lx-rules__item svg {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+}
+
+.lx-rules__item--met {
+  color: var(--color-silver-300);
+}
+
 /* ── Messages ─────────────────────────────────────────────────────────────── */
 
 .lx-alert {

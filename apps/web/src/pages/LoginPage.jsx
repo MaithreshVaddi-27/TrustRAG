@@ -1,11 +1,16 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Loader2, AlertTriangle } from 'lucide-react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Eye, EyeOff, Loader2, AlertTriangle, Check } from 'lucide-react'
 import AuthLayout from '@/layouts/AuthLayout'
 import { authService } from '@/services/auth'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  // The register page sends the reader here when the account was created but
+  // the automatic sign-in did not happen. It used to carry the flag and
+  // nobody read it.
+  const justRegistered = params.get('registered') === '1'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -33,6 +38,13 @@ export default function LoginPage() {
           <div className="lx-alert lx-alert--error" role="alert">
             <AlertTriangle size={14} strokeWidth={1.75} aria-hidden="true" />
             <span>{error}</span>
+          </div>
+        )}
+
+        {justRegistered && !error && (
+          <div className="lx-alert lx-alert--info" role="status">
+            <Check size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Your account was created. Sign in to continue.</span>
           </div>
         )}
 
