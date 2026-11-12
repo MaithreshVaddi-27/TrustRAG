@@ -387,7 +387,25 @@ async def create_analysis(
             probe_provider = "llama_cpp"
         await local_llm_mod.probe_local_llm_server(probe_provider, llm_base_url)
     elif effective_llm_provider in ("gemini"):
-        await local_llm_mod.probe_cloud_llm(effective_llm_provider, effective_llm_model)
+        # Cloud preflight: confirm the provider can serve the requested model
+        # before the analysis document is written, so a bad key or an unknown
+        # model fails fast with a 503 instead of a mid-run crash. The probe
+        # speaks the provider's own contract (see app.llm.providers.cloud_probe).
+        from app.llm.providers.cloud_probe import (
+            CLOUD_PROBE_TIMEOUT_SECONDS,
+            GEMINI_BASE_URL,
+        )
+
+        await local_llm_mod.probe_cloud_llm(
+            norm=effective_llm_provider,
+            model=effective_llm_model,
+            base_url=GEMINI_BASE_URL,
+            timeout=CLOUD_PROBE_TIMEOUT_SECONDS,
+            hint=(
+                "Check GEMINI_API_KEY in .env and that the model id is one of "
+                "the supported Gemini models."
+            ),
+        )
     analysis_doc = {
         "user_id": ObjectId(user_id_str),
         "knowledge_base_id": ObjectId(schema.knowledge_base_id),

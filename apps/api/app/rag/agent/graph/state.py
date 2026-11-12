@@ -56,6 +56,16 @@ class AgentState(TypedDict):
     # Cumulative wall-clock spent in retrieval+generation+verification, so the
     # trace can report where the time actually went.
     analysis_elapsed_ms: int
+    # Snapshot of the last completed verification, kept by the recovery node so
+    # a run that ends after a recovery round still reports the verdict it
+    # earned instead of one recomputed from cleared state.
+    verification_snapshot: dict[str, Any] | None
+    # Where the recovery node wants the graph to go next: "retrieve" (another
+    # round) or "end" (terminate). The recovery node owns the recovery budget,
+    # so it records the decision in the state — a conditional-edge router
+    # cannot, because LangGraph does not propagate state mutations made inside
+    # a routing function.
+    recovery_next: str | None
 
 
 def initial_state(
@@ -96,4 +106,6 @@ def initial_state(
         recovery_latency_ms=0,
         analysis_elapsed_ms=0,
         analysis_deadline_monotonic=analysis_deadline_monotonic,
+        verification_snapshot=None,
+        recovery_next=None,
     )

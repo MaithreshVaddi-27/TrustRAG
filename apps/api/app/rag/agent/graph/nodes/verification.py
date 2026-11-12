@@ -16,6 +16,7 @@ from app.config import get_model_config
 from app.observability.logging import get_logger
 from app.observability.metrics import record_verification_claims
 from app.rag.agent.graph.state import AgentState
+from app.rag.agent.graph.verification_snapshot import clear_verification_snapshot
 from app.rag.verification.verdict import Thresholds, compute_verdict
 from app.rag.verification.verifier import UNCHECKED_CLAIM_STATE, is_refusal_answer
 
@@ -27,6 +28,10 @@ __all__ = ["verification_node"]
 async def verification_node(state: AgentState) -> AgentState:
     """Run claims decomposition and NLI verification, and evaluate reliability thresholds."""
     logger.info("Agent Verification Node starting")
+
+    # A fresh verification supersedes the snapshot kept by an earlier recovery
+    # round: whatever this round produces is now the authoritative verdict.
+    clear_verification_snapshot(state)
 
     cfg = get_model_config()
     verification_timeout = cfg.max_verification_time_seconds

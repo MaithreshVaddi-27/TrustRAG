@@ -24,7 +24,12 @@ from app.llm.local_llm import verification_cap_kwargs
 from app.observability.logging import get_logger
 from app.observability.metrics import record_recovery_attempt
 from app.persistence.mongodb import Collections
+from app.rag.agent.graph.budget import deadline_spent, mark_budget_exhausted
 from app.rag.agent.graph.state import AgentState
+from app.rag.agent.graph.verification_snapshot import (
+    capture_verification_snapshot,
+    restore_verification_snapshot,
+)
 from app.rag.verification.verdict import is_refusal_answer
 
 logger = get_logger(__name__)
@@ -165,6 +170,35 @@ def _terminal_llm_failure(state: AgentState, node_name: str, message: str) -> Ag
     state["diagnosis_type"] = node_name.upper()
     state["diagnosis_failures"] = [message]
     return state
+
+
+def _decide_next_round(state: AgentState, cfg: Any) -> str:
+    """Decide whether the graph may run another retrieval/generation round.
+
+    Returns ``"retrieve"`` to loop back to retrieval, ``"end"`` to terminate
+    the run. The decision is recorded in the state by the caller, because a
+    conditional-edge router cannot write it back (LangGraph does not propagate
+    state mutations made inside a routing function).
+    """
+    # The analysis-wide wall-clock budget outranks every other condition.
+    if deadline_spent(state):
+        mark_budget_exhausted(state)
+        return "end"
+
+    # The recovery budget is spent — no further rounds.
+    if state.get("attempts", 0) >= cfg.max_recovery_attempts:
+        return "end"
+
+    # A passing verdict never needs another round.
+    if state.get("verdict_status") == "PASS":
+        return "end"
+
+    # No viable strategy (empty or token-identical rewrite, internal failure):
+    # another round would replay the same inputs and reach the same result.
+    if not state.get("recovery_strategy"):
+        return "end"
+
+    return "retrieve"
 
 
 async def _execute_query_rewrite(
@@ -336,6 +370,7 @@ async def recovery_node(state: AgentState) -> AgentState:
                 f"latency={state['recovery_latency_ms']}ms/{max_latency}ms"
             ]
             state["attempts"] = cfg.max_recovery_attempts  # Force end
+            state["recovery_next"] = "end"  # No further round is possible
             return state
 
         # Snapshot failed-claim context BEFORE clearing: the query_rewrite
@@ -347,6 +382,12 @@ async def recovery_node(state: AgentState) -> AgentState:
         # to know the model already abstained on these chunks.
         prior_answer = state.get("answer")
         prior_diagnosis = state.get("diagnosis_type")
+
+        # Keep the completed verification so a run that ends after this
+        # recovery round still reports the verdict it earned. The clear below
+        # would otherwise leave the final verdict to be recomputed from an
+        # empty claim list ("No claims extracted for verification").
+        capture_verification_snapshot(state)
 
         # Clear prior failed/abstained answer and claims so recovery generates and verifies freshly
         state["answer"] = None
@@ -394,6 +435,26 @@ async def recovery_node(state: AgentState) -> AgentState:
             tokens_estimate = len(str(state.get("current_query", ""))) // 4 + 100  # base cost
             state["recovery_tokens_used"] = state.get("recovery_tokens_used", 0) + tokens_estimate
 
+        # Decide whether another round may run and record the decision in the
+        # state, so the router can act on it (see should_end). When the run
+        # ends here, restore the completed verification: the cleared state
+        # would otherwise make the final verdict recompute from an empty claim
+        # list and report "No claims extracted for verification".
+        state["recovery_next"] = _decide_next_round(state, cfg)
+        if state["recovery_next"] == "end":
+            restore_verification_snapshot(state)
+            logger.info(
+                "Recovery loop finished — keeping the last completed verification",
+                attempt=state["attempts"],
+                strategy=strategy,
+            )
+        else:
+            logger.info(
+                "Recovery round complete — starting another round",
+                attempt=state["attempts"],
+                strategy=state.get("recovery_strategy"),
+            )
+
         # Persist recovery run record in MongoDB
         run_doc = {
             "analysis_id": ObjectId(state["analysis_id"]),
@@ -402,6 +463,7 @@ async def recovery_node(state: AgentState) -> AgentState:
             "query_used": state["current_query"],
             "tokens_used": tokens_estimate if "tokens_estimate" in locals() else 0,
             "latency_ms": elapsed_ms,
+            "next_step": state["recovery_next"],
             "created_at": datetime.now(UTC),
         }
         await _graph_mod.get_collection(Collections.RECOVERY_RUNS).insert_one(run_doc)
@@ -420,6 +482,7 @@ async def recovery_node(state: AgentState) -> AgentState:
         {
             **state,
             "recovery_strategy": None,
+            "recovery_next": "end",
             "verdict_status": "FAIL",
             "diagnosis_type": "RECOVERY_ERROR",
             "diagnosis_failures": ["Recovery failed due to internal error"],

@@ -21,6 +21,12 @@ from app.config.settings import (
 )
 from app.llm.providers.base import _shared_http_client
 from app.llm.providers.capabilities import _is_embedding_model_name
+from app.llm.providers.cloud_probe import (
+    _classify_cloud_probe_error,
+    _record_probe_success,
+    _status_code_of,
+    probe_cloud_llm,
+)
 from app.llm.providers.discovery import (
     discover_llamacpp_cache_models,
     discover_mlx_cache_models,
@@ -48,28 +54,6 @@ __all__ = [
     "probe_cloud_llm",
     "probe_local_llm_server",
 ]
-
-
-def _status_code_of(exc: Exception) -> int | None:
-    """Extract HTTP status code from an exception, if any."""
-    return getattr(exc, "status_code", None)
-
-
-def _classify_cloud_probe_error(exc: Exception, norm: str, model: str, hint: str) -> str:
-    """Classify a cloud probe error into a user-visible message."""
-    status = _status_code_of(exc)
-    if status in (401, 403):
-        return f"Cloud LLM '{norm}' model '{model}' rejected credentials (HTTP {status}). {hint}"
-    if status == 404:
-        return f"Cloud LLM '{norm}' model '{model}' not found (HTTP 404). {hint}"
-    if status and status >= 500:
-        return f"Cloud LLM '{norm}' provider error (HTTP {status}). {hint}"
-    return f"Cloud LLM '{norm}' model '{model}' probe failed: {exc}. {hint}"
-
-
-def _record_probe_success(norm: str, model: str) -> None:
-    """Record a successful provider probe."""
-    logger.debug("Cloud LLM probe succeeded", provider=norm, model=model)
 
 
 async def _fetch_json_with_retry(endpoint: str) -> httpx.Response:
@@ -299,29 +283,3 @@ async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 
         raise LLMUnavailableError(
             f"Local LLM server '{norm}' at {base} returned HTTP {res.status_code}. {start_hint}"
         )
-
-
-async def probe_cloud_llm(
-    *,
-    norm: str,
-    model: str,
-    base_url: str,
-    timeout: float,
-    hint: str = "",
-) -> None:
-    """Probe a cloud LLM provider to confirm it is reachable and responsive."""
-    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout)) as client:
-        res = await client.post(
-            f"{base_url.rstrip('/')}/v1/chat/completions",
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": "Reply with the word OK."}],
-                "max_tokens": 5,
-            },
-        )
-    if res.status_code == 404:
-        raise LLMUnavailableError(
-            f"Cloud LLM '{norm}' model '{model}' not found (HTTP 404). {hint}"
-        )
-    res.raise_for_status()
-    _record_probe_success(norm, model)
