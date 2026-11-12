@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Check,
   AlertTriangle,
@@ -29,7 +30,13 @@ const DocumentRow = memo(function DocumentRow({ doc, onDelete }) {
       <div className="lx-record">
         <div className="lx-record__name">
           <FileText size={14} strokeWidth={1.5} className="shrink-0 text-silver-500" aria-hidden="true" />
-          <span className="truncate text-silver-100">{doc.filename}</span>
+          <Link
+            to={`/documents/${doc.id}`}
+            className="lx-inline-action min-w-0 truncate text-silver-100 hover:text-silver-50"
+            title={`Open the record for ${doc.filename}`}
+          >
+            {doc.filename}
+          </Link>
           <span className="lx-chip shrink-0">{extension}</span>
         </div>
 

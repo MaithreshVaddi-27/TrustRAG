@@ -23,8 +23,11 @@ function unwrap(response) {
 // ─── Knowledge Bases ──────────────────────────────────────────────────────────
 const kbServiceBase = {
   list: () => api.get('/api/v1/knowledge-bases'),
+  get: (id) => api.get(`/api/v1/knowledge-bases/${id}`),
   create: (body) => api.post('/api/v1/knowledge-bases', body),
   delete: (id) => api.delete(`/api/v1/knowledge-bases/${id}`),
+
+  getDocument: (docId) => api.get(`/api/v1/documents/${docId}`),
 
   uploadDocument: (kbId, file) => {
     const form = new FormData()
@@ -42,8 +45,11 @@ const kbServiceBase = {
 // Wrap with retry for read operations, no retry for mutations
 export const kbService = {
   list: () => withRetryAndResponse(kbServiceBase.list).then(unwrap),
+  get: (id) => withRetryAndResponse(() => kbServiceBase.get(id)).then(unwrap),
   create: (body) => withRetryAndResponse(() => kbServiceBase.create(body)).then(unwrap),
   delete: (id) => withRetryAndResponse(() => kbServiceBase.delete(id)).then(unwrap),
+
+  getDocument: (docId) => withRetryAndResponse(() => kbServiceBase.getDocument(docId)).then(unwrap),
 
   uploadDocument: (kbId, file) => withRetryAndResponse(() => kbServiceBase.uploadDocument(kbId, file)).then(unwrap),
 

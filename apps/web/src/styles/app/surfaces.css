@@ -605,6 +605,10 @@ select.lx-control {
 
 .lx-deflist {
   display: grid;
+  /* The column may not grow past the panel. An auto track would size to
+   * the widest row's content, and a long hash would then push its own row
+   * into a second line. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
 }
 
@@ -653,6 +657,77 @@ select.lx-control {
     animation: none;
     opacity: 0.7;
   }
+}
+
+/* A definition list of measurements. Every value in it is a single
+ * measured line — a size, a date, an identifier — so the rows never
+ * change height as their values arrive. The rows align at the top
+ * rather than on a baseline: a value that scrolls has no baseline of its
+ * own, and a baseline-aligned row would grow when it arrived. */
+.lx-deflist--measured .lx-deflist__row {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+/* The key is a fixed label. It must never shrink into a second line: the
+ * row would then change height when the value beside it arrived. */
+.lx-deflist--measured .lx-deflist__key {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.lx-deflist--measured .lx-deflist__value {
+  min-width: 0;
+}
+
+/* ── Single-line measured value ───────────────────────────────────────────
+ * A long identifier — a hash, an id, a model path — is not prose. It does
+ * not wrap; it scrolls sideways inside its own box, so the row it sits in
+ * is always one line tall and the panels below it never move.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-value-line {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+  /* The scrollbar is hidden on purpose. A visible one takes height from
+   * the box, and the box has to be the same height whether the value has
+   * arrived or not — otherwise the row grows and the page shifts. The
+   * value is still fully selectable, and the copy button is the
+   * affordance that matters. */
+  scrollbar-width: none;
+}
+
+.lx-value-line::-webkit-scrollbar {
+  display: none;
+}
+
+/* A value that may be wider than the row must be allowed to shrink. Its
+ * default minimum width is its content's, so a long hash would push the
+ * row into a second line — and the row would change height when the value
+ * arrived. Clipping the box is what makes it shrinkable: a box that can
+ * scroll has no minimum content width of its own. */
+.lx-deflist__value--grow {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── Document record header ───────────────────────────────────────────────
+ * The document page renders its frame before the document arrives. The
+ * heading and the description keep their boxes whether the record is
+ * loaded or not, so the panels below them do not move when it lands.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-doc-header .lx-h1 {
+  min-height: calc(var(--size-h1) * var(--leading-h1));
+  overflow-wrap: anywhere;
+}
+
+.lx-doc-header .lx-body {
+  min-height: calc(2 * var(--size-body) * var(--leading-body));
 }
 
 /* ── Section label ─────────────────────────────────────────────────────────

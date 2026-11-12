@@ -12,6 +12,7 @@ implemented and verified before the next begins.
 | P4.1 | Application shell | — | Done |
 | P4.2 | Dashboard | shell | Done |
 | P4.3 | Knowledge bases | shell | Done |
+| P4.4 | Documents | shell | Done |
 | P4.3 | Knowledge bases | shell |
 | P4.4 | Documents | knowledge bases |
 | P4.5 | Playground | shell, knowledge bases |
@@ -267,6 +268,83 @@ an × that clears the filter.
 | Landmarks | One `<main>`, one `<h1>` per route |
 | Console | 0 errors, 0 warnings |
 | Behaviour | Creating a collection, uploading a document, expanding a row, filtering, sorting and deleting all verified in the browser |
+
+---
+
+## P4.4 — Documents
+
+The record for one indexed document. The API has always exposed
+`GET /api/v1/documents/{id}`; nothing in the frontend called it, and a
+document's temporal-validity window was never shown anywhere.
+
+### What was wrong
+
+| # | Problem | Severity |
+|---|---|---|
+| 1 | **A document had no record of its own.** It existed only as a row in a collection ledger — a filename, a size and a state. Nothing answered "what is this document, and when does it apply?" | High |
+| 2 | **The effective window was invisible.** `effective_from` and `effective_until` — the interval in which retrieval may treat a document as authoritative — were stored on every document and shown for no document. | High |
+| 3 | **The ingestion error was unreachable.** A failed ingestion stores the backend's own `error_message`. Nothing in the UI could show it; the row's chip just said "Failed". | High |
+| 4 | The hash was truncated to twelve characters in the ledger. Twelve characters do not identify a document. | Medium |
+| 5 | There was no way to reach a document from its own identifier. | Medium |
+
+### What changed
+
+**A document is a record with a route.** `/documents/:id` — reachable from the
+filename in the ledger row, and addressable on its own.
+
+**Three questions, three panels.** *Content* — size, format, the full
+SHA-256 and the document identifier, the hash with a copy button beside it.
+*Ingestion* — the state, the backend's error message when there is one, the
+vector space the document was embedded into, the collection it lives in and
+the moment it was uploaded. *Applicability* — the two bounds of the
+effective window, named, with the rule stated: a document with no window
+is always in force.
+
+**The whole hash, not twelve characters.** The hash scrolls sideways inside
+its own box when it is wider than the column, and the copy button copies
+the whole thing.
+
+**The page holds its shape while it loads.** The frame is rendered before
+the record arrives and the values fill in. Every value in it is exactly one
+line tall whether it is loaded or not, so the panels below never move when
+the record lands. This took four separate fixes to get right — a skeleton
+of a different shape is a layout shift waiting to happen, and the shifts
+came from the row's baseline alignment, the key wrapping, the value
+overflowing its column, and the scrollbar taking height from the box.
+
+### Files
+
+| File | Change |
+|---|---|
+| `pages/DocumentPage.jsx` | New — the document record |
+| `pages/DocumentPage.test.jsx` | New — 8 tests over the record |
+| `services/api.js` | Added `kbService.getDocument` and `kbService.get` |
+| `App.jsx` | Added the `/documents/:id` route |
+| `components/kb/DocumentRow.jsx` | The filename is now a link to the record |
+| `components/layout/EngineStatus.jsx` | Fixed a misreport — see below |
+| `styles/app/surfaces.css` | `.lx-value-line`, `.lx-deflist--measured`, `.lx-deflist__value--grow` |
+
+### Also fixed
+
+**The sidebar reported the wrong model.** The engine status said
+"Ollama · qwen3:1.7b" while queries were actually running on `gemma3:1b`.
+The status read the provider's `default_model` — the first entry in the
+registry — rather than the *active* model, and `qwen3:1.7b` is not even
+enabled for that provider. A status surface that names a model the system
+is not running is worse than no status at all. It now reports
+`active_model`.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean |
+| `npm run test` | 11 files, 56 tests, all pass (8 new) |
+| `npm run build` | Succeeds in ~2.1s |
+| Lighthouse — desktop and mobile | Accessibility 100 · Best Practices 100 · SEO 100 · Agentic Browsing 100 |
+| Layout stability | Zero layout shifts at 1440 / 1280 / 1024 / 768 / 390 / 320 — measured, not assumed |
+| Responsive | No page or top-bar overflow at any width; the full route sweep is clean |
+| Console | 0 errors, 0 warnings |
 
 ---
 

@@ -128,6 +128,12 @@ export function EngineStatus({ isOnline, providers }) {
   }
 
   // ── Running ───────────────────────────────────────────────────────────────
+  // The model that answers queries is the *active* model. The provider's
+  // default_model is whatever the registry lists first, which is not
+  // necessarily enabled for that provider — reporting it here told the
+  // operator the engine was running a model that was not in use.
+  const activeModel = data?.active_model ?? engine?.default_model
+
   return (
     <Status
       icon={
@@ -141,7 +147,7 @@ export function EngineStatus({ isOnline, providers }) {
       }
       title="Engine online"
       meta={`${providerShortLabel(activeProvider)}${
-        engine?.default_model ? ` · ${shortModelId(engine.default_model)}` : ''
+        activeModel ? ` · ${shortModelId(activeModel)}` : ''
       }`}
     />
   )

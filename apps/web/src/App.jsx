@@ -15,6 +15,7 @@ const RegisterPage = lazy(() => import('@/pages/RegisterPage'))
 const DashboardPage      = lazy(() => import('@/pages/DashboardPage'))
 const PlaygroundPage     = lazy(() => import('@/pages/PlaygroundPage'))
 const KnowledgeBasesPage = lazy(() => import('@/pages/KnowledgeBasesPage'))
+const DocumentPage       = lazy(() => import('@/pages/DocumentPage'))
 const EvidencePage       = lazy(() => import('@/pages/EvidencePage'))
 const ClaimsPage         = lazy(() => import('@/pages/ClaimsPage'))
 const ConflictsPage      = lazy(() => import('@/pages/ConflictsPage'))
@@ -87,6 +88,7 @@ function TitleSync() {
     const title = PATH_TITLES[pathname]
     if (title) document.title = title
     else if (pathname.startsWith('/traces/')) document.title = 'Execution Trace — TRUSTRAG'
+    else if (pathname.startsWith('/documents/')) document.title = 'Document — TRUSTRAG'
   }, [pathname])
   return null
 }
@@ -105,6 +107,7 @@ export default function App() {
         <Route path="/dashboard"       element={guarded(<RequireAuth><DashboardPage /></RequireAuth>)} />
         <Route path="/playground"      element={guarded(<RequireAuth><PlaygroundPage /></RequireAuth>)} />
         <Route path="/knowledge-bases" element={guarded(<RequireAuth><KnowledgeBasesPage /></RequireAuth>)} />
+        <Route path="/documents/:id"  element={guarded(<RequireAuth><DocumentPage /></RequireAuth>)} />
         <Route path="/evidence"        element={guarded(<RequireAuth><EvidencePage /></RequireAuth>)} />
         <Route path="/claims"          element={guarded(<RequireAuth><ClaimsPage /></RequireAuth>)} />
         <Route path="/conflicts"       element={guarded(<RequireAuth><ConflictsPage /></RequireAuth>)} />
