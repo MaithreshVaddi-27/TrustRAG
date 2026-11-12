@@ -18,6 +18,11 @@ function readPlaygroundEngine() {
  *
  * The same quiet mono text the desktop bar uses, stacked. A status dot
  * rather than a coloured pill.
+ *
+ * The desktop bar sheds its optional items as it narrows — engine,
+ * embedding model, accelerator — and the API state is the only thing it
+ * keeps. On a phone there is no room for that, so the whole readout moves
+ * into the drawer, where it is one tap away instead of gone.
  */
 export function EngineTelemetry({ isOnline, recheck }) {
   const [playgroundEngine, setPlaygroundEngine] = useState(readPlaygroundEngine)
@@ -44,7 +49,7 @@ export function EngineTelemetry({ isOnline, recheck }) {
   const accelerator = providersData?.hardware?.accelerator
 
   return (
-    <div className="lg:hidden px-4 py-3 flex flex-col gap-2 border-b border-[color:var(--rule)]">
+    <div className="flex flex-col gap-2 border-t border-[color:var(--rule)] pt-3">
       <span
         className="lx-telemetry__item"
         title={

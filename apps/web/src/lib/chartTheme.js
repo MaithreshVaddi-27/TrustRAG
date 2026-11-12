@@ -40,28 +40,3 @@ export const VERDICT_COLORS = {
   neutral: CHART.silverDim,
   contradicted: CHART.crimson,
 }
-
-/** The tooltip surface, matching the design system's panels. */
-export const tooltipStyle = {
-  backgroundColor: CHART.surface,
-  border: `1px solid ${CHART.rule}`,
-  borderRadius: 10,
-  fontSize: 12,
-  color: CHART.text,
-  padding: '8px 12px',
-  boxShadow: 'none',
-}
-
-export const tooltipLabelStyle = {
-  color: CHART.textMuted,
-  fontSize: 11,
-  fontFamily: 'var(--typeface-mono)',
-}
-
-/** Shared axis props so every chart in the product is drawn the same way. */
-export const axisProps = {
-  stroke: CHART.axis,
-  fontSize: 11,
-  tickLine: false,
-  axisLine: false,
-}

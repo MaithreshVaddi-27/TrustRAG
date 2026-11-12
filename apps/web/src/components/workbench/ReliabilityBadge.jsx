@@ -3,18 +3,35 @@ import { Check, X, CircleDashed, CircleSlash, HelpCircle } from 'lucide-react'
 import { normalizeScore } from '@/lib/claimState'
 
 /**
+ * The bands, keyed by the verdict the reliability engine returned.
+ *
+ * An abstention is not a failure: the run produced no answer, so it does
+ * not get the alarm colour. The CircleSlash icon carries that meaning.
+ */
+const BAND_BY_STATUS = {
+  TRUSTED: 'high',
+  UNCERTAIN: 'medium',
+  FAILED: 'low',
+  ABSTAINED: 'unknown',
+}
+
+/**
  * ReliabilityBadge — the numeric reliability score, with its band.
  *
  * The band is a step in the silver ramp, except the failing band, which is
  * Laser Crimson. A failed claim is the only thing on screen that carries
  * colour.
+ *
+ * The band comes from the verdict the backend computed, not from the
+ * score: TRUSTED is a claim-coverage and contradiction-rate judgement, and
+ * a score alone cannot make it. When no verdict is available the score
+ * still says whether the run was above the abstention floor or below it.
  */
 export function ReliabilityBadge({ score, status, size = 'md' }) {
   const norm = normalizeScore(score)
   const pct = norm != null ? Math.round(norm * 100) : null
 
-  const band =
-    pct == null ? 'unknown' : pct >= 75 ? 'high' : pct >= 50 ? 'medium' : 'low'
+  const band = BAND_BY_STATUS[status] ?? (pct == null ? 'unknown' : pct >= 50 ? 'medium' : 'low')
 
   const bandColors = {
     high: 'text-silver-200 border-[color:var(--rule)] bg-surface-inset',
@@ -105,5 +122,3 @@ export function VerdictBadge({ state }) {
     </span>
   )
 }
-
-export const ClaimStateBadge = VerdictBadge

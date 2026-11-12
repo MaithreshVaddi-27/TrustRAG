@@ -48,7 +48,14 @@ const PIPELINE_PREVIEW = [
 
 export function EmptyState({ enableWebSearch = false }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    // This pane scrolls, and it holds no focusable children of its own —
+    // so without a tab stop a keyboard user cannot scroll it. WCAG 2.1.1.
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+      role="region"
+      aria-label="Verification workbench"
+      tabIndex={0}
+    >
       <div className="px-5 py-8 sm:px-8 sm:py-10">
         <div className="mx-auto w-full max-w-3xl space-y-8">
           <div>

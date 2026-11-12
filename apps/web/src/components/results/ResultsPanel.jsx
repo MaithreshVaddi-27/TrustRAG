@@ -118,7 +118,10 @@ export function ResultsPanel({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <ReliabilityBadge status={analysis.status} />
+              <ReliabilityBadge
+                score={analysis.reliability?.score}
+                status={analysis.reliability?.status}
+              />
               <h2 className="truncate text-[var(--size-h3)] text-silver-050">
                 {analysis.query}
               </h2>
@@ -210,6 +213,7 @@ export function ResultsPanel({
         role="tabpanel"
         id={`results-panel-${activeTab}`}
         aria-labelledby={`results-tab-${activeTab}`}
+        tabIndex={0}
         className="min-h-0 flex-1 overflow-y-auto px-5 py-6"
       >
         {activeTab === 'answer' && (

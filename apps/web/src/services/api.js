@@ -5,7 +5,7 @@
  */
 
 import api from '@/lib/api'
-import { withRetryAndResponse, ERROR_CODES } from '@/lib/apiResponse'
+import { withRetryAndResponse } from '@/lib/apiResponse'
 
 // ─── Helper: unwrap standardized response or throw ────────────────────────────
 function unwrap(response) {
@@ -42,19 +42,27 @@ const kbServiceBase = {
     api.delete(`/api/v1/documents/${docId}`),
 }
 
-// Wrap with retry for read operations, no retry for mutations
+// Wrap with retry for read operations, no retry for mutations.
+//
+// A mutation is not idempotent. Retrying a create that answered 500 can
+// leave two collections, two documents or two analysis runs behind, and
+// the retry looks successful while the duplicate sits in the database.
+// Mutations therefore make exactly one attempt, and the error state in
+// the UI carries the Retry button instead.
+const NO_RETRY = { maxAttempts: 1 }
+
 export const kbService = {
   list: () => withRetryAndResponse(kbServiceBase.list).then(unwrap),
   get: (id) => withRetryAndResponse(() => kbServiceBase.get(id)).then(unwrap),
-  create: (body) => withRetryAndResponse(() => kbServiceBase.create(body)).then(unwrap),
-  delete: (id) => withRetryAndResponse(() => kbServiceBase.delete(id)).then(unwrap),
+  create: (body) => withRetryAndResponse(() => kbServiceBase.create(body), NO_RETRY).then(unwrap),
+  delete: (id) => withRetryAndResponse(() => kbServiceBase.delete(id), NO_RETRY).then(unwrap),
 
   getDocument: (docId) => withRetryAndResponse(() => kbServiceBase.getDocument(docId)).then(unwrap),
 
-  uploadDocument: (kbId, file) => withRetryAndResponse(() => kbServiceBase.uploadDocument(kbId, file)).then(unwrap),
+  uploadDocument: (kbId, file) => withRetryAndResponse(() => kbServiceBase.uploadDocument(kbId, file), NO_RETRY).then(unwrap),
 
   listDocuments: (kbId) => withRetryAndResponse(() => kbServiceBase.listDocuments(kbId)).then(unwrap),
-  deleteDocument: (docId) => withRetryAndResponse(() => kbServiceBase.deleteDocument(docId)).then(unwrap),
+  deleteDocument: (docId) => withRetryAndResponse(() => kbServiceBase.deleteDocument(docId), NO_RETRY).then(unwrap),
 }
 
 // ─── Analyses ──────────────────────────────────────────────────────────────────
@@ -68,14 +76,12 @@ const analysisServiceBase = {
   detail: (id) => api.get(`/api/v1/analyses/${id}/detail`),
 }
 
-// Analysis creation: retry on network/server errors, not on validation
+// Analysis creation: one attempt. A retry would start a second run of the
+// same query, and the two would both appear in the history.
 // Analysis reads: retry with exponential backoff
 export const analysisService = {
   create: (body) => withRetryAndResponse(() => analysisServiceBase.create(body), {
-    maxAttempts: 2, // Only one retry for creation
-    retryConfig: {
-      retryableCodes: new Set([ERROR_CODES.NETWORK_ERROR, ERROR_CODES.TIMEOUT, ERROR_CODES.SERVER_ERROR, ERROR_CODES.SERVICE_UNAVAILABLE]),
-    },
+    maxAttempts: 1,
   }).then(unwrap),
 
   get: (id) => withRetryAndResponse(() => analysisServiceBase.get(id)).then(unwrap),
@@ -116,8 +122,6 @@ export const healthService = {
 // ─── Models & AI Providers ──────────────────────────────────────────────────────
 export const modelService = {
   getProviders: () => withRetryAndResponse(() => api.get('/api/v1/models/providers')).then(unwrap),
+  // Trimming twice is the same as trimming once, so this one is safe to retry.
   trimMemory: () => withRetryAndResponse(() => api.post('/api/v1/models/memory/trim')).then(unwrap),
 }
-
-// ─── Export error codes for consumers ──────────────────────────────────────────
-export { ERROR_CODES } from '@/lib/apiResponse'

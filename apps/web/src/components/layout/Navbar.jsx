@@ -78,7 +78,12 @@ export function Navbar({ isOnline, recheck, setIsMobileOpen }) {
           <Menu size={18} strokeWidth={1.5} aria-hidden="true" />
         </button>
 
-        <Link to="/dashboard" className="lx-topbar__brand" aria-label="TrustRAG home">
+        {/* The name comes from the content, not from an aria-label. WCAG
+            2.5.3 requires the accessible name to contain the visible text,
+            and the brand link shows different text at different widths —
+            so a single fixed label cannot satisfy it. Letting the wordmark
+            supply the name keeps the link named at every width. */}
+        <Link to="/dashboard" className="lx-topbar__brand">
           <TrustRagEmblem size={28} framed />
           <span className="lx-topbar__wordmark">TRUSTRAG</span>
           <span className="lx-topbar__meta">Reliability workbench</span>

@@ -20,6 +20,7 @@ implemented and verified before the next begins.
 | P4.10 | Authentication | shell | Done |
 | P4.11 | Layout stability, programme close | all | Done |
 | P4.12 | Landing page — content truth | — | Done |
+| P4.13 | Frontend audit | all | Done |
 | P4.3 | Knowledge bases | shell |
 | P4.4 | Documents | knowledge bases |
 | P4.5 | Playground | shell, knowledge bases |
@@ -791,6 +792,62 @@ The page states three things a marketing page would usually hide:
 | Console | 0 errors, 0 warnings |
 | Knowledge-base document row | Six columns in the correct order after the `.lx-docrow` rename |
 | Threshold corrections | Seven copy fixes across the dashboard, claims, conflicts and playground, each checked against `models.yaml` and `compute_verdict` |
+
+---
+
+## P4.13 — Frontend audit
+
+A pass over the whole of `apps/web` with axe-core against every route,
+looking for the same class of defect the landing page had been hiding:
+a claim the interface makes that the code does not support.
+
+### What was wrong
+
+| # | Problem | Severity |
+|---|---|---|
+| 1 | **The results panel showed the wrong status.** `ReliabilityBadge` was given `analysis.status` — the run lifecycle (`completed`, `abstained`) — instead of `analysis.reliability.status`, the verdict (`TRUSTED`, `UNCERTAIN`, `FAILED`, `ABSTAINED`), and no score at all. The badge rendered a generic question-mark icon, an em dash, and the word "completed". The two other call sites passed the reliability status correctly. | High |
+| 2 | **The badge invented its own thresholds.** The band came from `pct >= 75 ? 'high' : pct >= 50 ? 'medium' : 'low'`. The real bands are the verdict's: TRUSTED is a coverage-and-contradiction judgement that a score cannot make, and an abstention scored zero, so it was rendered in Laser Crimson — which says the system produced a bad answer when it produced no answer at all. | High |
+| 3 | **Mutations were retried.** `kbService.create`, `kbService.delete`, `kbService.uploadDocument`, `kbService.deleteDocument` and `analysisService.create` all went through the retry wrapper, which retries 500/502/503/504 — while the comment above them said "no retry for mutations". A create that answered 500 and then succeeded on the retry left two collections, two documents or two analysis runs behind, and the retry looked successful. | High |
+| 4 | **Two landmarks shared a name.** The landing page wrapped `LandingCTA` in `<section aria-labelledby="cta-heading">` while `LandingCTA` rendered another `<section aria-labelledby="cta-heading">` containing `<h2 id="cta-heading">`. Two regions with one name, and a duplicated `id` in the document. | Medium |
+| 5 | **The brand link broke Label in Name.** `aria-label="TrustRAG home"` on a link whose visible text is "TRUSTRAG Reliability workbench" on wide screens and "TRUSTRAG" below 1280px. No single fixed label can contain both, so the label was removed and the wordmark now supplies the name — visually hidden rather than removed below 640px, so the link is never left nameless. | Medium |
+| 6 | **The collapse button broke Label in Name.** `aria-label="Collapse sidebar"` against a visible "Collapse ⌘B". The expanded button now takes its name from its content; the collapsed one, which is an icon with no visible text, keeps its short label. | Medium |
+| 7 | **The quick prompts broke Label in Name.** Each chip's accessible name was the full prompt it sends, and its visible label was a shortened rewrite — "Explain key concepts" against "Explain the key concepts in this document". The visible words were not a contiguous run of the name's words. Each label is now the opening of its prompt. | Medium |
+| 8 | **The playground's idle pane could not be scrolled.** The empty-state panel scrolls and holds nothing focusable, so a keyboard user had no way to reach the content below the fold. It now has a tab stop and a name. | Medium |
+| 9 | **The code block could not be scrolled.** The capability code scrolls sideways on a phone and holds nothing focusable either. | Medium |
+| 10 | **The narrow-screen engine readout was never rendered.** `EngineTelemetry` was written for exactly the case where the top bar sheds the engine, the embedding model and the accelerator — and never wired into the drawer. On a phone the application showed no API state, no model and no accelerator at all. | Medium |
+| 11 | **Three components were dead.** `components/app/Dialog.jsx` (superseded by `ConfirmDialog`, which has its own focus management), `components/kb/KnowledgeBaseCard.jsx` (superseded by `CollectionLedger`) and `hooks/usePrefersReducedMotion.js` (the CSS handles the preference). | Low |
+| 12 | **Three exports were dead.** `NAV_ITEMS`, `ClaimStateBadge`, and the recharts-era `tooltipStyle` / `tooltipLabelStyle` / `axisProps` in `lib/chartTheme.js`. | Low |
+| 13 | **Two comments described code that was not there.** `useBackendHealth` said the first probe was deferred to the next interval tick; it fires on mount. `RequireAuth` said "Phase 4 will add server-side token validation"; the server validates on every request and the interceptor clears a 401. | Low |
+
+### What changed
+
+Three regression tests now hold the fixes in place: the quick-prompt
+labels must stay a prefix of the prompts they send, the badge's band must
+come from the verdict, and a write must make exactly one attempt while a
+read may be retried.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean — 0 warnings, 0 errors |
+| `npm run test` | 17 files, 82 tests, all pass (13 new) |
+| `npm run build` | Succeeds in ~2.1 s |
+| axe-core, WCAG 2.0/2.1/2.2 A + AA + best practice | 0 violations on all ten routes at 1440 and 390 |
+| Lighthouse — landing, desktop | Performance 100 · Accessibility 100 · Best Practices 100 · SEO 100 · Agentic Browsing 100 |
+| Lighthouse — landing, mobile | Performance 99 · Accessibility 100 · Best Practices 100 · SEO 100 · Agentic Browsing 100 |
+| Responsive | No page overflow on eight routes × six widths; only the code block and the drawer scroll, and they scroll themselves |
+| Console | 0 errors, 0 warnings on every route |
+| Landmarks | One `<main>` and one `<h1>` per route |
+| Focus | 2 px Laser Crimson on every visible control at 1440 and 390 |
+
+### A note on the colour-contrast readings
+
+Sampling the landing page while its entrance animation is still running
+reports a hundred-odd contrast failures. Every one of them is a blend
+between the intended colour and the background — the text is mid-fade.
+Re-running the same rule on the settled page reports none. The figures in
+the table above are from the settled state.
 
 ---
 

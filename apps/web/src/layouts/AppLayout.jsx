@@ -63,7 +63,12 @@ export default function AppLayout({ children }) {
           providers={providersQuery}
         />
 
-        <MobileDrawer isMobileOpen={isMobileOpen} setIsMobileOpen={setIsMobileOpen} />
+        <MobileDrawer
+          isMobileOpen={isMobileOpen}
+          setIsMobileOpen={setIsMobileOpen}
+          isOnline={isOnline}
+          recheck={recheck}
+        />
 
         <main
           id="main-content"

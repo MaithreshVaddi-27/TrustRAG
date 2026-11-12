@@ -36,7 +36,10 @@ function PageLoading() {
 
 /**
  * RequireAuth — redirects to /login if no token is present.
- * Phase 4 will add server-side token validation (/api/v1/auth/me).
+ *
+ * The token is validated client-side for expiry only; the server
+ * validates the signature on every request, and a 401 clears the session
+ * in the Axios interceptor, which drops the user back here.
  */
 function RequireAuth({ children }) {
   const { isAuthenticated } = useAuthStore()

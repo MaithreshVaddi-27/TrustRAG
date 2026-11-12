@@ -45,9 +45,6 @@ export const NAV_GROUPS = [
   },
 ]
 
-/** Flat list, for anything that does not care about grouping. */
-export const NAV_ITEMS = NAV_GROUPS.flatMap((group) => group.items)
-
 /**
  * Initials for the account chip.
  *

@@ -88,13 +88,16 @@ export default function LandingPage() {
           </div>
         </SectionBand>
 
-        <section className="lx-section" aria-labelledby="cta-heading">
+        {/* A plain wrapper, not a section: LandingCTA is already a section
+            with its own heading, and two elements labelled by the same id
+            make two landmarks with the same name. */}
+        <div className="lx-section">
           <div className="lx-container">
             <div data-lx-reveal>
               <LandingCTA />
             </div>
           </div>
-        </section>
+        </div>
       </main>
 
       <LandingFooter />

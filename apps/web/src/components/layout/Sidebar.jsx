@@ -52,7 +52,11 @@ export function Sidebar({
           onClick={toggleSidebar}
           className="lx-collapse-btn"
           title={isCollapsed ? 'Expand sidebar (⌘B)' : 'Collapse sidebar (⌘B)'}
-          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          // WCAG 2.5.3 — an explicit label must contain the visible text.
+          // Expanded, the button reads "Collapse ⌘B", so it takes its name
+          // from its content. Collapsed, it carries only an icon and has
+          // no visible text to match, so the label is the whole name.
+          aria-label={isCollapsed ? 'Expand sidebar' : undefined}
         >
           {isCollapsed ? (
             <PanelLeftOpen size={15} aria-hidden="true" />

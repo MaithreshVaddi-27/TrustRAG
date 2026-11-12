@@ -3,6 +3,7 @@ import { clsx } from 'clsx'
 import { X, ShieldCheck } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { NAV_GROUPS } from './navigation'
+import { EngineTelemetry } from './EngineTelemetry'
 
 const DRAWER_WIDTH = 288
 
@@ -13,10 +14,15 @@ const DRAWER_WIDTH = 288
  * full-viewport takeover: the page underneath stays visible, so the user
  * can see what they are navigating away from.
  *
+ * The drawer also carries the engine readout. The top bar sheds the
+ * engine, the embedding model and the accelerator as it narrows, and on a
+ * phone it keeps only the API state — so the rest of the readout lives
+ * here instead of disappearing.
+ *
  * Focus moves into the drawer when it opens, is trapped inside it while
  * it is open, and returns to the trigger when it closes.
  */
-export function MobileDrawer({ isMobileOpen, setIsMobileOpen }) {
+export function MobileDrawer({ isMobileOpen, setIsMobileOpen, isOnline, recheck }) {
   const panelRef = useRef(null)
   const closeRef = useRef(null)
 
@@ -121,18 +127,22 @@ export function MobileDrawer({ isMobileOpen, setIsMobileOpen }) {
           ))}
         </nav>
 
-        <div className="lx-app-drawer__foot">
-          <ShieldCheck
-            size={15}
-            strokeWidth={1.5}
-            aria-hidden="true"
-            className="shrink-0 text-silver-400"
-          />
-          <div className="min-w-0">
-            <p className="lx-sidebar__status-title truncate">Reliability workbench</p>
-            <p className="lx-sidebar__status-meta truncate">
-              Verify before you answer
-            </p>
+        <div className="lx-app-drawer__status">
+          <EngineTelemetry isOnline={isOnline} recheck={recheck} />
+
+          <div className="lx-app-drawer__foot">
+            <ShieldCheck
+              size={15}
+              strokeWidth={1.5}
+              aria-hidden="true"
+              className="shrink-0 text-silver-400"
+            />
+            <div className="min-w-0">
+              <p className="lx-sidebar__status-title truncate">Reliability workbench</p>
+              <p className="lx-sidebar__status-meta truncate">
+                Verify before you answer
+              </p>
+            </div>
           </div>
         </div>
       </div>

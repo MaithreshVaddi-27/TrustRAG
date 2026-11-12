@@ -8,6 +8,10 @@ import { CAPABILITIES } from './data/capabilities'
  * A vertical list on the left selects the capability; the right column shows
  * what it does and the code that does it. No tab panel chrome, no gradient
  * header — the section reads as a specification.
+ *
+ * The code block scrolls sideways on a narrow screen and holds nothing
+ * focusable, so it takes its own tab stop: without one, a keyboard user
+ * cannot reach the lines that run past the edge.
  */
 export default function CapabilitiesExplorer() {
   const [activeId, setActiveId] = useState(CAPABILITIES[0].id)
@@ -68,7 +72,7 @@ export default function CapabilitiesExplorer() {
           ))}
         </ul>
 
-        <pre className="lx-code">
+        <pre className="lx-code" tabIndex={0}>
           <code>{active.code}</code>
         </pre>
       </div>

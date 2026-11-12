@@ -4,27 +4,33 @@ import { Send, Sparkles, ScrollText, Info } from 'lucide-react'
  * QueryInput — the question.
  *
  * A labelled textarea with a character budget and four quick prompts. The
- * quick prompts are shortcuts, not decoration, so they carry the full
- * prompt in their accessible name and tooltip.
+ * quick prompts are shortcuts, not decoration, so the tooltip carries the
+ * full prompt.
+ *
+ * The visible label is always the opening of the prompt it sends.
+ * WCAG 2.5.3 requires an accessible name to contain the visible text, and
+ * the name here is the full prompt — so "Explain key concepts" and
+ * "Explain the key concepts in this document" would disagree, because the
+ * visible words are not a contiguous run of the name's words.
  */
 const SAMPLE_PRESETS = [
   {
-    text: 'Explain key concepts',
+    text: 'Explain the key concepts',
     full: 'Explain the key concepts in this document',
     icon: Sparkles,
   },
   {
-    text: 'Summarize takeaways',
+    text: 'Summarize the main findings',
     full: 'Summarize the main findings and takeaways',
     icon: ScrollText,
   },
   {
-    text: 'Describe contents',
+    text: 'Describe the knowledge base',
     full: 'Describe the knowledge base and its contents',
     icon: Info,
   },
   {
-    text: 'Important details',
+    text: 'What are the important details',
     full: 'What are the important details I should know?',
     icon: Send,
   },

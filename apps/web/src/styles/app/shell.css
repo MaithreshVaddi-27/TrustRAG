@@ -84,10 +84,21 @@
 }
 
 /* Below 640px the header keeps only the mark. The drawer's wordmark is
- * scoped out of this rule — it has the whole panel to itself. */
+ * scoped out of this rule — it has the whole panel to itself.
+ *
+ * The wordmark is hidden visually, not removed: it is what names the
+ * brand link for a screen reader, and the emblem carries no text. */
 @media (max-width: 639px) {
   .lx-topbar .lx-topbar__wordmark {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 }
 
@@ -682,10 +693,14 @@
   color: var(--color-crimson-400);
 }
 
+.lx-app-drawer__status {
+  margin-top: auto;
+  padding-top: var(--step-6, 1.5rem);
+}
+
 .lx-app-drawer__foot {
   display: flex;
   align-items: center;
   gap: var(--step-2);
-  margin-top: auto;
-  padding-top: var(--step-6, 1.5rem);
+  padding-top: var(--step-4);
 }
