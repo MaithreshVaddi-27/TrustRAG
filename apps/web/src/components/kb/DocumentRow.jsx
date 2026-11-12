@@ -27,8 +27,8 @@ const DocumentRow = memo(function DocumentRow({ doc, onDelete }) {
 
   return (
     <li className="lx-list__item">
-      <div className="lx-record">
-        <div className="lx-record__name">
+      <div className="lx-docrow">
+        <div className="lx-docrow__name">
           <FileText size={14} strokeWidth={1.5} className="shrink-0 text-silver-500" aria-hidden="true" />
           <Link
             to={`/documents/${doc.id}`}
@@ -40,17 +40,17 @@ const DocumentRow = memo(function DocumentRow({ doc, onDelete }) {
           <span className="lx-chip shrink-0">{extension}</span>
         </div>
 
-        <span className="lx-record__value">{doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : '—'}</span>
+        <span className="lx-docrow__value">{doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : '—'}</span>
 
-        <span className="lx-record__value" title={hash || undefined}>
+        <span className="lx-docrow__value" title={hash || undefined}>
           {hash ? hash.slice(0, 12) : '—'}
         </span>
 
-        <span className="lx-record__value">
+        <span className="lx-docrow__value">
           {formatDistanceToNow(new Date(doc.created_at))} ago
         </span>
 
-        <span className="lx-record__value lx-record__value--end">
+        <span className="lx-docrow__value lx-docrow__value--end">
           {isCompleted ? (
             <span className="lx-chip">
               <Check size={11} strokeWidth={2} aria-hidden="true" />
@@ -72,7 +72,7 @@ const DocumentRow = memo(function DocumentRow({ doc, onDelete }) {
           )}
         </span>
 
-        <span className="lx-record__value lx-record__value--end">
+        <span className="lx-docrow__value lx-docrow__value--end">
           <button
             type="button"
             onClick={() => onDelete(doc)}

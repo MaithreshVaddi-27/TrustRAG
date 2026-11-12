@@ -10,12 +10,15 @@ import Verdict from './Verdict'
  * A claim, the evidence it was checked against, and the verdict. The
  * document reference and the content hash are mono because they are
  * measured data, not prose.
+ *
+ * `metric` is a labelled measured value — `{ label, value }` — so the
+ * record never has to invent a number to fill a slot.
  */
 const EvidenceRecord = memo(function EvidenceRecord({
   index,
   claim,
   status = 'unknown',
-  confidence,
+  metric,
   citation,
   hash,
   conflict,
@@ -45,17 +48,17 @@ const EvidenceRecord = memo(function EvidenceRecord({
           </p>
         )}
 
-        {hash && <p className="lx-record__citation">sha256 {hash}</p>}
+        {hash && <p className="lx-record__citation lx-record__hash">sha256 {hash}</p>}
 
         {conflict && <p className="lx-record__conflict">{conflict}</p>}
       </div>
 
       <footer className="lx-record__foot">
         <Verdict status={status} />
-        {confidence && (
+        {metric && (
           <span className="lx-score">
-            entailment
-            <span className="lx-score__value">{confidence}</span>
+            {metric.label}
+            <span className="lx-score__value">{metric.value}</span>
           </span>
         )}
         {score && <span className="lx-score">{score}</span>}

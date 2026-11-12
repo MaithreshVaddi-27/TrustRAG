@@ -52,10 +52,13 @@ export function ReliabilityChart({ analyses, historyWindow, setHistoryWindow }) 
         time: format(createdDate, 'HH:mm'),
         fullTime: format(createdDate, 'MMM dd, HH:mm:ss'),
         score: scoreValue,
-        threshold: 75,
+        threshold: 50,
         status:
           analysis.reliability.status ||
-          (scoreValue >= 75 ? 'TRUSTED' : scoreValue > 0 ? 'UNCERTAIN' : 'FAILED'),
+          // The API is the authority on TRUSTED, which needs the coverage and
+          // contradiction rates as well as the score. Without it, the score
+          // can only tell us the run was above the floor or below it.
+          (scoreValue >= 50 ? 'UNCERTAIN' : 'FAILED'),
         query: analysis.query || 'Untitled analysis',
       }
     })
@@ -71,7 +74,7 @@ export function ReliabilityChart({ analyses, historyWindow, setHistoryWindow }) 
             Reliability progression
           </h2>
           <p className="lx-micro mt-1">
-            Delivered answers against the 75% safety threshold
+            Delivered answers against the 50% reliability floor
           </p>
         </div>
 
@@ -93,7 +96,7 @@ export function ReliabilityChart({ analyses, historyWindow, setHistoryWindow }) 
 
       <div className="lx-panel-block__body">
         {timelineData.length ? (
-          <ReliabilityAreaChart data={timelineData} threshold={75} />
+          <ReliabilityAreaChart data={timelineData} threshold={50} />
         ) : (
           <div className="lx-empty">
             <Activity size={22} strokeWidth={1.5} className="lx-empty__icon" aria-hidden="true" />

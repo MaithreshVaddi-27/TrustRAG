@@ -61,7 +61,14 @@ export default function BenchmarksSection() {
           </div>
         ))}
 
-        <p className="lx-bench__caption">{active.note}</p>
+        <p className="lx-bench__caption">
+          {active.note}{' '}
+          {active.link && (
+            <a href={active.link.href} target="_blank" rel="noreferrer noopener">
+              {active.link.linkText}
+            </a>
+          )}
+        </p>
       </div>
     </>
   )

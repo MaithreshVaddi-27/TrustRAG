@@ -9,6 +9,19 @@
   border-top: 1px solid var(--rule);
 }
 
+/* The heading of the active table, and the sentence that says what the
+ * numbers are before any of them are read. */
+.lx-bench__head {
+  display: grid;
+  gap: var(--step-3);
+  padding-block: var(--step-5) var(--step-3);
+}
+
+.lx-bench__desc {
+  max-width: 78ch;
+  color: var(--color-silver-500);
+}
+
 .lx-bench__row {
   display: grid;
   gap: var(--step-2) var(--step-6);

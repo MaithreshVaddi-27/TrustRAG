@@ -1088,13 +1088,17 @@ select.lx-control {
   }
 }
 
-/* ── Record row ────────────────────────────────────────────────────────────
+/* ── Document row ──────────────────────────────────────────────────────────
  * A record with several measured columns: a name and then figures that
  * line up in columns. The columns collapse to a stacked list on narrow
  * screens, where the name carries the row.
+ *
+ * The vocabulary is prefixed, not shared. `.lx-record` was already the
+ * landing page's record card, and a shared name meant this grid silently
+ * overwrote it — the hero's claim column collapsed to one word per line.
  * ─────────────────────────────────────────────────────────────────────────── */
 
-.lx-record {
+.lx-docrow {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--step-1) var(--step-4);
@@ -1102,20 +1106,20 @@ select.lx-control {
 }
 
 @media (min-width: 768px) {
-  .lx-record {
+  .lx-docrow {
     grid-template-columns:
       minmax(0, 2fr) 5rem 8rem 8rem 7rem 3rem;
   }
 }
 
-.lx-record__name {
+.lx-docrow__name {
   display: flex;
   align-items: center;
   gap: var(--step-2);
   min-width: 0;
 }
 
-.lx-record__value {
+.lx-docrow__value {
   font-family: var(--typeface-mono);
   font-size: var(--size-micro);
   letter-spacing: var(--tracking-micro);
@@ -1126,7 +1130,7 @@ select.lx-control {
   white-space: nowrap;
 }
 
-.lx-record__value--end {
+.lx-docrow__value--end {
   display: flex;
   justify-content: flex-end;
 }

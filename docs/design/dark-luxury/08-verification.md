@@ -100,7 +100,7 @@ read from the running application.
 | `npm run test` | 14 files, 69 tests, all pass |
 | `npm run build` | Succeeds in ~2.1s |
 | Lighthouse — every route, desktop and mobile | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
-| Lighthouse — landing | SEO 100 |
+| Lighthouse — landing | SEO 100 · Performance 100 desktop, 99 mobile (LCP 2.0 s) |
 | Lighthouse — SEO on the other routes | 63 — `robots.txt` disallows the authenticated routes on purpose |
 | Layout stability | Cumulative Layout Shift 0 on every route at every width, measured rather than assumed |
 | Responsive | No page overflow and no top-bar overflow at 1440 / 1280 / 1024 / 768 / 390 / 320 |
@@ -129,17 +129,17 @@ until the response model matches the stored documents.
 
 | Chunk | Raw | Gzipped |
 |---|---|---|
-| LandingPage | 35.1 kB | 10.7 kB |
-| PlaygroundPage | 37.8 kB | 10.7 kB |
-| AppLayout | 22.0 kB | 6.8 kB |
-| DashboardPage | 20.3 kB | 6.8 kB |
-| SettingsPage | 16.8 kB | 4.5 kB |
-| KnowledgeBasesPage | 15.2 kB | 4.6 kB |
+| LandingPage | 42.3 kB | 12.7 kB |
+| PlaygroundPage | 38.4 kB | 10.9 kB |
+| AppLayout | 21.9 kB | 6.9 kB |
+| DashboardPage | 28.3 kB | 8.3 kB |
+| SettingsPage | 18.0 kB | 4.7 kB |
+| KnowledgeBasesPage | 14.5 kB | 4.3 kB |
 | FormattedAnswer (lazy) | 158.7 kB | 48.1 kB |
 | query-vendor | 41.7 kB | 12.6 kB |
 | http-vendor | 51.4 kB | 19.5 kB |
-| ui-vendor | 52.7 kB | 12.5 kB |
-| react-vendor | 179.9 kB | 59.2 kB |
+| ui-vendor | 51.1 kB | 12.1 kB |
+| react-vendor | 180.8 kB | 59.6 kB |
 
 Two vendor chunks are gone. `chart-vendor` (386 kB) was replaced by two
 purpose-built SVG charts, and `motion-vendor` (131 kB) by CSS transitions

@@ -43,6 +43,31 @@
   max-width: 60ch;
 }
 
+/* ── The answer as the system emitted it ────────────────────────────────────
+ * Verbatim, including the segment markers the model wrote. Mono, because it
+ * is a transcript rather than prose.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-ledger__answer {
+  padding: var(--step-5);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.lx-ledger__answer-label {
+  color: var(--color-silver-500);
+  margin-bottom: var(--step-3);
+}
+
+.lx-ledger__answer-body {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: var(--typeface-mono);
+  font-size: var(--size-body-sm);
+  line-height: 1.65;
+  color: var(--color-silver-200);
+  max-width: 88ch;
+}
+
 /* ── Claim rows ───────────────────────────────────────────────────────────── */
 
 .lx-claim {
@@ -89,13 +114,25 @@
   color: var(--color-silver-500);
 }
 
-.lx-claim__conflict {
+/* The verifier's own reasoning, kept with the claim it belongs to. It is the
+ * reason the verdict can be re-read instead of taken on trust. */
+.lx-claim__explanation {
   margin-top: var(--step-3);
   padding-left: var(--step-3);
-  border-left: 1px solid rgba(212, 21, 20, 0.5);
+  border-left: 1px solid var(--rule);
   font-size: var(--size-body-sm);
   line-height: var(--leading-body-sm);
   color: var(--color-silver-400);
+  max-width: 84ch;
+}
+
+.lx-claim--contradicted .lx-claim__explanation {
+  border-left-color: rgba(212, 21, 20, 0.5);
+}
+
+/* A run that abstained asserted nothing, so there is nothing to audit. */
+.lx-claim--empty {
+  background-color: rgba(8, 8, 8, 0.35);
 }
 
 .lx-claim__aside {
@@ -112,36 +149,86 @@
   }
 }
 
-/* ── Recovery band ────────────────────────────────────────────────────────── */
+/* ── Measured run figures ───────────────────────────────────────────────────
+ * The numbers the harness recorded for this run. A definition list, because
+ * a term and its value are two different things.
+ * ─────────────────────────────────────────────────────────────────────────── */
 
-.lx-recovery {
+.lx-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: var(--step-4) var(--step-5);
+  margin: 0;
+  padding: var(--step-5);
+  border-top: 1px solid var(--rule-faint);
+  background-color: var(--surface-raised);
+}
+
+.lx-metric {
+  display: grid;
+  gap: var(--step-1);
+  min-width: 0;
+}
+
+.lx-metric__value {
+  margin: 0;
+  font-family: var(--typeface-mono);
+  font-size: var(--size-body-sm);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-100);
+}
+
+/* ── Outcome band ───────────────────────────────────────────────────────────
+ * What the run finally did. The seal is crimson when something was withheld
+ * and silver when the answer was grounded.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-outcome {
   padding: var(--step-5);
   background-color: rgba(8, 8, 8, 0.5);
   border-top: 1px solid var(--rule);
 }
 
-.lx-recovery__head {
+.lx-outcome__head {
   display: flex;
   align-items: center;
   gap: var(--step-2);
   margin-bottom: var(--step-3);
 }
 
-.lx-recovery__action {
+.lx-outcome__body {
   font-size: var(--size-body-sm);
   line-height: var(--leading-body-sm);
   color: var(--color-silver-400);
-  max-width: 72ch;
+  max-width: 82ch;
 }
 
-.lx-recovery__healed {
+.lx-outcome__audit {
   margin-top: var(--step-4);
-  padding-top: var(--step-4);
+  padding-top: var(--step-3);
   border-top: 1px solid var(--rule-faint);
-  font-family: var(--typeface-display);
-  font-size: 1.0625rem;
-  line-height: 1.45;
-  color: var(--color-silver-100);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  line-height: 1.6;
+  color: var(--color-silver-500);
+  max-width: 96ch;
+}
+
+/* ── Provenance ─────────────────────────────────────────────────────────────
+ * Which run this is. Mono, quiet, and last — it is the footnote to
+ * everything above it.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-ledger__provenance {
+  margin: 0;
+  padding: var(--step-3) var(--step-5);
+  border-top: 1px solid var(--rule);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
 }
 
 /* ── Scenario switcher ────────────────────────────────────────────────────── */

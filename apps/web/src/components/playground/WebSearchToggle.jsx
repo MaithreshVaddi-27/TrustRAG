@@ -6,7 +6,7 @@ import { Globe, Sparkles } from 'lucide-react'
  * A switch, not a card. When it is on, the panel below explains what
  * changes: which provider grounds the search, which MCP tools become
  * available, and that the agent may invoke web retrieval on its own when
- * the knowledge base is not confident enough.
+ * the knowledge base cannot ground the answer.
  */
 export function WebSearchToggle({ enableWebSearch, setEnableWebSearch, loading, selectedProvider }) {
   const isLocalProvider = ['ollama', 'llama_cpp', 'mlx'].includes(selectedProvider)
@@ -59,7 +59,7 @@ export function WebSearchToggle({ enableWebSearch, setEnableWebSearch, loading, 
             </div>
             <div className="lx-deflist__row">
               <dt className="lx-deflist__key">Active MCP tools</dt>
-              <dd className="lx-deflist__value">tavily_search · verify_claim</dd>
+              <dd className="lx-deflist__value">tavily_search · trustrag_verify_claim</dd>
             </div>
           </dl>
 
@@ -72,8 +72,9 @@ export function WebSearchToggle({ enableWebSearch, setEnableWebSearch, loading, 
                 aria-hidden="true"
               />
               <span>
-                Autonomous tool calling: the agent invokes web retrieval when
-                knowledge base confidence falls below 75%.
+                Autonomous tool calling: with web search enabled, the agent may
+                reach for the public web to ground an answer the knowledge base
+                cannot support on its own.
               </span>
             </p>
           )}

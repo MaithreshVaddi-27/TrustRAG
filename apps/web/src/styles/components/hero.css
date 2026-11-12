@@ -33,6 +33,13 @@
 
 /* ── Copy column ──────────────────────────────────────────────────────────── */
 
+/* The column is a grid child, so it needs to be allowed to shrink — without
+ * this the headline sets the column's minimum width and pushes the preview
+ * panel off the right edge on narrow screens. */
+.lx-hero__copy {
+  min-width: 0;
+}
+
 .lx-hero__headline {
   /* The three lines are set deliberately in the content file, so the
    * measure only has to stop them overflowing at narrow widths. */
@@ -119,6 +126,18 @@
   }
 }
 
+/* The provenance note under the records — what these numbers are and where
+ * they came from, in the same voice as the mono headers above. */
+.lx-preview__caption {
+  margin-top: var(--step-5);
+  padding-top: var(--step-4);
+  border-top: 1px solid var(--rule-faint);
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-500);
+  max-width: 60ch;
+}
+
 /* ── The evidence record ──────────────────────────────────────────────────── */
 
 .lx-record {
@@ -161,6 +180,38 @@
 
 .lx-record--contradicted .lx-record__text {
   color: var(--color-silver-300);
+}
+
+/* The document reference and the content hash. These are measured facts, so
+ * they are set in mono and kept quiet — the claim above them is the prose. */
+.lx-record__citation {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  margin-top: var(--step-3);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+}
+
+.lx-record__citation svg {
+  flex-shrink: 0;
+}
+
+.lx-record__hash {
+  margin-top: var(--step-1);
+}
+
+/* The verifier's own reasoning when it contradicted the claim. Crimson
+ * carries the edge, never the whole paragraph. */
+.lx-record__conflict {
+  margin-top: var(--step-4);
+  padding-left: var(--step-3);
+  border-left: 1px solid rgba(212, 21, 20, 0.5);
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-400);
 }
 
 .lx-record__evidence {
@@ -263,8 +314,4 @@
 .lx-score__value {
   font-size: 0.9375rem;
   color: var(--color-silver-100);
-}
-
-.lx-record--contradicted .lx-score__value {
-  color: var(--color-crimson-300);
 }

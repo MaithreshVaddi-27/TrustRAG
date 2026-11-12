@@ -19,6 +19,7 @@ implemented and verified before the next begins.
 | P4.9 | Settings | shell | Done |
 | P4.10 | Authentication | shell | Done |
 | P4.11 | Layout stability, programme close | all | Done |
+| P4.12 | Landing page — content truth | — | Done |
 | P4.3 | Knowledge bases | shell |
 | P4.4 | Documents | knowledge bases |
 | P4.5 | Playground | shell, knowledge bases |
@@ -668,6 +669,128 @@ one moves.
 never a status; it was a timestamp about an action, and it belonged with
 the button that does it. The chip now says one thing — Live or Paused —
 and its width no longer depends on the clock.
+
+---
+
+## P4.12 — Landing page: content truth
+
+The landing page is the one surface a visitor sees before any of the
+workbench exists. Its job is to say what the product does, and the
+standard for that is higher than for an internal screen: every figure
+must have a source, and every demonstration must be a real run.
+
+### What was wrong
+
+| # | Problem | Severity |
+|---|---|---|
+| 1 | **The demonstration runs were invented.** Three scenarios claimed to be "real runs from the fixture corpus" and cited three PDFs — `trustrag_sys_arch_v2.pdf`, `langgraph_agent_spec.pdf`, `vector_store_integrity.pdf` — that do not exist in this repository. The corpus is seven plain-text and Markdown files. | Critical |
+| 2 | **The verifier was described as a cross-encoder.** Pipeline stage 4 said "a cross-encoder scores each claim"; a capability panel was titled "Batch cross-encoder entailment audit" and its code sample imported `EntailmentAuditor(model="bge-reranker-v2-m3")`. The verifier is natural-language inference served by the local `ollama/gemma3:1b`. The cross-encoder ships as a disabled reranker (`reranker_enabled: false`) and is not in the verification path. | Critical |
+| 3 | **The abstention threshold was wrong.** The capabilities panel and one scenario claim used `0.70`. `models.yaml` sets `reliability.abstain_below: 0.50`. | High |
+| 4 | **The code samples imported modules that do not exist.** `from trustrag.agent import RecoveryGraph`, `from trustrag.verification import Decomposer`, `from trustrag.retrieval import HybridRetriever`, `from trustrag.ingestion import IntegrityGuard`. | High |
+| 5 | **The benchmark table was partly fabricated.** "TrustRAG hybrid RRF 114 ms" and "Dense RAG, no audit 98 ms" were labelled as measured on the fixture corpus; the measured p50 is 5,145 ms. The three competitor grounding figures were labelled "Published" with no publication. The memory tab's index sizes had no measurement behind them. | Critical |
+| 6 | **Two links pointed nowhere.** The hero's "Read the methodology" went to `/docs/evaluation`, which is not a route. The footer's "Licence" and "Documentation" both went to `/settings`, which contains neither. | High |
+| 7 | **The header's "Architecture" anchor was dead.** `#layers` had no section behind it; the page's sections are `pipeline`, `simulation`, `capabilities`, `benchmarks`, `compare`. | Medium |
+| 8 | **The hero's record card had collapsed.** P4.4 introduced `.lx-record` for the knowledge-base document row, which silently overwrote the landing page's `.lx-record` grid. The claim column rendered one word per line. | High |
+| 9 | **Five landing classes had no rule at all.** `lx-bench__head`, `lx-bench__desc`, `lx-hero__copy`, `lx-record__citation`, `lx-record__conflict`. The citation icon sat on a line of its own; the contradiction text had no crimson edge. | Medium |
+| 10 | **The footer named the wrong licence.** The repository is MIT; the footer said Apache-2.0. | Medium |
+
+### What changed
+
+**The runs are real.** Four measured runs from the frozen 27-query
+reliability fixture, each opened as a case file: the query, the answer as
+the system emitted it, the atomic claims it was split into, the
+verifier's verdict and its own reasoning on each claim, the run's
+measured figures, and the provenance line naming the run.
+
+| Run | Source | What it shows |
+|---|---|---|
+| Temporal audit | `baseline` 1.29, gemma3:1b, analysis `6aedce9e…` | Five claims, all supported, reliability 1.00, 17,117 ms |
+| Superseded spec | `baseline` 1.29, gemma3:1b, analysis `6aedceb9…` | The expired 2025 specification was filtered out of retrieval on its effective window; the answer cites the current one |
+| Abstention | `baseline` 1.29, gemma3:1b, analysis `6aedcee7…` | Zero claims, zero cited segments, reliability 0.00 — a refusal with its reason attached |
+| Contradiction | `baseline` 1.28, mlx Qwen3-4B, analysis `6aec435e…` | One contradicted claim with the verifier's reasoning; the run withheld an answer, and the harness records that the outcome did not match |
+
+Each claim carries the document it was checked against, the real retrieval
+score that document held in that run, and the SHA-256 root hash recorded
+at ingestion. Nothing on the page is a reconstruction.
+
+**The descriptions now match the implementation.** NLI, not a
+cross-encoder. `abstain_below: 0.50`, not 0.70. Two recovery attempts,
+not "two-iteration bound". The code samples import the modules the
+system actually uses — `app.rag.verification.pipeline.nli`,
+`app.rag.retrieval.retriever`, `app.rag.verification.integrity`,
+`app.rag.agent.graph.build`, `app.mcp.server`.
+
+**The benchmarks are one run, fully sourced.** Three tables — grounding,
+latency, coverage — and every figure in them comes from the same
+`trustrag_baseline_reliability_phase1_1.29` run. The competitor column
+is gone, because there was no measurement behind it.
+
+**Every link resolves.** The hero's methodology link and the footer's
+licence, methodology and source links point at the repository, which is
+public. The dead `#layers` anchor points at the runs section. The footer
+names MIT.
+
+**The class collision is gone.** The document row's vocabulary is
+`.lx-docrow`, which it should have been from P4.4. The landing page's
+`.lx-record` belongs to the landing page.
+
+**Five missing rules were written**, and the two dead ones
+(`.lx-recovery`, `.lx-claim__conflict`) were deleted.
+
+### The same defect, elsewhere in the frontend
+
+Auditing the landing page turned up the fabricated-threshold defect in
+five more places in the application. These were copy corrections, not
+redesigns, and each was checked against `models.yaml` and
+`app/rag/verification/verdict.py` before it was changed.
+
+| Where | Was | Now |
+|---|---|---|
+| `dashboard/PipelineArchitecture.jsx` | Stage 04 tagged "Cross-encoder", threshold `0.70` | Tagged "NLI", "Abstain below 0.50" |
+| `dashboard/ReliabilityChart.jsx` | Threshold hairline and fallback status at 75 | At 50, the `abstain_below` boundary; the fallback no longer claims TRUSTED, which only the coverage and contradiction rates can establish |
+| `pages/DashboardPage.jsx` | "Threshold 75%" | "Threshold 50%" |
+| `pages/ConflictsPage.jsx` | "A refutation score above 0.70 triggers query reformulation" | A contradicted claim pushes the contradiction rate past the evidence gate, and the run enters query reformulation |
+| `workbench/EmptyState.jsx` | "when reliability drops below 75%" | "when a run fails the evidence-coverage and contradiction gate" |
+| `pages/ClaimsPage.jsx` | "with a confidence of 0.70 or above" | The NLI verdict names the segments that carry it, and the reasoning is stored |
+| `playground/WebSearchToggle.jsx` | "invokes web retrieval when knowledge base confidence falls below 75%"; tool named `verify_claim` | Web search is a switch, not a confidence trigger; the tool is `trustrag_verify_claim` |
+
+The real rules, from `compute_verdict` in
+`app/rag/verification/verdict.py`: coverage `≥ 0.80` and contradiction
+rate `≤ 0.20` to PASS; the reliability score is
+`coverage × (1 − contradiction_rate)`; below `abstain_below` (0.50) the
+run is FAILED rather than UNCERTAIN; and the recovery loop fires when the
+verdict is not PASS, not when a score crosses a single line.
+
+### The honest parts
+
+The page states three things a marketing page would usually hide:
+
+- The temporal audit's third and fourth claims carry verifier reasoning
+  that misattributes a segment. It is shown verbatim, because the point
+  of storing the reasoning is that it can be read.
+- The contradiction run abstained on a query the dataset expected to be
+  answered. The harness record says so.
+- The abstention's diagnosis is cited from the Phase 1 abstention audit,
+  which ran against a different baseline, and says which one.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean — 0 warnings, 0 errors |
+| `npm run test` | 14 files, 69 tests, all pass |
+| `npm run build` | Succeeds in ~2.1 s |
+| Lighthouse — landing, desktop | Performance 100 · Accessibility 100 · Best Practices 100 · SEO 100 · Agentic Browsing 100 |
+| Lighthouse — landing, mobile | Performance 99 · Accessibility 100 · Best Practices 100 · SEO 100 · Agentic Browsing 100 |
+| Layout stability | CLS 0 on the landing page |
+| Responsive | No page overflow at 1440 / 1280 / 1024 / 768 / 390 / 320; only the code block scrolls, and it scrolls itself |
+| Landmarks | One `<main>`, one `<h1>` |
+| Focus | 2 px Laser Crimson on every visible control at 1440 and 390 |
+| Invisible text | None |
+| Target size | Only inline text links below 24 px, covered by the WCAG 2.5.8 inline exception |
+| Console | 0 errors, 0 warnings |
+| Knowledge-base document row | Six columns in the correct order after the `.lx-docrow` rename |
+| Threshold corrections | Seven copy fixes across the dashboard, claims, conflicts and playground, each checked against `models.yaml` and `compute_verdict` |
 
 ---
 

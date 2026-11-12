@@ -51,7 +51,7 @@ export default function LandingPage() {
         <SectionBand
           id="simulation"
           title="Watch a claim fail its check."
-          lede="Three runs from the system’s own fixture corpus. Each one shows the claims, the verdict on each, and the recovery that followed."
+          lede="Four measured runs from the frozen 27-query reliability fixture. Each one shows the answer as the system emitted it, the claims it was split into, the verifier’s verdict and reasoning on each, and what the run finally did."
         >
           <div data-lx-reveal>
             <SimulationSandbox />
@@ -71,7 +71,7 @@ export default function LandingPage() {
         <SectionBand
           id="benchmarks"
           title="What it measures."
-          lede="Figures from the internal reliability fixture and from published literature, with the provenance of each stated."
+          lede="Every figure below comes from one measured run of the evaluation harness, and the caption under each table names that run."
         >
           <div data-lx-reveal>
             <BenchmarksSection />

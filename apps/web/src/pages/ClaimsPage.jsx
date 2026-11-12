@@ -12,12 +12,12 @@ const NLI_CLASSES = [
   {
     icon: Brain,
     title: 'Supported — entailment',
-    body: 'The proposition is explicitly substantiated by the cited evidence spans, with a confidence of 0.70 or above.',
+    body: 'The proposition is explicitly substantiated by the cited evidence spans. The verdict names the segments that carry it, and the reasoning is stored with the claim.',
   },
   {
     icon: Brain,
     title: 'Contradicted — refutation',
-    body: 'The assertion directly conflicts with the grounded evidence. This triggers the automatic healing loop.',
+    body: 'The assertion directly conflicts with the grounded evidence. A contradiction counts against the run’s reliability, and a run that falls below the abstention threshold enters the recovery loop.',
     tone: 'alarm',
   },
   {

@@ -41,7 +41,7 @@ const PIPELINE_PREVIEW = [
     step: '05',
     title: 'Closed-loop healing',
     tag: 'LangGraph StateGraph',
-    desc: 'Triggers a query rewrite or context expansion when reliability drops below 75%.',
+    desc: 'Triggers a query rewrite or context expansion when a run fails the evidence-coverage and contradiction gate.',
     icon: Sparkles,
   },
 ]

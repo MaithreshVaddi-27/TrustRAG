@@ -23,7 +23,7 @@ const CONFLICT_KINDS = [
   {
     icon: ShieldCheck,
     title: 'Entailment refutation guard',
-    body: 'A refutation score above 0.70 triggers query reformulation and retrieves corroborating citations to resolve the ambiguity.',
+    body: 'A contradicted claim pushes the run’s contradiction rate past what the evidence gate allows, and the run enters query reformulation to retrieve corroborating citations.',
   },
 ]
 

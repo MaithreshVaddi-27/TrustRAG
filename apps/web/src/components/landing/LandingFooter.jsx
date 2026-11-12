@@ -43,14 +43,19 @@ export default function LandingFooter() {
           <ul className="flex flex-wrap items-center gap-x-6 gap-y-2 list-none">
             {FOOTER.legal.map((link) => (
               <li key={link.label}>
-                <Link to={link.to} className="lx-footer__link">
+                <a
+                  href={link.href}
+                  className="lx-footer__link"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
                   {link.label}
-                </Link>
+                </a>
               </li>
             ))}
           </ul>
 
-          <span className="lx-micro">Apache-2.0</span>
+          <span className="lx-micro">MIT</span>
         </div>
       </div>
     </footer>

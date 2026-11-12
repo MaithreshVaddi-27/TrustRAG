@@ -93,7 +93,7 @@ describe('DashboardPage metrics', () => {
     await waitFor(() => {
       expect(screen.getByText('80.0%')).toBeInTheDocument()
     })
-    expect(screen.getByText(/Threshold 75% · 2 answers/)).toBeInTheDocument()
+    expect(screen.getByText(/Threshold 50% · 2 answers/)).toBeInTheDocument()
   })
 
   it('does not average an abstention into the reliability mean', async () => {

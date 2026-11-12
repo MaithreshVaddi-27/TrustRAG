@@ -42,9 +42,9 @@ export default function HeroSection() {
           </p>
         </div>
 
-        <div className="lx-preview lx-enter" aria-label="An example verification record">
+        <div className="lx-preview lx-enter" aria-label="Two claims from measured verification runs">
           <div className="lx-preview__chrome">
-            <span className="lx-preview__title">verification run · 4a71c2</span>
+            <span className="lx-preview__title">verification ledger · measured runs</span>
             <span className="lx-micro">
               2 claims · <span className="lx-signal">1 contradicted</span>
             </span>
@@ -54,6 +54,11 @@ export default function HeroSection() {
             {HERO_RECORDS.map((record) => (
               <EvidenceRecord key={record.index} {...record} />
             ))}
+
+            <p className="lx-preview__caption">
+              Two claims taken from the frozen 27-query reliability baseline. The document
+              reference and the SHA-256 root hash are the real ones, recorded at ingestion.
+            </p>
           </div>
         </div>
       </div>

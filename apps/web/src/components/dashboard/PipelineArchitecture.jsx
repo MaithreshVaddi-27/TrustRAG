@@ -46,9 +46,9 @@ const PHASES = [
     title: 'Multi-perspective NLI',
     icon: ShieldCheck,
     desc: 'A zero-temperature entailment model verifies every claim against the chunks it cites.',
-    tags: ['Cross-encoder', 'Zero temperature'],
+    tags: ['NLI', 'Zero temperature'],
     spec: [
-      { key: 'Threshold', value: '0.70' },
+      { key: 'Abstain below', value: '0.50' },
       { key: 'Matrix', value: 'Claim by chunk' },
     ],
   },

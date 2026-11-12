@@ -186,8 +186,8 @@ export default function DashboardPage() {
           meta:
             meanScore == null
               ? 'No verified answers yet'
-              : `Threshold 75% · ${answeredRuns.length} ${answeredRuns.length === 1 ? 'answer' : 'answers'}`,
-          alarm: meanScore != null && meanScore * 100 < 75,
+              : `Threshold 50% · ${answeredRuns.length} ${answeredRuns.length === 1 ? 'answer' : 'answers'}`,
+          alarm: meanScore != null && meanScore * 100 < 50,
         },
         claims: {
           value: totalClaims,
