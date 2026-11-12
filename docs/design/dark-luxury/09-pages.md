@@ -15,6 +15,7 @@ implemented and verified before the next begins.
 | P4.4 | Documents | shell | Done |
 | P4.5 | Playground | shell | Done |
 | P4.6 | Evidence, claims, conflicts | shell | Done |
+| P4.8 | Execution trace | shell | Done |
 | P4.3 | Knowledge bases | shell |
 | P4.4 | Documents | knowledge bases |
 | P4.5 | Playground | shell, knowledge bases |
@@ -486,6 +487,54 @@ it is about is legible first.
 | `npm run build` | Succeeds |
 | Lighthouse — desktop and mobile, all three pages | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
 | Design review | The populated evidence vault and the populated claims list were both reviewed with real-shaped records, since the backend cannot currently serve them |
+
+---
+
+## P4.8 — Execution trace
+
+The record of one run, recovered from the trace API when the live stream
+is gone.
+
+### What was wrong
+
+| # | Problem | Severity |
+|---|---|---|
+| 1 | **The trace had no subject.** The page listed events and the raw analysis id. It never said which question was asked, which collection answered it, what the verifier concluded, or which model produced it. A log without its run is a log without meaning. | High |
+| 2 | **The page ended with implementation notes.** "Persisted in MongoDB. The SSE stream is recovered from the trace API if it disconnected" is documentation about the implementation, printed on the user's surface on every visit. | Medium |
+| 3 | A trace that does not exist was requested three times. | Low |
+
+### What changed
+
+**The run comes before the events.** A summary strip names the collection,
+the model that answered, the number of events and the stage time the
+pipeline measured — the sum of the durations it reported for its own
+stages, labelled as exactly that. The heading carries the question.
+
+**The verdict is stated.** A run that abstained says so on the trace page,
+not only on the dashboard.
+
+**The implementation note is gone**, replaced by a sentence about what the
+durations mean — a fact about the numbers on the page.
+
+**A missing trace is asked for once.** A 404 will not become a 404 on the
+third attempt.
+
+### Files
+
+| File | Change |
+|---|---|
+| `pages/TracePage.jsx` | Rebuilt around the run: summary strip, the question, the verdict |
+| `pages/TracePage.test.jsx` | New — 3 tests over the run's context |
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean |
+| `npm run test` | 13 files, 63 tests, all pass (3 new) |
+| `npm run build` | Succeeds |
+| Lighthouse — desktop and mobile | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
+| Responsive | No overflow at 1440 or 390; no target under 24px |
 
 ---
 
