@@ -47,7 +47,13 @@ export default function EvidencePage() {
         <PageHeader
           title="Evidence"
           accent="vault"
-          countLabel={`${evidence.length} ${evidence.length === 1 ? 'record' : 'records'}`}
+          countLabel={
+            isError
+              ? 'unavailable'
+              : isLoading
+                ? null
+                : `${evidence.length} ${evidence.length === 1 ? 'record' : 'records'}`
+          }
           description="Retrieved evidence chunks across every analysis, with provenance, score breakdown and integrity audit."
           actions={
             <Link to="/playground" className="lx-btn lx-btn--primary">

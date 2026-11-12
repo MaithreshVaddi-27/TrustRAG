@@ -14,6 +14,7 @@ implemented and verified before the next begins.
 | P4.3 | Knowledge bases | shell | Done |
 | P4.4 | Documents | shell | Done |
 | P4.5 | Playground | shell | Done |
+| P4.6 | Evidence, claims, conflicts | shell | Done |
 | P4.3 | Knowledge bases | shell |
 | P4.4 | Documents | knowledge bases |
 | P4.5 | Playground | shell, knowledge bases |
@@ -430,6 +431,61 @@ to be.
 | Run control | Visible without scrolling at 1440, 1280, 1024, 390 and 320 |
 | Behaviour | A full analysis run exercised end to end — the answer renders, the four tabs open, the trace streams, the export is offered |
 | Console | 0 errors, 0 warnings |
+
+---
+
+## P4.6 — Evidence, claims and conflicts
+
+The audit vault. What the system retrieved, what it concluded, and where
+two sources disagree.
+
+### What was wrong
+
+| # | Problem | Severity |
+|---|---|---|
+| 1 | **The vault never finished loading.** The evidence and claim endpoints can take minutes to fail. The page showed a spinner for all of it, and the count said "0 records" while the request was still in flight. | High |
+| 2 | **A failed load was reported as a count of zero.** "0 records" is a claim about the corpus. When the request failed, the interface knew nothing about the corpus. | High |
+| 3 | **The evidence card inverted its own hierarchy.** A passage is the subject of the card, but its five score rows took more vertical space than the passage itself — five rows of metadata above and below one line of text. | Medium |
+| 4 | Three slow failures were retried three times over. A local read that takes a minute to fail is broken, not transient. | Medium |
+
+### What changed
+
+**The wait is bounded, and the failure is fast.** The client times out at ten
+seconds and the vault reads make one attempt. The error state carries a
+Retry button for the reader who wants to try again.
+
+**An unknown count is not a count of zero.** The header chip reads
+"unavailable" when the load failed, and nothing at all while it is still in
+flight.
+
+**The passage leads.** The scores, the retrieval method and the validity
+window are a strip of figures under the passage — label above, number
+below — instead of five key/value rows that outweighed the text they
+describe. The evidence card is roughly half the height it was, and what
+it is about is legible first.
+
+### Files
+
+| File | Change |
+|---|---|
+| `pages/EvidencePage.jsx` | The count chip is honest about an unreadable vault |
+| `pages/ClaimsPage.jsx` | The same |
+| `pages/ConflictsPage.jsx` | The same |
+| `components/workbench/EvidenceChunk.jsx` | The score breakdown is a figure strip, not a list of rows |
+| `components/workbench/EvidenceViewer.jsx` | "Could not be loaded" is not "nothing was retrieved" |
+| `styles/app/surfaces.css` | The `.lx-figures` strip |
+| `lib/api.js` | The timeout is ten seconds, not thirty |
+| `services/api.js` | The vault reads make one attempt |
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean |
+| `npm run test` | 12 files, 60 tests, all pass |
+| `npm run build` | Succeeds |
+| Lighthouse — desktop and mobile, all three pages | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
+| Design review | The populated evidence vault and the populated claims list were both reviewed with real-shaped records, since the backend cannot currently serve them |
 
 ---
 

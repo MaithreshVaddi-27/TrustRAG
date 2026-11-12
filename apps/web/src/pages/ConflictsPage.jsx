@@ -48,7 +48,13 @@ export default function ConflictsPage() {
         <PageHeader
           title="Source and claim"
           accent="conflicts"
-          countLabel={`${conflicts.length} ${conflicts.length === 1 ? 'conflict' : 'conflicts'}`}
+          countLabel={
+            isError
+              ? 'unavailable'
+              : isLoading
+                ? null
+                : `${conflicts.length} ${conflicts.length === 1 ? 'conflict' : 'conflicts'}`
+          }
           description="Contradictions and integrity flags detected across document versions and queries."
           actions={
             <Link to="/playground" className="lx-btn lx-btn--primary">

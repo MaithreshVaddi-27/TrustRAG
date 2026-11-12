@@ -21,7 +21,8 @@ const api = axios.create({
   // leave the interface waiting on a response that is never coming — the
   // analysis stream waited on an evidence endpoint that took minutes to
   // fail, and the run stayed on "Pipeline running…" the whole time.
-  timeout: 30_000,
+  // Ten seconds is a thousand times the latency of a healthy local read.
+  timeout: 10_000,
 })
 
 // Attach the JWT (if present) to every outgoing request.

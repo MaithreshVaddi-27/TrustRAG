@@ -87,18 +87,25 @@ export const analysisService = {
 }
 
 // ─── Evidence ──────────────────────────────────────────────────────────────────
+// The vault reads make one attempt. These endpoints can take minutes to
+// fail, and three attempts of a slow failure is three minutes of spinner
+// before the reader is told anything. The error state carries a Retry
+// button for that.
 export const evidenceService = {
-  list: () => withRetryAndResponse(() => api.get('/api/v1/evidence')).then(unwrap),
+  list: () =>
+    withRetryAndResponse(() => api.get('/api/v1/evidence'), { maxAttempts: 1 }).then(unwrap),
 }
 
 // ─── Claims ────────────────────────────────────────────────────────────────────
 export const claimService = {
-  list: () => withRetryAndResponse(() => api.get('/api/v1/claims')).then(unwrap),
+  list: () =>
+    withRetryAndResponse(() => api.get('/api/v1/claims'), { maxAttempts: 1 }).then(unwrap),
 }
 
 // ─── Conflicts ─────────────────────────────────────────────────────────────────
 export const conflictService = {
-  list: () => withRetryAndResponse(() => api.get('/api/v1/conflicts')).then(unwrap),
+  list: () =>
+    withRetryAndResponse(() => api.get('/api/v1/conflicts'), { maxAttempts: 1 }).then(unwrap),
 }
 
 // ─── Health & Diagnostics ──────────────────────────────────────────────────────

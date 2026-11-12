@@ -48,7 +48,13 @@ export default function ClaimsPage() {
         <PageHeader
           title="Atomic"
           accent="claims"
-          countLabel={`${claims.length} ${claims.length === 1 ? 'claim' : 'claims'}`}
+          countLabel={
+            isError
+              ? 'unavailable'
+              : isLoading
+                ? null
+                : `${claims.length} ${claims.length === 1 ? 'claim' : 'claims'}`
+          }
           description="Atomic assertions decomposed from model answers, each verified against its cited evidence by natural language inference."
           actions={
             <Link to="/playground" className="lx-btn lx-btn--primary">

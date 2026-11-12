@@ -2,9 +2,7 @@ import { clsx } from 'clsx'
 import { useState } from 'react'
 import {
   BookOpen,
-  Calendar,
   ExternalLink,
-  Hash,
   Shield,
   ShieldAlert,
   Globe,
@@ -21,6 +19,18 @@ import { isWebSource } from '@/lib/claimState'
  * unverified. A web citation from MCP is labelled as such and is never
  * presented as cryptographically verified.
  */
+/**
+ * Figure — one measurement in the strip under a passage.
+ */
+function Figure({ label, value }) {
+  return (
+    <div className="lx-figure">
+      <dt className="lx-figure__label">{label}</dt>
+      <dd className="lx-figure__value">{value}</dd>
+    </div>
+  )
+}
+
 export default function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -105,54 +115,34 @@ export default function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
           </button>
         )}
 
-        <dl className="lx-deflist">
+        {/* The measurements sit under the passage as a run of figures, not as
+            a list of key/value rows. A passage is the subject of this card;
+            the scores are its attributes, and five rows of them would
+            outweigh the text they describe. */}
+        <dl className="lx-figures">
           {chunk.dense_score != null || chunk.retrieval_score != null ? (
-            <div className="lx-deflist__row">
-              <dt className="lx-deflist__key">Dense score</dt>
-              <dd className="lx-deflist__value">
-                {(chunk.dense_score ?? chunk.retrieval_score).toFixed(3)}
-              </dd>
-            </div>
+            <Figure label="Dense" value={(chunk.dense_score ?? chunk.retrieval_score).toFixed(3)} />
           ) : null}
 
           {chunk.rrf_score != null || chunk.fusion_score != null ? (
-            <div className="lx-deflist__row">
-              <dt className="lx-deflist__key">Fusion score</dt>
-              <dd className="lx-deflist__value">
-                {(chunk.rrf_score ?? chunk.fusion_score).toFixed(3)}
-              </dd>
-            </div>
+            <Figure label="Fusion" value={(chunk.rrf_score ?? chunk.fusion_score).toFixed(3)} />
           ) : null}
 
           {chunk.rerank_score != null && (
-            <div className="lx-deflist__row">
-              <dt className="lx-deflist__key">Rerank score</dt>
-              <dd className="lx-deflist__value">{chunk.rerank_score.toFixed(3)}</dd>
-            </div>
+            <Figure label="Rerank" value={chunk.rerank_score.toFixed(3)} />
           )}
 
-          {chunk.method && (
-            <div className="lx-deflist__row">
-              <dt className="lx-deflist__key flex items-center gap-1.5">
-                <Hash size={11} strokeWidth={1.75} aria-hidden="true" />
-                Retrieval method
-              </dt>
-              <dd className="lx-deflist__value">{chunk.method}</dd>
-            </div>
-          )}
+          {chunk.method && <Figure label="Method" value={chunk.method} />}
 
           {(chunk.effective_from || chunk.effective_until) && (
-            <div className="lx-deflist__row">
-              <dt className="lx-deflist__key flex items-center gap-1.5">
-                <Calendar size={11} strokeWidth={1.75} aria-hidden="true" />
-                Effective window
-              </dt>
-              <dd className="lx-deflist__value">
-                {chunk.effective_from && new Date(chunk.effective_from).toLocaleDateString()}
-                {chunk.effective_until &&
-                  ` → ${new Date(chunk.effective_until).toLocaleDateString()}`}
-              </dd>
-            </div>
+            <Figure
+              label="Effective"
+              value={`${chunk.effective_from ? new Date(chunk.effective_from).toLocaleDateString() : '—'}${
+                chunk.effective_until
+                  ? ` → ${new Date(chunk.effective_until).toLocaleDateString()}`
+                  : ''
+              }`}
+            />
           )}
         </dl>
       </div>
