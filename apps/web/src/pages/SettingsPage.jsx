@@ -14,6 +14,7 @@ import { useAuthStore } from '@/store/authStore'
 import { authService } from '@/services/auth'
 import { healthService, modelService } from '@/services/api'
 import { copyToClipboard } from '@/lib/clipboard'
+import { SettingsSkeleton } from '@/components/settings/SettingsSkeleton'
 
 /**
  * SettingsPage — the diagnostics screen.
@@ -74,6 +75,13 @@ export default function SettingsPage() {
   const hardware = providersData?.hardware
   const models = health?.models || {}
 
+  // The panels report readings, and a reading is longer or shorter than
+  // the placeholder it replaces. Rendering them before the registry has
+  // answered means every panel below the first one moves when the data
+  // lands. The whole stack waits instead, and arrives in one piece.
+  const providersPending = providersLoading && !providersData
+  const ready = !isLoading && !providersPending
+
   return (
     <AppLayout>
       <div className="lx-page lx-stack">
@@ -86,45 +94,51 @@ export default function SettingsPage() {
           description="Live system health, multi-tenant partitioning, and the active AI model configuration."
         />
 
-        <ClusterPanel
-          health={health}
-          isLoading={isLoading}
-          healthUnknown={healthUnknown}
-        />
+        {!ready ? (
+          <SettingsSkeleton />
+        ) : (
+          <>
+            <ClusterPanel
+              health={health}
+              isLoading={isLoading}
+              healthUnknown={healthUnknown}
+            />
 
-        <HardwarePanel
-          hardware={hardware}
-          isOptimal={providersData?.hardware?.health?.status === 'optimal'}
-          trimming={trimming}
-          trimResult={trimResult}
-          onTrim={handleTrimMemory}
-        />
+            <HardwarePanel
+              hardware={hardware}
+              isOptimal={providersData?.hardware?.health?.status === 'optimal'}
+              trimming={trimming}
+              trimResult={trimResult}
+              onTrim={handleTrimMemory}
+            />
 
-        <LocalLLMPanel
-          providers={providersData?.providers}
-          providersPending={providersLoading && !providersData}
-        />
+            <LocalLLMPanel
+              providers={providersData?.providers}
+              providersPending={providersPending}
+            />
 
-        <EmbeddingPanel
-          activeModel={providersData?.active_embedding_model}
-          embedding={providersData?.embedding}
-        />
+            <EmbeddingPanel
+              activeModel={providersData?.active_embedding_model}
+              embedding={providersData?.embedding}
+            />
 
-        <ModelRegistryPanel
-          models={models}
-          supportedFormats={health?.supported_formats}
-          healthUnknown={healthUnknown}
-        />
+            <ModelRegistryPanel
+              models={models}
+              supportedFormats={health?.supported_formats}
+              healthUnknown={healthUnknown}
+            />
 
-        <AccountPanel
-          user={user}
-          copied={copied}
-          onCopyId={copyUserId}
-          onSignOut={() => setConfirmLogout(true)}
-        />
+            <AccountPanel
+              user={user}
+              copied={copied}
+              onCopyId={copyUserId}
+              onSignOut={() => setConfirmLogout(true)}
+            />
 
-        {providersError && (
-          <p className="lx-micro">Model provider telemetry is unavailable.</p>
+            {providersError && (
+              <p className="lx-micro">Model provider telemetry is unavailable.</p>
+            )}
+          </>
         )}
       </div>
 
@@ -140,3 +154,11 @@ export default function SettingsPage() {
     </AppLayout>
   )
 }
+
+/**
+ * SettingsSkeleton — the diagnostics screen's shape, held while the
+ * registry answers.
+ *
+ * It is a different component from the panel stack it stands in for, so
+ * the panels arrive as new elements rather than as ones that moved.
+ */

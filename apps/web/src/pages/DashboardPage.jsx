@@ -232,12 +232,16 @@ export default function DashboardPage() {
                 aria-hidden="true"
               />
               {autoRefresh ? 'Live' : 'Paused'}
-              <span className="text-silver-600">·</span>
-              {syncLabel}
             </span>
           }
           actions={
             <>
+              {/* The sync time sits with the control that performs the sync.
+                  In the chip it made the chip's width depend on how long ago
+                  the last sync was — so the chip sometimes fit beside the
+                  heading and sometimes did not, and the heading moved. */}
+              <span className="lx-micro">{syncLabel}</span>
+
               <button
                 type="button"
                 onClick={handleManualSync}

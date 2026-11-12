@@ -18,6 +18,7 @@ implemented and verified before the next begins.
 | P4.8 | Execution trace | shell | Done |
 | P4.9 | Settings | shell | Done |
 | P4.10 | Authentication | shell | Done |
+| P4.11 | Layout stability, programme close | all | Done |
 | P4.3 | Knowledge bases | shell |
 | P4.4 | Documents | knowledge bases |
 | P4.5 | Playground | shell, knowledge bases |
@@ -642,6 +643,31 @@ register page has always been sending.
 | Lighthouse — desktop and mobile, both pages | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
 | Landmarks | One `<main>`, one `<h1>` on both pages |
 | Behaviour | A full registration was exercised against the live backend — 201, automatic sign-in, and the dashboard with the new account |
+
+---
+
+## P4.11 — Programme close: layout stability
+
+The last pass over every route, measuring what a reader actually
+experiences rather than what the DOM says.
+
+### What was wrong
+
+| # | Problem | Severity |
+|---|---|---|
+| 1 | **The diagnostics page moved its own panels.** A reading is longer or shorter than the placeholder it replaces, so every panel below the first one shifted when the registry answered. Mobile CLS 0.149. | High |
+| 2 | **The dashboard's heading moved.** The sync time was inside the status chip, so the chip's width depended on how long ago the last sync was. It sometimes fitted beside the heading and sometimes did not, and the heading moved with it. Mobile CLS up to 0.118, and it varied between loads. | High |
+
+### What changed
+
+**The diagnostics stack waits for its readings.** The panels arrive as one
+piece instead of arriving one panel at a time, so nothing below the first
+one moves.
+
+**The sync time moved next to the control that performs the sync.** It was
+never a status; it was a timestamp about an action, and it belonged with
+the button that does it. The chip now says one thing — Live or Paused —
+and its width no longer depends on the clock.
 
 ---
 
