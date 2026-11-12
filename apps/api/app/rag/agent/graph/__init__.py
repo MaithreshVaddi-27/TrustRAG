@@ -35,6 +35,7 @@ from app.rag.agent.graph.nodes.recovery import (
 from app.rag.agent.graph.nodes.retrieval import retrieval_node
 from app.rag.agent.graph.nodes.verification import verification_node
 from app.rag.agent.graph.state import SELF_HEAL_BATCH_SIZE, AgentState, initial_state
+from app.rag.agent.router import fanout_retrieve, route_query
 from app.rag.generation.generator import generate_grounded_answer
 from app.rag.retrieval.reranker import rerank_candidate_chunks
 from app.rag.retrieval.retriever import retrieve_hybrid_chunks
@@ -67,6 +68,7 @@ __all__ = [
     "current_ledger",
     "end_analysis",
     "execute_agentic_rag_flow",
+    "fanout_retrieve",
     "generate_grounded_answer",
     "generation_node",
     "get_collection",
@@ -79,6 +81,7 @@ __all__ = [
     "recovery_node",
     "rerank_candidate_chunks",
     "retrieval_node",
+    "route_query",
     "retrieve_hybrid_chunks",
     "should_end",
     "should_recover",

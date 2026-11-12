@@ -64,17 +64,24 @@ def _shared_http_client(base_url: str, timeout: float) -> httpx.AsyncClient:
 
 
 async def close_local_llm_clients() -> None:
-    """Close all pooled local-LLM HTTP clients during application shutdown."""
+    """Close all pooled local-LLM HTTP clients during application shutdown.
+
+    The cache is keyed by endpoint and event loop, and anything that has
+    been swapped in for it may not be an httpx client at all. Only close
+    what can be closed, and never let one entry abort the rest — an
+    unclosed client leaks a connection, but a raised AttributeError here
+    skips the shutdown entirely and leaks all of them.
+    """
     with _HTTP_CLIENTS_LOCK:
         clients = list(_HTTP_CLIENTS.values())
         _HTTP_CLIENTS.clear()
-    if clients:
-        results = await asyncio.gather(
-            *(client.aclose() for client in clients), return_exceptions=True
-        )
-        errors = [str(result) for result in results if isinstance(result, Exception)]
-        if errors:
-            logger.debug("One or more local LLM clients failed to close", errors=errors)
+    closers = [client.aclose() for client in clients if hasattr(client, "aclose")]
+    if not closers:
+        return
+    results = await asyncio.gather(*closers, return_exceptions=True)
+    errors = [str(result) for result in results if isinstance(result, Exception)]
+    if errors:
+        logger.debug("One or more local LLM clients failed to close", errors=errors)
 
 
 def _convert_messages_to_dict(messages: list[Any]) -> list[dict[str, str]]:

@@ -10,21 +10,27 @@ from typing import Any
 
 from bson import ObjectId
 
-from app.api.v1.schemas.analysis import ClaimResponse
+from app.api.v1.schemas.analysis import ClaimResponse, EvidenceResponse
 from app.persistence.mongodb import Collections
 
 # Lazy reference to the analysis_service shim, resolved at call time so tests
 # that monkeypatch app.services.analysis_service.get_collection take effect.
+# Importing it at module scope would be circular: analysis_service imports this
+# module.
 _svc_mod = None
 
 
-def _get_collection(name):
+def _svc():
     global _svc_mod
     if _svc_mod is None:
         import app.services.analysis_service as _m
 
         _svc_mod = _m
-    return _svc_mod.get_collection(name)
+    return _svc_mod
+
+
+def _get_collection(name):
+    return _svc().get_collection(name)
 
 
 __all__ = [
@@ -38,7 +44,7 @@ __all__ = [
 
 async def list_analysis_claims(
     analysis_id_str: str, user_id_str: str | None = None, limit: int = 200, skip: int = 0
-) -> list[dict[str, Any]]:
+) -> list[ClaimResponse]:
     """Fetch claims for a single analysis."""
     claims_coll = _get_collection(Collections.CLAIMS)
     query: dict[str, Any] = {"analysis_id": ObjectId(analysis_id_str)}
@@ -50,24 +56,21 @@ async def list_analysis_claims(
 
 
 def _serialize_claim(c: dict[str, Any]) -> ClaimResponse:
-    return ClaimResponse(
-        id=str(c["_id"]),
-        analysis_id=str(c["analysis_id"]),
-        text=c.get("text", ""),
-        subject=c.get("subject"),
-        predicate=c.get("predicate"),
-        object=c.get("object"),
-        state=c.get("state"),
-        explanation=c.get("explanation", ""),
-        evidence_ids=c.get("evidence_ids", []),
-        attempt=c.get("attempt", 0),
-        created_at=c.get("created_at"),
-    )
+    """Serialize a stored claim.
+
+    The canonical serializer lives in ``pipeline.py`` and is re-exported by
+    the analysis_service shim. It is the one that knows a Mongo ObjectId
+    has to become a string before Pydantic will accept it. This module
+    used to carry a second copy that did not, which is why every claim
+    with an evidence reference failed validation and the endpoint answered
+    500.
+    """
+    return _svc().serialize_claim(c)
 
 
 async def list_all_user_claims(
     user_id_str: str, limit: int = 200, skip: int = 0
-) -> list[dict[str, Any]]:
+) -> list[ClaimResponse]:
     """Fetch all claims for a user across all analyses."""
     analyses_coll = _get_collection(Collections.ANALYSES)
     user_analyses = await analyses_coll.find(
@@ -92,7 +95,7 @@ async def list_all_user_claims(
 
 async def list_analysis_evidence(
     analysis_id_str: str, limit: int = 200, skip: int = 0
-) -> list[dict[str, Any]]:
+) -> list[EvidenceResponse]:
     """Fetch evidence for a single analysis."""
     evidence_coll = _get_collection(Collections.EVIDENCE)
     cursor = (
@@ -101,28 +104,74 @@ async def list_analysis_evidence(
         .skip(skip)
         .limit(min(limit, 200))
     )
-    results = []
-    async for e in cursor:
-        results.append(_serialize_evidence(e))
-    return results
+    rows = [e async for e in cursor]
+    await _fill_document_metadata(rows)
+    return [_serialize_evidence(e) for e in rows]
 
 
-def _serialize_evidence(e: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": str(e["_id"]),
-        "text": e.get("text", ""),
-        "filename": e.get("filename"),
-        "document_id": e.get("document_id"),
-        "integrity_status": e.get("integrity_status"),
-        "retrieval_score": e.get("retrieval_score"),
-        "rerank_score": e.get("rerank_score"),
-        "created_at": e.get("created_at"),
-    }
+async def _fill_document_metadata(rows: list[dict[str, Any]]) -> None:
+    """Fill in the document fields an evidence row does not carry.
+
+    The agent graph used to write a narrower evidence document than the one
+    the claim-retrieval path writes, so every run it produced has no
+    filename and no scores — the vault could only show a raw ObjectId. The
+    writer is fixed, but the rows that are already stored still need the
+    names, so they are joined back to their parent document here, in one
+    batched lookup per request.
+    """
+    if not rows:
+        return
+
+    doc_ids: list[ObjectId] = []
+    for row in rows:
+        if row.get("filename"):
+            continue
+        raw_id = row.get("document_id")
+        if not isinstance(raw_id, ObjectId):
+            continue
+        if raw_id not in doc_ids:
+            doc_ids.append(raw_id)
+
+    if not doc_ids:
+        return
+
+    documents_coll = _get_collection(Collections.DOCUMENTS)
+    docs_map: dict[str, dict[str, Any]] = {}
+    async for doc in documents_coll.find({"_id": {"$in": doc_ids}}):
+        docs_map[str(doc["_id"])] = doc
+
+    if not docs_map:
+        return
+
+    for row in rows:
+        raw_id = row.get("document_id")
+        if not isinstance(raw_id, ObjectId):
+            continue
+        meta = docs_map.get(str(raw_id))
+        if not meta:
+            continue
+        if not row.get("filename"):
+            row["filename"] = meta.get("filename")
+        if row.get("effective_from") is None:
+            row["effective_from"] = meta.get("effective_from")
+        if row.get("effective_until") is None:
+            row["effective_until"] = meta.get("effective_until")
+
+
+def _serialize_evidence(e: dict[str, Any]) -> EvidenceResponse:
+    """Serialize a stored evidence chunk.
+
+    The canonical serializer lives in ``pipeline.py``. This module used to
+    carry a second copy that dropped ``analysis_id`` and handed the raw
+    ObjectId straight to the response model, so every evidence row failed
+    validation and the vault answered 500.
+    """
+    return _svc().serialize_evidence(e)
 
 
 async def list_all_user_evidence(
     user_id_str: str, limit: int = 200, skip: int = 0
-) -> list[dict[str, Any]]:
+) -> list[EvidenceResponse]:
     """Fetch all evidence for a user across all analyses."""
     analyses_coll = _get_collection(Collections.ANALYSES)
     user_analyses = await analyses_coll.find(
@@ -139,10 +188,9 @@ async def list_all_user_evidence(
         .skip(skip)
         .limit(min(limit, 200))
     )
-    results = []
-    async for e in cursor:
-        results.append(_serialize_evidence(e))
-    return results
+    rows = [e async for e in cursor]
+    await _fill_document_metadata(rows)
+    return [_serialize_evidence(e) for e in rows]
 
 
 async def list_all_user_conflicts(

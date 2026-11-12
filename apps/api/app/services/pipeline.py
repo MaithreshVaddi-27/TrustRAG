@@ -58,6 +58,22 @@ from app.services.sse import (
     _unsubscribe_from_analysis,
 )
 
+
+def _shim_or(name, default):
+    """Resolve `name` from the `app.services.analysis_service` shim if it
+    carries one, otherwise use `default`.
+
+    The SSE pub/sub functions are imported here by value, so a mock placed on
+    the shim would never be seen. This keeps the shim the single place a
+    caller — or a test — can swap them out.
+    """
+    import sys
+
+    shim = sys.modules.get("app.services.analysis_service")
+    if shim is not None and hasattr(shim, name):
+        return getattr(shim, name)
+    return default
+
 logger = get_logger(__name__)
 
 # ─── Degenerate output detection (moved here from services/degenerate.py) ───────
@@ -490,14 +506,14 @@ async def get_analysis_claims(analysis_id_str: str, user_id_str: str) -> list[Cl
     """Get claims for an analysis, enforcing ownership verification."""
     svc = _ensure_svc()
     await svc.get_analysis(analysis_id_str, user_id_str)
-    return [serialize_claim(c) for c in await list_analysis_claims(analysis_id_str)]
+    return list(await list_analysis_claims(analysis_id_str))
 
 
 async def get_analysis_evidence(analysis_id_str: str, user_id_str: str) -> list[EvidenceResponse]:
     """Get evidence for an analysis, enforcing ownership verification."""
     svc = _ensure_svc()
     await svc.get_analysis(analysis_id_str, user_id_str)
-    return [serialize_evidence(e) for e in await list_analysis_evidence(analysis_id_str)]
+    return list(await list_analysis_evidence(analysis_id_str))
 
 
 async def get_analysis_trace(analysis_id_str: str, user_id_str: str) -> list[TraceEventResponse]:
@@ -553,7 +569,9 @@ async def add_trace_event(
     await trace_coll.insert_one(evt_doc)
 
     # Publish to in-process SSE subscribers (replaces MongoDB polling)
-    await _publish_analysis_event(analysis_id_str, {"event": event, "data": data})
+    await _shim_or("_publish_analysis_event", _publish_analysis_event)(
+        analysis_id_str, {"event": event, "data": data}
+    )
 
     return svc.serialize_trace(evt_doc)
 
@@ -573,7 +591,9 @@ async def sse_event_generator(
     await svc.get_analysis(analysis_id_str, user_id_str)
 
     # Subscribe to real-time events
-    queue = await _subscribe_to_analysis(analysis_id_str)
+    queue = await _shim_or("_subscribe_to_analysis", _subscribe_to_analysis)(
+        analysis_id_str
+    )
 
     try:
         no_event_ticks = 0

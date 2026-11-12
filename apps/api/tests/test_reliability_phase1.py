@@ -129,9 +129,9 @@ def test_verdict_from_state_unchanged_when_everything_is_verified():
 
 @pytest.mark.asyncio
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
-@patch("app.rag.verification.verifier.verify_claim_nli")
-@patch("app.rag.verification.verifier.batch_verify_claims_nli")
-@patch("app.rag.verification.verifier.decompose_answer_to_claims")
+@patch("app.rag.verification.verifier.verify_claim_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.verifier.batch_verify_claims_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.verifier.decompose_answer_to_claims", new_callable=AsyncMock)
 async def test_recovery_round_still_verifies_via_individual_fallback(
     mock_decompose, mock_batch_verify, mock_individual
 ):
@@ -173,8 +173,8 @@ async def test_recovery_round_still_verifies_via_individual_fallback(
 @pytest.mark.asyncio
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.rag.verification.verifier.verify_claim_nli", new=AsyncMock(return_value=None))
-@patch("app.rag.verification.verifier.batch_verify_claims_nli")
-@patch("app.rag.verification.verifier.decompose_answer_to_claims")
+@patch("app.rag.verification.verifier.batch_verify_claims_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.verifier.decompose_answer_to_claims", new_callable=AsyncMock)
 async def test_exhausted_fallback_budget_marks_claims_unchecked_not_neutral(
     mock_decompose, mock_batch_verify
 ):
@@ -412,9 +412,9 @@ def test_filter_degenerate_claims_keeps_real_assertions():
 
 @pytest.mark.asyncio
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
-@patch("app.rag.verification.verifier.verify_claim_nli")
-@patch("app.rag.verification.verifier.batch_verify_claims_nli")
-@patch("app.rag.verification.verifier.decompose_answer_to_claims")
+@patch("app.rag.verification.verifier.verify_claim_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.verifier.batch_verify_claims_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.verifier.decompose_answer_to_claims", new_callable=AsyncMock)
 async def test_batch_failure_on_recovery_round_is_verified_not_assumed(
     mock_decompose, mock_batch_verify, mock_individual
 ):

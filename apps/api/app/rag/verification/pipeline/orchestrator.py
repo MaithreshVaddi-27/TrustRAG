@@ -19,6 +19,7 @@ from typing import Any
 from bson import ObjectId
 
 from app.config import get_model_config
+from app.llm.llm_ledger import nli_fallback_exhausted, record_nli_fallback_call
 from app.llm.local_llm import is_reasoning_model, is_small_model
 from app.observability.logging import get_logger
 from app.persistence.mongodb import Collections
@@ -52,9 +53,16 @@ def _shim_or(name, default):
 # `app.rag.verification.pipeline.orchestrator.get_collection` and have the
 # orchestrator honor the mock (it reads the name at call time).
 get_collection = _mongodb_get_collection
+_ORIGINAL_GET_COLLECTION = get_collection
 
 
 def _get_collection(name):
+    # Three places can carry a mock, and all three are honoured: this
+    # module's own global, the verifier shim, and the live MongoDB module.
+    # Prefer this module's global when it has been replaced, then the shim,
+    # then the live function.
+    if get_collection is not _ORIGINAL_GET_COLLECTION:
+        return get_collection(name)
     return _shim_or("get_collection", get_collection)(name)
 
 
@@ -364,6 +372,12 @@ async def execute_claim_verification(
 
     # 3. Process each claim and persist
     fallback_budget = max(0, int(cfg.max_individual_nli_fallback or 0))
+    # The per-round cap above is not the whole story: a run that recovers
+    # twice could otherwise make the per-claim fallback three times over.
+    # The ledger carries the whole-analysis ceiling, and it is the one that
+    # stops the loop.
+    if nli_fallback_exhausted():
+        fallback_budget = 0
     try:
         _threshold = float(getattr(cfg, "maximum_contradiction_rate", 0.2) or 0.2)
         _contra = sum(
@@ -391,6 +405,7 @@ async def execute_claim_verification(
                     ),
                     what="verify_claim_nli(fallback)",
                 )
+                record_nli_fallback_call()
             except TimeoutError:
                 nli_res = {
                     "verdict": UNCHECKED_CLAIM_STATE,
@@ -410,7 +425,18 @@ async def execute_claim_verification(
                 ),
             }
 
-        raw_segments = nli_res.get("supporting_segments", [])
+        raw_segments = nli_res.get("supporting_segments", []) if isinstance(nli_res, dict) else []
+        if not isinstance(nli_res, dict):
+            # The verifier returned nothing usable. That is an unknown, not a
+            # claim the evidence failed to support — and it must not take the
+            # whole run down with it.
+            nli_res = {
+                "verdict": UNCHECKED_CLAIM_STATE,
+                "supporting_segments": [],
+                "explanation": (
+                    "Verification skipped: the verifier returned no usable verdict."
+                ),
+            }
         supporting_evidence_ids = []
         for idx in raw_segments:
             if not isinstance(idx, int) or not 0 < idx <= len(context_chunk_indices):

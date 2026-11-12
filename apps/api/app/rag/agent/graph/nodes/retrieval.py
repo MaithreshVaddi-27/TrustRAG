@@ -107,8 +107,41 @@ async def retrieval_node(state: AgentState) -> AgentState:
             "top_k_override": top_k_override,
         }
 
+        # Deterministic query router: SIMPLE reuses today's single hybrid call
+        # verbatim; TEMPORAL adds an explicit reference_time; COMPARISON and
+        # COMPLEX fan out to bounded parallel retrievals merged by RRF score.
+        # Everything downstream (rerank → integrity → persist) is untouched.
+        routed = (
+            _graph_mod.route_query(
+                state["current_query"], max_sub_queries=cfg.max_fanout_sub_queries
+            )
+            if cfg.router_enabled
+            else None
+        )
+        if routed is not None and routed.reference_time is not None:
+            retrieve_kwargs["reference_time"] = routed.reference_time
+        if routed is not None and len(routed.sub_queries) > 1:
+            await _graph_mod.add_trace_event(
+                state["analysis_id"],
+                "retrieval.routed",
+                {
+                    "message": f"Query routed as {routed.route.value}: "
+                    f"{len(routed.sub_queries)} parallel retrievals",
+                    "route": routed.route.value,
+                    "sub_queries": routed.sub_queries,
+                },
+            )
+
         try:
-            candidates = await _graph_mod.retrieve_hybrid_chunks(**retrieve_kwargs)
+            if routed is None or len(routed.sub_queries) == 1:
+                candidates = await _graph_mod.retrieve_hybrid_chunks(**retrieve_kwargs)
+            else:
+                branch_kwargs = {
+                    k: v for k, v in retrieve_kwargs.items() if k != "query"
+                }
+                candidates = await _graph_mod.fanout_retrieve(
+                    routed.sub_queries, branch_kwargs
+                )
         except _graph_mod.RetrievalOutageError as exc:
             # Infra outage (Qdrant / embedding service unreachable) — NOT
             # "no evidence". Surface it distinctly, store a clear message,
@@ -348,6 +381,12 @@ async def retrieval_node(state: AgentState) -> AgentState:
         )
 
         # 4. Save evidence records in MongoDB
+        #
+        # The shape here has to be the shape the evidence vault reads. The
+        # claim-retrieval path writes these fields, the response model
+        # declares them, and the workbench shows them — writing a narrower
+        # document here left every agent-graph run with a null filename and
+        # null scores, because the reader had nothing to show.
         evidence_coll = _graph_mod.get_collection(Collections.EVIDENCE)
         evidence_ids: list[ObjectId] = []
         if audited_chunks:
@@ -357,11 +396,21 @@ async def retrieval_node(state: AgentState) -> AgentState:
                 evt_doc = {
                     "analysis_id": ObjectId(state["analysis_id"]),
                     "kb_id": ObjectId(state["kb_id"]),
+                    "user_id": (
+                        ObjectId(state["user_id"]) if state.get("user_id") else None
+                    ),
                     "document_id": doc_id,
+                    "filename": c.get("filename"),
+                    "url": c.get("url"),
                     "chunk_index": c.get("chunk_index", 0),
                     "text": c.get("text", ""),
-                    "score": c.get("rerank_score") or c.get("rrf_score", 0.0),
+                    "retrieval_score": c.get("dense_score", 0.0),
+                    "fusion_score": c.get("rrf_score", 0.0),
+                    "rerank_score": c.get("rerank_score"),
+                    "method": c.get("method", "hybrid"),
                     "integrity_status": c.get("integrity_status", "UNKNOWN"),
+                    "effective_from": c.get("effective_from"),
+                    "effective_until": c.get("effective_until"),
                     "created_at": datetime.now(UTC),
                 }
                 evidence_docs.append(evt_doc)

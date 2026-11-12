@@ -21,7 +21,17 @@ All public names are re-exported here so existing imports keep working.
 from __future__ import annotations
 
 from app.llm.model_registry import get_verification_model
-from app.persistence.mongodb import get_collection
+from app.persistence import mongodb as _mongodb
+
+
+def get_collection(name: str):
+    """Resolve a collection from the live MongoDB module.
+
+    A ``from ... import get_collection`` snapshot goes stale the moment
+    anything patches the source module, and a stale snapshot is how a
+    mocked test ends up talking to an uninitialised database.
+    """
+    return _mongodb.get_collection(name)
 from app.rag.verification.coercion import _normalize_verdict_value
 from app.rag.verification.meta import (
     _PREDICATE_VERBS,

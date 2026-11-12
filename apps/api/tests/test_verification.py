@@ -101,8 +101,8 @@ async def test_verify_claim_contradicted(mock_get_model):
 
 
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
-@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli")
-@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims")
+@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock)
 @patch("app.persistence.mongodb.connect_db")
 @patch("app.persistence.mongodb.create_indexes")
 async def test_execute_claim_verification(
@@ -151,9 +151,9 @@ async def test_execute_claim_verification(
 
 
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
-@patch("app.rag.verification.verifier.verify_claim_nli")
-@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli")
-@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims")
+@patch("app.rag.verification.verifier.verify_claim_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock)
 @patch("app.persistence.mongodb.connect_db")
 @patch("app.persistence.mongodb.create_indexes")
 async def test_neutral_batch_verdict_stays_neutral_without_targeted_retrieval(
@@ -201,9 +201,9 @@ def test_fused_coverage_rejects_answer_with_no_claims():
     assert not _fused_claims_cover_answer("The policy allows access for thirty days.", [])
 
 
-@patch("app.rag.verification.verifier.fused_decompose_verify")
-@patch("app.rag.verification.verifier.batch_verify_claims_nli")
-@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims")
+@patch("app.rag.verification.verifier.fused_decompose_verify", new_callable=AsyncMock)
+@patch("app.rag.verification.verifier.batch_verify_claims_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock)
 @patch("app.persistence.mongodb.connect_db")
 @patch("app.persistence.mongodb.create_indexes")
 async def test_partial_fused_output_falls_back_to_full_decomposition(
@@ -265,8 +265,8 @@ async def test_partial_fused_output_falls_back_to_full_decomposition(
 
 
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
-@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli")
-@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims")
+@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock)
 @patch("app.persistence.mongodb.connect_db")
 @patch("app.persistence.mongodb.create_indexes")
 async def test_execute_claim_verification_maps_sorted_segments_to_original_evidence(
@@ -320,9 +320,9 @@ async def test_execute_claim_verification_maps_sorted_segments_to_original_evide
 
 
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
-@patch("app.rag.verification.verifier.verify_claim_nli")
-@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli")
-@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims")
+@patch("app.rag.verification.verifier.verify_claim_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock)
 @patch("app.persistence.mongodb.connect_db")
 @patch("app.persistence.mongodb.create_indexes")
 async def test_batch_verification_retried_once_before_individual_fallback(
@@ -361,9 +361,9 @@ async def test_batch_verification_retried_once_before_individual_fallback(
 
 
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
-@patch("app.rag.verification.pipeline.orchestrator.verify_claim_nli")
-@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli")
-@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims")
+@patch("app.rag.verification.pipeline.orchestrator.verify_claim_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock)
 @patch("app.persistence.mongodb.connect_db")
 @patch("app.persistence.mongodb.create_indexes")
 async def test_individual_nli_fallback_is_capped(
@@ -567,9 +567,13 @@ async def test_batch_total_failure_raises_instead_of_poisoning(
 
 
 @patch("app.rag.verification.pipeline.nli.fused_decompose_verify", new=AsyncMock(return_value=None))
-@patch("app.rag.verification.pipeline.orchestrator.verify_claim_nli")
-@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli")
-@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims")
+@patch(
+    "app.rag.verification.pipeline.orchestrator.fused_decompose_verify",
+    new=AsyncMock(return_value=None),
+)
+@patch("app.rag.verification.pipeline.orchestrator.verify_claim_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli", new_callable=AsyncMock)
+@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock)
 @patch("app.persistence.mongodb.connect_db")
 @patch("app.persistence.mongodb.create_indexes")
 async def test_total_batch_failure_recovers_via_individual_calls(
@@ -628,7 +632,10 @@ async def test_empty_structured_decomposition_falls_back_to_sentences(
     mock_get_model_decomp.return_value = mock_model
     mock_get_model_nli.return_value = mock_model
 
-    with patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli") as mock_batch:
+    with patch(
+        "app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli",
+        new_callable=AsyncMock,
+    ) as mock_batch:
         mock_batch.return_value = {
             1: {"verdict": "SUPPORTED", "supporting_segments": [1], "explanation": "Ok"},
             2: {"verdict": "SUPPORTED", "supporting_segments": [1], "explanation": "Ok"},

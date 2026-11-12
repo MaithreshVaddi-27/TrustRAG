@@ -147,9 +147,9 @@ async def test_fanout_total_outage_stays_an_outage():
 
 
 @patch("app.rag.agent.graph.add_trace_event", AsyncMock())
-@patch("app.rag.agent.graph.audit_evidence_integrity")
-@patch("app.rag.agent.graph.rerank_candidate_chunks")
-@patch("app.rag.agent.router.retrieve_hybrid_chunks")
+@patch("app.rag.agent.graph.audit_evidence_integrity", new_callable=AsyncMock)
+@patch("app.rag.agent.graph.rerank_candidate_chunks", new_callable=AsyncMock)
+@patch("app.rag.agent.router.retrieve_hybrid_chunks", new_callable=AsyncMock)
 @patch("app.rag.agent.graph.get_collection")
 @pytest.mark.asyncio
 async def test_retrieval_node_fans_out_comparison_query(
