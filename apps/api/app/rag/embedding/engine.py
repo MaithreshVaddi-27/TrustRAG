@@ -53,6 +53,36 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 _DEFAULT_TOKENIZER_REVISION = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
 
 
+def _ort_shim() -> Any:
+    """The backward-compatibility shim module, if it has been imported.
+
+    ``app.llm.onnx_embeddings`` re-exports this module's ``_ORT_AVAILABLE``
+    and ``ort`` so that tests can patch the ONNX Runtime availability and the
+    session factory through a single, stable import path. The shim is
+    consulted at call time (not import time) so a patch applied after import
+    is still honoured.
+    """
+    import sys
+
+    return sys.modules.get("app.llm.onnx_embeddings")
+
+
+def _is_ort_available() -> bool:
+    """True when ONNX Runtime can be used, honouring the compat shim."""
+    shim = _ort_shim()
+    if shim is not None and hasattr(shim, "_ORT_AVAILABLE"):
+        return bool(shim._ORT_AVAILABLE)
+    return _ORT_AVAILABLE
+
+
+def _get_ort() -> Any:
+    """The ONNX Runtime module, honouring the compat shim."""
+    shim = _ort_shim()
+    if shim is not None and getattr(shim, "ort", None) is not None:
+        return shim.ort
+    return ort
+
+
 def _get_tokenizer_revision() -> str:
     """Get tokenizer revision from settings with fallback to environment variable."""
     from app.config.settings import get_settings
@@ -84,7 +114,7 @@ class ONNXBGEEmbeddings(Embeddings):
         sess_options: Any = None,
         micro_batch_size: int | None = None,
     ) -> None:
-        if not _ORT_AVAILABLE:
+        if not _is_ort_available():
             raise ImportError(
                 "onnxruntime is required for ONNXBGEEmbeddings. "
                 "Install with: pip install onnxruntime"
@@ -129,7 +159,7 @@ class ONNXBGEEmbeddings(Embeddings):
                 micro_batch_size = get_model_config().onnx_embed_micro_batch
             except Exception:
                 micro_batch_size = 0
-        self.session = ort.InferenceSession(
+        self.session = _get_ort().InferenceSession(
             model_path, sess_options=sess_options, providers=providers
         )
         # Explicit override (constructor arg or ONNX_EMBED_MICRO_BATCH / yaml):
@@ -181,9 +211,7 @@ class ONNXBGEEmbeddings(Embeddings):
         """
         if is_query and self._is_bge:
             texts = [
-                self._query_instruction + t
-                if not t.startswith(self._query_instruction)
-                else t
+                self._query_instruction + t if not t.startswith(self._query_instruction) else t
                 for t in texts
             ]
 

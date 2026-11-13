@@ -23,7 +23,7 @@ def _pct(values: list[float], pct: float) -> float:
     if not values:
         return 0.0
     ordered = sorted(values)
-    idx = min(len(ordered) - 1, max(0, int(round((pct / 100.0) * len(ordered))) - 1))
+    idx = min(len(ordered) - 1, max(0, round((pct / 100.0) * len(ordered)) - 1))
     return round(ordered[idx], 2)
 
 
@@ -78,8 +78,9 @@ PROBES = [
 async def _register(client: httpx.AsyncClient, base_url: str) -> tuple[str, str]:
     import time as _t
 
-    email = f"bench-{int(_t.time())}@bench.example.com"
-    password = "BenchPass-1234!"
+    email = f"bench-{_t.time():.0f}@bench.example.com"
+    # Throwaway local benchmark credential — never a real secret.
+    password = "BenchPass-1234!"  # noqa: S105
     r = await client.post(
         f"{base_url}/api/v1/auth/register",
         json={
@@ -186,9 +187,7 @@ async def main() -> None:
                 )
                 create_ms.append((time.perf_counter() - t0) * 1000)
                 if r.status_code not in (200, 201):
-                    statuses[f"http_{r.status_code}"] = (
-                        statuses.get(f"http_{r.status_code}", 0) + 1
-                    )
+                    statuses[f"http_{r.status_code}"] = statuses.get(f"http_{r.status_code}", 0) + 1
                     continue
                 aid = r.json()["id"]
                 deadline = time.time() + 600

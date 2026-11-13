@@ -88,9 +88,7 @@ def save_discovery_snapshot() -> None:
     discovered_llms, discovered_llms_lock, discovery_snapshot_path = _get_state()
     with discovered_llms_lock:
         payload = {
-            "providers": {
-                provider: sorted(models) for provider, models in discovered_llms.items()
-            },
+            "providers": {provider: sorted(models) for provider, models in discovered_llms.items()},
         }
     try:
         discovery_snapshot_path.parent.mkdir(parents=True, exist_ok=True)
@@ -214,9 +212,7 @@ async def seed_local_model_discovery() -> dict[str, list[str]]:
     import app.llm.local_llm as _llm_mod
 
     ollama_models = [
-        m
-        for m in await _llm_mod.discover_ollama_cli_models()
-        if not _is_embedding_model_name(m)
+        m for m in await _llm_mod.discover_ollama_cli_models() if not _is_embedding_model_name(m)
     ]
     llamacpp_models = [
         m

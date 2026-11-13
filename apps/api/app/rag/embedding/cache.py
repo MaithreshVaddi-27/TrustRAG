@@ -1,10 +1,14 @@
 """
 TRUSTRAG — ONNX BGE embedding cache wrapper.
 
-Two-tier cache wrapper around the ONNX BGE embedding engine:
+An in-memory LRU cache around the ONNX BGE embedding engine. A cached
+embedding is returned without touching ONNX Runtime, which turns a ~4.6 ms
+cold embed into a ~0.0 ms lookup.
 
-- Tier 1: in-memory LRU cache (sub-millisecond)
-- Tier 2: persistent SQLite disk cache (across restarts)
+The cache is **process-local and RAM-bounded**: it does not survive a restart
+and it is not shared between workers. (An earlier revision of this docstring
+claimed a second, persistent SQLite tier — no such tier was ever
+implemented, and this wrapper has never contained any SQLite code.)
 
 Query and document embeddings of the same string are different vectors
 (the BGE query instruction is prepended only for queries), so they are
@@ -29,22 +33,28 @@ __all__ = ["ONNXBGEEmbeddingsWrapper"]
 
 class ONNXBGEEmbeddingsWrapper:
     """
-    Two-tier cache wrapper for ONNX BGE embeddings.
+    In-memory LRU cache wrapper for ONNX BGE embeddings.
 
-    Tier 1: In-memory LRU cache (sub-millisecond)
-    Tier 2: Persistent SQLite disk cache (across restarts)
+    Capacity comes from ``retrieval.query_cache_capacity`` in models.yaml
+    (env override: ``RETRIEVAL_QUERY_CACHE_CAPACITY``); the cache is
+    process-local and does not survive a restart.
     """
 
     def __init__(
         self,
         onnx_embeddings: ONNXBGEEmbeddings,
-        max_cache_size: int = 512,
+        max_cache_size: int | None = None,
         model_name: str | None = None,
     ) -> None:
         self._base = onnx_embeddings
         self._cache: OrderedDict[str, list[float]] = OrderedDict()
         self._mem_lock = threading.RLock()
-        self._max_size = max_cache_size
+        if max_cache_size is None:
+            try:
+                max_cache_size = get_model_config().query_cache_capacity
+            except Exception:
+                max_cache_size = 512
+        self._max_size = max(1, int(max_cache_size))
         if model_name is None:
             try:
                 model_name = f"onnx::{get_model_config().embedding_model}"

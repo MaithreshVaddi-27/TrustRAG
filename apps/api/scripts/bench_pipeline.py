@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import statistics
 import sys
 import time
@@ -30,9 +29,8 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.core.system.memory import get_memory_usage_mb  # noqa: E402
-from app.observability.logging import configure_logging  # noqa: E402
-
+from app.core.system.memory import get_memory_usage_mb
+from app.observability.logging import configure_logging
 
 # ─── Stats helpers ────────────────────────────────────────────────────────────
 
@@ -41,7 +39,7 @@ def _pct(values: list[float], pct: float) -> float:
     if not values:
         return 0.0
     ordered = sorted(values)
-    idx = min(len(ordered) - 1, max(0, int(round((pct / 100.0) * len(ordered))) - 1))
+    idx = min(len(ordered) - 1, max(0, round((pct / 100.0) * len(ordered)) - 1))
     return round(ordered[idx], 2)
 
 
@@ -115,11 +113,11 @@ async def seed_kb(user_id: str) -> str:
     """Create a scratch KB with one seeded document and wait for indexing."""
     from bson import ObjectId
 
+    from app.config import get_model_config
     from app.persistence.mongodb import Collections, get_collection
     from app.rag.ingestion.chunking_strategies import get_chunking_strategy
     from app.rag.ingestion.parser import parse_document
     from app.rag.ingestion.pipeline import index_parsed_chunks
-    from app.config import get_model_config
 
     cfg = get_model_config()
     kb_coll = get_collection(Collections.KNOWLEDGE_BASES)
@@ -130,9 +128,7 @@ async def seed_kb(user_id: str) -> str:
         "embedding_model": cfg.embedding_model,
         "embedding_dim": cfg.embedding_dimensionality,
         "document_count": 0,
-        "created_at": __import__("datetime").datetime.now(
-            __import__("datetime").UTC
-        ),
+        "created_at": __import__("datetime").datetime.now(__import__("datetime").UTC),
     }
     kb_id = await kb_coll.insert_one(kb_doc)
     kb_str = str(kb_id.inserted_id)
@@ -156,9 +152,7 @@ async def seed_kb(user_id: str) -> str:
             "file_size": len(SEED_DOC),
             "content_hash": "bench" + kb_str,
             "ingestion_status": "processing",
-            "created_at": __import__("datetime").datetime.now(
-                __import__("datetime").UTC
-            ),
+            "created_at": __import__("datetime").datetime.now(__import__("datetime").UTC),
         }
     )
     await index_parsed_chunks(doc_id_str=str(doc_res.inserted_id), kb_id_str=kb_str, chunks=chunks)
@@ -292,9 +286,7 @@ async def bench_quality(kb_id: str) -> dict[str, Any]:
         recalls.append(1.0 if hit_rank < k else 0.0)
         precisions.append(1.0 / k)
         rrs.append(1.0 / (hit_rank + 1))
-        per_probe.append(
-            {"query": probe["query"], "hit": True, "rank": hit_rank + 1, "of": k}
-        )
+        per_probe.append({"query": probe["query"], "hit": True, "rank": hit_rank + 1, "of": k})
     return {
         "recall_at_k": round(sum(recalls) / max(1, len(recalls)), 4),
         "precision_at_k": round(sum(precisions) / max(1, len(precisions)), 4),
@@ -305,15 +297,15 @@ async def bench_quality(kb_id: str) -> dict[str, Any]:
 
 async def bench_api(runs: int, kb_id: str) -> dict[str, list[float]]:
     """API-path latency: create analysis (202) + full pipeline completion."""
-    from app.rag.agent.graph.coordinator import execute_agentic_rag_flow
     from app.persistence.mongodb import Collections, get_collection
+    from app.rag.agent.graph.coordinator import execute_agentic_rag_flow
 
     creates: list[float] = []
     full: list[float] = []
     for probe in PROBES:
         for _ in range(runs):
             t0 = time.perf_counter()
-            state = await execute_agentic_rag_flow(
+            await execute_agentic_rag_flow(
                 analysis_id_str="bench_api_analysis",
                 kb_id_str=kb_id,
                 query=probe["query"],
@@ -346,8 +338,6 @@ async def main() -> None:
         if args.seed or not kb_id:
             user_id = args.user_id
             if not user_id:
-                from bson import ObjectId
-
                 res = await get_collection(Collections.USERS).insert_one(
                     {
                         "email": f"bench-{int(time.time())}@local",

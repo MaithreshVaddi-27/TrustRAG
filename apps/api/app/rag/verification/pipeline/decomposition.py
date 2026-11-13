@@ -29,17 +29,13 @@ async def decompose_answer_to_claims(
 
     try:
         model_obj = get_verification_model(provider=provider, model=model)
-        cap = verification_cap_kwargs(
-            provider or "default", model, max_tokens=512
-        )
+        cap = verification_cap_kwargs(provider or "default", model, max_tokens=512)
         structured_llm = _structured_verifier(model_obj, provider, ClaimDecomposition, cap)
 
         logger.info("Running answer claim decomposition", answer_len=len(answer))
 
         decomp_prompt = (
-            DECOMPOSITION_PROMPT_SMALL
-            if is_small_model(model, provider)
-            else DECOMPOSITION_PROMPT
+            DECOMPOSITION_PROMPT_SMALL if is_small_model(model, provider) else DECOMPOSITION_PROMPT
         )
         response = await invoke_counted(
             structured_llm,

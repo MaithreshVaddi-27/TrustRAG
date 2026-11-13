@@ -68,21 +68,25 @@ def _get_collection(name):
 
 def fused_decompose_verify(*args, **kwargs):
     from app.rag.verification.pipeline.decomposition import decompose_answer_to_claims as _real
+
     return _shim_or("fused_decompose_verify", _real)(*args, **kwargs)
 
 
 def verify_claim_nli(*args, **kwargs):
     from app.rag.verification.pipeline.nli import verify_claim_nli as _real
+
     return _shim_or("verify_claim_nli", _real)(*args, **kwargs)
 
 
 def batch_verify_claims_nli(*args, **kwargs):
     from app.rag.verification.pipeline.nli import batch_verify_claims_nli as _real
+
     return _shim_or("batch_verify_claims_nli", _real)(*args, **kwargs)
 
 
 def decompose_answer_to_claims(*args, **kwargs):
     from app.rag.verification.pipeline.decomposition import decompose_answer_to_claims as _real
+
     return _shim_or("decompose_answer_to_claims", _real)(*args, **kwargs)
 
 
@@ -228,9 +232,7 @@ async def execute_claim_verification(
             fused_items = None
         if fused_items is not None:
             fused_items = [
-                it
-                for it in fused_items
-                if it.get("claim") and not _is_meta_claim(it["claim"])
+                it for it in fused_items if it.get("claim") and not _is_meta_claim(it["claim"])
             ]
             if len(fused_items) > max_claims:
                 fused_items = fused_items[:max_claims]
@@ -433,9 +435,7 @@ async def execute_claim_verification(
             nli_res = {
                 "verdict": UNCHECKED_CLAIM_STATE,
                 "supporting_segments": [],
-                "explanation": (
-                    "Verification skipped: the verifier returned no usable verdict."
-                ),
+                "explanation": ("Verification skipped: the verifier returned no usable verdict."),
             }
         supporting_evidence_ids = []
         for idx in raw_segments:

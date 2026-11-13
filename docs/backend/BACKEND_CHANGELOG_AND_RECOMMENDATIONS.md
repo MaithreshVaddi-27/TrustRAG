@@ -30,13 +30,13 @@ Every entry is tagged:
 | Phase | State | Notes |
 |---|---|---|
 | **B1 — Audit** | ✅ COMPLETE | Read-only. No `app/` source modified. Findings in `BACKEND_AUDIT_B1.md`. |
-| **B2.1 — Critical correctness** | ✅ COMPLETE — **awaiting approval** | Gemini probe invocation + contract; recovery-loop routing; verdict preservation. 19 new tests. See §2 UPGRADE-001..004, §3 DEGRADATION-001..002. |
-| **B2.2 — Cleanup** | ⏸️ AWAITING APPROVAL | Plan in audit §6 / §7. |
+| **B2.1 — Critical correctness** | ✅ COMPLETE — approved | Gemini probe invocation + contract; recovery-loop routing; verdict preservation. 19 new tests. See §2 UPGRADE-001..004, §3 DEGRADATION-001..002. |
+| **B2.2 — Cleanup** | ✅ COMPLETE — **awaiting approval** | Dead `app/llm/registry/` deleted; embedding modules consolidated to one implementation; stale dirs removed; lint 13→0, format clean. See §2 UPGRADE-005..006, §5 REFINEMENT-003. |
 | **B3 — Performance** | ⏸️ AWAITING APPROVAL | Plan in audit §6 / §7. |
 | **B4 — Accuracy** | ⏸️ AWAITING APPROVAL | Plan in audit §6 / §7. |
 | **B5 — Validation** | ⏸️ AWAITING APPROVAL | Plan in audit §7. |
 
-**Implemented changes to `app/` so far: B2.1 only** (see §2, §3, §4, §5 for the
+**Implemented changes to `app/` so far: B2.1 + B2.2** (see §2, §3, §4, §5 for the
 measured effects). New files: `app/llm/providers/cloud_probe.py`,
 `app/rag/agent/graph/budget.py`,
 `app/rag/agent/graph/verification_snapshot.py`, plus
@@ -166,6 +166,68 @@ ruff format --check→ 13 files would be reformatted
 ---
 
 ## 2. UPGRADE
+
+### UPGRADE-005 — One embedding implementation instead of two  *(B2.2)*
+
+**Change:** `app/rag/embedding/{engine,cache}.py` are now the single
+implementation; `app/llm/embedding/{engine,cache}.py` are thin re-export
+shims.
+
+The engine existed twice: `app/llm/embedding/engine.py` and
+`app/rag/embedding/engine.py` were near-identical forks, and the cache files
+differed **only in their import line**. Because `app/llm/embedding/__init__.py`
+re-exported the `app.rag` classes while `app/llm/onnx_embeddings.py` re-exported
+`_ORT_AVAILABLE`/`ort` from the `app.llm` fork, **two distinct
+`ONNXBGEEmbeddings` classes existed** and the model registry instantiated one of
+them while the other was unreachable.
+
+**Verified after the change:**
+
+```python
+from app.llm.embedding.engine import ONNXBGEEmbeddings as A
+from app.rag.embedding.engine   import ONNXBGEEmbeddings as B
+from app.llm.onnx_embeddings    import ONNXBGEEmbeddings as C
+assert A is B is C        # one class
+```
+
+Every historic import path still resolves
+(`app.llm.embedding.engine`, `app.llm.embedding.cache`,
+`app.llm.onnx_embeddings`, `app.rag.embedding.engine`,
+`app.rag.embedding.cache`, `app.llm.embedding`).
+
+**The test patch point now works.** The `_is_ort_available()` / `_get_ort()`
+indirection — which existed only in the fork, so patching
+`app.llm.onnx_embeddings._ORT_AVAILABLE` never reached the class actually in
+use — now lives in the canonical engine. `tests/test_onnx_engines.py` gains
+`test_the_compat_shim_is_the_single_patch_point_for_onnxruntime`, which fails
+if the engine is ever forked again.
+
+---
+
+### UPGRADE-006 — The declared config is now the real config  *(B2.2)*
+
+**Change:** `app/config/model_config.py`, `app/rag/embedding/cache.py`,
+`app/rag/retrieval/retriever.py`.
+
+`config/models.yaml` declared
+`retrieval.query_cache_capacity: 1024` (with the comment *"Lower (256) on
+≤8 GB hosts; raise (2048) on 32 GB+ hosts"* and an
+`RETRIEVAL_QUERY_CACHE_CAPACITY` env override) — and **no code read it**
+(`grep` → 0 hits). The wrapper hardcoded `max_cache_size=512`. Meanwhile the
+retriever carried a comment claiming *"No query-vector cache: embed fresh
+every call"*, which was also false: `get_embedding_model()` returns the
+wrapper, and a cached `embed_query` costs ~0.0 ms against ~4.6 ms cold.
+
+**Change:** `ModelConfig.query_cache_capacity` now reads the yaml key with the
+declared env override, and the wrapper uses it as its default. The three
+sources of truth (comment, yaml key, implementation) now agree.
+
+**False documentation removed:** both cache modules claimed *"Tier 2:
+persistent SQLite disk cache (across restarts)"*. There is no SQLite code in
+either file (`grep -c sqlite` → 0) — the cache is an in-memory LRU only. The
+docstring now says so, and states the cache is process-local and RAM-bounded.
+
+---
 
 ### UPGRADE-001 — The Gemini provider path works again  *(B2.1, S1 correctness)*
 
@@ -425,9 +487,74 @@ ruff format (new files)               → already formatted
 **pre-existing** format diffs (part of the 13-file debt); none of the diffs
 are in the lines B2.1 touched (verified with `ruff format --diff`).
 
+### 4.6 B2.2 re-measurement
+
+**Conditions:** identical to §1, with the B2.2 code.
+Artifact: `bench_api_results_B2_2.json`, `quality_results_B2_2.json`.
+
+| Metric | Baseline | B2.1 | B2.2 | Δ baseline→B2.2 |
+|---|---|---|---|---|
+| `GET /health` p50 | 5.66 ms | 5.55 ms | 5.76 ms | +1.8 % (noise) |
+| `GET /models/providers` p50 | 2601.42 ms | 2605.49 ms | 2608.72 ms | +0.3 % (unchanged — a B3 item) |
+| `POST /analyses` p50 | 18.92 ms | 17.53 ms | 18.30 ms | −3.3 % (noise) |
+| **POST → terminal analysis p50** | 4909.69 ms | 5017.85 ms | 5004.62 ms | **+1.9 %** |
+| **POST → terminal analysis p99** | 5840.31 ms | 10845.00 ms | 13483.98 ms | **+130.9 %** |
+| Recall@K | 1.00 | 1.00 | 1.00 | unchanged |
+| MRR | 1.00 | 1.00 | 1.00 | unchanged |
+| Precision@K | 0.3333 | 0.2917 | 0.3056 | −8.3 % |
+
+**B2.2 is a cleanup phase — it changed no answer-affecting logic**, so the
+read-path deltas are noise and the end-to-end p50 is unchanged. The p99
+spread (10.8 s → 13.5 s) is the same second recovery round as DEGRADATION-001,
+landing in a different place depending on which round the local model takes.
+
+**The B2.2 batch produced 5 abstained / 7 completed (mean reliability 0.583)
+against 6 / 6 (0.50).** This is **run-to-run non-determinism of the 1B local
+model**, not a B2.2 effect — confirmed by the per-query trace across all
+three batches, where the same query flips between `abstained/RETRIEVAL_FAILURE`
+and `completed/NONE` from run to run (the model runs at `temperature: 0.2`).
+**It is not reported as an improvement.**
+
+What B2.2 *did* change deterministically is visible in the same trace: the
+diagnosis for *"What is the reciprocal rank fusion constant?"* stays
+`LOW_COVERAGE / "Answer is non-responsive..."` across all six post-B2.1 runs,
+where the three baseline runs all stored the destroyed
+`RETRIEVAL_FAILURE / "No claims extracted for verification"`.
+
 ---
 
 ## 5. REFINEMENT
+
+### REFINEMENT-003 — B2.2 cleanup: dead code removed, lint and format clean  *(B2.2)*
+
+| Action | Detail |
+|---|---|
+| **Deleted** `app/llm/registry/` | 438 LOC across 5 files. The package **failed to import** (`ModuleNotFoundError: app.llm.registry.factories.reranker`) and was referenced by **no module and no test**. Its live equivalents are in `app/llm/model_registry.py`. |
+| **Consolidated** the embedding modules | One implementation (`app/rag/embedding/*`), two re-export shims (`app/llm/embedding/*`). See UPGRADE-005. |
+| **Removed** stale directories | `app/core/observability/` and `app/core/config/` contained nothing but `__pycache__`; `app/api/v1/routes/` contained only an empty `__init__.py` (the routers live in `app/api/v1/*.py` and are registered by `app/api/router.py`). |
+| **Fixed** the E402 import block | `app/rag/verification/verifier.py` defined `get_collection` *between* two import blocks, which is what produced the 12 E402 errors. The helper moved below the imports; behaviour is unchanged (it still resolves the collection from the live MongoDB module, so a test patch still takes effect). |
+| **Lint** | `ruff check app/`: **13 errors → 0**. `ruff format app/`: **9 files reformatted → 127 already formatted**. |
+| **Lint/format** for the harness and the new tests | `scripts/` and the three test files touched by B2.1/B2.2 are `ruff check` and `ruff format` clean. |
+
+**Import-path compatibility:** every public name that existed before still
+exists. `app.llm.embedding.engine` / `.cache` keep exporting
+`ONNXBGEEmbeddings`, `ONNXBGEEmbeddingsWrapper`, `EMBEDDING_MODE_*`,
+`_ORT_AVAILABLE` and `ort`; `app.llm.onnx_embeddings` is unchanged as a shim.
+
+**Net effect on the code base:** **906 lines deleted, 159 added.**
+
+**Measured effect on the test suite:**
+
+```
+before B2.2:  781 passed   coverage 78.10%   (statements 8841, missed 1936)
+after  B2.2:  781 passed   coverage 80.72%   (statements 8539, missed 1646)
+```
+
+Coverage rose by **2.62 points** — not because many tests were added (one
+was), but because ~300 uncovered statements left the denominator together
+with the dead code. The coverage gate is comfortably green.
+
+---
 
 ### REFINEMENT-001 — Benchmark & analysis harness added (read-only, no `app/` change)
 
@@ -706,6 +833,10 @@ failure path skipping the node's own completion event.
 
 ### CHANGE REQUIRED-009 — Embedding cache: comment, yaml key, and implementation disagree  *(S2, coherence)*
 
+> **STATUS: RESOLVED in B2.2** — see UPGRADE-006. The yaml key is read, the
+> env override works, the wrapper's default comes from the config, and the
+> retriever comment matches the implementation.
+
 **Files:** `app/rag/retrieval/retriever.py:125`,
 `app/rag/embedding/cache.py`, `app/llm/embedding/cache.py`,
 `config/models.yaml` (`retrieval.query_cache_capacity: 1024`).
@@ -719,6 +850,9 @@ failure path skipping the node's own completion event.
 ---
 
 ### CHANGE REQUIRED-010 — Both embedding cache modules claim a SQLite disk cache that does not exist  *(S3, docs)*
+
+> **STATUS: RESOLVED in B2.2** — see UPGRADE-006. The docstring now states
+> plainly that the cache is an in-memory LRU, process-local and not persisted.
 
 `app/rag/embedding/cache.py:7,35` and `app/llm/embedding/cache.py:7,35`:
 > *"Tier 2: persistent SQLite disk cache (across restarts)"*
@@ -748,6 +882,9 @@ Related: `check_and_enforce_memory_guard` has **no production caller** (only
 
 ### CHANGE REQUIRED-013 — Dead, unimportable `app/llm/registry/` package  *(S3)*
 
+> **STATUS: RESOLVED in B2.2** — the package is deleted (438 LOC). See
+> REFINEMENT-003.
+
 `python -c "import app.llm.registry"` →
 `ModuleNotFoundError: No module named 'app.llm.registry.factories.reranker'`
 
@@ -758,6 +895,9 @@ of unreachable, broken code. Live equivalents are in `app/llm/model_registry.py`
 ---
 
 ### CHANGE REQUIRED-014 — Duplicated embedding engine + cache modules  *(S3)*
+
+> **STATUS: RESOLVED in B2.2** — one implementation, two re-export shims. See
+> UPGRADE-005 and REFINEMENT-003.
 
 `app/llm/embedding/engine.py` (263 LOC) vs `app/rag/embedding/engine.py`
 (245 LOC) — near-identical forks differing only in the `_is_ort_available()`
@@ -774,6 +914,9 @@ the duplication was created to satisfy a test, not by design.
 
 ### CHANGE REQUIRED-015 — Stale directories and lint debt  *(S3)*
 
+> **STATUS: RESOLVED in B2.2** — the stale directories are removed and
+> `ruff check app/` / `ruff format app/` are both clean. See REFINEMENT-003.
+
 - `app/core/observability/` and `app/core/config/` contain **only** `__pycache__`
   (no git-tracked files) — leftovers from the restructure.
 - `app/api/v1/routes/` contains **only** an empty `__init__.py`; the routers live
@@ -781,6 +924,12 @@ the duplication was created to satisfy a test, not by design.
 - `ruff check app/` → **13 errors** (12 × E402 in
   `app/rag/verification/verifier.py`, 1 × RUF022 unsorted `__all__`).
 - `ruff format --check app/` → **13 files would be reformatted**.
+
+> The pre-existing lint debt in `tests/` and `scripts/` (19 findings, 5 files)
+> is **not** in this phase's scope: `CONTRIBUTING.md` scopes the gate to
+> `app/`, and reformatting the whole test suite would bury the behavioural
+> diff. The files this programme touched (`scripts/`, and the three new/
+> changed test files) are clean.
 
 ---
 

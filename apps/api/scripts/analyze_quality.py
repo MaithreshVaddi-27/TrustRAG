@@ -73,12 +73,9 @@ async def main() -> None:
                     "hit": rank is not None,
                     "rank": (rank + 1) if rank is not None else None,
                     "claims": len(
-                        [
-                            c
-                            for c in await get_collection(Collections.CLAIMS).find(
-                                {"analysis_id": a["_id"]}
-                            ).to_list(100)
-                        ]
+                        await get_collection(Collections.CLAIMS)
+                        .find({"analysis_id": a["_id"]})
+                        .to_list(100)
                     ),
                 }
             )
@@ -122,9 +119,7 @@ async def main() -> None:
                 "mrr": round(agg["reciprocal_rank_sum"] / n, 4) if n else 0,
                 "statuses": agg["statuses"],
                 "mean_score": (
-                    round(sum(agg["scores"]) / len(agg["scores"]), 4)
-                    if agg["scores"]
-                    else None
+                    round(sum(agg["scores"]) / len(agg["scores"]), 4) if agg["scores"] else None
                 ),
                 "mean_evidence": (
                     round(sum(agg["evidence_counts"]) / len(agg["evidence_counts"]), 2)

@@ -470,6 +470,18 @@ class ModelConfig:
         return int(self._get("retrieval", "fusion_top_k"))
 
     @property
+    def query_cache_capacity(self) -> int:
+        """Capacity of the query-vector LRU (entries are 384-float vectors).
+
+        Env wins: ``RETRIEVAL_QUERY_CACHE_CAPACITY``.
+        """
+        env_val = _blank_as_none("RETRIEVAL_QUERY_CACHE_CAPACITY")
+        if env_val is not None:
+            return int(env_val)
+        val = self._get("retrieval", "query_cache_capacity", required=False)
+        return int(val) if val is not None else 512
+
+    @property
     def branch_timeout_seconds(self) -> float:
         """Per-branch retrieval budget; 0 = unset (module fallback 45s)."""
         value = self._get("retrieval", "branch_timeout_seconds", required=False)

@@ -519,6 +519,7 @@ def _execute_with_fallback(
 
 def _normalize_query_tokens(query: str) -> set[str]:
     import re as _re
+
     return set(_re.findall(r"\b\w+\b", (query or "").lower()))
 
 

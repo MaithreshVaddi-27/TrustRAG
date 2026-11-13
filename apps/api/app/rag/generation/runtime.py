@@ -69,6 +69,7 @@ async def generate_grounded_answer(
 
         # Load primary LLM (cached) directly from model_registry
         import app.rag.generation.generator as _gen_mod
+
         _gen_get_llm = getattr(_gen_mod, "get_llm", get_llm)
         if hasattr(get_llm, "assert_called") or hasattr(get_llm, "mock_calls"):
             llm = get_llm(provider=resolved_provider, model=resolved_model)

@@ -136,12 +136,8 @@ async def retrieval_node(state: AgentState) -> AgentState:
             if routed is None or len(routed.sub_queries) == 1:
                 candidates = await _graph_mod.retrieve_hybrid_chunks(**retrieve_kwargs)
             else:
-                branch_kwargs = {
-                    k: v for k, v in retrieve_kwargs.items() if k != "query"
-                }
-                candidates = await _graph_mod.fanout_retrieve(
-                    routed.sub_queries, branch_kwargs
-                )
+                branch_kwargs = {k: v for k, v in retrieve_kwargs.items() if k != "query"}
+                candidates = await _graph_mod.fanout_retrieve(routed.sub_queries, branch_kwargs)
         except _graph_mod.RetrievalOutageError as exc:
             # Infra outage (Qdrant / embedding service unreachable) — NOT
             # "no evidence". Surface it distinctly, store a clear message,
@@ -184,9 +180,9 @@ async def retrieval_node(state: AgentState) -> AgentState:
 
                 _healed_recently = False
                 try:
-                    _kb_doc = _graph_mod.get_collection(
-                        Collections.KNOWLEDGE_BASES
-                    ).find_one({"_id": ObjectId(state["kb_id"])})
+                    _kb_doc = _graph_mod.get_collection(Collections.KNOWLEDGE_BASES).find_one(
+                        {"_id": ObjectId(state["kb_id"])}
+                    )
                     _healed_at = (_kb_doc or {}).get("self_healed_at")
                     if _healed_at and (datetime.now(UTC) - _healed_at).total_seconds() < 3600:
                         _healed_recently = True
@@ -240,9 +236,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                             doc_id_str = str(c["document_id"])
                             chunk_zone = c.get("zone", "body")
                             sparse_vec = generate_sparse_vector(batch_texts[i], zone=chunk_zone)
-                            point_id = pipeline_mod.hashlib_qdrant_id(
-                                doc_id_str, c["chunk_index"]
-                            )
+                            point_id = pipeline_mod.hashlib_qdrant_id(doc_id_str, c["chunk_index"])
                             payload = {
                                 "document_id": doc_id_str,
                                 "knowledge_base_id": state["kb_id"],
@@ -281,8 +275,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                             "retrieval.self_heal_batch",
                             {
                                 "message": (
-                                    "Self-heal re-indexed "
-                                    f"{healed_count} of {total_chunks}"
+                                    f"Self-heal re-indexed {healed_count} of {total_chunks}"
                                 ),
                                 "completed": healed_count,
                                 "total": total_chunks,
@@ -290,9 +283,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                         )
                     candidates = await _graph_mod.retrieve_hybrid_chunks(**retrieve_kwargs)
                     try:
-                        await _graph_mod.get_collection(
-                            Collections.KNOWLEDGE_BASES
-                        ).update_one(
+                        await _graph_mod.get_collection(Collections.KNOWLEDGE_BASES).update_one(
                             {"_id": ObjectId(state["kb_id"])},
                             {"$set": {"self_healed_at": datetime.now(UTC)}},
                         )
@@ -303,10 +294,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                     await _graph_mod.add_trace_event(
                         state["analysis_id"],
                         "retrieval.empty",
-                        {
-                            "message": "Knowledge base has 0 indexed chunks. "
-                            "Upload documents first."
-                        },
+                        {"message": "Knowledge base has 0 indexed chunks. Upload documents first."},
                     )
                     state["answer"] = (
                         "This knowledge base has no indexed document content. "
@@ -396,9 +384,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
                 evt_doc = {
                     "analysis_id": ObjectId(state["analysis_id"]),
                     "kb_id": ObjectId(state["kb_id"]),
-                    "user_id": (
-                        ObjectId(state["user_id"]) if state.get("user_id") else None
-                    ),
+                    "user_id": (ObjectId(state["user_id"]) if state.get("user_id") else None),
                     "document_id": doc_id,
                     "filename": c.get("filename"),
                     "url": c.get("url"),

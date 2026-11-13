@@ -122,9 +122,12 @@ async def dense_search(
 
         try:
             embed_model = get_embedding_model()
-            # No query-vector cache: embed fresh every call. A shared cache
-            # keyed by raw query text served stale vectors after embedding
-            # model switches and leaked memory across analyses.
+            # The query vector IS cached — `get_embedding_model()` returns the
+            # ONNXBGEEmbeddingsWrapper, whose in-memory LRU is keyed by mode
+            # AND text (query vs document vectors differ, because BGE prefixes
+            # the query instruction), so a repeated query costs ~0.0 ms instead
+            # of a ~4.6 ms ONNX pass. The wrapper is process-local and its
+            # capacity comes from `retrieval.query_cache_capacity`.
             query_vector = await asyncio.to_thread(
                 embed_model.embed_query,
                 query,

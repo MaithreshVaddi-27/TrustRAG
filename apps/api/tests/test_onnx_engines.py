@@ -252,6 +252,27 @@ def test_empty_input_size_does_not_hardcode_384():
     assert out.shape == (0, 768), f"empty batch used a hardcoded dim: {out.shape}"
 
 
+def test_the_compat_shim_is_the_single_patch_point_for_onnxruntime():
+    """`app.llm.onnx_embeddings` must stay the one place ONNX Runtime is
+    patched.
+
+    The embedding engine used to exist twice — once under `app.llm.embedding`
+    and once under `app.rag.embedding` — and only the copy under `app.llm`
+    consulted the shim, so patching it had no effect on the class the model
+    registry actually instantiated. There is now one implementation, and the
+    shim controls it.
+    """
+    from app.llm import onnx_embeddings as mod
+    from app.llm.embedding.engine import ONNXBGEEmbeddings as ShimEngine
+    from app.rag.embedding.engine import ONNXBGEEmbeddings as CanonicalEngine
+
+    assert ShimEngine is CanonicalEngine, "the embedding engine is forked again"
+
+    with patch.object(mod, "_ORT_AVAILABLE", False):
+        with pytest.raises(ImportError, match="onnxruntime is required"):
+            ShimEngine(model_path="/fake/model.onnx", tokenizer_name="x")
+
+
 # ─── Reranker ────────────────────────────────────────────────────────────────
 
 

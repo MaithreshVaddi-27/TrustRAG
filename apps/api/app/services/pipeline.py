@@ -74,6 +74,7 @@ def _shim_or(name, default):
         return getattr(shim, name)
     return default
 
+
 logger = get_logger(__name__)
 
 # ─── Degenerate output detection (moved here from services/degenerate.py) ───────
@@ -146,6 +147,7 @@ def _looks_like_scaffold_echo(answer: str | None) -> bool:
             if len(phrases) == 1:
                 return True
     return False
+
 
 # Lazy reference to the analysis_service shim (set at module bottom). Used to
 # resolve names tests patch via app.services.analysis_service.X at call time.
@@ -609,9 +611,7 @@ async def sse_event_generator(
     await svc.get_analysis(analysis_id_str, user_id_str)
 
     # Subscribe to real-time events
-    queue = await _shim_or("_subscribe_to_analysis", _subscribe_to_analysis)(
-        analysis_id_str
-    )
+    queue = await _shim_or("_subscribe_to_analysis", _subscribe_to_analysis)(analysis_id_str)
 
     try:
         no_event_ticks = 0
