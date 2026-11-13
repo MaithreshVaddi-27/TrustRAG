@@ -12,6 +12,7 @@ Separation of concerns:
 from __future__ import annotations
 
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -161,6 +162,16 @@ class Settings(BaseSettings):
     # ── Google Gemini (Optional if using local LLMs) ───────────────────────────
     gemini_api_key: str = ""
 
+    # ── API rate limiting ───────────────────────────────────────────────────
+    # Requests per minute, per client, for the whole API. The limiter was
+    # configured but never enforced; see app/api/rate_limiting.py for how the
+    # default was chosen (the app's own polling reaches ~69/min).
+    rate_limit_per_minute: int = Field(
+        default=240,
+        validation_alias=AliasChoices("RATE_LIMIT_PER_MINUTE"),
+        description="API requests per minute per client (0 disables the limit)",
+    )
+
     # ── Local LLM Providers (Ollama & llama.cpp) ──────────────────────────────
     # Defaults derive from config/ports.yaml (see _DEFAULT_*_BASE_URL above);
     # set OLLAMA_BASE_URL / LLAMACPP_BASE_URL env vars to override per deploy
@@ -284,15 +295,71 @@ class Settings(BaseSettings):
         return self.app_env == "development"
 
 
-def get_settings() -> Settings:
-    """Build application Settings from environment (fresh read, no cache).
+def _settings_fingerprint() -> int:
+    """Fingerprint of every input ``Settings()`` reads.
 
-    No singleton: every call re-reads the environment so operator changes
-    (rotated keys, new overrides) take effect without restarts or explicit
-    cache invalidation. Construction is microseconds — caching bought nothing
-    but stale-state bugs.
+    Two reads with the same fingerprint MUST produce the same ``Settings``,
+    so a cache hit can never serve a stale value. The fingerprint covers:
+
+    - the process environment (environment variables win over the files), and
+    - the path, mtime and size of every ``env_file``.
+
+    The file paths are resolved against the current working directory, so a
+    change of working directory invalidates the cache too.
     """
-    return Settings()  # type: ignore[call-arg]
+    fingerprint = hash(frozenset(os.environ.items()))
+    for path in Settings.model_config.get("env_file") or ():
+        resolved = os.path.abspath(path)
+        try:
+            stat = os.stat(resolved)
+            fingerprint = hash((fingerprint, resolved, stat.st_mtime_ns, stat.st_size))
+        except OSError:
+            fingerprint = hash((fingerprint, resolved, None))
+    return fingerprint
+
+
+_settings_lock = threading.Lock()
+_settings_cache: tuple[int, Settings] | None = None
+
+
+def get_settings() -> Settings:
+    """Build application Settings from the environment.
+
+    Cached, and invalidated by a fingerprint of everything ``Settings()``
+    reads (see ``_settings_fingerprint``): the process environment and the
+    mtime/size of every env file. Identical inputs always produce identical
+    settings, so a cache hit is always correct — an operator's edited
+    ``.env`` and a test's ``monkeypatch.setenv`` both invalidate it on the
+    next call.
+
+    Before this, every call re-read and re-parsed five env files from disk:
+    **1.46 ms** per call at 29 call sites, including the per-request auth
+    path (``security._decode_jwt``). The fingerprint costs ~25 µs, so the
+    same freshness is kept for ~1 % of the price.
+
+    The same mtime-cache pattern as ``get_model_config()``.
+    """
+    global _settings_cache
+
+    fingerprint = _settings_fingerprint()
+    cached = _settings_cache
+    if cached is not None and cached[0] == fingerprint:
+        return cached[1]
+
+    with _settings_lock:
+        cached = _settings_cache
+        if cached is not None and cached[0] == fingerprint:
+            return cached[1]
+        settings = Settings()  # type: ignore[call-arg]
+        _settings_cache = (fingerprint, settings)
+        return settings
+
+
+def clear_settings_cache() -> None:
+    """Clear the cached settings (tests only)."""
+    global _settings_cache
+    with _settings_lock:
+        _settings_cache = None
 
 
 def get_ports() -> dict[str, int]:

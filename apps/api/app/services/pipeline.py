@@ -32,7 +32,9 @@ from app.api.v1.schemas.analysis import (
     TraceEventResponse,
 )
 from app.config.settings import get_settings
-from app.core.system import memory as memory_mod
+from app.core.system import (
+    memory as memory_mod,  # noqa: F401 — re-export; tests patch svc.memory_mod
+)
 from app.llm import local_llm as local_llm_mod
 from app.observability.logging import get_logger
 from app.observability.metrics import (
@@ -924,11 +926,13 @@ async def run_analysis_pipeline(
             },
         )
         _record_completed("failed")
-    finally:
-        try:
-            await asyncio.to_thread(memory_mod.trim_memory)
-        except Exception as trim_exc:
-            logger.debug("Post-analysis memory compaction skipped", error=str(trim_exc))
+
+
+# NOTE: the post-analysis memory trim lives in the agent-graph coordinator
+# (`app/rag/agent/graph/coordinator.py`), which runs it in a `finally` right
+# after the graph returns — earlier in the lifecycle, and covering the graph's
+# failure path too. This module used to trim a second time, which cost a
+# measured 3.70 ms (a full `gc.collect()`) per analysis for no benefit.
 
 
 # Set the lazy shim reference after all definitions are complete.

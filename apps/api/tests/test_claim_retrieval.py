@@ -30,10 +30,25 @@ def _fused_chunk(doc_suffix: str, idx: int, text: str) -> dict:
     }
 
 
+class _AsyncCursor:
+    """Minimal stand-in for the async cursor ``Collection.find()`` returns."""
+
+    def __init__(self, docs: list[dict]) -> None:
+        self._docs = docs
+
+    def __aiter__(self):
+        async def _gen():
+            for doc in self._docs:
+                yield doc
+
+        return _gen()
+
+
 def _mock_collections():
     """One mock serving CLAIMS + EVIDENCE collections: nothing pre-exists."""
     mock_collection = MagicMock()
     mock_collection.find_one = AsyncMock(return_value=None)
+    mock_collection.find = MagicMock(return_value=_AsyncCursor([]))
     mock_collection.insert_many = AsyncMock(
         return_value=MagicMock(inserted_ids=[ObjectId("64ee39d09c6292376e191990")])
     )
@@ -292,3 +307,84 @@ def test_dead_reliability_weights_removed_from_models_yaml():
         "source_integrity_weight",
     ):
         assert dead_key not in data.get("reliability", {}), f"dead config: {dead_key}"
+
+
+# ── Evidence persistence: one round-trip, not one per chunk ───────────────────
+
+
+@pytest.mark.asyncio
+async def test_evidence_persistence_uses_one_query_not_one_per_chunk():
+    """The already-persisted lookup must not be an N+1.
+
+    It used to run `find_one` once per chunk. With `max_claim_retrievals`
+    chunks per claim and up to `max_verification_claims` claims, that was
+    dozens of MongoDB round-trips per analysis.
+    """
+    from app.rag.verification.pipeline.retrieval import _persist_claim_evidence
+
+    coll = _mock_collections()
+    with (
+        patch(
+            "app.rag.verification.pipeline.retrieval.get_collection",
+            return_value=coll,
+        ),
+        patch(
+            "app.rag.verification.pipeline.retrieval.integrity_mod.audit_evidence_integrity",
+            new=AsyncMock(
+                side_effect=lambda chunks: [{**c, "integrity_status": "VERIFIED"} for c in chunks]
+            ),
+        ),
+    ):
+        await _persist_claim_evidence(
+            analysis_id=ObjectId(ANALYSIS_ID),
+            user_id_str="64ee39d09c6292376e191981",
+            chunks=[
+                _fused_chunk("A", 0, "first evidence text"),
+                _fused_chunk("B", 1, "second evidence text"),
+                _fused_chunk("C", 2, "third evidence text"),
+            ],
+        )
+
+    assert coll.find.call_count == 1, f"expected one lookup, got {coll.find.call_count}"
+    coll.find_one.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_evidence_persistence_reuses_existing_rows():
+    """An already-persisted chunk must be linked, not inserted again."""
+    from app.rag.verification.pipeline.retrieval import _persist_claim_evidence
+
+    existing_id = ObjectId("64ee39d09c6292376e1919aa")
+    existing_doc = {
+        "_id": existing_id,
+        "document_id": ObjectId("64ee39d09c6292376e19198A"),
+        "text": "first evidence text",
+    }
+    coll = _mock_collections()
+    coll.find = MagicMock(return_value=_AsyncCursor([existing_doc]))
+    with (
+        patch(
+            "app.rag.verification.pipeline.retrieval.get_collection",
+            return_value=coll,
+        ),
+        patch(
+            "app.rag.verification.pipeline.retrieval.integrity_mod.audit_evidence_integrity",
+            new=AsyncMock(
+                side_effect=lambda chunks: [{**c, "integrity_status": "VERIFIED"} for c in chunks]
+            ),
+        ),
+    ):
+        pairs = await _persist_claim_evidence(
+            analysis_id=ObjectId(ANALYSIS_ID),
+            user_id_str="64ee39d09c6292376e191981",
+            chunks=[
+                _fused_chunk("A", 0, "first evidence text"),
+                _fused_chunk("B", 1, "second evidence text"),
+            ],
+        )
+
+    linked = {chunk["text"]: evid for chunk, evid in pairs}
+    assert linked["first evidence text"] == existing_id
+    # The chunk that was NOT persisted yet is inserted.
+    assert linked["second evidence text"] != existing_id
+    coll.insert_many.assert_called_once()

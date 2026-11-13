@@ -31,7 +31,8 @@ Every entry is tagged:
 |---|---|---|
 | **B1 — Audit** | ✅ COMPLETE | Read-only. No `app/` source modified. Findings in `BACKEND_AUDIT_B1.md`. |
 | **B2.1 — Critical correctness** | ✅ COMPLETE — approved | Gemini probe invocation + contract; recovery-loop routing; verdict preservation. 19 new tests. See §2 UPGRADE-001..004, §3 DEGRADATION-001..002. |
-| **B2.2 — Cleanup** | ✅ COMPLETE — **awaiting approval** | Dead `app/llm/registry/` deleted; embedding modules consolidated to one implementation; stale dirs removed; lint 13→0, format clean. See §2 UPGRADE-005..006, §5 REFINEMENT-003. |
+| **B2.2 — Cleanup** | ✅ COMPLETE — approved | Dead `app/llm/registry/` deleted; embedding modules consolidated to one implementation; stale dirs removed; lint 13→0, format clean. See §2 UPGRADE-005..006, §5 REFINEMENT-003. |
+| **B3 — Performance** | ✅ COMPLETE — **awaiting approval** | `/models/providers` 2601→19.6 ms; every read path 1.5–4× faster (settings cache); global rate limit now enforced; N+1 removed; self-heal streamed. See §2 UPGRADE-007..010, §3 DEGRADATION-003, §4.7–4.9. |
 | **B3 — Performance** | ⏸️ AWAITING APPROVAL | Plan in audit §6 / §7. |
 | **B4 — Accuracy** | ⏸️ AWAITING APPROVAL | Plan in audit §6 / §7. |
 | **B5 — Validation** | ⏸️ AWAITING APPROVAL | Plan in audit §7. |
@@ -166,6 +167,150 @@ ruff format --check→ 13 files would be reformatted
 ---
 
 ## 2. UPGRADE
+
+### UPGRADE-007 — `GET /models/providers`: 2601 ms → 19.6 ms  *(B3.1, measured)*
+
+**Change:** `app/llm/providers/health.py`, `app/llm/providers/base.py`.
+
+Three defects compounded to make one endpoint cost 2.6 s:
+
+| Defect | Fix |
+|---|---|
+| The five MLX candidate ports were probed **sequentially** | probed **concurrently** over one pooled client |
+| `_fetch_json_with_retry` slept 0.5 s before re-raising — and because the `raise` sat *inside* the `except`, the retry never happened. Five ports × 0.5 s = 2.5 s of **pure sleeping** for a provider that was simply not running | a **refused connection fails fast** (the server is down — retrying only delays the answer); a **timeout is retried once** (the server is slow or starting) |
+| The health checks used `async with _shared_http_client(...)`, and `httpx.AsyncClient.__aexit__` **closes** the client — so the shared connection pool was destroyed and rebuilt on every check | the pooled client is used as a plain object; `close_local_llm_clients()` owns shutdown |
+
+`_shared_http_client` also gained an explicit `connect_timeout`, so a probe can
+fail fast on a wedged server instead of waiting out the full read timeout.
+
+**Measured (live, same services):**
+
+| Probe | Baseline p50 | B3 p50 |
+|---|---|---|
+| `check_mlx_status` | 2601.0 ms | **1.1 ms** |
+| `check_ollama_status` | 25.5 ms | 16.9 ms |
+| `check_llamacpp_status` | 20.9 ms | 16.1 ms |
+| **`GET /api/v1/models/providers`** | **2601.42 ms** | **19.60 ms (−99.2 %)** |
+
+The frontend polls this endpoint every 8 s, so the saving is not only for the
+one caller: one idle browser tab no longer costs the server ~325 ms/s of
+provider probing.
+
+**Regression tests:** `tests/test_provider_probes.py` (8) — a refused
+connection must not sleep, a timeout must be retried once, the ports must be
+probed concurrently over one client, and a health check must not close the
+pooled client.
+
+---
+
+### UPGRADE-008 — `get_settings()`: 1.46 ms → 0.064 ms  *(B3.2, measured)*
+
+**Change:** `app/config/settings.py`.
+
+`get_settings()` rebuilt `Settings()` on every call, which made
+pydantic-settings re-read and re-parse **five env files from disk** — 1.46 ms
+per call at 29 call sites, including the per-request auth path
+(`security._decode_jwt`). The settings are now cached and invalidated by a
+**fingerprint of everything `Settings()` reads**: the process environment
+(env vars win over the files) and the path, mtime and size of every env file.
+
+Identical inputs always produce identical settings, so **a cache hit can never
+serve a stale value** — an operator's edited `.env` and a test's
+`monkeypatch.setenv` both invalidate it on the very next call. The same
+mtime-cache pattern `get_model_config()` already uses for `models.yaml`.
+
+**Measured:** 1.46 ms → **0.064 ms** per call (23×). The fingerprint itself
+costs ~25 µs, so the same freshness is kept for ~1 % of the price.
+
+**This is what made the read paths fast** — every authenticated request builds
+settings:
+
+| Endpoint | Baseline p50 | B3 p50 | Δ |
+|---|---|---|---|
+| `GET /api/v1/health` | 5.66 ms | **1.50 ms** | −73.5 % |
+| `GET /api/v1/knowledge-bases` | 18.26 ms | **3.37 ms** | −81.5 % |
+| `GET /api/v1/metrics` | 2.63 ms | **1.19 ms** | −54.8 % |
+| `GET /api/v1/analyses` | 8.54 ms | **2.63 ms** | −69.2 % |
+| `POST /api/v1/analyses` | 18.92 ms | **13.14 ms** | −30.5 % |
+
+**Regression tests:** `tests/test_settings_cache.py` (5) — the cache exists, an
+env-var change is picked up, an edited env file is picked up, a newly created
+env file is picked up, and the cache is at least 5× cheaper than a rebuild.
+
+---
+
+### UPGRADE-009 — The global rate limit is enforced  *(B3.3, S2 security)*
+
+**Change:** `app/api/rate_limiting.py` (new), `app/main.py`,
+`app/config/settings.py`.
+
+The limiter was configured but **never enforced**: slowapi applies
+`default_limits` only through `SlowAPIMiddleware`, and the middleware was
+never added. Every endpoint except the auth routes had no limit at all —
+**70 consecutive authenticated requests to `GET /models/providers` all returned
+200**, while the per-route auth limits (`@_auth_limiter.limit`) did fire. The
+registered `RateLimitExceeded` handler was unreachable dead code.
+
+**Adding slowapi's own middleware does not work either**, and the reason is
+worth recording: this FastAPI version keeps the included router as a single
+`_IncludedRouter` entry in `app.routes`, so slowapi's `_find_route_handler`
+cannot resolve a route handler and treats **every** API route as exempt
+(`_should_exempt` returns True when the handler is None). The limit is
+therefore implemented directly in `app/api/rate_limiting.py` — a small
+fixed-window limiter and a middleware — while the per-route auth limits keep
+using slowapi unchanged.
+
+**Decisions, with the evidence behind them:**
+
+- **Client key.** `get_remote_address` returns the direct peer, which behind a
+  reverse proxy (Render, Cloudflare — both are deployment targets) is the proxy
+  itself: every user would share one bucket and the first busy user would
+  throttle everybody. The forwarded client address is used when present.
+- **Limit value: 240/minute**, not the dead `60/minute`. The app's own
+  polling reaches **~69/min**: dashboard auto-refresh 24/min + settings 4/min
+  + playground 7.5/min + backend health probe 3/min + analysis fallback poll
+  30/min while a run is in flight. A 60/min ceiling would throttle normal use
+  rather than abuse; 240/min keeps ~3.5× headroom while still bounding a
+  runaway client. It is configurable via `RATE_LIMIT_PER_MINUTE`, and `0`
+  disables it.
+- **Monitoring endpoints are exempt** (`/api/v1/health`, `/api/v1/health/ready`,
+  `/api/v1/health/detailed`, `/api/v1/metrics`): a load balancer polling every
+  second must not spend the request budget.
+- **The rejection uses the API's standard error envelope**
+  (`{"error": {"code": "RATE_LIMITED", …}}`) with a `Retry-After` header, and
+  responses carry `X-RateLimit-Limit` / `X-RateLimit-Remaining`.
+
+**Measured (live, 300 requests to one endpoint):**
+
+```
+240 × HTTP 401   (the endpoint's own auth guard, before the budget is spent)
+ 60 × HTTP 429   {"error":{"code":"RATE_LIMITED","message":"Too many requests. Slow down."}}
+Retry-After: 57
+```
+
+**Regression tests:** `tests/test_rate_limiting.py` (8) — the limit fires, the
+envelope is right, each path and each client has its own budget, the
+monitoring endpoints are never limited, the forwarded address wins over the
+peer address, and `0` disables the budget.
+
+---
+
+### UPGRADE-010 — The claim-evidence lookup is one query, not one per chunk  *(B3.4)*
+
+**Change:** `app/rag/verification/pipeline/retrieval.py`.
+
+`_persist_claim_evidence` ran a `find_one` **per chunk** to check whether the
+evidence was already persisted. With `max_claim_retrievals` chunks per claim
+and up to `max_verification_claims` claims, that was dozens of MongoDB
+round-trips per analysis. The lookup is now a single query over the candidate
+`(document_id, text)` keys, and the "first match" semantics are preserved by
+sorting the matches by `_id`.
+
+**Regression tests:** `tests/test_claim_retrieval.py` — one lookup per call
+(not one per chunk), and an already-persisted chunk is linked rather than
+inserted again.
+
+---
 
 ### UPGRADE-005 — One embedding implementation instead of two  *(B2.2)*
 
@@ -355,6 +500,40 @@ confirm it stays green.
 
 ## 3. DEGRADATION
 
+### DEGRADATION-003 — Trace persistence: measured, and deliberately left alone  *(B3.5, DECISION)*
+
+**Finding:** every node emitted its own `X.started` / `X.completed` **and**
+`_execute_with_fallback` emitted its own pair for the same node, so one
+analysis wrote **11 trace rows** where 8 would do (the counts were also
+asymmetric: `generation.started` ×2 but `generation.completed` ×1, because the
+node's own completion event never fires on the failure path).
+
+**Measured (MongoDB, localhost):**
+
+```
+insert_one       0.181 ms/event  →  2.0 ms per analysis (11 events)
+insert_many(11)  0.242 ms/batch   →  saves 1.7 ms per analysis
+```
+
+**Decision: not implemented.** Batching the writes saves **1.7 ms on a ~4.9 s
+analysis (0.03 %)** and costs two things that are worth more than that:
+buffered events are lost if the process dies, and the MongoDB-polling fallback
+of the live trace would show a lag. Merging the duplicate rows instead would
+need an `update_one` per duplicate — the same number of round-trips as the
+inserts it replaces, so it saves rows, not time.
+
+The duplicate rows are already invisible in the UI: the frontend's
+`compactTraceEvents` collapses consecutive same-type events and keeps the
+richer message. The remaining defect is the asymmetric pair
+(`X.started` twice, `X.completed` once), which is cosmetic.
+
+**Recommendation:** if the trace table size matters, fix the asymmetry by
+making one owner per event name — but that changes the trace contract the
+frontend renders, so it belongs in a change with its own review, not in a
+performance pass.
+
+---
+
 ### DEGRADATION-001 — Failing analyses now run a second recovery round  *(B2.1, measured)*
 
 **Cost:** a failing analysis performs up to two retrieval/generation/verification
@@ -487,8 +666,62 @@ ruff format (new files)               → already formatted
 **pre-existing** format diffs (part of the 13-file debt); none of the diffs
 are in the lines B2.1 touched (verified with `ruff format --diff`).
 
-### 4.6 B2.2 re-measurement
+### 4.7 B3 re-measurement
 
+**Conditions:** identical to §1, with the B3 code.
+Artifact: `bench_api_results_B3.json`, `quality_results_B3.json`.
+
+| Endpoint | Baseline p50 | B2.1 p50 | B2.2 p50 | **B3 p50** | Δ baseline→B3 |
+|---|---|---|---|---|---|
+| `GET /health` | 5.66 ms | 5.55 ms | 5.76 ms | **1.50 ms** | **−73.5 %** |
+| **`GET /models/providers`** | 2601.42 ms | 2605.49 ms | 2608.72 ms | **19.60 ms** | **−99.2 %** |
+| `GET /knowledge-bases` | 18.26 ms | 11.89 ms | 24.07 ms | **3.37 ms** | **−81.5 %** |
+| `GET /metrics` | 2.63 ms | 2.09 ms | 2.47 ms | **1.19 ms** | **−54.8 %** |
+| `POST /analyses` | 18.92 ms | 17.53 ms | 18.30 ms | **13.14 ms** | **−30.5 %** |
+| `GET /analyses` | 8.54 ms | 3.92 ms | 4.05 ms | **2.63 ms** | **−69.2 %** |
+| **POST → terminal analysis** | 4909.69 ms | 5017.85 ms | 5004.62 ms | **4892.77 ms** | **−0.3 %** |
+
+p99, same runs:
+
+| Endpoint | Baseline p99 | **B3 p99** |
+|---|---|---|
+| `GET /models/providers` | 2603.03 ms | **53.44 ms** |
+| `GET /health` | 7.59 ms | 2.68 ms |
+| `POST /analyses` | 78.57 ms | 92.87 ms |
+| **POST → terminal analysis** | 5840.31 ms | **10265.33 ms** |
+
+**The analysis itself is unchanged (−0.3 %)** — it is bound by the local LLM,
+not by the API. Every *read* path got 1.5–4× faster, because the settings
+cache removed five env-file reads from every authenticated request.
+
+The end-to-end p99 stays at ~10 s: that is the second recovery round
+(DEGRADATION-001), not a new regression.
+
+### 4.8 B3 quality re-measurement
+
+| Metric | Baseline | B2.1 | B2.2 | **B3** |
+|---|---|---|---|---|
+| Recall@K | 1.00 | 1.00 | 1.00 | **1.00** |
+| MRR | 1.00 | 1.00 | 1.00 | **1.00** |
+| Precision@K | 0.3333 | 0.2917 | 0.3056 | **0.3056** |
+| Completed / abstained | 6 / 6 | 6 / 6 | 6 / 6 | **6 / 6** |
+| Mean reliability | 0.50 | 0.50 | 0.50 | **0.50** |
+
+B3 changed no answer-affecting logic: the quality numbers are identical to
+B2.2.
+
+### 4.9 B3 test suite
+
+```
+796 passed (before B3)  →  804 passed (after B3)
+coverage 80.82%        →  80.94%   (gate: 78%) — PASS
+ruff check app/        →  All checks passed
+ruff format app/       →  128 files already formatted
+```
+
+---
+
+### 4.6 B2.2 re-measurement
 **Conditions:** identical to §1, with the B2.2 code.
 Artifact: `bench_api_results_B2_2.json`, `quality_results_B2_2.json`.
 
@@ -524,6 +757,29 @@ where the three baseline runs all stored the destroyed
 ---
 
 ## 5. REFINEMENT
+
+### REFINEMENT-004 — B3: duplicate memory trim removed, self-heal made streaming  *(B3.6)*
+
+**Change:** `app/services/pipeline.py`, `app/rag/agent/graph/nodes/retrieval.py`.
+
+- **One memory trim per analysis, not two.** `run_analysis_pipeline` trimmed
+  memory in its `finally` even though the agent-graph coordinator already
+  trims in its own `finally` right after the graph returns — earlier in the
+  lifecycle, and covering the graph's failure path too. The duplicate cost a
+  measured **3.70 ms per analysis** (a full `gc.collect()` is 2.45 ms of it).
+- **The self-heal no longer materialises every chunk.** It used to
+  `to_list(10_000)` — holding every chunk document in RAM at once, on top of
+  the vectors it then produced — before embedding them in bounded batches. The
+  chunks are now **streamed** and embedded/upserted batch by batch, so peak
+  memory is one batch of chunks plus one batch of vectors, whatever the KB
+  size. The batch size is the RAM bound.
+
+**Note on the audit wording:** the audit called the 10 000-chunk fetch
+"unbounded". It was in fact bounded — at 10 000 chunks, which is still a RAM
+spike for a large knowledge base. The fix removes the cap rather than raising
+it.
+
+---
 
 ### REFINEMENT-003 — B2.2 cleanup: dead code removed, lint and format clean  *(B2.2)*
 
@@ -724,6 +980,8 @@ abstention baseline in §1.5.
 
 ### CHANGE REQUIRED-004 — `GET /api/v1/models/providers` costs 2.6 s per call  *(S2, latency)*
 
+> **STATUS: RESOLVED in B3.1** — see UPGRADE-007. 2601 ms → 19.6 ms p50.
+
 **Files:** `app/llm/providers/health.py:200` (`check_mlx_status`), `:75`
 (`_fetch_json_with_retry`), `:98`/`:155` (`async with _shared_http_client(...)`).
 
@@ -755,6 +1013,10 @@ real.
 
 ### CHANGE REQUIRED-005 — The global rate limit is configured but never enforced  *(S2, security)*
 
+> **STATUS: RESOLVED in B3.3** — see UPGRADE-009. The limit is enforced; the
+> implementation is app-local because slowapi's own middleware cannot resolve
+> the routes in this FastAPI version.
+
 **File:** `app/main.py:530`
 
 ```python
@@ -779,6 +1041,8 @@ actually fires.
 ---
 
 ### CHANGE REQUIRED-006 — `get_settings()` re-reads 5 files from disk on every call  *(S2)*
+
+> **STATUS: RESOLVED in B3.2** — see UPGRADE-008. 1.46 ms → 0.064 ms.
 
 **File:** `app/config/settings.py:287`
 
@@ -821,13 +1085,27 @@ failure path skipping the node's own completion event.
 
 ### CHANGE REQUIRED-008 — N+1 and unbounded MongoDB query patterns  *(S2)*
 
-| Site | Pattern |
-|---|---|
-| `app/rag/verification/pipeline/retrieval.py:65` | `find_one` **per chunk** in a loop (N+1 round-trips) |
-| `app/rag/verification/integrity.py:62` | `{"$or": [ … up to 100 clauses ]}` per audit |
-| `app/services/claims_evidence.py:78,179,203` | up to **1000** analysis ids → `{"$in": [...]}` (can exceed Mongo's 16 MB BSON limit on large tenants) |
-| `app/rag/retrieval/retriever.py:346` | `find({"_id": {"$in": doc_objs}})` — unbounded `$in` from result payloads |
-| `app/rag/agent/graph/nodes/retrieval.py:207` | `.to_list(10_000)` self-heal — unbounded RAM spike |
+> **STATUS: PARTLY RESOLVED in B3** — the N+1 in `_persist_claim_evidence` is
+> gone (UPGRADE-010) and the self-heal no longer materialises every chunk
+> (REFINEMENT-004). The remaining items are listed below.
+
+| Site | Pattern | Status |
+|---|---|---|
+| `app/rag/verification/pipeline/retrieval.py:65` | `find_one` **per chunk** in a loop (N+1 round-trips) | **FIXED in B3** — one batched query (UPGRADE-010) |
+| `app/rag/verification/integrity.py:62` | `{"$or": [ … up to 100 clauses ]}` per audit | open — the clause count is bounded by the chunk count, which is bounded by the tier caps; left alone because it is a deliberate, bounded query |
+| `app/services/claims_evidence.py:78,179,203` | up to **1000** analysis ids → `{"$in": [...]}` | open — see the correction below |
+| `app/rag/retrieval/retriever.py:346` | `find({"_id": {"$in": doc_objs}})` — `$in` built from result payloads | open — the ids come from the retrieved chunks, so the set is bounded by the retrieval result size |
+| `app/rag/agent/graph/nodes/retrieval.py:207` | `.to_list(10_000)` self-heal — RAM spike | **FIXED in B3** — the chunks are streamed (REFINEMENT-004) |
+
+**Correction to the original finding.** The audit reported that the
+`{"$in": [...]}` over analysis ids "can exceed Mongo's 16 MB BSON limit on
+large tenants". That is **not** what the code does: the id list is hard-capped
+at 1000 by `.to_list(1000)`, and 1000 ObjectIds are ~14 KB — two orders of
+magnitude below the 16 MB limit. The real defect is the opposite one: a user
+with **more than 1000 analyses silently loses the claims of their oldest
+analyses** from the claims vault, because the id set is truncated before the
+query runs. That is a pagination-correctness issue, not a BSON issue, and it
+belongs with the accuracy work rather than in a performance pass.
 
 ---
 
@@ -863,12 +1141,17 @@ failure path skipping the node's own completion event.
 
 ### CHANGE REQUIRED-011 — `_fetch_json_with_retry` retry is unreachable  *(S3)*
 
+> **STATUS: RESOLVED in B3.1** — see UPGRADE-007. A refused connection now
+> fails fast; a timeout is retried once.
+
 **File:** `app/llm/providers/health.py:75` — `raise` sits inside the `except`,
 so the second iteration can never run. Verified: one 0.5 s sleep, then re-raise.
 
 ---
 
 ### CHANGE REQUIRED-012 — `trim_memory()` runs twice per analysis  *(S3)*
+
+> **STATUS: RESOLVED in B3.6** — see REFINEMENT-004.
 
 `app/rag/agent/graph/coordinator.py:112` and `app/services/pipeline.py:911` both
 call it in a `finally`. Measured `trim_memory()` = 3.70 ms p50 (of which
@@ -980,6 +1263,29 @@ coordinator already receives and returns the final state, so it can mark it
 there), and decide explicitly whether `analysis.diagnosis` should reflect the
 *verification* diagnosis or the *recovery* diagnosis. The second one is a
 product decision, not a bug fix.
+
+---
+
+### CHANGE REQUIRED-019 — slowapi's global limits cannot work with this FastAPI version  *(S2, tooling constraint — NEW in B3.3)*
+
+**Found while implementing the rate limit.** This FastAPI version keeps the
+included router as a single `_IncludedRouter` entry in `app.routes` rather
+than flattening the routes into it. slowapi's `_find_route_handler` iterates
+`app.routes` and matches each route against the scope, so it finds **no**
+handler for any route under the included router — and `_should_exempt` returns
+`True` when the handler is `None`.
+
+**Consequence:** adding `SlowAPIMiddleware` would silently exempt **every**
+API route from the global limit while looking correctly configured. The
+global budget is therefore implemented in `app/api/rate_limiting.py` instead
+(UPGRADE-009).
+
+**This also affects the per-route slowapi decorators.** They still work — the
+decorator checks the limit itself and does not depend on the middleware — but
+the `_route_limits` bookkeeping in `should_recover` is not consulted by the
+app-local limiter, so a route with its own decorator is subject to **both**
+limits (the stricter one wins). That is the intended behaviour, but it is
+worth knowing before adding more per-route decorators.
 
 ---
 

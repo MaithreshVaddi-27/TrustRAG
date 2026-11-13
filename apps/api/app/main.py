@@ -27,10 +27,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
+from app.api.rate_limiting import install_rate_limiting
 from app.api.router import api_router
 from app.config.model_config import get_model_config
 from app.config.settings import get_settings
@@ -453,7 +452,8 @@ def _register_exception_handlers(app: FastAPI) -> None:
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9\-]{1,64}$")
 
 
-async def _rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:
+def _rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Return the API's standard error envelope for a rate-limited request."""
     return JSONResponse(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         content={"error": {"code": "RATE_LIMITED", "message": "Too many requests. Slow down."}},
@@ -501,6 +501,14 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json" if not settings.is_production() else None,
     )
 
+    # ── Rate limiting (P1-19) ────────────────────────────────────────────
+    # The global request budget is enforced by app/api/rate_limiting.py, not
+    # by slowapi's middleware: this FastAPI version keeps the included router
+    # as one `_IncludedRouter` entry, so slowapi cannot resolve a route
+    # handler and exempts every API route from its own limit.
+    install_rate_limiting(app, per_minute=settings.rate_limit_per_minute)
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+
     # ── CORS ───────────────────────────────────────────────────────────────
     # SEC-H-A: In production, only explicit CORS_ORIGINS allowed.
     # Wildcard platform regex (vercel.app, netlify.app, pages.dev) only for dev/staging.
@@ -525,11 +533,6 @@ def create_app() -> FastAPI:
 
     # ── GZip compression (threshold 1KB, skips small responses) ──────────────
     app.add_middleware(GZipMiddleware, minimum_size=1000)
-
-    # ── Rate limiting (P1-19) ────────────────────────────────────────────
-    limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
 
     # ── Request ID ────────────────────────────────────────────────────────
     app.middleware("http")(request_id_middleware)

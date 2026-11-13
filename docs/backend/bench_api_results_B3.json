@@ -1,0 +1,90 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "runs": 3,
+  "kb_id": "6af68a59267df8d2c7719247",
+  "health": {
+    "name": "health",
+    "unit": "ms",
+    "n": 3,
+    "min": 1.45,
+    "p50": 1.5,
+    "p95": 2.68,
+    "p99": 2.68,
+    "max": 2.68,
+    "mean": 1.87
+  },
+  "models_providers": {
+    "name": "models_providers",
+    "unit": "ms",
+    "n": 3,
+    "min": 17.91,
+    "p50": 19.6,
+    "p95": 53.44,
+    "p99": 53.44,
+    "max": 53.44,
+    "mean": 30.31
+  },
+  "knowledge_bases": {
+    "name": "knowledge_bases",
+    "unit": "ms",
+    "n": 3,
+    "min": 3.02,
+    "p50": 3.37,
+    "p95": 6.58,
+    "p99": 6.58,
+    "max": 6.58,
+    "mean": 4.32
+  },
+  "metrics": {
+    "name": "metrics",
+    "unit": "ms",
+    "n": 3,
+    "min": 1.17,
+    "p50": 1.19,
+    "p95": 1.34,
+    "p99": 1.34,
+    "max": 1.34,
+    "mean": 1.23
+  },
+  "analysis_create": {
+    "name": "analysis_create",
+    "unit": "ms",
+    "n": 12,
+    "min": 12.62,
+    "p50": 13.14,
+    "p95": 21.63,
+    "p99": 92.87,
+    "max": 92.87,
+    "mean": 20.38
+  },
+  "analysis_end_to_end": {
+    "name": "analysis_end_to_end",
+    "unit": "ms",
+    "n": 12,
+    "min": 2857.01,
+    "p50": 4892.77,
+    "p95": 9063.93,
+    "p99": 10265.33,
+    "max": 10265.33,
+    "mean": 5016.3
+  },
+  "analysis_statuses": {
+    "abstained": 6,
+    "completed": 6
+  },
+  "reliability_scores": {
+    "n": 12,
+    "mean": 0.5
+  },
+  "analyses_list": {
+    "name": "analyses_list",
+    "unit": "ms",
+    "n": 3,
+    "min": 2.47,
+    "p50": 2.63,
+    "p95": 3.07,
+    "p99": 3.07,
+    "max": 3.07,
+    "mean": 2.73
+  }
+}

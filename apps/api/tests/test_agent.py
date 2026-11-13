@@ -670,7 +670,9 @@ async def test_retrieval_node_self_heal_batches_doc_lookup(
 
     chunks_coll = MagicMock()
     chunks_coll.count_documents = AsyncMock(return_value=2)
-    chunks_coll.find.return_value.sort.return_value.to_list = AsyncMock(return_value=stored_chunks)
+    # The self-heal streams the chunks (bounded batches), so the cursor must
+    # be async-iterable rather than a to_list() result.
+    chunks_coll.find.return_value.sort.return_value = _FakeCursor(stored_chunks)
     docs_coll = MagicMock()
     docs_coll.find = MagicMock(
         return_value=_FakeCursor(
@@ -792,7 +794,9 @@ async def test_retrieval_node_self_heal_embeds_upserts_in_batches(
 
     chunks_coll = MagicMock()
     chunks_coll.count_documents = AsyncMock(return_value=2)
-    chunks_coll.find.return_value.sort.return_value.to_list = AsyncMock(return_value=stored_chunks)
+    # The self-heal streams the chunks (bounded batches), so the cursor must
+    # be async-iterable rather than a to_list() result.
+    chunks_coll.find.return_value.sort.return_value = _FakeCursor(stored_chunks)
     docs_coll = MagicMock()
     docs_coll.find = MagicMock(
         return_value=_FakeCursor(

@@ -43,6 +43,10 @@ logger = get_logger(__name__)
 # stays distinct from timeout (server slow).
 PROBE_TIMEOUT_SECONDS = 3.0
 PROBE_ATTEMPTS = 2
+# Connect timeout for the liveness probes. A provider that is not running
+# refuses the connection immediately; a provider that IS running but wedged
+# must not hold the request open for the full read timeout.
+PROBE_CONNECT_TIMEOUT_SECONDS = 1.5
 
 __all__ = [
     "_classify_cloud_probe_error",
@@ -56,16 +60,27 @@ __all__ = [
 ]
 
 
-async def _fetch_json_with_retry(endpoint: str) -> httpx.Response:
-    """Fetch JSON from an endpoint with one retry."""
-    for attempt in range(2):
+async def _fetch_json_with_retry(
+    endpoint: str,
+    client: httpx.AsyncClient,
+    attempts: int = 2,
+) -> httpx.Response:
+    """Fetch JSON from an endpoint, retrying once on a timeout.
+
+    A **refused connection** means the server is down: retrying only delays
+    the answer, so it fails fast. A **timeout** means the server is slow or
+    still starting up, which is worth exactly one more attempt.
+
+    The caller owns the client — this function never closes it, because a
+    closed client takes the whole connection pool with it.
+    """
+    for attempt in range(max(1, attempts)):
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(4.0, connect=2.0)) as client:
-                res = await client.get(endpoint)
-            return res
-        except (httpx.ConnectError, httpx.TimeoutException):
+            return await client.get(endpoint)
+        except httpx.TimeoutException:
             if attempt == 0:
                 await asyncio.sleep(0.5)
+                continue
             raise
     raise RuntimeError("unreachable")
 
@@ -79,17 +94,12 @@ async def check_ollama_status(
     cli_models = [m for m in await discover_ollama_cli_models() if not _is_embedding_model_name(m)]
 
     try:
-        async with _shared_http_client(base_url, 10.0) as client:
-            # Retry once on transient timeout, matching legacy _fetch_json_with_retry behavior
-            for attempt in range(2):
-                try:
-                    res = await client.get(f"{base_url.rstrip('/')}/api/tags")
-                    break
-                except (httpx.ConnectError, httpx.TimeoutException):
-                    if attempt == 0:
-                        await asyncio.sleep(0.5)
-                    else:
-                        raise
+        # The pooled client is used as a plain object on purpose: `async with`
+        # would close it and discard the keep-alive connections.
+        client = _shared_http_client(base_url, 10.0)
+        # Retry once on a transient timeout (a slow server), not on a refused
+        # connection (a server that is not running).
+        res = await _fetch_json_with_retry(f"{base_url.rstrip('/')}/api/tags", client)
         # Use status_code check for compatibility with test mocks (which may not have is_success)
         if getattr(res, "status_code", 500) < 400:
             data = res.json()
@@ -136,8 +146,9 @@ async def check_llamacpp_status(
         api_models: list[str] = []
         connected = False
         try:
-            async with _shared_http_client(base_url, 10.0) as client:
-                res = await client.get(f"{base_url.rstrip('/')}/v1/models")
+            # Pooled client, used as a plain object: `async with` would close it.
+            client = _shared_http_client(base_url, 10.0)
+            res = await client.get(f"{base_url.rstrip('/')}/v1/models")
             if res.status_code == 200:
                 connected = True
                 data = res.json()
@@ -184,7 +195,13 @@ async def check_llamacpp_status(
 async def check_mlx_status(
     base_url: str = _DEFAULT_MLX_BASE_URL, max_ports: int = 5
 ) -> dict[str, Any]:
-    """Discover MLX status and generative models by checking multiple server ports."""
+    """Discover MLX status and generative models by checking multiple server ports.
+
+    The candidate ports are probed **concurrently** over one pooled client.
+    Probing them in sequence cost ~2.6 s for a provider that is not running
+    (five ports x a pointless 0.5 s sleep between retries); concurrently it
+    costs one connect timeout.
+    """
     cache_models = discover_mlx_cache_models()
     all_api_models: list[str] = []
     any_connected = False
@@ -192,19 +209,34 @@ async def check_mlx_status(
     base_port_match = re.search(r":(\d+)", base_url)
     start_port = int(base_port_match.group(1)) if base_port_match else 8080
 
-    for port_offset in range(max_ports):
-        port = start_port + port_offset
-        endpoint = f"http://127.0.0.1:{port}/v1/models"
+    endpoints = [f"http://127.0.0.1:{start_port + offset}/v1/models" for offset in range(max_ports)]
 
+    # One pooled client for the whole host: httpx keeps a separate connection
+    # pool per origin, so the different ports do not share connections but
+    # they do share the client and its limits.
+    client = _shared_http_client(
+        base_url,
+        PROBE_TIMEOUT_SECONDS,
+        connect_timeout=PROBE_CONNECT_TIMEOUT_SECONDS,
+    )
+
+    async def _probe(endpoint: str) -> list[str]:
         try:
-            res = await _fetch_json_with_retry(endpoint)
-            if res.status_code == 200:
-                any_connected = True
-                data = res.json()
-                models = [m.get("id") for m in data.get("data", []) if m.get("id")]
-                all_api_models.extend(models)
+            res = await _fetch_json_with_retry(endpoint, client)
         except (httpx.ConnectError, httpx.TimeoutException):
-            continue
+            return []
+        if res.status_code != 200:
+            return []
+        try:
+            data = res.json()
+        except Exception:
+            return []
+        return [m.get("id") for m in data.get("data", []) if m.get("id")]
+
+    for models in await asyncio.gather(*(_probe(e) for e in endpoints)):
+        if models:
+            any_connected = True
+            all_api_models.extend(models)
 
     api_llms = [m for m in all_api_models if m]
     if any_connected and api_llms:

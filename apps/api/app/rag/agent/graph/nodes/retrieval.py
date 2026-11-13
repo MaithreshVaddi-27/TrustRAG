@@ -197,32 +197,36 @@ async def retrieval_node(state: AgentState) -> AgentState:
                         chunks_count=mongo_chunks_count,
                     )
                     await qdrant_db.init_kb_collection(state["kb_id"])
-                    chunks = await (
-                        chunks_coll.find({"knowledge_base_id": ObjectId(state["kb_id"])})
-                        .sort("chunk_index", 1)
-                        .to_list(10_000)  # Support large KBs; embedded below in batches
-                    )
 
                     doc_coll = _graph_mod.get_collection(Collections.DOCUMENTS)
-                    # Single batched lookup (was N+1 find_one per distinct
-                    # document — thousands of round trips on large KBs).
-                    doc_ids = list({c["document_id"] for c in chunks})
-                    doc_map: dict[str, str] = {}
-                    if doc_ids:
-                        async for d_obj in doc_coll.find(
-                            {"_id": {"$in": doc_ids}}, {"filename": 1}
-                        ):
-                            doc_map[str(d_obj["_id"])] = d_obj.get("filename", "document")
-
                     embed_model = model_registry.get_embedding_model()
-                    # H-BE-5: embed + upsert in bounded batches so a 10 k-chunk
-                    # self-heal never holds all vectors/points in RAM at once.
-                    # Progress events keep the trace UI honest on long heals
-                    # (the feed compacts consecutive same-type events).
-                    total_chunks = len(chunks)
 
-                    for batch_start in range(0, total_chunks, _graph_mod.SELF_HEAL_BATCH_SIZE):
-                        batch = chunks[batch_start : batch_start + _graph_mod.SELF_HEAL_BATCH_SIZE]
+                    # Stream the chunks instead of materialising them all. A
+                    # 10 k-chunk self-heal used to hold every chunk document in
+                    # RAM at once, on top of the vectors it then produced. The
+                    # batch size is the RAM bound: one batch of chunks and one
+                    # batch of vectors are live at any time.
+                    chunk_cursor = chunks_coll.find(
+                        {"knowledge_base_id": ObjectId(state["kb_id"])}
+                    ).sort("chunk_index", 1)
+                    total_chunks = mongo_chunks_count
+                    healed_count = 0
+
+                    async def _heal_batch(batch: list[dict[str, Any]]) -> None:
+                        """Embed and upsert one batch of chunks."""
+                        nonlocal healed_count
+                        if not batch:
+                            return
+                        # One batched lookup for the documents in this batch
+                        # (was N+1 find_one per distinct document).
+                        doc_ids = list({c["document_id"] for c in batch})
+                        doc_map: dict[str, str] = {}
+                        if doc_ids:
+                            async for d_obj in doc_coll.find(
+                                {"_id": {"$in": doc_ids}}, {"filename": 1}
+                            ):
+                                doc_map[str(d_obj["_id"])] = d_obj.get("filename", "document")
+
                         batch_texts = [
                             f"[{doc_map.get(str(c['document_id']), 'document')} | "
                             f"{c.get('zone', 'body').upper()}] {c['text']}"
@@ -267,9 +271,9 @@ async def retrieval_node(state: AgentState) -> AgentState:
                                 )
                             )
                         await q_client.upsert(collection_name=col_name, points=sync_points)
-                        healed_count = min(
-                            batch_start + _graph_mod.SELF_HEAL_BATCH_SIZE, total_chunks
-                        )
+                        healed_count += len(batch)
+                        # Progress events keep the trace UI honest on long heals
+                        # (the feed compacts consecutive same-type events).
                         await _graph_mod.add_trace_event(
                             state["analysis_id"],
                             "retrieval.self_heal_batch",
@@ -281,6 +285,15 @@ async def retrieval_node(state: AgentState) -> AgentState:
                                 "total": total_chunks,
                             },
                         )
+
+                    batch: list[dict[str, Any]] = []
+                    async for chunk in chunk_cursor:
+                        batch.append(chunk)
+                        if len(batch) >= _graph_mod.SELF_HEAL_BATCH_SIZE:
+                            await _heal_batch(batch)
+                            batch = []
+                    await _heal_batch(batch)
+
                     candidates = await _graph_mod.retrieve_hybrid_chunks(**retrieve_kwargs)
                     try:
                         await _graph_mod.get_collection(Collections.KNOWLEDGE_BASES).update_one(

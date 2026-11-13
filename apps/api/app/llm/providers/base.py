@@ -35,17 +35,27 @@ __all__ = [
 # Reuse HTTP connections for the Ollama/llama.cpp request fan-out. One analysis
 # can perform generation, decomposition, batch NLI, fallback NLI, and recovery;
 # per-call clients previously discarded keep-alive connections every time.
-_HTTP_CLIENTS: dict[tuple[str, float, int], httpx.AsyncClient] = {}
+_HTTP_CLIENTS: dict[tuple[str, float, float, int], httpx.AsyncClient] = {}
 _HTTP_CLIENTS_LOCK = threading.Lock()
 
 
-def _shared_http_client(base_url: str, timeout: float) -> httpx.AsyncClient:
-    """Return a per-event-loop, per-endpoint pooled AsyncClient with connection limits."""
+def _shared_http_client(
+    base_url: str,
+    timeout: float,
+    connect_timeout: float = 10.0,
+) -> httpx.AsyncClient:
+    """Return a per-event-loop, per-endpoint pooled AsyncClient with connection limits.
+
+    The client is **pooled and long-lived** — callers must NOT close it.
+    ``httpx.AsyncClient.__aexit__`` closes the client, which would throw away
+    every keep-alive connection the pool exists to keep; use it as a plain
+    object and let ``close_local_llm_clients()`` handle shutdown.
+    """
     try:
         loop_id = id(asyncio.get_running_loop())
     except RuntimeError:
         loop_id = 0
-    key = (base_url.rstrip("/"), float(timeout), loop_id)
+    key = (base_url.rstrip("/"), float(timeout), float(connect_timeout), loop_id)
     with _HTTP_CLIENTS_LOCK:
         client = _HTTP_CLIENTS.get(key)
         if client is None or client.is_closed:
@@ -55,7 +65,7 @@ def _shared_http_client(base_url: str, timeout: float) -> httpx.AsyncClient:
                 keepalive_expiry=30.0,
             )
             client = httpx.AsyncClient(
-                timeout=httpx.Timeout(timeout, connect=10.0, pool=10.0),
+                timeout=httpx.Timeout(timeout, connect=connect_timeout, pool=10.0),
                 limits=limits,
                 follow_redirects=True,
             )
