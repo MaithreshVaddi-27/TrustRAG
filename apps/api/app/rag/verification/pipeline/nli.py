@@ -59,7 +59,10 @@ async def verify_claim_nli(
 
         model_obj = get_verification_model(provider=provider, model=model)
         cap = verification_cap_kwargs(
-            provider or get_model_config().verification_provider, model, max_tokens=384
+            provider or get_model_config().verification_provider,
+            model,
+            max_tokens=384,
+            think=get_model_config().verification_thinking,
         )
         structured_nli = _structured_verifier(model_obj, provider, NLIVerdict, cap)
 
@@ -111,7 +114,10 @@ async def batch_verify_claims_nli(
 
     model_obj = get_verification_model(provider=provider, model=model)
     cap = verification_cap_kwargs(
-        provider or get_model_config().verification_provider, model, max_tokens=768
+        provider or get_model_config().verification_provider,
+        model,
+        max_tokens=768,
+        think=get_model_config().verification_thinking,
     )
     structured_batch = _structured_verifier(model_obj, provider, BatchNLIVerdict, cap)
 
@@ -158,7 +164,10 @@ async def fused_decompose_verify(
 
     model_obj = get_verification_model(provider=provider, model=model)
     cap = verification_cap_kwargs(
-        provider or get_model_config().verification_provider, model, max_tokens=1024
+        provider or get_model_config().verification_provider,
+        model,
+        max_tokens=1024,
+        think=get_model_config().verification_thinking,
     )
     structured_fused = _structured_verifier(model_obj, provider, FusedDecomposeVerify, cap)
 

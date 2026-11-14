@@ -9,6 +9,7 @@ providers and verification/generation callers.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from app.observability.logging import get_logger
 
@@ -107,13 +108,22 @@ def _is_embedding_model_name(name: str) -> bool:
 
 
 def verification_cap_kwargs(
-    provider: str | None, model: str | None, max_tokens: int
-) -> dict[str, int]:
+    provider: str | None,
+    model: str | None,
+    max_tokens: int,
+    *,
+    think: bool | None = None,
+) -> dict[str, Any]:
     """Task-sized output caps for verification calls on any provider.
 
     Direct-answer models keep the lean caps. Thinking models (local or cloud)
     get headroom with a 1024-token floor. Cloud providers are capped per call
     too, using each client's own parameter name.
+
+    ``think`` controls the reasoning trace of a thinking model: ``False`` asks
+    the model to answer directly. It is only meaningful for local providers
+    that expose the switch (Ollama's ``think``); other providers get nothing
+    injected, because a foreign keyword would be rejected.
     """
     norm = (provider or "").strip().lower()
     roomy = max(int(max_tokens) * 2, 1024)
@@ -121,7 +131,10 @@ def verification_cap_kwargs(
     cap = roomy if (is_reasoning_model(model) or small) else int(max_tokens)
 
     if norm in LOCAL_LLM_PROVIDERS:
-        return {"max_tokens": cap}
+        kwargs: dict[str, Any] = {"max_tokens": cap}
+        if think is not None and is_reasoning_model(model):
+            kwargs["think"] = bool(think)
+        return kwargs
     if norm in ("gemini", "google_genai"):
         return {"max_output_tokens": cap}
     # Unknown provider: inject nothing rather than risk a foreign kwarg.

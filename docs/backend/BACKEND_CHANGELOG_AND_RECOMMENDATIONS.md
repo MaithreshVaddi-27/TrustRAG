@@ -32,7 +32,8 @@ Every entry is tagged:
 | **B1 — Audit** | ✅ COMPLETE | Read-only. No `app/` source modified. Findings in `BACKEND_AUDIT_B1.md`. |
 | **B2.1 — Critical correctness** | ✅ COMPLETE — approved | Gemini probe invocation + contract; recovery-loop routing; verdict preservation. 19 new tests. See §2 UPGRADE-001..004, §3 DEGRADATION-001..002. |
 | **B2.2 — Cleanup** | ✅ COMPLETE — approved | Dead `app/llm/registry/` deleted; embedding modules consolidated to one implementation; stale dirs removed; lint 13→0, format clean. See §2 UPGRADE-005..006, §5 REFINEMENT-003. |
-| **B3 — Performance** | ✅ COMPLETE — **awaiting approval** | `/models/providers` 2601→19.6 ms; every read path 1.5–4× faster (settings cache); global rate limit now enforced; N+1 removed; self-heal streamed. See §2 UPGRADE-007..010, §3 DEGRADATION-003, §4.7–4.9. |
+| **B3 — Performance** | ✅ COMPLETE — approved | `/models/providers` 2601→19.6 ms; every read path 1.5–4× faster (settings cache); global rate limit now enforced; N+1 removed; self-heal streamed. See §2 UPGRADE-007..010, §3 DEGRADATION-003, §4.7–4.9. |
+| **B4 — Accuracy** | ✅ COMPLETE — **awaiting approval** | Ground truth grown to 33 probes (27 answerable + 6 unanswerable); the thinking control makes a reasoning model 2.2× faster with identical accuracy; the default-model question is now decided on measurements (DECISION-006). See §2 UPGRADE-011, §5 REFINEMENT-005, §7 DECISION-006..009, §4.10–4.12. |
 | **B3 — Performance** | ⏸️ AWAITING APPROVAL | Plan in audit §6 / §7. |
 | **B4 — Accuracy** | ⏸️ AWAITING APPROVAL | Plan in audit §6 / §7. |
 | **B5 — Validation** | ⏸️ AWAITING APPROVAL | Plan in audit §7. |
@@ -167,6 +168,42 @@ ruff format --check→ 13 files would be reformatted
 ---
 
 ## 2. UPGRADE
+
+### UPGRADE-011 — A thinking model no longer pays for a reasoning trace it does not need  *(B4, measured)*
+
+**Change:** `app/llm/providers/ollama.py`, `app/llm/providers/capabilities.py`,
+`app/rag/verification/pipeline/nli.py`,
+`app/rag/verification/pipeline/decomposition.py`,
+`app/rag/agent/graph/nodes/recovery.py`, `app/config/model_config.py`,
+`config/models.yaml`.
+
+A thinking model (qwen3) spends most of its wall-clock writing the reasoning
+trace. For two of the pipeline's three LLM tasks that trace buys nothing:
+
+| Task | With thinking | Without | Same result? |
+|---|---|---|---|
+| NLI — one claim vs the premise | 5687 ms | **1299 ms** | yes (SUPPORTED, same segment) |
+| Fused decompose + verify | 6369 ms | **1213 ms** | yes (same claim, same verdict) |
+| Recovery query rewrite | ~16.5 s | **~0.3 s** | yes (sensible rewrite) |
+
+**Implementation:** the Ollama client now forwards a `think` switch, and
+`verification_cap_kwargs(..., think=...)` adds it for reasoning models only (a
+non-thinking model rejects the field). The verifier's calls use the new
+`llm.verification_thinking` config key (**default: false** — the measured
+setting); the recovery rewrite always runs without the trace, because expanding
+a query is a one-shot rewriting task.
+
+**Measured end to end (the full 33-probe evaluation, qwen3:1.7b):**
+
+| | Answer acc. | Abstention acc. | Recall@K | MRR | Mean latency |
+|---|---|---|---|---|---|
+| thinking everywhere | 0.9259 | 1.0 | 0.963 | 0.9444 | 46878 ms |
+| **no thinking in verification/rewrite** | **0.9259** | **1.0** | **0.963** | **0.9444** | **21528 ms (−54 %)** |
+
+Identical accuracy on every metric, **2.2× faster**. This is what makes the
+1.7B model usable at all (see DECISION-006).
+
+---
 
 ### UPGRADE-007 — `GET /models/providers`: 2601 ms → 19.6 ms  *(B3.1, measured)*
 
@@ -666,6 +703,41 @@ ruff format (new files)               → already formatted
 **pre-existing** format diffs (part of the 13-file debt); none of the diffs
 are in the lines B2.1 touched (verified with `ruff format --diff`).
 
+### 4.6 B2.2 re-measurement
+**Conditions:** identical to §1, with the B2.2 code.
+Artifact: `bench_api_results_B2_2.json`, `quality_results_B2_2.json`.
+
+| Metric | Baseline | B2.1 | B2.2 | Δ baseline→B2.2 |
+|---|---|---|---|---|
+| `GET /health` p50 | 5.66 ms | 5.55 ms | 5.76 ms | +1.8 % (noise) |
+| `GET /models/providers` p50 | 2601.42 ms | 2605.49 ms | 2608.72 ms | +0.3 % (unchanged — a B3 item) |
+| `POST /analyses` p50 | 18.92 ms | 17.53 ms | 18.30 ms | −3.3 % (noise) |
+| **POST → terminal analysis p50** | 4909.69 ms | 5017.85 ms | 5004.62 ms | **+1.9 %** |
+| **POST → terminal analysis p99** | 5840.31 ms | 10845.00 ms | 13483.98 ms | **+130.9 %** |
+| Recall@K | 1.00 | 1.00 | 1.00 | unchanged |
+| MRR | 1.00 | 1.00 | 1.00 | unchanged |
+| Precision@K | 0.3333 | 0.2917 | 0.3056 | −8.3 % |
+
+**B2.2 is a cleanup phase — it changed no answer-affecting logic**, so the
+read-path deltas are noise and the end-to-end p50 is unchanged. The p99
+spread (10.8 s → 13.5 s) is the same second recovery round as DEGRADATION-001,
+landing in a different place depending on which round the local model takes.
+
+**The B2.2 batch produced 5 abstained / 7 completed (mean reliability 0.583)
+against 6 / 6 (0.50).** This is **run-to-run non-determinism of the 1B local
+model**, not a B2.2 effect — confirmed by the per-query trace across all
+three batches, where the same query flips between `abstained/RETRIEVAL_FAILURE`
+and `completed/NONE` from run to run (the model runs at `temperature: 0.2`).
+**It is not reported as an improvement.**
+
+What B2.2 *did* change deterministically is visible in the same trace: the
+diagnosis for *"What is the reciprocal rank fusion constant?"* stays
+`LOW_COVERAGE / "Answer is non-responsive..."` across all six post-B2.1 runs,
+where the three baseline runs all stored the destroyed
+`RETRIEVAL_FAILURE / "No claims extracted for verification"`.
+
+---
+
 ### 4.7 B3 re-measurement
 
 **Conditions:** identical to §1, with the B3 code.
@@ -721,42 +793,92 @@ ruff format app/       →  128 files already formatted
 
 ---
 
-### 4.6 B2.2 re-measurement
-**Conditions:** identical to §1, with the B2.2 code.
-Artifact: `bench_api_results_B2_2.json`, `quality_results_B2_2.json`.
+### 4.10 B4 accuracy evaluation (33 probes: 27 answerable + 6 unanswerable)
 
-| Metric | Baseline | B2.1 | B2.2 | Δ baseline→B2.2 |
-|---|---|---|---|---|
-| `GET /health` p50 | 5.66 ms | 5.55 ms | 5.76 ms | +1.8 % (noise) |
-| `GET /models/providers` p50 | 2601.42 ms | 2605.49 ms | 2608.72 ms | +0.3 % (unchanged — a B3 item) |
-| `POST /analyses` p50 | 18.92 ms | 17.53 ms | 18.30 ms | −3.3 % (noise) |
-| **POST → terminal analysis p50** | 4909.69 ms | 5017.85 ms | 5004.62 ms | **+1.9 %** |
-| **POST → terminal analysis p99** | 5840.31 ms | 10845.00 ms | 13483.98 ms | **+130.9 %** |
-| Recall@K | 1.00 | 1.00 | 1.00 | unchanged |
-| MRR | 1.00 | 1.00 | 1.00 | unchanged |
-| Precision@K | 0.3333 | 0.2917 | 0.3056 | −8.3 % |
+**Conditions:** the expanded ground-truth corpus (4 documents), one run per
+probe, all through the public API against the same local services.
 
-**B2.2 is a cleanup phase — it changed no answer-affecting logic**, so the
-read-path deltas are noise and the end-to-end p50 is unchanged. The p99
-spread (10.8 s → 13.5 s) is the same second recovery round as DEGRADATION-001,
-landing in a different place depending on which round the local model takes.
+| Configuration | Answer acc. | Abstention acc. | Recall@K | Precision@K | MRR | Mean latency |
+|---|---|---|---|---|---|---|
+| `gemma3:1b` (shipped default) | 0.3704 | 0.8333 | 0.963 | 0.2407 | 0.9444 | 5033 ms |
+| `gemma3:1b` + reranker | 0.3704 | 0.8333 | 0.963 | 0.2361 | 0.9630 | 5803 ms |
+| `gemma3:1b` + temperature 0 | 0.3704 | 0.8333 | 0.963 | 0.2407 | 0.9444 | 5261 ms |
+| `gemma3:1b` + 3 context chunks | 0.4074 | 0.8333 | 0.963 | 0.2500 | 0.9167 | 5284 ms |
+| `qwen3:1.7b` | 0.9259 | 1.0 | 0.963 | 0.2500 | 0.9444 | 46878 ms |
+| **`qwen3:1.7b` + thinking control** | **0.9259** | **1.0** | 0.963 | 0.2500 | 0.9444 | **21528 ms** |
 
-**The B2.2 batch produced 5 abstained / 7 completed (mean reliability 0.583)
-against 6 / 6 (0.50).** This is **run-to-run non-determinism of the 1B local
-model**, not a B2.2 effect — confirmed by the per-query trace across all
-three batches, where the same query flips between `abstained/RETRIEVAL_FAILURE`
-and `completed/NONE` from run to run (the model runs at `temperature: 0.2`).
-**It is not reported as an improvement.**
+Artifacts: `eval_accuracy_*.json` (one per configuration).
 
-What B2.2 *did* change deterministically is visible in the same trace: the
-diagnosis for *"What is the reciprocal rank fusion constant?"* stays
-`LOW_COVERAGE / "Answer is non-responsive..."` across all six post-B2.1 runs,
-where the three baseline runs all stored the destroyed
-`RETRIEVAL_FAILURE / "No claims extracted for verification"`.
+### 4.11 B4 latency measurement caveat
+
+The host was **not idle** during the B4 runs (load average 9.5–17.0; macOS
+`mediaanalysed` at 175 % CPU, a browser at 32 %). Short endpoints are
+therefore noise-dominated: the same code measured `analysis_create` p50 at
+13.1 ms in one run and 63.6 ms in another.
+
+**The `min` column is the load-robust signal.** Across runs of the same code:
+
+| Endpoint | Baseline min | B3 min | B4 min |
+|---|---|---|---|
+| `GET /health` | 3.97 ms | 1.45 ms | 1.93 ms |
+| `GET /models/providers` | 2599.99 ms | 17.91 ms | 25.00 ms |
+| `GET /knowledge-bases` | 14.25 ms | 3.02 ms | 3.77 ms |
+| `GET /metrics` | 2.12 ms | 1.17 ms | 1.21 ms |
+| `POST /analyses` | 14.14 ms | 12.62 ms | 21.57 ms |
+| `POST → terminal analysis` | 2885.96 ms | 2857.01 ms | 5325.55 ms |
+
+The read-path improvements are 2–5× and hold on the minimum as well as the
+median. The **end-to-end** figure is LLM-bound and load-sensitive: the B4 run
+carried a resident 1.7B model and a llama.cpp server that the B3 run did not.
+
+### 4.12 B4 test suite
+
+```
+804 passed, 20 warnings
+coverage 80.94%   (gate: 78%) — PASS
+ruff check app/   → All checks passed
+ruff format app/  → 128 files already formatted
+```
 
 ---
 
 ## 5. REFINEMENT
+
+### REFINEMENT-005 — The ground-truth evaluation set, grown to something that can decide  *(B4)*
+
+**Change:** `apps/api/scripts/eval_set.py` (new), `apps/api/scripts/eval_accuracy.py`
+(new), `apps/api/scripts/bench_auth.py` (new).
+
+The first evaluation corpus was **one document with five probes**. It could not
+support an accuracy claim: it was too small to separate a real change from
+noise, it covered one domain, and it had **no unanswerable probe** — so
+"abstained" was only ever countable as a loss, never as the *correct* outcome.
+
+**The new set:** four documents (retrieval policy, security policy, retention
+policy, API limits) and **33 probes — 27 answerable, 6 unanswerable**:
+
+- an answerable probe is **correct** only when the run is `completed` *and*
+  the expected substring is in the answer;
+- an unanswerable probe is **correct** only when the run **abstains**.
+
+Both halves are scored together, so no change can buy accuracy by weakening
+verification: every answerable probe that stops being answered costs a point,
+and every unanswerable probe that starts being answered costs a point.
+
+**The harness** (`eval_accuracy.py`) creates the knowledge base, uploads the
+corpus, waits for indexing, runs every probe through the public API, and
+reports answer accuracy, abstention accuracy, the false-abstention and
+false-answer lists, the mean latency, and the retrieval quality (Recall@K /
+Precision@K / MRR) of the evidence actually served — so a change can be
+attributed to retrieval or to verification rather than guessed at.
+
+**Supporting changes:** the benchmarks now share one benchmark account
+(`bench_auth.py`) — the register endpoint allows only 3 registrations per hour
+per client, which had silently broken repeated benchmark runs — and
+`scripts/start_local_services.sh` starts MongoDB, Ollama and the API and waits
+for them to answer.
+
+---
 
 ### REFINEMENT-004 — B3: duplicate memory trim removed, self-heal made streaming  *(B3.6)*
 
@@ -1266,6 +1388,28 @@ product decision, not a bug fix.
 
 ---
 
+### CHANGE REQUIRED-020 — A unit test was passing only because a server was down  *(S3, test hygiene — NEW in B4)*
+
+**Found while running B4.** `tests/test_verification.py::test_fused_decompose_verify_returns_none_on_failure`
+patches `app.rag.verification.pipeline.decomposition.get_verification_model`, but
+the fused implementation it exercises lives in
+`app.rag.verification.pipeline.nli` and uses **that** module's
+`get_verification_model`. The patch never applied: the test reached a **real**
+inference server and relied on it being unreachable (no llama.cpp server on
+:9931) to produce the `None` it asserted.
+
+When a llama.cpp server happened to be running, the real model answered and
+the test failed. The assertion itself was never wrong — the mock was.
+
+**Fixed by patching both modules** (the assertion is unchanged), so the test
+now exercises the failure path hermetically. Confirmed against the pre-fix
+tree: the test fails there too, with a live server.
+
+**Worth knowing:** any test in this suite that expects an inference server to
+be *down* is environment-dependent in the same way.
+
+---
+
 ### CHANGE REQUIRED-019 — slowapi's global limits cannot work with this FastAPI version  *(S2, tooling constraint — NEW in B3.3)*
 
 **Found while implementing the rate limit.** This FastAPI version keeps the
@@ -1385,6 +1529,118 @@ dedicated before/after benchmark.
 **Decision:** a change is not "done" until it has been re-benchmarked and the
 result is recorded in this log — including when the result is **no
 improvement**. Regression findings are logged as DEGRADATION, not suppressed.
+
+---
+
+### DECISION-006 — The default model, decided on measurements  *(B4)*
+
+DECISION-003 said the default model is a decision that needs its own
+benchmark. This is that benchmark.
+
+**The evaluation set had to grow first.** The original corpus was one
+document with five probes — too small to distinguish a real improvement from
+noise, and with no *unanswerable* probe, so "abstains" could only ever be
+counted as a loss. The set is now four documents across four domains and
+**33 probes: 27 answerable + 6 unanswerable** (see REFINEMENT-005). Both
+halves are scored, so an "accuracy improvement" cannot be bought by weakening
+verification: every answerable probe that stops being answered costs a point,
+and every unanswerable probe that starts being answered costs a point.
+
+**Measured (all against the same corpus, same services, n=33 probes):**
+
+| Configuration | Answer acc. | Abstention acc. | Recall@K | MRR | Mean latency |
+|---|---|---|---|---|---|
+| `gemma3:1b` (shipped default) | 0.3704 | 0.8333 | 0.963 | 0.9444 | 5033 ms |
+| `gemma3:1b` + reranker ON | 0.3704 | 0.8333 | 0.963 | 0.9630 | 5803 ms |
+| `gemma3:1b` + temperature 0 | 0.3704 | 0.8333 | 0.963 | 0.9444 | 5261 ms |
+| `gemma3:1b` + 3 context chunks | 0.4074 | 0.8333 | 0.963 | 0.9167 | 5284 ms |
+| **`qwen3:1.7b`** | **0.9259** | **1.0** | 0.963 | 0.9444 | 46878 ms |
+| **`qwen3:1.7b` + thinking control** | **0.9259** | **1.0** | 0.963 | 0.9444 | **21528 ms** |
+
+**Reading the table.**
+
+- **Retrieval is not the problem.** Recall@K is 0.963 and MRR 0.9444 in every
+  configuration — including the ones that fail. The evidence is in the corpus
+  and it is served first; the failure is downstream, in generation and
+  verification.
+- **The 1B model cannot do the job.** It answers 10 of 27 answerable probes.
+  Diagnosis of the misses: the model either refuses outright (the stored
+  diagnosis is *"Model abstained: insufficient grounded evidence"* while the
+  answer *is* in the served evidence) or picks the wrong fact out of a
+  multi-fact sentence (*"Bearer tokens remain valid for 7 days"* — the 7 days
+  are the *refresh* tokens). Both are comprehension failures, not retrieval
+  failures, and no threshold change can fix them.
+- **The 1.7B model can.** It answers 25 of 27 and abstains on all 6
+  unanswerable probes — the product's two promises are both met.
+
+**Decision: the accuracy gate (DECISION-002) is met by the model change**
+(Recall@K and MRR unchanged, answer accuracy +55.6 points, abstention
+accuracy +16.7 points), and the **cost is 4.3× the latency** (5.0 s → 21.5 s)
+after the thinking control.
+
+**What this log does NOT do.** It does not change the shipped default. Two
+reasons, both explicit:
+
+1. `config/models.yaml` marks `qwen3:1.7b` as **deep-reasoning mode**, and
+   the spec says *"NEVER enabled by default in interactive serving"* — a
+   product rule, not a technical one. Changing it is a product decision.
+2. The local deployment pins `OLLAMA_MODEL=gemma3:1b` in `.env`, which
+   overrides `models.yaml` anyway. The default is a *deployment* choice, and
+   the code should not silently override it.
+
+**Recommendation (the operator's call):** adopt `qwen3:1.7b` as the
+interactive default **if** a ~21 s analysis is acceptable for your users — it
+is the difference between answering 37 % of questions and 93 %, with perfect
+safe abstention. If sub-7 s is a hard requirement, keep `gemma3:1b` as the
+default and treat the 1B model's limits as a *known, measured* limitation
+rather than a defect to be papered over.
+
+---
+
+### DECISION-007 — The reranker stays off  *(B4, measured)*
+
+DECISION-003 required the reranker to be benchmarked before adoption. It was:
+`RERANKER_ENABLED=true`, same corpus, same probes.
+
+| | Answer acc. | Abstention acc. | Recall@K | MRR | Mean latency |
+|---|---|---|---|---|---|
+| reranker off | 0.3704 | 0.8333 | 0.963 | 0.9444 | 5033 ms |
+| **reranker on** | 0.3704 | 0.8333 | 0.963 | **0.9630** | **5803 ms (+15 %)** |
+
+**Decision: not adopted.** The reranker does what it says — MRR improves
+(the right segment is served first more often) — but it changes **nothing**
+about the answers: the same 10 of 27 probes are answered, the same 6 of 6
+abstentions hold. It costs 15 % latency and a cross-encoder pass per query.
+Its value would be measured on a corpus where retrieval *is* the bottleneck;
+on this corpus it is not.
+
+---
+
+### DECISION-008 — The generation temperature stays at 0.2  *(B4, measured)*
+
+| | Answer acc. | Abstention acc. | Mean latency |
+|---|---|---|---|
+| temperature 0.2 | 0.3704 | 0.8333 | 5033 ms |
+| temperature 0.0 | 0.3704 | 0.8333 | 5261 ms |
+
+**Decision: unchanged.** Greedy decoding makes individual answers
+reproducible, but the aggregate accuracy is identical: the 1B model's
+failures are systematic, not sampling noise. Not worth a config change.
+
+---
+
+### DECISION-009 — Embedding quantisation is **not** adopted (not measured)  *(B4)*
+
+DECISION-003 also required embedding quantisation to be measured before
+adoption. **It was not measured**, and the reason is concrete: only the fp32
+export exists locally (`.model_cache/bge-small-en-v1.5.onnx`, 134 MB); there is
+no int8 export to compare against, and producing one is a separate job with
+its own risk (the yaml itself warns *"1 % clipping can drop the true nearest
+neighbour at the reranker boundary"*).
+
+**Decision: unchanged** — the status quo is the safe state, and the recall
+impact of an int8 export is still **unmeasured**. It stays an open item, not a
+rejected one.
 
 ---
 

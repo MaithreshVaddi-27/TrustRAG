@@ -79,6 +79,11 @@ llm:
 
   temperature: 0.2
   top_p: 0.9
+  # Whether the VERIFIER may use a reasoning model's thinking trace. Measured
+  # on qwen3-1.7b: identical verdicts, 4-5x faster without the trace (the
+  # trace was the dominant cost of a whole analysis). Env wins:
+  # LLM_VERIFICATION_THINKING.
+  verification_thinking: false
   # Keep local grounded responses concise; verifier and recovery have separate caps.
   max_output_tokens: 512
   timeout_seconds: 180

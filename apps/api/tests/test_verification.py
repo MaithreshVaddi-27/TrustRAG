@@ -1074,16 +1074,26 @@ async def test_fused_meta_claims_filtered(
     assert all("user asks" not in c["text"].lower() for c in claims)
 
 
+@patch("app.rag.verification.pipeline.nli.get_verification_model")
 @patch("app.rag.verification.pipeline.decomposition.get_verification_model")
 @pytest.mark.asyncio
-async def test_fused_decompose_verify_returns_none_on_failure(mock_get_model):
-    """Unit: total fused failure returns None (caller falls back)."""
+async def test_fused_decompose_verify_returns_none_on_failure(
+    mock_get_model_decomposition, mock_get_model_nli
+):
+    """Unit: total fused failure returns None (caller falls back).
+
+    Both modules that can resolve the fused implementation are patched. The
+    test used to patch only the decomposition module, which left the fused
+    path talking to a real inference server — the assertion then passed only
+    because no llama.cpp server happened to be listening.
+    """
 
     mock_structured = MagicMock()
     mock_structured.ainvoke = AsyncMock(side_effect=RuntimeError("boom"))
     mock_model = MagicMock()
     mock_model.with_structured_output = MagicMock(return_value=mock_structured)
-    mock_get_model.return_value = mock_model
+    mock_get_model_decomposition.return_value = mock_model
+    mock_get_model_nli.return_value = mock_model
 
     res = await fused_decompose_verify(
         "Some answer text.",

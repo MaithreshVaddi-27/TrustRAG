@@ -6,6 +6,7 @@ Decomposes generated answers into atomic claims using structured outputs.
 
 from __future__ import annotations
 
+from app.config import get_model_config
 from app.llm.llm_ledger import invoke_counted
 from app.llm.local_llm import is_small_model
 from app.llm.model_registry import get_verification_model
@@ -29,7 +30,12 @@ async def decompose_answer_to_claims(
 
     try:
         model_obj = get_verification_model(provider=provider, model=model)
-        cap = verification_cap_kwargs(provider or "default", model, max_tokens=512)
+        cap = verification_cap_kwargs(
+            provider or "default",
+            model,
+            max_tokens=512,
+            think=get_model_config().verification_thinking,
+        )
         structured_llm = _structured_verifier(model_obj, provider, ClaimDecomposition, cap)
 
         logger.info("Running answer claim decomposition", answer_len=len(answer))

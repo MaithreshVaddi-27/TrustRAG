@@ -260,6 +260,11 @@ against the newly served segments.</loop>
             state.get("llm_provider") or cfg.verification_provider,
             state.get("llm_model"),
             max_tokens=128,
+            # A query rewrite does not need a reasoning trace: expanding a query
+            # is a one-shot rewriting task, and on a thinking model the trace
+            # was the dominant cost of the whole recovery round (measured:
+            # 16.5 s per rewrite with thinking, 0.3 s without).
+            think=False,
         )
         invoker = model.bind(**cap) if cap else model
         response = await invoke_counted(invoker, rewrite_prompt)

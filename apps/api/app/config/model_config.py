@@ -159,6 +159,24 @@ class ModelConfig:
         return float(self._get("llm", "temperature"))
 
     @property
+    def verification_thinking(self) -> bool:
+        """Whether the verifier may use a reasoning model's thinking trace.
+
+        Measured on the local 1.7B reasoning model: the verifier's answer
+        was identical with and without the trace, and the call was **4-5x
+        faster without it** (NLI 5687 ms -> 1299 ms; fused decompose+verify
+        6369 ms -> 1213 ms). The trace is the dominant cost of a whole
+        analysis for a thinking model.
+
+        Env wins: ``LLM_VERIFICATION_THINKING``.
+        """
+        env_val = _blank_as_none("LLM_VERIFICATION_THINKING")
+        if env_val is not None:
+            return env_val.strip().lower() in ("1", "true", "yes", "on")
+        val = self._get("llm", "verification_thinking", required=False)
+        return bool(val) if val is not None else False
+
+    @property
     def llm_top_p(self) -> float:
         return float(self._get("llm", "top_p"))
 

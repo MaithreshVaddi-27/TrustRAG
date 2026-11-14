@@ -13,10 +13,16 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+import sys
 import time
+from pathlib import Path
 from typing import Any
 
 import httpx
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from scripts.bench_auth import register_or_login
 
 
 def _pct(values: list[float], pct: float) -> float:
@@ -75,33 +81,6 @@ PROBES = [
 ]
 
 
-async def _register(client: httpx.AsyncClient, base_url: str) -> tuple[str, str]:
-    import time as _t
-
-    email = f"bench-{_t.time():.0f}@bench.example.com"
-    # Throwaway local benchmark credential — never a real secret.
-    password = "BenchPass-1234!"  # noqa: S105
-    r = await client.post(
-        f"{base_url}/api/v1/auth/register",
-        json={
-            "email": email,
-            "password": password,
-            "full_name": "Bench User",
-        },
-    )
-    if r.status_code not in (200, 201):
-        raise RuntimeError(f"register failed: {r.status_code} {r.text[:300]}")
-    # Register returns the user profile; the JWT comes from login.
-    r = await client.post(
-        f"{base_url}/api/v1/auth/login",
-        json={"email": email, "password": password},
-    )
-    if r.status_code not in (200, 201):
-        raise RuntimeError(f"login failed: {r.status_code} {r.text[:300]}")
-    token = r.json()["access_token"]
-    return token, email
-
-
 async def _setup_kb(client: httpx.AsyncClient, base_url: str, token: str) -> str:
     h = {"Authorization": f"Bearer {token}"}
     r = await client.post(
@@ -145,7 +124,7 @@ async def main() -> None:
 
     results: dict[str, Any] = {"base_url": args.base_url, "runs": args.runs}
     async with httpx.AsyncClient(timeout=httpx.Timeout(600.0)) as client:
-        token, _email = await _register(client, args.base_url)
+        token, _email = await register_or_login(client, args.base_url)
         h = {"Authorization": f"Bearer {token}"}
         kb_id = await _setup_kb(client, args.base_url, token)
         results["kb_id"] = kb_id
