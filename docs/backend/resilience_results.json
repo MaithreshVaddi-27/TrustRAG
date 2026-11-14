@@ -1,0 +1,44 @@
+{
+  "phases": [
+    {
+      "phase": "concurrency",
+      "n": 4,
+      "terminal": 4,
+      "failures": [],
+      "statuses": [
+        "abstained",
+        "abstained",
+        "abstained",
+        "abstained"
+      ],
+      "elapsed_ms": 34531,
+      "ok": true
+    },
+    {
+      "phase": "rate_limit",
+      "requests": 241,
+      "status": 429,
+      "code": "RATE_LIMITED",
+      "retry_after": "54",
+      "ok": true
+    },
+    {
+      "phase": "provider_down",
+      "stopped": true,
+      "status": 503,
+      "elapsed_ms": 111,
+      "message": "Local LLM server 'ollama' is not reachable at http://localhost:11434. Start it with 'ollama serve' (then 'ollama pull <model>' if needed).",
+      "mentions_provider": true,
+      "ok": true
+    },
+    {
+      "phase": "database_down",
+      "stopped": true,
+      "status": 500,
+      "message": "An unexpected error occurred.",
+      "envelope": true,
+      "ok": true
+    }
+  ],
+  "ok": true
+}

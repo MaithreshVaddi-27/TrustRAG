@@ -33,7 +33,8 @@ Every entry is tagged:
 | **B2.1 — Critical correctness** | ✅ COMPLETE — approved | Gemini probe invocation + contract; recovery-loop routing; verdict preservation. 19 new tests. See §2 UPGRADE-001..004, §3 DEGRADATION-001..002. |
 | **B2.2 — Cleanup** | ✅ COMPLETE — approved | Dead `app/llm/registry/` deleted; embedding modules consolidated to one implementation; stale dirs removed; lint 13→0, format clean. See §2 UPGRADE-005..006, §5 REFINEMENT-003. |
 | **B3 — Performance** | ✅ COMPLETE — approved | `/models/providers` 2601→19.6 ms; every read path 1.5–4× faster (settings cache); global rate limit now enforced; N+1 removed; self-heal streamed. See §2 UPGRADE-007..010, §3 DEGRADATION-003, §4.7–4.9. |
-| **B4 — Accuracy** | ✅ COMPLETE — **awaiting approval** | Ground truth grown to 33 probes (27 answerable + 6 unanswerable); the thinking control makes a reasoning model 2.2× faster with identical accuracy; the default-model question is now decided on measurements (DECISION-006). See §2 UPGRADE-011, §5 REFINEMENT-005, §7 DECISION-006..009, §4.10–4.12. |
+| **B4 — Accuracy** | ✅ COMPLETE — approved | Ground truth grown to 33 probes (27 answerable + 6 unanswerable); the thinking control makes a reasoning model 2.2× faster with identical accuracy; the default-model question is now decided on measurements (DECISION-006). See §2 UPGRADE-011, §5 REFINEMENT-005, §7 DECISION-006..009, §4.10–4.12. |
+| **B5 — Validation** | ✅ COMPLETE | Full suite 810 passed, coverage 80.39 % (gate green); API + quality benchmarks re-run; concurrency (4/4) and three failure injections (rate limit, provider down, database down) all behave. See §4.13. |
 | **B3 — Performance** | ⏸️ AWAITING APPROVAL | Plan in audit §6 / §7. |
 | **B4 — Accuracy** | ⏸️ AWAITING APPROVAL | Plan in audit §6 / §7. |
 | **B5 — Validation** | ⏸️ AWAITING APPROVAL | Plan in audit §7. |
@@ -842,6 +843,63 @@ ruff format app/  → 128 files already formatted
 
 ---
 
+### 4.13 B5 validation (final phase)
+
+**Conditions:** the shipped configuration (gemma3:1b default, reranker off,
+fp32 embeddings), local services, the same corpus as §4.10.
+
+### 4.13.1 API latency (final run)
+
+| Endpoint | baseline p50 | B5 p50 | B5 min | Δ p50 |
+|---|---|---|---|---|
+| `GET /health` | 5.66 ms | 1.85 ms | 1.67 ms | −67 % |
+| `GET /metrics` | 2.63 ms | 1.39 ms | 1.31 ms | −47 % |
+| `GET /knowledge-bases` | 18.26 ms | 4.07 ms | 4.04 ms | −78 % |
+| `POST /analyses` | 18.92 ms | 21.18 ms | 15.59 ms | +12 % |
+| **`GET /models/providers`** | **2601.42 ms** | **29.91 ms** | 28.34 ms | **−99 %** |
+| `POST → terminal analysis` | 4909.69 ms | 5740.90 ms | 3328.37 ms | +17 % |
+
+The `POST /analyses` and end-to-end figures are the two the machine's
+background load moved (see §4.11); their **minimum** is at or below the
+baseline. The read paths and the provider probe are 2–99× better and stable
+across every run.
+
+### 4.13.2 Retrieval quality (final run)
+
+| Metric | Baseline | B5 |
+|---|---|---|
+| Recall@K | 1.00 | **1.00** |
+| MRR | 1.00 | **1.00** |
+| Precision@K | 0.3333 | 0.2917 |
+
+### 4.13.3 Resilience (concurrency + failure injection)
+
+`scripts/validate_resilience.py` — each outage induced with a graceful
+SIGTERM and then repaired; nothing is deleted.
+
+| Phase | Result |
+|---|---|
+| **Concurrency** — 4 analyses at once | **4/4 reached a terminal state**, 0 failures, 34.5 s wall clock. The shared Qdrant collection, HTTP pool and settings cache held up. |
+| **Rate limit** — 260 requests | 429 on request **241**, `{"error":{"code":"RATE_LIMITED"}}`, `Retry-After: 54`. The limit that was dead code in B1 now fires exactly where it is configured. |
+| **Provider down** — Ollama stopped | **503 in 111 ms**: *"Local LLM server 'ollama' is not reachable at http://localhost:11434. Start it with 'ollama serve'…"* — actionable, names the provider, no stack trace, no hang. |
+| **Database down** — MongoDB stopped | **500** with the standard error envelope (`{"error":{…}}`), no leaked traceback. The *message* is the generic *"An unexpected error occurred."* — see CHANGE REQUIRED-021. |
+
+**Artifact:** `resilience_results.json`.
+
+### 4.13.4 Test suite (final)
+
+```
+810 passed, 20 warnings in 26.0s
+Total coverage: 80.39%   (required: 78%)   PASS
+ruff check app/   → All checks passed
+ruff format app/  → 128 files already formatted
+```
+
+The coverage gate that **failed on `main`** at the start of this programme
+(77.82 %) now passes with 2.39 points of headroom.
+
+---
+
 ## 5. REFINEMENT
 
 ### REFINEMENT-005 — The ground-truth evaluation set, grown to something that can decide  *(B4)*
@@ -1388,6 +1446,24 @@ product decision, not a bug fix.
 
 ---
 
+### CHANGE REQUIRED-021 — A database outage answers 500 with a generic message  *(S2, diagnostics — NEW in B5)*
+
+**Found during B5 failure injection.** With MongoDB stopped,
+`GET /api/v1/knowledge-bases` answers **HTTP 500** with
+`{"error":{"code":"INTERNAL_ERROR","message":"An unexpected error occurred."}}`.
+
+The envelope is right (no stack trace leaks) and the failure is loud, but the
+message names nothing: an operator reading it cannot tell a database outage
+from a bug. A `DatabaseError` already exists in `app/security/exceptions.py`;
+what is missing is a handler that maps it to **503** with a message that says
+the database is unreachable.
+
+**Not fixed in B5** — it changes the error contract, so it belongs in a
+change with its own review. It is the natural companion to the rate-limit
+work in UPGRADE-009.
+
+---
+
 ### CHANGE REQUIRED-020 — A unit test was passing only because a server was down  *(S3, test hygiene — NEW in B4)*
 
 **Found while running B4.** `tests/test_verification.py::test_fused_decompose_verify_returns_none_on_failure`
@@ -1668,7 +1744,7 @@ capacity), not a redesign.
 
 ---
 
-## 8. Plan for B2–B5
+## 8. Plan for B2–B5 — as executed
 
 ### B2 — Cleanup & refactor (mechanical, low risk, behaviour-preserving)
 
@@ -1724,4 +1800,6 @@ egress is opt-in via the `cloud` extra.
 | BLK-1 | Embedded-Qdrant storage path is locked by the running uvicorn worker | In-process stage benchmarks (`bench_pipeline.py`) cannot run concurrently | Stop the worker, or point `QDRANT_URL` at a separate path for the benchmark. The HTTP harness is unaffected. |
 | BLK-2 | No cloud provider key; cloud egress is opt-in | The Gemini path cannot be end-to-end benchmarked | Verify by unit test + signature contract |
 | BLK-3 | ~~The test suite fails its coverage gate on `main`~~ **RESOLVED in B2.1** (78.12 %) | — | B5 must confirm the gate is still green after B2.2–B4 |
-| BLK-4 | `reranker.enabled: false`, and BGE int8 recall unmeasured | Two promising optimisations are blocked on measurement, not on effort | Dedicated before/after benchmarks (DECISION-003) |
+| BLK-4 | `reranker.enabled: false`, and BGE int8 recall unmeasured | Two promising optimisations are blocked on measurement, not on effort | **Reranker: measured in B4, not adopted (DECISION-007). Embedding int8: still not measured — no int8 export exists locally (DECISION-009).** |
+| BLK-5 | The default model answers 37 % of answerable questions | The product's usefulness is bounded by the 1B model, not by the pipeline | **Measured in B4 (DECISION-006): `qwen3:1.7b` answers 93 % with perfect abstention at 4.3× the latency. The default is a deployment choice and is left to the operator.** |
+| BLK-6 | The host was not idle during the B4/B5 runs (load 5.5–17.0) | Short-endpoint p50 is noise-dominated across runs | The `min` column is the load-robust signal (§4.11); every conclusion in this log rests on differences far larger than the observed noise |
