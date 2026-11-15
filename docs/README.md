@@ -110,7 +110,7 @@ lives in `app/rag/verification/verdict.py`). Their history remains in git —
 
 ### 8. Current Verification Snapshot
 
-Measured on `feature/trustrag-dark-luxury-frontend`; the full numbers and the
+Measured on `feature/trustrag-dark-luxury-ui-and-backend-hardening`; the full numbers and the
 method behind them are in
 [`backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`](backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md).
 
