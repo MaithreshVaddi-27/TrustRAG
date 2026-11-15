@@ -30,7 +30,7 @@
 
 ### 2.1 What was inspected
 - Git state, architecture docs, `docs/evaluation/*`, `docs/architecture/MULTI_MODEL_ARCHITECTURE_REVIEW_2026-11-05.md`, `README`, specs.
-- Full backend pipeline source: `apps/api/app/rag/agent/graph.py`, `retrieval/retriever.py`, `retrieval/reranker.py`, `generation/generator.py`, `verification/verifier.py`, `verification/verdict.py`, `services/analysis_service.py`, `llm/llm_utils.py`, `llm/local_llm.py`, `llm/llm_ledger.py`.
+- Full backend pipeline source: `apps/api/app/rag/agent/graph/`, `retrieval/retriever.py`, `retrieval/reranker.py`, `generation/generator.py`, `verification/verifier.py`, `verification/verdict.py`, `services/analysis_service.py`, `llm/llm_utils.py`, `llm/local_llm.py`, `llm/llm_ledger.py`.
 - Eval harness `scripts/run_baseline_eval.py`, `apps/api/tests/eval/metrics.py`.
 - The preserved run artifacts in `docs/evaluation/results/` (llama_cpp, mlx).
 - **The live MongoDB record of the actual Exp 1 / Phase 0 / Exp 2 / Exp 3 runs** (`trustrag_db`), which still contained every analysis, claim, evidence record, recovery run and trace event.
@@ -38,7 +38,7 @@
 
 ### 2.2 Provenance and its limits
 - The four raw experiment JSON artifacts cited in the previous audit (`/tmp/trustrag-model-experiments/exp*.json`, `/tmp/trustrag-phase0/*`) **no longer exist** (tmp cleaned). All per-query numbers below therefore come from the **database record**, which is strictly better: it holds claim texts, claim explanations, evidence linkage, recovery strategies and full traces.
-- **Code-version caveat:** the eval run executed 2026-11-05 15:07–15:13 UTC, while `apps/api/app/rag/agent/graph.py` was last committed at 22:24 IST (16:54 UTC) the same day. The running build therefore predates HEAD for `graph.py`. Where the recorded trace contradicts current-code behaviour (RC-5) this is stated explicitly.
+- **Code-version caveat:** the eval run executed 2026-11-05 15:07–15:13 UTC, while `apps/api/app/rag/agent/graph/` was last committed at 22:24 IST (16:54 UTC) the same day. The running build therefore predates HEAD for `graph.py`. Where the recorded trace contradicts current-code behaviour (RC-5) this is stated explicitly.
 - No file was modified. Services started for the investigation (`mongod` on the existing data dir, `ollama serve`) were stopped afterwards; no model, dependency, or configuration was installed or changed.
 
 ---

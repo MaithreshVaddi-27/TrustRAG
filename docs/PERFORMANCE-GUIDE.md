@@ -211,7 +211,7 @@ Do this if you want MLX and llama-server side by side (e.g. MLX for generation, 
 | # | File | Change |
 |---|---|---|
 | 1 | `apps/api/app/llm/model_registry.py` | Add `"mlx"` to `LOCAL_LLM_PROVIDERS`; add `mlx` branches in `get_llm()` / `get_verification_model()` constructing the existing `ChatLlamaCppClient` with `base_url=settings.mlx_base_url` (protocol-compatible — no new client class) |
-| 2 | `apps/api/app/core/config/settings.py` | Add `MLX_BASE_URL` (default `http://127.0.0.1:8080/v1`), `MLX_MODEL` settings + `llm_model_for("mlx")` / `verification_model_for("mlx")` wiring |
+| 2 | `apps/api/app/config/settings.py` | Add `MLX_BASE_URL` (default `http://127.0.0.1:8080/v1`), `MLX_MODEL` settings + `llm_model_for("mlx")` / `verification_model_for("mlx")` wiring |
 | 3 | `apps/api/config/models.yaml` | Add `model_mlx` defaults under `llm:` and `verification:` (mirroring `model_llamacpp`) |
 | 4 | `.env.example` | Document `MLX_BASE_URL` / `MLX_MODEL` + dedicated port 8080 note |
 | 5 | `apps/api/tests/test_config.py`, `test_local_llm.py` | Cover the new provider key, URL default, and cap application |

@@ -578,11 +578,31 @@ Lint: `cd apps/api && ruff check app/ tests/ && ruff format --check app/ tests/`
 
 ## Audit Tracker
 
-All bug/error/issue/dead-code findings from the latest engineering audit live in [`docs/AUDIT_2026-10-03.md`](docs/AUDIT_2026-10-03.md) — findings split into CRITICAL / NEEDED / LATER, plus improvements, dead code, and a remove/add list; constraint verification (NVIDIA-except-CUDA, ONNX-only embeddings/reranker, large-vs-small model parity, offline); and a measured test assessment. Earlier point-in-time audit reports were consolidated into it (history preserved in git).
+The backend audit, every change made against it, and the measurements behind
+each decision live in one living log:
+**[`docs/backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`](docs/backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md)**.
 
-Frontend architecture, design system compliance (cyber-dark palette, `.glass-card` material tokens, WCAG AA contrast), component decomposition, responsive validation, and Brave DevTools verification results live in [`docs/audit/FRONTEND_AUDIT_2026-11-04.md`](docs/audit/FRONTEND_AUDIT_2026-11-04.md).
+It carries the reproduced findings, the upgrades (with before/after numbers),
+the degradations, the refinements, the open decisions and the blockers — and it
+is updated after every change, so it never goes stale the way a point-in-time
+audit does. The initial audit that started the programme is kept alongside it
+as [`docs/backend/BACKEND_AUDIT_B1.md`](docs/backend/BACKEND_AUDIT_B1.md).
 
-Test-coverage gaps for the analysis service (the lowest-covered core module) are mapped in [`docs/ANALYSIS_SERVICE_TEST_GAPS.md`](docs/ANALYSIS_SERVICE_TEST_GAPS.md) — uncovered regions with risk, and a prioritized 17-test plan to lift it from 54% to ~85%.
+Two scripts keep the frontend and the backend honest about each other:
+
+| Script | What it proves |
+|---|---|
+| `apps/api/scripts/validate_integration.py` | Every API call the frontend makes exists on the backend, and the whole user flow answers correctly — directly and through the frontend's own proxy |
+| `apps/api/scripts/validate_resilience.py` | Concurrency, the rate limit, a provider outage and a database outage all behave as designed |
+
+Frontend architecture, design system compliance (cyber-dark palette,
+`.glass-card` material tokens, WCAG AA contrast) and component decomposition
+live in [`docs/design/dark-luxury/`](docs/design/dark-luxury/) and
+[`apps/web/DESIGN.md`](apps/web/DESIGN.md).
+
+Test-coverage gaps in the service layer — the SSE pub/sub, the user-level
+claim/evidence vault and the auth service — are mapped in
+[`docs/ANALYSIS_SERVICE_TEST_GAPS.md`](docs/ANALYSIS_SERVICE_TEST_GAPS.md).
 
 ---
 
@@ -724,8 +744,8 @@ Completed `chore(cleanup): Phase 1 repository deep clean` (commit `c39f573`):
 | `apps/web/public/audit-*.png` | 11 (~5.4 MB) | Unreferenced audit screenshots |
 | `apps/web/public/styles/*.css` | 6 | Unreferenced legacy stylesheets |
 | `dompurify`, `htmlparser2` | 2 npm deps | Zero imports; removed from `package.json` |
-| `scripts/calibrate_local_judge.py` | 1 | Orphan script, zero repo-wide references |
-| `scripts/prune_llm_cache.py` | 1 | Orphan script, zero repo-wide references |
+| `scripts/calibrate_local_judge.py` | 1 | Orphan script, zero repo-wide references — **removed** |
+| `scripts/prune_llm_cache.py` | 1 | Orphan script, zero repo-wide references — **removed** |
 
 **Added:** `docs/cleanup/PHASE_1_REPOSITORY_AUDIT.md`, `docs/cleanup/PHASE_1_CLEANUP_REPORT.md`, `docs/cleanup/REMAINING_TECHNICAL_DEBT.md`.
 

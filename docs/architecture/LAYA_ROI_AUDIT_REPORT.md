@@ -106,7 +106,7 @@ Query → Route (deterministic regex: SIMPLE/TEMPORAL/COMPARISON/COMPLEX)
 - MPS (Apple Silicon GPU): **~30-37 ms/Q** — viable for routing/guardrails
 - Requires PyTorch + transformers + HF Hub downloads (~2-3 GB checkpoints)
 
-### 2.3 LangChain/LangGraph Integration (from `docs/langchain.md`)
+### 2.3 LangChain/LangGraph Integration (from `docs/architecture/RAG_ARCHITECTURE.md`)
 
 | Node | Purpose | TrustRAG Mapping |
 |------|---------|------------------|
@@ -222,7 +222,7 @@ Query → Route (deterministic regex: SIMPLE/TEMPORAL/COMPARISON/COMPLEX)
 - `HallucinationMetric` — unsupported claim detection
 - CI/CD integration with thresholds (`deepeval test run --threshold 0.7`)
 
-**Integration:** Add `apps/api/tests/eval/deepeval_integration.py`, wire into `scripts/run_baseline_eval.py`, configure GitHub Action.
+**Integration:** Add `apps/api/scripts/eval_accuracy.py`, wire into `scripts/run_baseline_eval.py`, configure GitHub Action.
 
 ### ✅ ADOPT — RAGAS
 **Reason:** Complementary RAG-specific metrics (Context Entity Recall, reference-free Faithfulness). Synthetic test generation from KBs aligns with TrustRAG's document ingestion pipeline.

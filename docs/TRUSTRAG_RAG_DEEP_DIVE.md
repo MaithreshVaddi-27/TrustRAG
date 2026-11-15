@@ -87,11 +87,11 @@ Natural Language Inference asks whether a premise supports, contradicts, or says
 | Cross-encoder reranking | `apps/api/app/rag/retrieval/reranker.py` |
 | Format evidence prompt and generate answer | `apps/api/app/rag/generation/generator.py` |
 | Orchestrate analysis, persistence, SSE, recovery runs | `apps/api/app/services/analysis_service.py` |
-| Run retrieval/generation/verification/recovery graph | `apps/api/app/rag/agent/graph.py` |
+| Run retrieval/generation/verification/recovery graph | `apps/api/app/rag/agent/graph/` |
 | Decompose/verify answer claims | `apps/api/app/rag/verification/verifier.py` |
 | Check retrieved text against canonical hash | `apps/api/app/rag/verification/integrity.py` |
 | Calculate trust result | `apps/api/app/rag/verification/verdict.py` |
-| Model configuration/runtime registry | `apps/api/app/core/config/`, `apps/api/app/llm/model_registry.py` |
+| Model configuration/runtime registry | `apps/api/app/config/`, `apps/api/app/llm/model_registry.py` |
 | ONNX runtime wrappers | `apps/api/app/llm/onnx_embeddings.py`, `apps/api/app/rag/retrieval/onnx_reranker.py` |
 | MCP tools and web search | `apps/api/app/mcp/server.py`, `client.py`, `services/search_service.py` |
 
@@ -821,7 +821,7 @@ For a mentor/code review, this order follows the actual data path:
 8. `apps/api/app/rag/retrieval/retriever.py` — dense/sparse query, RRF, temporal filtering.
 9. `apps/api/app/rag/agent/router.py` — deterministic routing/fan-out.
 10. `apps/api/app/rag/retrieval/reranker.py` — cross-encoder second stage.
-11. `apps/api/app/rag/agent/graph.py` — retrieval, generation, verification and recovery nodes.
+11. `apps/api/app/rag/agent/graph/` — retrieval, generation, verification and recovery nodes.
 12. `apps/api/app/rag/generation/generator.py` — context formatting, prompt and citation safety.
 13. `apps/api/app/rag/verification/integrity.py` — hash-based passage identity check.
 14. `apps/api/app/rag/verification/verifier.py` — claim decomposition, NLI, targeted retrieval, persistence mapping.

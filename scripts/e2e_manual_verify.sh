@@ -8,6 +8,21 @@ PASS=0; FAIL=0
 ok()  { echo "  PASS: $1"; PASS=$((PASS+1)); }
 bad() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 
+# The virtualenv layout differs by platform: .venv/bin/python on POSIX,
+# .venv\Scripts\python.exe on Windows (Git Bash / WSL).
+if [ -x apps/api/.venv/bin/python ]; then
+  VENV_PY="apps/api/.venv/bin/python"
+elif [ -x apps/api/.venv/Scripts/python.exe ]; then
+  VENV_PY="apps/api/.venv/Scripts/python.exe"
+else
+  VENV_PY="python3"
+fi
+
+# A writable scratch directory: TMPDIR where the platform sets it, /tmp
+# otherwise (present in Git Bash and WSL).
+SCRATCH="${TMPDIR:-/tmp}"
+[ -d "$SCRATCH" ] && [ -w "$SCRATCH" ] || SCRATCH="$(mktemp -d)"
+
 cleanup() {
   [ -n "${API_PID:-}" ] && kill "$API_PID" 2>/dev/null
   [ -n "${WEB_PID:-}" ] && kill "$WEB_PID" 2>/dev/null
@@ -19,11 +34,11 @@ cleanup() {
 trap cleanup EXIT
 
 echo "── 1. Boot stack ──────────────────────────"
-( cd apps/api && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level warning \
-    > /tmp/trustrag_api.log 2>&1 ) &
+( cd apps/api && "$VENV_PY" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level warning \
+    > "$SCRATCH/trustrag_api.log" 2>&1 ) &
 API_PID=$!
 
-( cd apps/web && npx vite --port 5173 --strictPort > /tmp/trustrag_vite.log 2>&1 ) &
+( cd apps/web && npx vite --port 5173 --strictPort > "$SCRATCH/trustrag_vite.log" 2>&1 ) &
 WEB_PID=$!
 
 for i in $(seq 1 40); do
@@ -67,9 +82,9 @@ KB=$(curl -s -X POST http://127.0.0.1:8000/api/v1/knowledge-bases \
 KB_ID=$(echo "$KB" | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
 [ -n "$KB_ID" ] && ok "KB created: $KB_ID" || bad "KB create: $KB"
 
-printf 'TrustRAG verification pipeline splits answers into atomic claims and checks each against retrieved evidence using natural language inference. Sources are audited with SHA-256 hashes. The system self-heals with bounded recovery attempts or safely abstains.' > /tmp/trustrag_e2e_doc.md
+printf 'TrustRAG verification pipeline splits answers into atomic claims and checks each against retrieved evidence using natural language inference. Sources are audited with SHA-256 hashes. The system self-heals with bounded recovery attempts or safely abstains.' > "$SCRATCH/trustrag_e2e_doc.md"
 DOC=$(curl -s -X POST "http://127.0.0.1:8000/api/v1/knowledge-bases/$KB_ID/documents" \
-  -H "Authorization: Bearer $TOKEN" -F "file=@/tmp/trustrag_e2e_doc.md")
+  -H "Authorization: Bearer $TOKEN" -F "file=@$SCRATCH/trustrag_e2e_doc.md")
 DOC_ID=$(echo "$DOC" | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
 [ -n "$DOC_ID" ] && ok "document ingested: $DOC_ID" || bad "ingest: $DOC"
 

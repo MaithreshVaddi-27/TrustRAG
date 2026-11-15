@@ -13,14 +13,14 @@
 | **1** | Monorepo, Config, Docker, CI/CD | Docker Compose, non-root containers, GitHub Actions CI/CD workflows (`.github/workflows/`) | ✅ COMPLETE |
 | **2** | React 18 Workbench Frontend | Glassmorphism design system, 11 interactive pages, Lucide icons (`apps/web/src/`) | ✅ COMPLETE |
 | **3** | FastAPI CRUD Routes & Data Layer | MongoDB storage, asynchronous endpoints, analysis lifecycle (`apps/api/app/api/`) | ✅ COMPLETE |
-| **4** | Auth & Multi-Tenant Security | JWT authentication, bcrypt passwords, anti-IDOR checks, rate limiting (`apps/api/app/core/security.py`) | ✅ COMPLETE |
+| **4** | Auth & Multi-Tenant Security | JWT authentication, bcrypt passwords, anti-IDOR checks, rate limiting (`apps/api/app/security/security.py`) | ✅ COMPLETE |
 | **5** | Document Ingestion (8 Formats) | Native parsers for PDF, DOCX (defusedxml), CSV, JSON, HTML, HTM, TXT, MD (`apps/api/app/rag/ingestion/`) | ✅ COMPLETE |
 | **6** | Hybrid Retrieval & Reciprocal Rank Fusion | BGE-small-en-v1.5 (384d, local) + client BM25-TF saturation + server-side Qdrant IDF + RRF ($k=60$) with enforced `fusion_top_k`; deterministic query router (simple/temporal/comparison/complex) + bounded fan-out (`apps/api/app/rag/retrieval/`, `apps/api/app/rag/agent/router.py`) | ✅ COMPLETE |
 | **7** | Atomic Claim Decomposition & NLI Verifier | Structured extraction, Open Knowledge triples `(S, P, O)`, Gemini NLI verdict (`apps/api/app/rag/verification/`) | ✅ COMPLETE |
 | **8** | Evidence Integrity & Provenance | Cryptographic SHA-256 hash auditing, temporal validity filters (`apps/api/app/rag/verification/integrity.py`) | ✅ COMPLETE |
-| **9** | LangGraph Adaptive Self-Healing Loop | StateGraph recovery loop, dynamic rewrites, context expansions (`apps/api/app/rag/agent/graph.py`) | ✅ COMPLETE |
+| **9** | LangGraph Adaptive Self-Healing Loop | StateGraph recovery loop, dynamic rewrites, context expansions (`apps/api/app/rag/agent/graph/`) | ✅ COMPLETE |
 | **10** | Live Execution Trace Streaming | Server-Sent Events (SSE) trace streaming, MongoDB persistence (`apps/api/app/services/analysis_service.py`) | ✅ COMPLETE |
-| **11** | Evaluation & Experimentation | Custom reliability metrics, benchmark dataset, ablation engine (`apps/api/app/evaluation/`) | ✅ COMPLETE |
+| **11** | Evaluation & Experimentation | Custom reliability metrics, benchmark dataset, ablation engine (`apps/api/tests/eval/`) | ✅ COMPLETE |
 | **12** | Production Hardening & Security SAST | Bandit SAST 0 issues, memory streaming upload guards, defensive HTTP headers (`apps/api/app/main.py`) | ✅ COMPLETE |
 | **P-L** | **Multi-Tenant User Data Isolation** | Scoped `user_id` on all records, compound indexes (`claim_user_time`, `evidence_user_time`), cascade deletions | ✅ COMPLETE |
 | **P-L** | **Open Knowledge & JSON-LD Export** | `(Subject, Predicate, Object)` claim triples, schema.org JSON-LD compliance export (`GET /analyses/{id}/export`) | ✅ COMPLETE |
@@ -63,7 +63,7 @@
 ### Testing & Verification Expansion
 - [x] **End-to-End Browser Automation** — Playwright suite in `apps/web/e2e/auth.spec.js`: route guard, register, UI login, dashboard, **JWT revocation after logout**; CI job with live Mongo + API + Chromium
 - [x] **Live Integration Tests** — E2E suite runs against live MongoDB and the real FastAPI app (no mocks); k6 smoke also hits live Mongo/Qdrant reads
-- [x] **Rate Limiter Threshold Tests** — `apps/api/tests/test_rate_limit.py` asserts 429 when the per-minute auth ceiling is exceeded
+- [x] **Rate Limiter Threshold Tests** — `apps/api/tests/test_rate_limiting.py` asserts 429 when the per-minute auth ceiling is exceeded
 - [x] **Load Testing in CI** — k6 smoke (`load-test/smoke.js`) runs in the `e2e` CI job: health + authenticated reads, ~3.3k requests/35s, p95<300ms gate
 
 ---

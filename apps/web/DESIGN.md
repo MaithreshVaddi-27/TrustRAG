@@ -1,6 +1,6 @@
 # TrustRAG — Frontend Design System
 
-> **Canonical documentation:** [`docs/design/dark-luxury/`](../docs/design/dark-luxury/)
+> **Canonical documentation:** [`docs/design/dark-luxury/`](../../docs/design/dark-luxury/)
 > — the complete system, split by concern: foundations, tokens, components,
 > patterns, accessibility, voice, migration and verification. This file is the
 > short version for working in the app.

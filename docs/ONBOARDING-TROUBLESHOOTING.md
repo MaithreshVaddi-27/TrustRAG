@@ -19,6 +19,23 @@
 8. frontend: cd apps/web && npm install && npm run dev   # :5173
 ```
 
+**One command instead of steps 4, 7 and 8** — `apps/api/scripts/start_local_services.sh`
+starts MongoDB, Ollama and the API, and waits until the API answers:
+
+```bash
+bash apps/api/scripts/start_local_services.sh
+```
+
+It runs under **bash on macOS, Linux and Windows (Git Bash or WSL)**. It
+discovers a Python 3.11–3.12 interpreter itself — `$PYTHON`, then the
+project virtualenv (`.venv/bin/python`, or `.venv/Scripts/python.exe` on
+Windows), then `python3`/`python` on `PATH` — so nothing about it is
+macOS-specific. The children are started in **their own session**, so they
+survive the shell that launched them, and the API's pid is written to
+`$TMPDIR/trustrag_api.pid` so a stale process holding the port can be
+replaced. Re-running it is safe: it starts only what is not already
+listening.
+
 `bootstrap.py` delegates to `scripts/ensure_onnx_models.py`, which guarantees
 two files in `apps/api/.model_cache/`:
 
@@ -141,6 +158,8 @@ net start MongoDB
 | 21 | `Invalid QDRANT_URL` at first KB op | URL without scheme (e.g. `localhost:6333`) — rejected instead of being mkdir'd | Use `http://localhost:6333`, `local`, `:memory:`, or a path |
 | 22 | `pip install -e .` fails on Python 3.13+ | `requires-python` now caps at `<3.13` (torch/onnxscript export incompatible) | Use Python 3.11 or 3.12 |
 | 23 | `mlx_lm.server not applicable here` from `setup.sh` | Host is not Apple Silicon (check is now platform-gated) | Expected — use Ollama or llama.cpp instead |
+| 24 | `No Python 3.11-3.12 interpreter found` from `start_local_services.sh` | No supported interpreter on `PATH`, and no project virtualenv | Create the venv first (step 2 above), or point the script at one: `PYTHON=/path/to/python3.12 bash apps/api/scripts/start_local_services.sh` |
+| 25 | The API is up but every request answers 429 `RATE_LIMITED` | The global abuse guard is 240 requests/minute per client per path. A load test or a polling loop can exceed it | Expected behaviour, not a bug — wait for the window to roll over (`Retry-After` says how long), or raise the budget for a measured run with `RATE_LIMIT_PER_MINUTE` |
 
 ---
 
@@ -178,7 +197,17 @@ Mocked tests are green, but these need a running stack + human judgment:
 ```bash
 bash scripts/setup.sh                                        # prereqs + ports
 python scripts/bootstrap.py --verify                        # ONNX bake present
+bash apps/api/scripts/start_local_services.sh               # mongo + ollama + api
 curl localhost:8000/api/v1/health                           # {"status": ...}
 curl localhost:8000/api/v1/health/detailed                  # services + models
 cd apps/web && npm run lint && npm test                     # frontend gate
+```
+
+And the two harnesses that keep the frontend and the backend honest about
+each other (both need the stack above running):
+
+```bash
+cd apps/api
+python scripts/validate_integration.py                      # routes + user flow
+python scripts/validate_resilience.py                       # concurrency + outages
 ```

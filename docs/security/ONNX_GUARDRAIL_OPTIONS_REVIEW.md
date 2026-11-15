@@ -177,8 +177,8 @@ Do not start another model integration. Complete the current evaluation prerequi
 
 ## Sources
 
-- [TrustRAG shared ONNX Runtime session factory](../apps/api/app/llm/onnx_runtime.py)
-- [TrustRAG red-team tests](../apps/api/tests/test_redteam.py)
+- [TrustRAG shared ONNX Runtime session factory](../../apps/api/app/llm/onnx_runtime.py)
+- [TrustRAG red-team tests](../../apps/api/tests/test_redteam.py)
 - [Meta Prompt Guard 86M model card](https://huggingface.co/meta-llama/Prompt-Guard-86M)
 - [Meta Purple Llama Prompt Guard repository](https://github.com/meta-llama/PurpleLlama/tree/main/Prompt-Guard)
 - [Protect AI DeBERTa Prompt Injection v2 model card](https://huggingface.co/protectai/deberta-v3-base-prompt-injection-v2)

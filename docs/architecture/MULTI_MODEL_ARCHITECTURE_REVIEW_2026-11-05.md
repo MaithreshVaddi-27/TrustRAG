@@ -26,7 +26,7 @@ This is a deliberately small architecture: each existing model has a distinct jo
 
 | Area | Current implementation and evidence | Consequence |
 |---|---|---|
-| Orchestration | `apps/api/app/rag/agent/graph.py` has retrieval → generation → verification → conditional recovery → retrieval. | An optional future classifier must be a bounded annotation, not an unbounded graph branch. |
+| Orchestration | `apps/api/app/rag/agent/graph/` has retrieval → generation → verification → conditional recovery → retrieval. | An optional future classifier must be a bounded annotation, not an unbounded graph branch. |
 | Query planning | `apps/api/app/rag/agent/router.py` uses local deterministic `SIMPLE`, `TEMPORAL`, `COMPARISON`, and `COMPLEX` routing with bounded fan-out. | A learned router must beat this baseline on a held-out task set before it replaces any rule. |
 | Retrieval | `apps/api/config/models.yaml` configures BGE small English ONNX embeddings, Qdrant sparse retrieval, RRF, and an ONNX MiniLM cross-encoder reranker. | Keep the small, bounded candidate-ranking stage until an ablation proves a replacement earns its cost. |
 | Runtime posture | `apps/api/app/llm/onnx_runtime.py` centrally creates ONNX Runtime sessions with capped threads, sequential execution, and memory options. | Any future classifier must use the same factory. Do not add PyTorch to the API path. |
@@ -239,7 +239,7 @@ No code change is proposed now. A future minimal design should have these respon
 | Concern | Required integration point | Invariant |
 |---|---|---|
 | Model session | `apps/api/app/llm/onnx_runtime.py` | Reuse centralized session options; lazy load; no separate uncontrolled runtime. |
-| Graph state | `apps/api/app/rag/agent/graph.py` | Store bounded annotation fields only: status, score/category, window count, latency, model revision. Do not persist raw sensitive text merely for tracing. |
+| Graph state | `apps/api/app/rag/agent/graph/` | Store bounded annotation fields only: status, score/category, window count, latency, model revision. Do not persist raw sensitive text merely for tracing. |
 | Query path | Before deterministic routing, if enabled | Annotation cannot rewrite query, bypass routing, or execute retrieved instructions. |
 | Ingestion path | Before indexing, if enabled | Annotation must be separately measured; it must not silently delete content without a reviewed policy. |
 | Retrieval path | After candidate selection, bounded to selected chunks | Scan bounded evidence only; do not multiply retrieval calls or context windows without a budget. |
@@ -258,7 +258,7 @@ No code change is proposed now. A future minimal design should have these respon
 
 ### Repository sources
 
-- `apps/api/app/rag/agent/graph.py`
+- `apps/api/app/rag/agent/graph/`
 - `apps/api/app/rag/agent/router.py`
 - `apps/api/app/llm/onnx_runtime.py`
 - `apps/api/app/rag/verification/verdict.py`
@@ -267,7 +267,7 @@ No code change is proposed now. A future minimal design should have these respon
 - `docs/evaluation/methodology.md`
 - `docs/security/threat-model.md`
 - `docs/security/ONNX_GUARDRAIL_OPTIONS_REVIEW.md`
-- `docs/audit/AUDIT_2026-10-03_STATUS.md`
+- `docs/backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`
 
 ### External primary sources consulted
 

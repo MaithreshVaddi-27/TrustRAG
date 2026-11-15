@@ -98,7 +98,7 @@ reintroducing any of them breaks the system.
 
 ## Related
 
-- [`apps/web/DESIGN.md`](../../apps/web/DESIGN.md) — the short version, for
+- [`apps/web/DESIGN.md`](../../../apps/web/DESIGN.md) — the short version, for
   developers working in the app.
 - `docs/evaluation/` — the measurement methodology behind the numbers quoted
   in the product.

@@ -265,8 +265,8 @@ Docker Compose connects to host MongoDB; Atlas remains supported via
 **Files layered on top of D-14:**
 - `config/ports.yaml` (new canonical registry)
 - `scripts/apply_ports.py` (propagator)
-- `apps/api/app/core/config.py` (Settings defaults read ports.yaml)
-- `apps/api/app/core/local_llm.py` (`INSTALLED_*` provider lists)
+- `apps/api/app/config/` (Settings defaults read ports.yaml)
+- `apps/api/app/llm/local_llm.py` (`INSTALLED_*` provider lists)
 
 
 
@@ -292,10 +292,10 @@ project. Embeddings are local-only (`huggingface`: `BAAI/bge-small-en-v1.5`,
 normalization change requires a re-index — combine all three into one re-upload window.
 
 **Files:**
-- `apps/api/app/core/model_registry.py` (branches removed, retired-provider guard)
-- `apps/api/app/core/config.py`, `apps/api/app/api/v1/schemas/analysis.py` (allowlists)
+- `apps/api/app/llm/model_registry.py` (branches removed, retired-provider guard)
+- `apps/api/app/config/`, `apps/api/app/api/v1/schemas/analysis.py` (allowlists)
 - `apps/api/app/api/v1/models.py`, `apps/web/.../QueryPanel.jsx`, `apps/web/.../SettingsPage.jsx` (UI)
-- `apps/api/app/ingestion/pipeline.py` (Gemini rate-limit pacing removed)
+- `apps/api/app/rag/ingestion/pipeline.py` (Gemini rate-limit pacing removed)
 - `apps/api/config/models.yaml`, `.env.example`, `scripts/setup.sh` (new), docs
 
 ---
@@ -310,7 +310,7 @@ normalization change requires a re-index — combine all three into one re-uploa
 module and remove all dead code accumulated across rounds of rapid iteration.
 
 **Changes:**
-1. **New `apps/api/app/core/llm_utils.py`** — three shared functions:
+1. **New `apps/api/app/llm/llm_utils.py`** — three shared functions:
    - `normalize_llm_content()` — normalizes `response.content` from any LLM provider
      (str, bytes, list-of-dicts, list-of-objects) to a plain string.
    - `extract_json_substring()` — safely extracts valid JSON from LLM output that may
@@ -319,12 +319,12 @@ module and remove all dead code accumulated across rounds of rapid iteration.
      structured JSON and parses into a Pydantic model. Used by both `ChatOllamaClient`
      and `ChatLlamaCppClient` which differ only in their JSON-mode kwargs.
 
-2. **`apps/api/app/core/local_llm.py`**:
+2. **`apps/api/app/llm/local_llm.py`**:
    - Removed duplicate `_extract_json_substring()` (now imports from `llm_utils`).
    - Both `with_structured_output()` implementations (Ollama `format="json"` and
      llama.cpp `response_format`) now delegate to `build_structured_output_runnable()`.
 
-3. **`apps/api/app/agent/graph.py`** and **`apps/api/app/generation/generator.py`**:
+3. **`apps/api/app/rag/agent/graph/`** and **`apps/api/app/rag/generation/runtime.py`**:
    - Replaced inline 12-line LLM content normalization blocks with
      `normalize_llm_content()` calls.
 
@@ -381,8 +381,8 @@ dynamic batch/sequence axes, single 128 MB file) and served from
   so no new cross-space risk.
 
 **Files:**
-- `scripts/export_bge_onnx.py` (new), `apps/api/app/core/onnx_embeddings.py` (new)
-- `apps/api/app/core/model_registry.py` (`onnx` provider branch), `config.py`
+- `scripts/export_bge_onnx.py` (new), `apps/api/app/llm/embedding/engine.py` (new)
+- `apps/api/app/llm/model_registry.py` (`onnx` provider branch), `config.py`
   (`embedding_max_seq_length`), `config/models.yaml` (`max_seq_length: 512`)
 
 **Consequences:** Backend 193 tests pass. `EMBEDDING_PROVIDER=onnx` verified live
@@ -415,7 +415,7 @@ JSON example.
   bare ints are dropped (never poisoned as NEUTRAL, so fallback still runs).
 
 **Files:**
-- `apps/api/app/verification/verifier.py` (normalizers + validators + prompts)
+- `apps/api/app/rag/verification/verifier.py` (normalizers + validators + prompts)
 - `apps/api/tests/test_verification.py` (6 new regression tests)
 
 **Consequences:** Backend 199 tests pass. Previously-NEUTRAL-but-correct
