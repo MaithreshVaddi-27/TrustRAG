@@ -147,9 +147,7 @@ def analysis_deps():
         patch("app.rag.generation.runtime.get_llm", MagicMock(return_value=llm)),
         # verification modules use `from app.llm.model_registry import
         # get_verification_model` (local binding)
-        patch(
-            "app.llm.model_registry.get_verification_model", MagicMock(return_value=verifier)
-        ),
+        patch("app.llm.model_registry.get_verification_model", MagicMock(return_value=verifier)),
         patch(
             "app.rag.verification.pipeline.nli.get_verification_model",
             MagicMock(return_value=verifier),

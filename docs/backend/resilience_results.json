@@ -11,7 +11,7 @@
         "abstained",
         "abstained"
       ],
-      "elapsed_ms": 34531,
+      "elapsed_ms": 29591,
       "ok": true
     },
     {
@@ -19,14 +19,14 @@
       "requests": 241,
       "status": 429,
       "code": "RATE_LIMITED",
-      "retry_after": "54",
+      "retry_after": "53",
       "ok": true
     },
     {
       "phase": "provider_down",
       "stopped": true,
       "status": 503,
-      "elapsed_ms": 111,
+      "elapsed_ms": 180,
       "message": "Local LLM server 'ollama' is not reachable at http://localhost:11434. Start it with 'ollama serve' (then 'ollama pull <model>' if needed).",
       "mentions_provider": true,
       "ok": true
@@ -34,8 +34,8 @@
     {
       "phase": "database_down",
       "stopped": true,
-      "status": 500,
-      "message": "An unexpected error occurred.",
+      "status": 503,
+      "message": "Database unavailable. Please try again.",
       "envelope": true,
       "ok": true
     }

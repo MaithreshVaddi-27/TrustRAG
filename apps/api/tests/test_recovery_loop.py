@@ -139,7 +139,10 @@ def test_snapshot_clear_drops_a_superseded_verification():
     capture_verification_snapshot(state)
     assert SNAPSHOT_KEY in state
     clear_verification_snapshot(state)
-    assert SNAPSHOT_KEY not in state
+    # The key is cleared to None rather than deleted: AgentState declares it
+    # as an optional field and a TypedDict key cannot be removed. A None value
+    # means exactly what a missing key meant — nothing to restore.
+    assert state[SNAPSHOT_KEY] is None
     assert restore_verification_snapshot(state) is False
 
 

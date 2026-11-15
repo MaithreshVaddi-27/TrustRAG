@@ -61,8 +61,11 @@ test.describe('auth smoke', () => {
 
     // 4. Session established → redirected to the dashboard.
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    // The dashboard's own heading. It used to be "AI Reliability"; the page
+    // was redesigned to "Overview", and this assertion was never updated —
+    // so the spec was failing on a dashboard that had rendered correctly.
     await expect(
-      page.getByRole('heading', { name: /AI Reliability/i }),
+      page.getByRole('heading', { name: /^Overview$/ }),
     ).toBeVisible()
 
     // 5. Fetch the JWT from the session and prove logout revokes it.

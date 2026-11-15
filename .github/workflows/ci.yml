@@ -75,8 +75,8 @@ jobs:
         # Ensures models.yaml is valid YAML and has required sections
         run: |
           python -c "
-          from app.core.config import _load_models_yaml, ModelConfig
-          data = _load_models_yaml()
+          from app.config import ModelConfig, load_models_yaml
+          data = load_models_yaml()
           cfg = ModelConfig(data)
           print('config_version:', cfg.config_version)
           print('llm_model:', cfg.llm_model)
@@ -290,6 +290,12 @@ jobs:
           CORS_ORIGINS: http://localhost:5173
           AI_PROVIDER: ollama
           OLLAMA_BASE_URL: http://127.0.0.1:11434
+          # The global abuse guard is 240 requests/minute per client. The k6
+          # smoke below drives ~200 requests/second on purpose, so the guard
+          # would answer 429 to most of it and the load gate would measure the
+          # limiter instead of the API. The limit is raised for the load test
+          # only; it stays enforced everywhere else.
+          RATE_LIMIT_PER_MINUTE: "100000"
         run: |
           nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/api.log 2>&1 &
           for i in $(seq 1 60); do

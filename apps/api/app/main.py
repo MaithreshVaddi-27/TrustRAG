@@ -27,6 +27,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from pymongo.errors import PyMongoError
 from slowapi.errors import RateLimitExceeded
 
 from app.api.rate_limiting import install_rate_limiting
@@ -368,6 +369,24 @@ def _register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(DatabaseError)
     async def database_error_handler(request: Request, exc: DatabaseError) -> JSONResponse:
         logger.error("Database error", error=exc.message)
+        return _error_response(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "SERVICE_UNAVAILABLE",
+            "Database unavailable. Please try again.",
+        )
+
+    @app.exception_handler(PyMongoError)
+    async def pymongo_error_handler(request: Request, exc: PyMongoError) -> JSONResponse:
+        """A driver-level MongoDB failure is a database outage, not a bug.
+
+        Without this, an unreachable database reached the catch-all handler and
+        answered 500 "An unexpected error occurred." — which tells an operator
+        nothing and tells a client to retry a request that cannot succeed.
+        The driver raises its own exceptions (ServerSelectionTimeoutError,
+        ConnectionFailure) long before the application's DatabaseError wrapper
+        is reached, so the driver exception has to be handled here.
+        """
+        logger.error("Database driver error", path=request.url.path, error=str(exc))
         return _error_response(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "SERVICE_UNAVAILABLE",

@@ -107,6 +107,11 @@ async def check_ollama_status(
             api_models = [m for m in models if m]
             if api_models:
                 cli_models.extend(m for m in api_models if not _is_embedding_model_name(m))
+            # The CLI listing and the server listing report the same models, so
+            # merging them verbatim lists every model twice. The model dropdown
+            # renders this array as one <option> per entry: duplicates show as
+            # repeated choices and as repeated React keys.
+            cli_models = list(dict.fromkeys(cli_models))
             merge_discovered_llms("ollama", cli_models, replace=True)
             return {
                 "connected": True,

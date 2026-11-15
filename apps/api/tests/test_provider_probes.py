@@ -50,6 +50,16 @@ def _refusing_client():
     return _FakeClient(_handler)
 
 
+def _async_value(value):
+    """An awaitable that returns `value` — stands in for an async discovery
+    function without needing a full mock object."""
+
+    async def _inner():
+        return value
+
+    return _inner
+
+
 # ─── The retry ───────────────────────────────────────────────────────────────
 
 
@@ -190,3 +200,59 @@ def test_shared_http_client_separates_connect_timeouts():
     probe = _shared_http_client("http://127.0.0.1:11434", 3.0, connect_timeout=1.5)
     call = _shared_http_client("http://127.0.0.1:11434", 3.0)
     assert probe is not call
+
+
+# ─── The model list must not repeat itself ───────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_ollama_model_list_has_no_duplicates():
+    """The CLI listing and the server listing report the same models.
+
+    Merging them verbatim listed every model twice, and the frontend renders
+    this array as one <option> per entry — so the model dropdown showed every
+    model twice, with duplicated React keys.
+    """
+    cli_models = ["gemma3:1b", "qwen3:1.7b"]
+
+    async def _handler(_url):
+        return httpx.Response(
+            200,
+            json={"models": [{"name": "gemma3:1b"}, {"name": "qwen3:1.7b"}]},
+        )
+
+    client = _FakeClient(_handler)
+
+    with (
+        patch.object(health, "_shared_http_client", lambda *a, **k: client),
+        patch(
+            "app.llm.local_llm.discover_ollama_cli_models",
+            _async_value(cli_models),
+        ),
+    ):
+        status = await health.check_ollama_status()
+
+    assert status["models"] == cli_models, f"duplicated model list: {status['models']}"
+
+
+@pytest.mark.asyncio
+async def test_the_ollama_default_model_is_the_first_distinct_model():
+    """The default is what the dropdown falls back to, so it must be a model
+    that is actually in the list — not the second copy of the first one."""
+
+    async def _handler(_url):
+        return httpx.Response(200, json={"models": [{"name": "gemma3:1b"}]})
+
+    client = _FakeClient(_handler)
+
+    with (
+        patch.object(health, "_shared_http_client", lambda *a, **k: client),
+        patch(
+            "app.llm.local_llm.discover_ollama_cli_models",
+            _async_value(["gemma3:1b"]),
+        ),
+    ):
+        status = await health.check_ollama_status()
+
+    assert status["default_model"] == "gemma3:1b"
+    assert status["default_model"] in status["models"]

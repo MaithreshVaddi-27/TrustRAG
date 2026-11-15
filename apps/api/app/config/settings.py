@@ -308,7 +308,12 @@ def _settings_fingerprint() -> int:
     change of working directory invalidates the cache too.
     """
     fingerprint = hash(frozenset(os.environ.items()))
-    for path in Settings.model_config.get("env_file") or ():
+    env_files = Settings.model_config.get("env_file") or ()
+    # Pydantic allows `env_file` to be a single path or a sequence of them.
+    # A single path is not iterable, so it is wrapped before the loop.
+    if isinstance(env_files, (str, Path)):
+        env_files = [env_files]
+    for path in env_files:
         resolved = os.path.abspath(path)
         try:
             stat = os.stat(resolved)

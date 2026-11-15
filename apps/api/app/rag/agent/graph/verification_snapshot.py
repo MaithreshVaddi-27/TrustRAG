@@ -17,7 +17,9 @@ carried across node boundaries like any other state field.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Final
+
+from app.rag.agent.graph.state import AgentState
 
 __all__ = [
     "SNAPSHOT_KEY",
@@ -27,7 +29,9 @@ __all__ = [
 ]
 
 # State key holding the snapshot of the last completed verification.
-SNAPSHOT_KEY = "verification_snapshot"
+# `Final` so the literal type survives: a TypedDict only accepts a key that
+# mypy can see as a literal, not a plain `str`.
+SNAPSHOT_KEY: Final = "verification_snapshot"
 
 # Diagnoses set by the recovery machinery itself. They explain WHY the run
 # stopped rather than what the answer scored, so a restore keeps them instead
@@ -35,7 +39,7 @@ SNAPSHOT_KEY = "verification_snapshot"
 _TERMINAL_RECOVERY_DIAGNOSES = frozenset({"RECOVERY_BUDGET_EXHAUSTED", "RECOVERY_ERROR"})
 
 
-def capture_verification_snapshot(state: dict[str, Any]) -> None:
+def capture_verification_snapshot(state: AgentState) -> None:
     """Record the completed verification the recovery node is about to clear."""
     state[SNAPSHOT_KEY] = {
         "verdict_status": state.get("verdict_status"),
@@ -47,12 +51,17 @@ def capture_verification_snapshot(state: dict[str, Any]) -> None:
     }
 
 
-def clear_verification_snapshot(state: dict[str, Any]) -> None:
-    """Drop the snapshot — a fresh verification supersedes the previous one."""
-    state.pop(SNAPSHOT_KEY, None)
+def clear_verification_snapshot(state: AgentState) -> None:
+    """Drop the snapshot — a fresh verification supersedes the previous one.
+
+    The key is set to None rather than deleted: ``AgentState`` declares it
+    as an optional field, and a TypedDict key cannot be deleted. A None value
+    means exactly what a missing key meant — there is nothing to restore.
+    """
+    state[SNAPSHOT_KEY] = None
 
 
-def restore_verification_snapshot(state: dict[str, Any]) -> bool:
+def restore_verification_snapshot(state: AgentState) -> bool:
     """Restore the last completed verification into ``state``.
 
     Returns ``True`` when a snapshot was restored, ``False`` when there was
@@ -62,7 +71,11 @@ def restore_verification_snapshot(state: dict[str, Any]) -> bool:
     if not snapshot:
         return False
 
-    state["verdict_status"] = snapshot.get("verdict_status")
+    # `verdict_status` is a required, non-optional field of AgentState, so a
+    # snapshot that never carried one must not write None into it.
+    verdict_status = snapshot.get("verdict_status")
+    if isinstance(verdict_status, str):
+        state["verdict_status"] = verdict_status
     state["reliability_score"] = snapshot.get("reliability_score")
     state["answer"] = snapshot.get("answer")
     state["claims"] = list(snapshot.get("claims") or [])

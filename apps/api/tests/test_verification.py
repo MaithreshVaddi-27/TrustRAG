@@ -102,7 +102,9 @@ async def test_verify_claim_contradicted(mock_get_model):
 
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli", new_callable=AsyncMock)
-@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock)
+@patch(
+    "app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock
+)
 @patch("app.persistence.mongodb.connect_db")
 @patch("app.persistence.mongodb.create_indexes")
 async def test_execute_claim_verification(
@@ -127,11 +129,14 @@ async def test_execute_claim_verification(
 
     # Need to mock the database initialization
     import app.persistence.mongodb as mongodb
+
     mock_db = MagicMock()
     mock_db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    with patch.object(mongodb, '_database', mock_db), \
-         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
+    with (
+        patch.object(mongodb, "_database", mock_db),
+        patch("app.persistence.mongodb.get_collection", return_value=mock_collection),
+    ):
         chunks = [{"text": "segment 1"}]
         evidence_ids = [ObjectId("64ee39d09c6292376e191985")]
 
@@ -153,7 +158,9 @@ async def test_execute_claim_verification(
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.rag.verification.verifier.verify_claim_nli", new_callable=AsyncMock)
 @patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli", new_callable=AsyncMock)
-@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock)
+@patch(
+    "app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock
+)
 @patch("app.persistence.mongodb.connect_db")
 @patch("app.persistence.mongodb.create_indexes")
 async def test_neutral_batch_verdict_stays_neutral_without_targeted_retrieval(
@@ -168,11 +175,14 @@ async def test_neutral_batch_verdict_stays_neutral_without_targeted_retrieval(
 
     # Need to mock the database initialization
     import app.persistence.mongodb as mongodb
+
     mock_db = MagicMock()
     mock_db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    with patch.object(mongodb, '_database', mock_db), \
-         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
+    with (
+        patch.object(mongodb, "_database", mock_db),
+        patch("app.persistence.mongodb.get_collection", return_value=mock_collection),
+    ):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="The policy allows access within thirty days.",
@@ -203,7 +213,9 @@ def test_fused_coverage_rejects_answer_with_no_claims():
 
 @patch("app.rag.verification.verifier.fused_decompose_verify", new_callable=AsyncMock)
 @patch("app.rag.verification.verifier.batch_verify_claims_nli", new_callable=AsyncMock)
-@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock)
+@patch(
+    "app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock
+)
 @patch("app.persistence.mongodb.connect_db")
 @patch("app.persistence.mongodb.create_indexes")
 async def test_partial_fused_output_falls_back_to_full_decomposition(
@@ -230,6 +242,7 @@ async def test_partial_fused_output_falls_back_to_full_decomposition(
     cfg = get_model_config()
     # Need to mock the database initialization
     import app.persistence.mongodb as mongodb
+
     mock_db = MagicMock()
     mock_db.__getitem__ = MagicMock(return_value=mock_collection)
 
@@ -237,7 +250,7 @@ async def test_partial_fused_output_falls_back_to_full_decomposition(
         patch("app.rag.verification.verifier._is_small", return_value=False),
         patch("app.config.get_model_config", return_value=cfg),
         patch("app.rag.verification.pipeline.nli.get_verification_model"),
-        patch.object(mongodb, '_database', mock_db),
+        patch.object(mongodb, "_database", mock_db),
         patch("app.persistence.mongodb.get_collection", return_value=mock_collection),
     ):
         # Ensure the fused path is eligible (non-small, non-reasoning model).
@@ -266,7 +279,9 @@ async def test_partial_fused_output_falls_back_to_full_decomposition(
 
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli", new_callable=AsyncMock)
-@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock)
+@patch(
+    "app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock
+)
 @patch("app.persistence.mongodb.connect_db")
 @patch("app.persistence.mongodb.create_indexes")
 async def test_execute_claim_verification_maps_sorted_segments_to_original_evidence(
@@ -304,11 +319,14 @@ async def test_execute_claim_verification_maps_sorted_segments_to_original_evide
 
     # Need to mock the database initialization
     import app.persistence.mongodb as mongodb
+
     mock_db = MagicMock()
     mock_db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    with patch.object(mongodb, '_database', mock_db), \
-         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
+    with (
+        patch.object(mongodb, "_database", mock_db),
+        patch("app.persistence.mongodb.get_collection", return_value=mock_collection),
+    ):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="The policy permits records.",
@@ -322,7 +340,9 @@ async def test_execute_claim_verification_maps_sorted_segments_to_original_evide
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.rag.verification.verifier.verify_claim_nli", new_callable=AsyncMock)
 @patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli", new_callable=AsyncMock)
-@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock)
+@patch(
+    "app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock
+)
 @patch("app.persistence.mongodb.connect_db")
 @patch("app.persistence.mongodb.create_indexes")
 async def test_batch_verification_retried_once_before_individual_fallback(
@@ -343,11 +363,14 @@ async def test_batch_verification_retried_once_before_individual_fallback(
     )
     # Need to mock the database initialization
     import app.persistence.mongodb as mongodb
+
     mock_db = MagicMock()
     mock_db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    with patch.object(mongodb, '_database', mock_db), \
-         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
+    with (
+        patch.object(mongodb, "_database", mock_db),
+        patch("app.persistence.mongodb.get_collection", return_value=mock_collection),
+    ):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="The policy permits records within thirty days.",
@@ -363,7 +386,9 @@ async def test_batch_verification_retried_once_before_individual_fallback(
 @patch("app.rag.verification.verifier.fused_decompose_verify", new=AsyncMock(return_value=None))
 @patch("app.rag.verification.pipeline.orchestrator.verify_claim_nli", new_callable=AsyncMock)
 @patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli", new_callable=AsyncMock)
-@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock)
+@patch(
+    "app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock
+)
 @patch("app.persistence.mongodb.connect_db")
 @patch("app.persistence.mongodb.create_indexes")
 async def test_individual_nli_fallback_is_capped(
@@ -399,11 +424,14 @@ async def test_individual_nli_fallback_is_capped(
     )
     # Need to mock the database initialization
     import app.persistence.mongodb as mongodb
+
     mock_db = MagicMock()
     mock_db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    with patch.object(mongodb, '_database', mock_db), \
-         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
+    with (
+        patch.object(mongodb, "_database", mock_db),
+        patch("app.persistence.mongodb.get_collection", return_value=mock_collection),
+    ):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer=" ".join(sentences),
@@ -573,7 +601,9 @@ async def test_batch_total_failure_raises_instead_of_poisoning(
 )
 @patch("app.rag.verification.pipeline.orchestrator.verify_claim_nli", new_callable=AsyncMock)
 @patch("app.rag.verification.pipeline.orchestrator.batch_verify_claims_nli", new_callable=AsyncMock)
-@patch("app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock)
+@patch(
+    "app.rag.verification.pipeline.orchestrator.decompose_answer_to_claims", new_callable=AsyncMock
+)
 @patch("app.persistence.mongodb.connect_db")
 @patch("app.persistence.mongodb.create_indexes")
 async def test_total_batch_failure_recovers_via_individual_calls(
@@ -595,11 +625,14 @@ async def test_total_batch_failure_recovers_via_individual_calls(
         return_value=MagicMock(inserted_ids=[ObjectId("64ee39d09c6292376e191986")] * 2)
     )
     import app.persistence.mongodb as mongodb
+
     mock_db = MagicMock()
     mock_db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    with patch.object(mongodb, '_database', mock_db), \
-         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
+    with (
+        patch.object(mongodb, "_database", mock_db),
+        patch("app.persistence.mongodb.get_collection", return_value=mock_collection),
+    ):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="Records take 45 days. Ranking uses models.",
@@ -645,11 +678,14 @@ async def test_empty_structured_decomposition_falls_back_to_sentences(
             return_value=MagicMock(inserted_ids=[ObjectId("64ee39d09c6292376e191986")] * 2)
         )
         import app.persistence.mongodb as mongodb
+
         mock_db = MagicMock()
         mock_db.__getitem__ = MagicMock(return_value=mock_collection)
 
-        with patch.object(mongodb, '_database', mock_db), \
-             patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
+        with (
+            patch.object(mongodb, "_database", mock_db),
+            patch("app.persistence.mongodb.get_collection", return_value=mock_collection),
+        ):
             claims = await execute_claim_verification(
                 analysis_id_str="64ee39d09c6292376e191983",
                 answer=(
@@ -677,11 +713,14 @@ async def test_empty_decomposition_of_refusal_stays_empty(
     mock_get_model_nli.side_effect = AssertionError("no LLM call expected")
     mock_collection = MagicMock()
     import app.persistence.mongodb as mongodb
+
     mock_db = MagicMock()
     mock_db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    with patch.object(mongodb, '_database', mock_db), \
-         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
+    with (
+        patch.object(mongodb, "_database", mock_db),
+        patch("app.persistence.mongodb.get_collection", return_value=mock_collection),
+    ):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="ABSTAIN",
@@ -850,19 +889,22 @@ async def test_fused_path_skips_two_step_calls(
     mock_collection = MagicMock()
     mock_collection.insert_many = AsyncMock(return_value=MagicMock(inserted_ids=[ObjectId()] * 2))
     import app.persistence.mongodb as mongodb
+
     mock_db = MagicMock()
     mock_db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    with patch.object(mongodb, '_database', mock_db), \
-         patch("app.persistence.mongodb.get_collection", return_value=mock_collection), \
-         patch(
-             "app.rag.verification.verifier.decompose_answer_to_claims",
-             side_effect=AssertionError("two-step decompose must not run"),
-         ), \
-         patch(
-             "app.rag.verification.verifier.batch_verify_claims_nli",
-             side_effect=AssertionError("two-step batch must not run"),
-         ):
+    with (
+        patch.object(mongodb, "_database", mock_db),
+        patch("app.persistence.mongodb.get_collection", return_value=mock_collection),
+        patch(
+            "app.rag.verification.verifier.decompose_answer_to_claims",
+            side_effect=AssertionError("two-step decompose must not run"),
+        ),
+        patch(
+            "app.rag.verification.verifier.batch_verify_claims_nli",
+            side_effect=AssertionError("two-step batch must not run"),
+        ),
+    ):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="Records are available within 30 days. Backups are kept for 90 days.",
@@ -936,11 +978,14 @@ async def test_fused_failure_falls_back_to_two_step(
     mock_collection = MagicMock()
     mock_collection.insert_many = AsyncMock(return_value=MagicMock(inserted_ids=[ObjectId()]))
     import app.persistence.mongodb as mongodb
+
     mock_db = MagicMock()
     mock_db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    with patch.object(mongodb, '_database', mock_db), \
-         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
+    with (
+        patch.object(mongodb, "_database", mock_db),
+        patch("app.persistence.mongodb.get_collection", return_value=mock_collection),
+    ):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="Records are available within 30 days.",
@@ -1012,11 +1057,14 @@ async def test_fused_kill_switch_restores_two_step(
     mock_collection = MagicMock()
     mock_collection.insert_many = AsyncMock(return_value=MagicMock(inserted_ids=[ObjectId()]))
     import app.persistence.mongodb as mongodb
+
     mock_db = MagicMock()
     mock_db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    with patch.object(mongodb, '_database', mock_db), \
-         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
+    with (
+        patch.object(mongodb, "_database", mock_db),
+        patch("app.persistence.mongodb.get_collection", return_value=mock_collection),
+    ):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="Records are available within 30 days.",
@@ -1058,11 +1106,14 @@ async def test_fused_meta_claims_filtered(
     mock_collection = MagicMock()
     mock_collection.insert_many = AsyncMock(return_value=MagicMock(inserted_ids=[ObjectId()] * 2))
     import app.persistence.mongodb as mongodb
+
     mock_db = MagicMock()
     mock_db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    with patch.object(mongodb, '_database', mock_db), \
-         patch("app.persistence.mongodb.get_collection", return_value=mock_collection):
+    with (
+        patch.object(mongodb, "_database", mock_db),
+        patch("app.persistence.mongodb.get_collection", return_value=mock_collection),
+    ):
         claims = await execute_claim_verification(
             analysis_id_str="64ee39d09c6292376e191983",
             answer="Records are available within 30 days. Backups are kept for 90 days.",

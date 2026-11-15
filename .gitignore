@@ -256,6 +256,15 @@ audit-*.png
 .remember/
 .codegraph/
 .playwright-mcp/
+
+# ─── A nested checkout of an unrelated project ─────────────────────────────────
+# `.kev` was a full clone of a different project (a fine-tuning/eval
+# framework, 2.1 GB) sitting inside this repository, tracked as a submodule
+# gitlink with no `.gitmodules` entry — so a fresh clone got an empty `.kev/`
+# with no way to populate it, and the working tree carried two gigabytes of
+# unrelated code. It was moved out of the repository; the ignore rule keeps a
+# local copy from being re-added by accident.
+.kev/
 # Project-id/credential scratch dirs written by external CLIs into the repo root.
 .freebuff/
 

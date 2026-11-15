@@ -1,0 +1,48 @@
+{
+  "routes": {
+    "backend_routes": 39,
+    "frontend_calls": 25,
+    "matched": 25,
+    "missing": [],
+    "ok": true
+  },
+  "flow_direct": {
+    "statuses": {
+      "/api/v1/knowledge-bases": 200,
+      "/api/v1/analyses": 200,
+      "/api/v1/claims": 200,
+      "/api/v1/conflicts": 200,
+      "/api/v1/evidence": 200,
+      "/api/v1/models/providers": 200,
+      "POST /api/v1/analyses": 201,
+      "/api/v1/analyses/6af95e2ad2277a176100e132": 200,
+      "/api/v1/analyses/6af95e2ad2277a176100e132/claims": 200,
+      "/api/v1/analyses/6af95e2ad2277a176100e132/evidence": 200,
+      "/api/v1/analyses/6af95e2ad2277a176100e132/trace": 200,
+      "/api/v1/analyses/6af95e2ad2277a176100e132/detail": 200,
+      "POST /api/v1/analyses/{id}/stream-ticket": 201
+    },
+    "problems": [],
+    "ok": true
+  },
+  "flow_through_frontend_proxy": {
+    "statuses": {
+      "/api/v1/knowledge-bases": 200,
+      "/api/v1/analyses": 200,
+      "/api/v1/claims": 200,
+      "/api/v1/conflicts": 200,
+      "/api/v1/evidence": 200,
+      "/api/v1/models/providers": 200,
+      "POST /api/v1/analyses": 201,
+      "/api/v1/analyses/6af95e2ad2277a176100e13d": 200,
+      "/api/v1/analyses/6af95e2ad2277a176100e13d/claims": 200,
+      "/api/v1/analyses/6af95e2ad2277a176100e13d/evidence": 200,
+      "/api/v1/analyses/6af95e2ad2277a176100e13d/trace": 200,
+      "/api/v1/analyses/6af95e2ad2277a176100e13d/detail": 200,
+      "POST /api/v1/analyses/{id}/stream-ticket": 201
+    },
+    "problems": [],
+    "ok": true
+  },
+  "ok": true
+}

@@ -113,6 +113,51 @@ def test_validation_error_does_not_echo_the_submitted_payload():
         assert "/etc/shadow" not in r.text
 
 
+# ─── A driver-level MongoDB failure ─────────────────────────────────────────
+# The application wraps its own database calls in DatabaseError, but the
+# driver raises its own exceptions (ServerSelectionTimeoutError,
+# ConnectionFailure) long before that wrapper is reached. Those reached the
+# catch-all handler and answered 500 "An unexpected error occurred." — a
+# message that names neither the cause nor the fact that a retry could work.
+
+
+@pytest.mark.parametrize(
+    "exc_name",
+    [
+        "ServerSelectionTimeoutError",
+        "ConnectionFailure",
+        "AutoReconnect",
+        "OperationFailure",
+    ],
+)
+def test_a_driver_level_database_failure_is_a_503_not_a_500(exc_name):
+    """An unreachable database is "try again later", not "internal error"."""
+    from pymongo import errors as pymongo_errors
+
+    exc_cls = getattr(pymongo_errors, exc_name)
+    r = _app_with_route(exc_cls("localhost:27017: connection refused")).get("/boom")
+
+    assert r.status_code == 503, f"{exc_name}: {r.status_code} != 503"
+    body = r.json()
+    assert body["error"]["code"] == "SERVICE_UNAVAILABLE"
+    assert "database" in body["error"]["message"].lower()
+
+
+def test_a_driver_level_database_failure_does_not_leak_the_connection_string():
+    """The driver's message carries the host, the port and sometimes the
+    credentials. The client gets the same generic message every other
+    database outage gets."""
+    from pymongo.errors import ServerSelectionTimeoutError
+
+    secret = "mongodb://admin:hunter2@10.0.0.5:27017/prod"
+    r = _app_with_route(ServerSelectionTimeoutError(secret)).get("/boom")
+
+    assert r.status_code == 503
+    assert secret not in r.text, "internal connection string leaked to the client"
+    assert "hunter2" not in r.text
+    assert "Traceback" not in r.text
+
+
 # ─── Request-ID middleware ───────────────────────────────────────────────────
 # NOTE: these use a *domain* exception on purpose. FastAPI registers the
 # catch-all `Exception` handler on ServerErrorMiddleware, the OUTERMOST layer,

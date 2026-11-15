@@ -35,23 +35,23 @@ Every entry is tagged:
 | **B3 — Performance** | ✅ COMPLETE — approved | `/models/providers` 2601→19.6 ms; every read path 1.5–4× faster (settings cache); global rate limit now enforced; N+1 removed; self-heal streamed. See §2 UPGRADE-007..010, §3 DEGRADATION-003, §4.7–4.9. |
 | **B4 — Accuracy** | ✅ COMPLETE — approved | Ground truth grown to 33 probes (27 answerable + 6 unanswerable); the thinking control makes a reasoning model 2.2× faster with identical accuracy; the default-model question is now decided on measurements (DECISION-006). See §2 UPGRADE-011, §5 REFINEMENT-005, §7 DECISION-006..009, §4.10–4.12. |
 | **B5 — Validation** | ✅ COMPLETE | Full suite 810 passed, coverage 80.39 % (gate green); API + quality benchmarks re-run; concurrency (4/4) and three failure injections (rate limit, provider down, database down) all behave. See §4.13. |
-| **B3 — Performance** | ⏸️ AWAITING APPROVAL | Plan in audit §6 / §7. |
-| **B4 — Accuracy** | ⏸️ AWAITING APPROVAL | Plan in audit §6 / §7. |
-| **B5 — Validation** | ⏸️ AWAITING APPROVAL | Plan in audit §7. |
+| **B6 — Integration & repo hygiene** | ✅ COMPLETE | The frontend's 25 API calls are now checked against the backend's routes by a script instead of by hand; the whole user flow is exercised through the frontend's own proxy. Four defects found and fixed (database outage answered 500 with a generic message; the model list named every model twice; a stale E2E assertion; the CI type-check ratchet could not pass). The repository lost 2.4 GB of unrelated files. See §2 UPGRADE-012..013, §4.14, §5 REFINEMENT-006, §6 CHANGE REQUIRED-022, §7 DECISION-010..011. |
 
-**Implemented changes to `app/` so far: B2.1 + B2.2** (see §2, §3, §4, §5 for the
-measured effects). New files: `app/llm/providers/cloud_probe.py`,
+**Implemented changes to `app/` so far: B2.1 + B2.2 + B3 + B4 + B6** (see §2, §3,
+§4, §5 for the measured effects). New files: `app/llm/providers/cloud_probe.py`,
 `app/rag/agent/graph/budget.py`,
-`app/rag/agent/graph/verification_snapshot.py`, plus
-`tests/test_recovery_loop.py` and `tests/test_cloud_probe.py`.
+`app/rag/agent/graph/verification_snapshot.py`,
+`app/api/rate_limiting.py`, plus `tests/test_recovery_loop.py`,
+`tests/test_cloud_probe.py`, `tests/test_settings_cache.py`,
+`tests/test_thinking_control.py`, `tests/test_rate_limiting.py`,
+`tests/test_provider_probes.py` and the scripts under `apps/api/scripts/`.
 
 ---
 
 ## 0. Skills & tooling selected
 
 Read from the installed OpenCode skill catalogue (`~/.claude/skills`, ~500
-skills) and the repo-local `.kev/.agents/skills/`. **No skill was installed,
-duplicated, or modified.**
+skills). **No skill was installed, duplicated, or modified.**
 
 | Skill / tool | Why it was selected | How it was used |
 |---|---|---|
@@ -169,6 +169,56 @@ ruff format --check→ 13 files would be reformatted
 ---
 
 ## 2. UPGRADE
+
+### UPGRADE-012 — A database outage answers 503 and says so  *(B6, measured)*
+
+**Change:** `app/main.py` (a new `PyMongoError` handler).
+
+The application's own `DatabaseError` already mapped to 503 *"Database
+unavailable. Please try again."* — but the driver raises **its own** exceptions
+(`ServerSelectionTimeoutError`, `ConnectionFailure`, `AutoReconnect`,
+`OperationFailure`) long before that wrapper is reached. Those fell through to
+the catch-all handler and answered **500 "An unexpected error occurred."**:
+an operator could not tell a database outage from a bug, and a client was told
+to treat an unfixable request as a server error rather than as "try again".
+
+**Measured, before and after, with MongoDB stopped:**
+
+| | Status | Body |
+|---|---|---|
+| before | **500** | `{"error":{"code":"INTERNAL_ERROR","message":"An unexpected error occurred."}}` |
+| after | **503** | `{"error":{"code":"SERVICE_UNAVAILABLE","message":"Database unavailable. Please try again."}}` |
+
+The driver message carries the host, the port and sometimes the credentials,
+so the handler returns the same generic message as every other database
+outage — a connection string never reaches the client. `/health` keeps
+answering 200 throughout: the process survives the outage.
+
+This closes CHANGE REQUIRED-021 (below).
+
+---
+
+### UPGRADE-013 — The model list names each model once  *(B6, measured)*
+
+**Change:** `app/llm/providers/health.py`.
+
+`check_ollama_status` merged the `ollama list` CLI output with the server's
+`/api/tags` response — **the same models from two sources** — and returned
+the concatenation. Every Ollama model was listed twice:
+
+```
+before: ["qwen3:1.7b", "gemma3:1b", "qwen3:1.7b", "gemma3:1b"]
+after:  ["qwen3:1.7b", "gemma3:1b"]
+```
+
+The frontend renders that array as one `<option>` per entry, so the model
+dropdown showed every model twice, with duplicated React keys. The frontend
+happened to de-duplicate it as well (`[...new Set(models)]`), so the visible
+symptom was nil there — but every other consumer of the API saw the
+duplicates, and the `default_model` was picked from a list whose first entry
+was a duplicate of the second.
+
+---
 
 ### UPGRADE-011 — A thinking model no longer pays for a reasoning trace it does not need  *(B4, measured)*
 
@@ -900,7 +950,116 @@ The coverage gate that **failed on `main`** at the start of this programme
 
 ---
 
+### 4.14 B6 integration and CI verification
+
+**What was run, and what it found.** The whole CI pipeline was executed
+locally, job by job, against the live services.
+
+| CI job | Command | Result |
+|---|---|---|
+| backend-lint | `ruff check app/ tests/` | **All checks passed** (was 8 errors) |
+| backend-lint | `ruff format --check app/ tests/` | **197 files already formatted** (was 3 to reformat) |
+| backend-lint | `scripts/typecheck_ratchet.sh` | **PASS: no new type errors** (30 errors, ceiling 30) |
+| backend-lint | `scripts/apply_ports.py --check` | **OK** |
+| backend-test | `pytest tests/ -v --no-header` | **817 passed**, coverage **80.41 %** (gate 78 %) |
+| backend-config-validate | `models.yaml` schema + secret scan | **passed** |
+| frontend-lint | `npm run lint` | **clean** (`--max-warnings 0`) |
+| frontend-lint | `npm run test` | **82 passed** (17 files) |
+| frontend-build | `npm run build` | **built in 2.17 s** |
+| cross-platform | backend import smoke | **imports OK** |
+| e2e | `npx playwright test` | **2 passed** (was 1 failed) |
+| e2e | `k6 run load-test/smoke.js` | **all checks green** (was 32.6 % failures) |
+
+**The frontend↔backend contract (new):**
+
+| | Value |
+|---|---|
+| Frontend API calls extracted from source | **25** |
+| Backend routes (live OpenAPI) | **39** |
+| Calls with no matching route | **0** |
+| User flow, direct | every step 200/201 |
+| User flow, through the Vite proxy | every step 200/201 |
+
+**The k6 load smoke, before and after the guard was raised for the load job:**
+
+| | `http_req_failed` | p(95) | p(99) |
+|---|---|---|---|
+| with the 240/min guard | **32.58 %** (then 100 % inside the same window) | 13.31 ms | — |
+| with the guard raised for the load job | **0.00 %** (0 of 6677) | **17.68 ms** | **43.17 ms** |
+
+**The database outage, before and after (measured, MongoDB stopped):**
+
+| | Status | Body |
+|---|---|---|
+| before | 500 | `{"error":{"code":"INTERNAL_ERROR","message":"An unexpected error occurred."}}` |
+| after | **503** | `{"error":{"code":"SERVICE_UNAVAILABLE","message":"Database unavailable. Please try again."}}` |
+
+### 4.15 B6 repository hygiene
+
+| | Before | After |
+|---|---|---|
+| Repository size | **5.3 GB** | **2.9 GB** |
+| `.kev/` — a full clone of an unrelated project, tracked as a submodule gitlink with no `.gitmodules` | 2.1 GB | **moved out of the repository** |
+| `.playwright-mcp/` — MCP screenshot artifacts | 109 MB | removed |
+| `apps/web/dist/` — build output | 3.9 MB | removed (regenerated by the build) |
+| `.pytest_cache/`, `.ruff_cache/`, `apps/api/.mypy_cache/` | 7 dirs | removed |
+| `.coverage` (×3), `__pycache__/` (×36), `.DS_Store` (×50) | — | removed |
+| `public/` — a stray directory at the repository root holding one `.DS_Store` | 16 KB | removed |
+
+**Kept, deliberately:** `apps/web/node_modules/` (238 MB — the build and the
+test suite need it), `apps/api/.venv/` (2.3 GB — the Python environment),
+`apps/api/.model_cache/` (215 MB — the ONNX embedding and reranker weights;
+regenerating them means a torch export), `.codegraph/` (38 MB — the code
+index), `apps/api/app/data/qdrant/` (the live local vector store).
+
+**Artifact:** `integration_results.json`, `resilience_results.json`.
+
+---
+
 ## 5. REFINEMENT
+
+### REFINEMENT-006 — The frontend↔backend contract is checked by a script, not by hand  *(B6, NEW)*
+
+**Change:** `apps/api/scripts/validate_integration.py` (new).
+
+The frontend calls the API by string literal. **Nothing** in either codebase
+cross-checked those literals against the backend's routes: a renamed or
+removed endpoint surfaced as a broken page at runtime, not as a failed build.
+The new script closes that gap in three steps:
+
+1. **Extract** every `/api/v1/…` call from the frontend source
+   (`src/services`, `src/lib`, `src/hooks`, `src/pages`, `src/components`),
+   including the template-literal forms — `/analyses/${id}/claims` becomes
+   `/analyses/{id}/claims` — and compares the *shape* of each path against the
+   backend's live OpenAPI document. The parameter **names** differ by design
+   (`{analysis_id}` on the server, `${id}` in the client); only the shape is
+   the contract.
+2. **Exercise** the flow the user actually performs — login, list, create an
+   analysis, read it back, read its claims/evidence/trace/detail, mint a
+   stream ticket — and check the response *shapes*, because the frontend's
+   `unwrap()` returns the raw body and the pages index into it directly
+   (`data.map(...)`, `data.id`).
+3. **Repeat the whole flow through the frontend's own Vite proxy**, so the
+   browser-facing path (`/api` → `localhost:8000`) is covered, not just the
+   API.
+
+**Measured:** 25 frontend calls, 39 backend routes, **0 missing**. The flow
+answers 200/201 on every step, directly *and* through the proxy.
+
+This is what found CHANGE REQUIRED-022 (the stale E2E assertion) and
+UPGRADE-013 (the duplicated model list).
+
+**Also new:** `apps/api/scripts/start_local_services.sh` now starts its
+children in **their own session** (`setsid` via `subprocess.Popen(
+start_new_session=True)`), records the API pid in `/tmp/trustrag_api.pid`,
+and replaces an unresponsive process that still holds the port. A plain
+`nohup cmd &` leaves the daemon in the caller's process group, so whatever
+reaps that group when the launching shell exits takes the service with it —
+which is how the API disappeared mid-measurement during B5. The health check
+also uses `curl --fail` now: a bare `curl` succeeds on a 500 and would report
+a broken API as healthy.
+
+---
 
 ### REFINEMENT-005 — The ground-truth evaluation set, grown to something that can decide  *(B4)*
 
@@ -1446,21 +1605,41 @@ product decision, not a bug fix.
 
 ---
 
-### CHANGE REQUIRED-021 — A database outage answers 500 with a generic message  *(S2, diagnostics — NEW in B5)*
+### CHANGE REQUIRED-021 — A database outage answers 500 with a generic message  *(S2, diagnostics — found in B5, FIXED in B6)*
 
 **Found during B5 failure injection.** With MongoDB stopped,
-`GET /api/v1/knowledge-bases` answers **HTTP 500** with
+`GET /api/v1/knowledge-bases` answered **HTTP 500** with
 `{"error":{"code":"INTERNAL_ERROR","message":"An unexpected error occurred."}}`.
 
-The envelope is right (no stack trace leaks) and the failure is loud, but the
-message names nothing: an operator reading it cannot tell a database outage
-from a bug. A `DatabaseError` already exists in `app/security/exceptions.py`;
-what is missing is a handler that maps it to **503** with a message that says
-the database is unreachable.
+The envelope was right (no stack trace leaked) and the failure was loud, but
+the message named nothing: an operator reading it could not tell a database
+outage from a bug, and a client was told to treat an unfixable request as a
+server error instead of as "try again later".
 
-**Not fixed in B5** — it changes the error contract, so it belongs in a
-change with its own review. It is the natural companion to the rate-limit
-work in UPGRADE-009.
+**FIXED in B6** — see UPGRADE-012. The driver's own exceptions are now mapped
+to 503 with a message that names the database. Verified by re-running the
+failure injection: 503, `{"error":{"code":"SERVICE_UNAVAILABLE","message":"Database unavailable. Please try again."}}`.
+
+---
+
+### CHANGE REQUIRED-022 — The E2E suite asserted a heading the dashboard stopped rendering  *(B6, CI — NEW)*
+
+**Found while running the CI pipeline locally.** `apps/web/e2e/auth.spec.js`
+waited for a heading matching `/AI Reliability/i` after login. The dashboard was
+redesigned to render the heading **"Overview"** (`src/pages/DashboardPage.jsx`),
+and the spec was never updated — so the assertion looked for an element that
+no longer existed, and the CI `e2e` job failed on a dashboard that had
+rendered perfectly.
+
+The spec's last change (`a0d5b7a`) predates the dashboard redesign, which is
+how the drift happened.
+
+**Fixed** by asserting the heading the page actually renders. The rest of the
+test — register → login → session → logout revokes the token — is unchanged,
+and it now passes end to end against a live backend.
+
+**Worth knowing:** nothing else in the repo checks that the frontend's API
+calls still exist on the backend. That is what REFINEMENT-006 adds.
 
 ---
 
@@ -1720,6 +1899,54 @@ rejected one.
 
 ---
 
+### DECISION-010 — The load test runs with the abuse guard raised, not with the guard removed  *(B6)*
+
+The global rate limit (UPGRADE-009) is **240 requests/minute per client per
+path** — a real bound on a runaway client. The k6 smoke drives roughly **200
+requests/second on purpose**, so the guard answered 429 to most of it:
+
+| | `http_req_failed` | checks |
+|---|---|---|
+| with the 240/min guard | **32.6 %** (first run) → **100 %** (a second run inside the same window) | failing |
+| with the guard raised for the load job | **0.00 %** | all green |
+
+The second row is the honest picture of a *throttled* API, not of a *slow* one.
+A load gate that measures the limiter is measuring the wrong thing.
+
+**Decision: the CI load job starts the API with `RATE_LIMIT_PER_MINUTE=100000`.**
+The guard is not weakened, removed, or exempted anywhere else — it stays
+enforced for the abuse cases it was built for, and the failure injection in
+§4.13.3 still proves it fires at 240/min (429 on request 241).
+
+### DECISION-011 — The mypy ratchet ceiling is corrected to the real count  *(B6)*
+
+`apps/api/mypy-error-ceiling.txt` said **0**, but mypy reports **30** errors
+today. The ceiling was written when mypy was older and stricter rules had not
+landed; CI installs mypy **unpinned**, so it gets the latest and the
+type-check job failed on every run — a ratchet whose ceiling is already
+exceeded is not a ratchet, it is a permanently red light.
+
+**Verified before changing anything:** the 30 errors are **pre-existing**. A
+checkout of the branch's base commit produces **34** errors with the same
+mypy — so this branch *removed* four (the deleted registry package and the
+fixed Gemini probe) and had introduced four of its own (the settings-cache
+fingerprint and the verification-snapshot helpers). All four of the new ones
+are fixed:
+
+- the settings fingerprint now normalises `env_file` to a sequence before
+  iterating it — which also removes a latent `TypeError` if pydantic is ever
+  given a single path instead of a list;
+- the verification-snapshot helpers are typed against `AgentState` instead of
+  `dict[str, Any]`, and the snapshot key is a `Final` literal so a TypedDict
+  accepts it.
+
+The ceiling is set to **30**, which restores the ratchet's meaning: the job
+fails when the error count *exceeds* the ceiling, and the ceiling can now
+ratchet down as errors are fixed. **Zero new type errors versus the base
+commit** — verified by diffing the two mypy reports.
+
+---
+
 ### DECISION-005 — The embedding query cache is kept, not replaced
 
 **Decision:** keep the existing in-memory, mode-namespaced LRU in
@@ -1745,6 +1972,10 @@ capacity), not a redesign.
 ---
 
 ## 8. Plan for B2–B5 — as executed
+
+> B6 (integration check + repository hygiene) was added at the end and is
+> recorded in §2 UPGRADE-012..013, §4.14–4.15, §5 REFINEMENT-006, §6
+> CHANGE REQUIRED-022 and §7 DECISION-010..011.
 
 ### B2 — Cleanup & refactor (mechanical, low risk, behaviour-preserving)
 
@@ -1803,3 +2034,5 @@ egress is opt-in via the `cloud` extra.
 | BLK-4 | `reranker.enabled: false`, and BGE int8 recall unmeasured | Two promising optimisations are blocked on measurement, not on effort | **Reranker: measured in B4, not adopted (DECISION-007). Embedding int8: still not measured — no int8 export exists locally (DECISION-009).** |
 | BLK-5 | The default model answers 37 % of answerable questions | The product's usefulness is bounded by the 1B model, not by the pipeline | **Measured in B4 (DECISION-006): `qwen3:1.7b` answers 93 % with perfect abstention at 4.3× the latency. The default is a deployment choice and is left to the operator.** |
 | BLK-6 | The host was not idle during the B4/B5 runs (load 5.5–17.0) | Short-endpoint p50 is noise-dominated across runs | The `min` column is the load-robust signal (§4.11); every conclusion in this log rests on differences far larger than the observed noise |
+| BLK-7 | 30 mypy errors remain in `app/` | The type-check job can only fail on *new* errors, not on old ones | The ratchet ceiling is corrected to 30 (DECISION-011) and this branch introduces **zero** new ones. The backlog is a separate piece of work: each error is a candidate for a ratchet-down commit. |
+| BLK-8 | The frontend↔backend contract was never checked by anything | A renamed endpoint would surface as a broken page, not a failed build | **Closed in B6** by `scripts/validate_integration.py`, which extracts every frontend API call from the source and compares it against the live OpenAPI document (25 calls, 39 routes, 0 missing). |
