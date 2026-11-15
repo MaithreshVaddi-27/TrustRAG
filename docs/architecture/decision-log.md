@@ -381,7 +381,7 @@ dynamic batch/sequence axes, single 128 MB file) and served from
   so no new cross-space risk.
 
 **Files:**
-- `scripts/export_bge_onnx.py` (new), `apps/api/app/llm/embedding/engine.py` (new)
+- `scripts/export_bge_onnx.py` (new), `apps/api/app/rag/embedding/engine.py` (new)
 - `apps/api/app/llm/model_registry.py` (`onnx` provider branch), `config.py`
   (`embedding_max_seq_length`), `config/models.yaml` (`max_seq_length: 512`)
 

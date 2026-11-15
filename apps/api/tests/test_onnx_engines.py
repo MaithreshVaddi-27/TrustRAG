@@ -263,9 +263,9 @@ def test_the_compat_shim_is_the_single_patch_point_for_onnxruntime():
     shim controls it.
     """
     from app.llm import onnx_embeddings as mod
-    from app.llm.embedding.engine import ONNXBGEEmbeddings as ShimEngine
     from app.rag.embedding.engine import ONNXBGEEmbeddings as CanonicalEngine
 
+    ShimEngine = mod.ONNXBGEEmbeddings
     assert ShimEngine is CanonicalEngine, "the embedding engine is forked again"
 
     with patch.object(mod, "_ORT_AVAILABLE", False):

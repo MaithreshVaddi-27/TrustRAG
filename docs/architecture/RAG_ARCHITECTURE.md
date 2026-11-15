@@ -332,7 +332,7 @@ Motion system: `motion` package with shared config (`lib/motionConfig.js`), entr
 
 **`config/ports.yaml`** — canonical port registry for all services (Qdrant, MongoDB, Ollama, llama.cpp, frontend dev server).
 
-Settings class (`app/core/config/settings.py`) merges `.env` → `models.yaml` into a typed `Settings` object via pydantic-settings. Business code never reads `os.environ` directly.
+Settings class (`app/config/settings.py`) merges `.env` → `models.yaml` into a typed `Settings` object via pydantic-settings. Business code never reads `os.environ` directly.
 
 ---
 

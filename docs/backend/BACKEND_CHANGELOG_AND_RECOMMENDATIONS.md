@@ -35,6 +35,7 @@ Every entry is tagged:
 | **B3 — Performance** | ✅ COMPLETE — approved | `/models/providers` 2601→19.6 ms; every read path 1.5–4× faster (settings cache); global rate limit now enforced; N+1 removed; self-heal streamed. See §2 UPGRADE-007..010, §3 DEGRADATION-003, §4.7–4.9. |
 | **B4 — Accuracy** | ✅ COMPLETE — approved | Ground truth grown to 33 probes (27 answerable + 6 unanswerable); the thinking control makes a reasoning model 2.2× faster with identical accuracy; the default-model question is now decided on measurements (DECISION-006). See §2 UPGRADE-011, §5 REFINEMENT-005, §7 DECISION-006..009, §4.10–4.12. |
 | **B5 — Validation** | ✅ COMPLETE | Full suite 810 passed, coverage 80.39 % (gate green); API + quality benchmarks re-run; concurrency (4/4) and three failure injections (rate limit, provider down, database down) all behave. See §4.13. |
+| **B8 — Deep clean** | ✅ COMPLETE | Three real defects found by cleaning: the fresh-clone ONNX bake used a hardcoded stub config and could never export the reranker; the root `scripts/` package was never linted by CI. Dead shims removed, the lint rules moved to a repository-root `ruff.toml`, and the tooling is now genuinely cross-platform. See §4.18. |
 | **B7 — Documentation & cross-platform** | ✅ COMPLETE | The docs told the truth again: 6 broken links, 12 stale module paths, a coverage map of a module that no longer exists and a verification snapshot quoting 665 tests. All fixed; zero broken links. The launcher hardcoded a macOS Homebrew Python path — now discovered, so the tooling runs on Linux and Windows too. 11 superseded point-in-time reports removed. Verified on Python 3.11 and 3.12. See §4.16–4.17. |
 | **B6 — Integration & repo hygiene** | ✅ COMPLETE | The frontend's 25 API calls are now checked against the backend's routes by a script instead of by hand; the whole user flow is exercised through the frontend's own proxy. Four defects found and fixed (database outage answered 500 with a generic message; the model list named every model twice; a stale E2E assertion; the CI type-check ratchet could not pass). The repository lost 2.4 GB of unrelated files. See §2 UPGRADE-012..013, §4.14, §5 REFINEMENT-006, §6 CHANGE REQUIRED-022, §7 DECISION-010..011. |
 
@@ -1081,6 +1082,48 @@ current tree first.
 The now-empty `docs/cleanup/`, `docs/engineering/` and `docs/audit/`
 directories went with them. **History is preserved in git** —
 `git log -- docs/cleanup/` still shows every line.
+
+---
+
+### 4.18 B8 — Deep clean and the cross-platform pass
+
+**Three real defects, found by cleaning rather than by reading.**
+
+| # | Defect | Consequence | Fix |
+|---|---|---|---|
+| 1 | `scripts/ensure_onnx_models.py` imported `app.core.config` — a module the B2.2 restructure deleted | The `ImportError` was swallowed by a fallback that returned a **hardcoded stub config**. An operator who changed the embedding model in `models.yaml` would have had the *wrong* model baked. | Import `app.config.get_model_config`. The fallback now only fires when the package genuinely is not importable. |
+| 2 | `scripts/ensure_onnx_models.py` imported `app.llm.onnx_reranker` — also deleted by the restructure | The reranker export **never ran**, and the `except ImportError` blamed the user's dependencies: *"Missing dependencies for reranker export: No module named 'app.llm.onnx_reranker'"*. | Import `app.rag.retrieval.onnx_reranker`, and import it **separately** from the third-party dependency so that our own missing module can no longer be reported as a missing dependency. |
+| 3 | The root `scripts/` package was **never linted** — CI's lint job runs from `apps/api` and only sees `app/` and `tests/` | Six real violations sat in the scripts a new user runs first (`bootstrap.py`, `apply_ports.py`, `ensure_onnx_models.py`, `run_baseline_eval.py`), and they were formatted with ruff's *defaults* locally because no config was found above the repository root. | The rules moved to a repository-root `ruff.toml`; `apps/api/pyproject.toml` now extends it; CI lints `scripts/` too. |
+
+**Dead code removed** — each verified against the import graph, not by eye:
+
+| Removed | Evidence |
+|---|---|
+| `app/llm/embedding/` (3 files) | A middle re-export shim between `app.llm.onnx_embeddings` and `app.rag.embedding`. Nothing imported it. The chain is now **two** layers: the one public shim → the implementation. |
+| `app/llm/reranker/` (1 file) | A re-export shim nothing imported. |
+| `app/persistence/{mongodb,qdrant}/repositories/` (2 files) | Empty packages: a 0-byte `__init__.py` and nothing else. |
+| `clear_onnx_caches()` | Referenced by nothing; documented as "tests only", and no test used it. |
+| `apps/web/src/components/ui/index.js` | A one-line barrel nothing imported — the pages import `PageHeader` directly. |
+
+**Cross-platform.** The application code needed nothing: it already used
+`Path(__file__).resolve()` throughout, and the memory and hardware probes
+already branch on darwin / linux / win32 / fallback. The **tooling** did:
+
+| | Before | After |
+|---|---|---|
+| `bootstrap.py` printed | `cd apps/api && .venv/bin/uvicorn …` | the right command for the platform — `.venv\Scripts\python` on Windows |
+| `start_local_services.sh` interpreter | hardcoded `/opt/homebrew/…` | discovered (`$PYTHON` → venv in both layouts → `python3`/`python`) |
+| `start_local_services.sh` scratch | hardcoded `/tmp` | follows `TMPDIR` |
+| `e2e_manual_verify.sh` | hardcoded `/tmp` + POSIX venv path | `TMPDIR` + both venv layouts |
+
+**Verified on both supported Python versions:** 817 passed on 3.12
+(coverage 80.49 %), 813 passed + 4 skipped on 3.11 — the four skips are the
+opt-in `cloud` extra. `ruff check .` clean across the whole repository from
+the root, the mypy ratchet reports no new errors, and the frontend is 82
+tests / ESLint clean / build green.
+
+**Not verified locally:** the Docker image build — the Docker daemon is not
+running on this host. CI builds it on every push.
 
 ---
 

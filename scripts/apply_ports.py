@@ -122,7 +122,10 @@ def build_rules(p: dict[str, int]) -> dict[str, list[tuple[str, str]]]:
             (r"http://localhost:\d+/docs", f"http://localhost:{b}/docs"),
             (r"http://localhost:\d+/openapi\.json", f"http://localhost:{b}/openapi.json"),
             (r"BASE=http://localhost:\d+", f"BASE=http://localhost:{b}"),
-            (r"uvicorn app\.main:app --host [0-9.]+ --port \d+", f"uvicorn app.main:app --host 0.0.0.0 --port {b}"),
+            (
+                r"uvicorn app\.main:app --host [0-9.]+ --port \d+",
+                f"uvicorn app.main:app --host 0.0.0.0 --port {b}",
+            ),
             (r"requires backend on :\d+", f"requires backend on :{b}"),
             (r"API_BASE_URL=http://localhost:\d+", f"API_BASE_URL=http://localhost:{b}"),
             (r"E2E_API_URL: http://localhost:\d+", f"E2E_API_URL: http://localhost:{b}"),
@@ -186,8 +189,14 @@ def _sync_compose(path: Path, p: dict[str, int], check: bool, failed: list[str])
     t = re.sub(r"FastAPI backend \(Port \d+,", f"FastAPI backend (Port {b},", t)
     t = re.sub(r"llama-server \(:\d+\)", f"llama-server (:{ll})", t)
     t = re.sub(r"--port \d+", f"--port {b}", t)
-    t = re.sub(r"http://localhost:\d+/api/v1/health", f"http://localhost:{b}/api/v1/health", t)
-    t = re.sub(r"VITE_API_BASE_URL: http://localhost:\d+", f"VITE_API_BASE_URL: http://localhost:{b}", t)
+    t = re.sub(
+        r"http://localhost:\d+/api/v1/health",
+        f"http://localhost:{b}/api/v1/health",
+        t,
+    )
+    t = re.sub(
+        r"VITE_API_BASE_URL: http://localhost:\d+", f"VITE_API_BASE_URL: http://localhost:{b}", t
+    )
     t = re.sub(
         r"LLAMACPP_BASE_URL: http://host\.docker\.internal:\d+/v1",
         f"LLAMACPP_BASE_URL: http://host.docker.internal:{ll}/v1",
@@ -218,20 +227,29 @@ def _sync_compose(path: Path, p: dict[str, int], check: bool, failed: list[str])
         if m and in_ports:
             if in_service == "qdrant":
                 if qdrant_seen == 0:
-                    line = f'{m.group(1)}{qhh}:{qhc}{m.group(4)}\n'
+                    line = f"{m.group(1)}{qhh}:{qhc}{m.group(4)}\n"
                 else:
-                    line = f'{m.group(1)}{qgh}:{qgc}{m.group(4)}\n'
+                    line = f"{m.group(1)}{qgh}:{qgc}{m.group(4)}\n"
                 qdrant_seen += 1
             elif in_service == "api":
-                line = f'{m.group(1)}{b}:{b}{m.group(4)}\n'
+                line = f"{m.group(1)}{b}:{b}{m.group(4)}\n"
             elif in_service == "web":
-                line = f'{m.group(1)}{f}:{f}{m.group(4)}\n'
+                line = f"{m.group(1)}{f}:{f}{m.group(4)}\n"
         out.append(line)
     t = "".join(out)
     if t != orig:
         if check:
             failed.append("docker-compose.yml")
-            print("".join(difflib.unified_diff(orig.splitlines(keepends=True), t.splitlines(keepends=True), fromfile="a/docker-compose.yml", tofile="b/docker-compose.yml")))
+            print(
+                "".join(
+                    difflib.unified_diff(
+                        orig.splitlines(keepends=True),
+                        t.splitlines(keepends=True),
+                        fromfile="a/docker-compose.yml",
+                        tofile="b/docker-compose.yml",
+                    )
+                )
+            )
         else:
             path.write_text(t, encoding="utf-8")
             print("UPDATED: docker-compose.yml")

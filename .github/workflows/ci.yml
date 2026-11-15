@@ -46,6 +46,15 @@ jobs:
       - name: Format check
         run: ruff format --check app/ tests/
 
+      - name: Lint the repository-root scripts
+        # The root `scripts/` package (bootstrap, port registry, ONNX export,
+        # eval harnesses) was never linted: the job's working directory is
+        # `apps/api`, so it only ever saw `app/` and `tests/`. The shared
+        # rules now live in the repository-root `ruff.toml`, so the same
+        # standard applies to both.
+        working-directory: ./
+        run: ruff check scripts/ && ruff format --check scripts/
+
       - name: Type check (mypy ratchet)
         # N-94: mypy was configured but never run, so its 48-error backlog was
         # invisible. Fails only on NEW errors (ceiling ratchets down over time).

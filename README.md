@@ -102,48 +102,51 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 ```
 TrustRAG/
 ├── apps/
-│   ├── api/                    # FastAPI backend (Python 3.11+)
+│   ├── api/                    # FastAPI backend (Python 3.11-3.12)
 │   │   ├── app/
-│   │   │   ├── api/v1/         # REST routes + schemas + deps
-│   │   │   │   ├── routes/     # auth, KBs, analyses, documents, claims, evidence, health, internal
-│   │   │   │   └── schemas/    # Pydantic v2 request/response schemas
-│   │   │   ├── rag/            # RAG capability (embedding, retrieval, ingestion, verification, generation, agent)
-│   │   │   │   ├── embedding/  # ONNX engine + cache
-│   │   │   │   ├── retrieval/  # hybrid + reranker + qdrant client
+│   │   │   ├── api/v1/         # REST routers + Pydantic v2 schemas + deps
+│   │   │   │   └── schemas/    # request/response models
+│   │   │   ├── rag/            # RAG capability
+│   │   │   │   ├── embedding/  # ONNX engine + cache wrapper  <- the implementation
+│   │   │   │   ├── retrieval/  # hybrid retrieval + reranker + Qdrant client
 │   │   │   │   ├── ingestion/  # parsers, chunkers, OCR, pipeline
-│   │   │   │   ├── verification/ # decompose → NLI → verdict + pipeline orchestrator
+│   │   │   │   ├── verification/ # decompose -> NLI -> verdict + pipeline orchestrator
 │   │   │   │   ├── generation/ # grounded answer generator
 │   │   │   │   └── agent/      # LangGraph self-heal loop + query router
-│   │   │   ├── llm/            # LLM capability (providers, registry, embedding/reranker re-exports)
-│   │   │   │   ├── providers/  # ollama, llama_cpp, mlx, gemini, base, discovery, health
-│   │   │   │   ├── registry/   # factories + discovery + health
-│   │   │   │   ├── embedding/  # re-export → rag.embedding
-│   │   │   │   └── reranker/   # re-export → rag.retrieval
+│   │   │   ├── llm/            # LLM capability
+│   │   │   │   ├── providers/  # ollama, llama_cpp, mlx, gemini + discovery + health
+│   │   │   │   ├── model_registry.py  # model selection + ONNX singletons
+│   │   │   │   └── onnx_embeddings.py  # the one public embedding shim (patch point)
 │   │   │   ├── mcp/            # MCP tool server (JSON-RPC 2.0)
-│   │   │   ├── config/         # settings, model_config, loader (config version 1.29)
-│   │   │   ├── persistence/    # mongodb + qdrant clients + repositories
+│   │   │   ├── config/         # settings, model_config, loader (config v1.29)
+│   │   │   ├── persistence/    # mongodb + qdrant clients
 │   │   │   ├── observability/  # logging, metrics, tracing
 │   │   │   ├── security/       # exceptions, JWT + bcrypt auth
-│   │   │   ├── core/           # backward-compat shims (config/, observability/, security/) + system/
-│   │   │   │   └── system/     # concurrency, hardware, memory
+│   │   │   ├── core/system/    # concurrency, hardware, memory telemetry
 │   │   │   ├── services/       # analysis, KB, auth, search, claims_evidence, pipeline, sse, analytics
-│   │   │   ├── bootstrap.py    # app initialization
-│   │   │   ├── main.py         # create_app() factory entry point
-│   │   │   ├── middleware.py   # CORS, request ID, rate limit, security headers
-│   │   │   └── exception_handlers.py  # domain error → HTTP mapping
-│   │   │   ├── config/models.yaml  # model IDs, thresholds, tuning (config v1.29)
-│   │   │   ├── tests/          # backend suite (mocked, no live services)
-│   │   │   └── pyproject.toml
+│   │   │   └── main.py         # create_app() factory entry point
+│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (config v1.29)
+│   │   ├── scripts/            # benchmark, accuracy, resilience and integration harnesses
+│   │   ├── tests/              # backend suite (mocked, no live services)
+│   │   └── pyproject.toml
 │   └── web/                    # React frontend (Node 22+)
 │       ├── src/{pages,components,services,lib,store,hooks,layouts,styles}/
 │       └── e2e/                # Playwright specs
 ├── config/ports.yaml           # canonical port registry
-├── scripts/                    # bootstrap.py, setup.sh, start_local_llm.sh, start_mlx_server.sh, eval_provider.sh, apply_ports.py, …
-├── docs/                       # specs, architecture, ADRs, evaluation, deployment
+├── scripts/                    # bootstrap.py, setup.sh, start_local_llm.sh, start_mlx_server.sh,
+│                               #   eval_provider.sh, apply_ports.py, ensure_onnx_models.py, ...
+├── docs/                       # specs, architecture, ADRs, evaluation, deployment, backend log
 ├── load-test/smoke.js          # k6 smoke test
+├── ruff.toml                   # the lint rules, shared by the whole repository
 ├── docker-compose.yml          # api + web + qdrant
 └── .env.example                # documented env template (copy to .env)
 ```
+
+**One import path worth knowing.** `app.llm.onnx_embeddings` is the single
+public shim over the embedding implementation — it re-exports
+`ONNXBGEEmbeddings` and the ONNX Runtime handles, and it is the only place
+ONNX Runtime can be patched. Everything else imports the implementation
+directly from `app.rag.embedding`.
 
 Model weights (`apps/api/.model_cache/*.onnx`, `*.gguf`, Hugging Face
 snapshots) are **never committed to git** — every machine fetches them once
@@ -185,6 +188,34 @@ cd TrustRAG
 cp .env.example .env
 python3 -c "import secrets; print(secrets.token_hex(64))"
 # Paste the output as JWT_SECRET=<value> in .env (min 32 chars)
+```
+
+### 2. Fastest path — one command (macOS, Linux, Windows)
+
+If MongoDB, Ollama and a Python 3.11–3.12 are already installed, this starts
+everything and waits until the API answers:
+
+```bash
+bash apps/api/scripts/start_local_services.sh
+```
+
+It starts MongoDB, Ollama and the API, then blocks until
+`GET /api/v1/health` returns 200. Re-running it is safe — it starts only what
+is not already listening. The interpreter is discovered automatically
+(`$PYTHON`, then the project virtualenv in both its POSIX and Windows
+layouts, then `python3` / `python` on `PATH`), and the scratch directory
+follows `TMPDIR`.
+
+Under **Git Bash** or **WSL** on Windows, the same command works:
+
+```bash
+bash apps/api/scripts/start_local_services.sh
+```
+
+Then the frontend, in a second terminal:
+
+```bash
+cd apps/web && npm install && npm run dev
 ```
 
 ### 2a. macOS
@@ -570,7 +601,28 @@ npm run test:e2e          # headless · npm run test:e2e:ui (interactive)
 k6 run load-test/smoke.js
 ```
 
-Lint: `cd apps/api && ruff check app/ tests/ && ruff format --check app/ tests/` · `cd apps/web && npm run lint`.
+Two harnesses keep the frontend and the backend honest about each other.
+Both need the live stack (see the fastest path above):
+
+```bash
+# Integration — every API call the frontend makes is checked against the
+# backend's routes, and the whole user flow is exercised directly and
+# through the frontend's own proxy.
+cd apps/api && python scripts/validate_integration.py
+
+# Resilience — concurrency, the rate limit, a provider outage and a
+# database outage, each induced and repaired.
+cd apps/api && python scripts/validate_resilience.py
+```
+
+Lint — the rules live in the repository-root `ruff.toml`, so the same standard
+applies to the root `scripts/` package and to `apps/api/`:
+
+```bash
+ruff check . && ruff format --check .     # from the repository root
+cd apps/api && ruff check app/ tests/ && ruff format --check app/ tests/
+cd apps/web && npm run lint
+```
 
 > **Toolchain notes:** backend Python 3.11–3.12 with `uv` (`uv sync`), frontend Node 22+ (`engines`-pinned — Vitest breaks on Node 20). CI runs Ubuntu jobs plus a Windows + macOS smoke matrix (`cross-platform`), all gated in `ci-gate`.
 

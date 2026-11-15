@@ -22,7 +22,7 @@ Usage:
 
 Typical flow:
   python scripts/bootstrap.py
-  cd apps/api && .venv/bin/uvicorn app.main:app --port 8000 --reload
+  # the script prints the right command for your platform
 """
 
 from __future__ import annotations
@@ -32,8 +32,22 @@ import sys
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
 sys.path.insert(0, str(_REPO_ROOT / "scripts"))
 sys.path.insert(0, str(_REPO_ROOT / "apps" / "api"))
+
+
+def _start_command() -> str:
+    """The command that starts the backend on *this* platform.
+
+    A virtualenv keeps its interpreter in ``.venv/bin`` on POSIX and in
+    ``.venv/Scripts`` on Windows. Printing the POSIX form gave every Windows
+    user a command that could not work.
+    """
+    if sys.platform == "win32":
+        return r"cd apps\api && .venv\Scripts\python -m uvicorn app.main:app --port 8000 --reload"
+    return "cd apps/api && .venv/bin/uvicorn app.main:app --port 8000 --reload"
 
 
 def _ensure_onnx(argv: list[str]) -> int:
@@ -85,7 +99,8 @@ def main() -> int:
     if rc != 0:
         if verify:
             print(
-                "[bootstrap] NOT READY — run without --verify to download/export", file=sys.stderr
+                "[bootstrap] NOT READY — run without --verify to download/export",
+                file=sys.stderr,
             )
             return 1
         print("[bootstrap] ONNX ensure failed", file=sys.stderr)
@@ -99,7 +114,7 @@ def main() -> int:
 
     if not verify:
         print("[bootstrap] READY ✓ — start the backend:")
-        print("  cd apps/api && .venv/bin/uvicorn app.main:app --port 8000 --reload")
+        print(f"  {_start_command()}")
     return 0
 
 

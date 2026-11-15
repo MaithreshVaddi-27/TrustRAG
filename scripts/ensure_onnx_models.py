@@ -36,9 +36,13 @@ if str(_API_ROOT) not in sys.path:
     sys.path.insert(0, str(_API_ROOT))
 
 try:
-    from app.core.config import get_model_config
+    from app.config import get_model_config
 except ImportError:
-    # Fallback if config not loadable (e.g., during Docker build before install)
+    # Fallback if config not loadable (e.g., during Docker build before install).
+    # This used to be `from app.core.config import ...`, a path the backend
+    # restructure deleted - the ImportError was swallowed here, so the bake
+    # silently used these hardcoded defaults instead of the model actually
+    # configured in models.yaml.
     def get_model_config():
         class _Cfg:
             embedding_model = "BAAI/bge-small-en-v1.5"
@@ -148,14 +152,27 @@ def _export_embedding_onnx(cfg, emb_path: Path) -> bool:
 def _export_reranker_onnx(cfg, rnk_path: Path) -> bool:
     """Export reranker model to ONNX with int8 quantization.
 
-    Delegates to app/core/onnx_reranker.export_crossencoder_to_onnx — the same
-    implementation the backend uses at runtime — instead of a duplicate exporter.
+    Delegates to app/rag/retrieval/onnx_reranker.export_crossencoder_to_onnx —
+    the same implementation the backend uses at runtime — instead of a
+    duplicate exporter.
     """
     print(f"[ensure_onnx] Exporting reranker model: {cfg.reranker_model} -> {rnk_path}")
+    # The exporter is imported first and separately: a missing third-party
+    # dependency is the user's to install, but a missing module of ours is a
+    # bug in this script and must not be reported as "install the extra".
+    # (This import used to point at app.llm.onnx_reranker, which the backend
+    # restructure deleted — the reranker was therefore never exported, and the
+    # error message blamed the user's dependencies.)
+    try:
+        from app.rag.retrieval.onnx_reranker import export_crossencoder_to_onnx
+    except ImportError as e:
+        print(
+            f"[ensure_onnx] BUG: the reranker exporter could not be imported: {e}", file=sys.stderr
+        )
+        return False
+
     try:
         from sentence_transformers import CrossEncoder
-
-        from app.llm.onnx_reranker import export_crossencoder_to_onnx
 
         model = CrossEncoder(cfg.reranker_model)
         export_crossencoder_to_onnx(model, str(rnk_path), tokenizer_name=cfg.reranker_model)

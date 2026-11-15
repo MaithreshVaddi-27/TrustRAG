@@ -74,6 +74,15 @@ TrustRAG implements a strict, dual-mode serving architecture designed to run rel
 
 ## 2. Empirical Benchmark Scorecard (Frozen 27-Query Baseline)
 
+> **This scorecard is the original measurement**, taken against the frozen
+> 27-query fixture dataset (`baseline_v1.jsonl`). It is kept as the record of
+> what was measured then. The **current** measurement is larger — 33 probes
+> (27 answerable + 6 unanswerable) — and lives in
+> [`../backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`](../backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md)
+> §4.10. The headline difference: `gemma3:1b` answers **37 %** of answerable
+> questions there, while `qwen3:1.7b` answers **93 %** with perfect
+> abstention, at 4.3× the latency (see DECISION-006 in the changelog).
+
 The following metrics were measured empirically against the frozen 27-query fixture dataset (`baseline_v1.jsonl`):
 
 | Metric | Phase 0 Baseline (Gemma 3 1B) | Exp 1: Default Prod (Gemma 3 1B + CRAFT) | Exp 2: Deep-Reasoning (Qwen 3 1.7B + CRAFT) | Exp 3: Gemma 3 1B + MiniLM Reranker |
@@ -152,6 +161,44 @@ If `DEEP_REASONING_MODE` is **false**, this request will be immediately rejected
   "detail": "Model 'qwen3:1.7b' requires deep-reasoning mode to be enabled (DEEP_REASONING_MODE=true). Deep-reasoning models are reserved for batch/analytical tasks and not permitted in interactive mode."
 }
 ```
+
+### 3.2a The verifier's thinking switch (`llm.verification_thinking`)
+
+A reasoning model spends most of its wall-clock writing the reasoning trace.
+For the verifier that trace buys nothing, and it was the dominant cost of a
+whole analysis.
+
+Measured on `qwen3:1.7b` (identical verdicts in every case):
+
+| Task | With the trace | Without |
+|---|---|---|
+| NLI — one claim against the premise | 5,687 ms | **1,299 ms** |
+| Fused decompose + verify | 6,369 ms | **1,213 ms** |
+| Recovery query rewrite | ~16.5 s | **~0.3 s** |
+| **Whole analysis, 33 probes** | 46,878 ms | **21,528 ms** |
+
+The switch is **off by default** — the measured setting:
+
+```bash
+# Option A: Environment variable
+export LLM_VERIFICATION_THINKING=false
+
+# Option B: apps/api/config/models.yaml
+# llm:
+#   verification_thinking: false
+```
+
+It only ever reaches a model that actually reasons: the `think` field is
+sent to Ollama for reasoning models alone, because a non-thinking model
+rejects it. Turn it on only if you have a reason to believe the trace
+changes a verdict — in the measurements it did not.
+
+The recovery rewrite always runs without the trace: expanding a query is a
+one-shot rewriting task, not a reasoning one.
+
+**Where the numbers come from:** the 33-probe evaluation in
+[`../backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`](../backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md)
+(§4.10), reproducible with `apps/api/scripts/eval_accuracy.py`.
 
 ### 3.3 Enabling the ONNX Cross-Encoder Reranker
 

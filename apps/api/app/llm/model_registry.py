@@ -61,14 +61,6 @@ _reranker_lock = threading.Lock()
 _reranker_cache: dict[tuple, Any] = {}
 
 
-def clear_onnx_caches() -> None:
-    """Clear cached ONNX singletons (tests only)."""
-    with _embedding_lock:
-        _embedding_cache.clear()
-    with _reranker_lock:
-        _reranker_cache.clear()
-
-
 def onnx_model_status() -> dict[str, Any]:
     """Report presence of the ONNX weight files required by the configuration.
 

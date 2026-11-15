@@ -115,34 +115,15 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["app*"]
 
+# The lint rules live in the repository-root `ruff.toml` so that the
+# repository-root `scripts/` package is held to the same standard as the API
+# package — it used to be linted with ruff's defaults locally and not linted
+# by CI at all.
 [tool.ruff]
-target-version = "py311"
-line-length = 100
-
-[tool.ruff.lint]
-select = ["E", "W", "F", "I", "N", "UP", "S", "B", "A", "C4", "RUF"]
-ignore = [
-    "S101",   # Use of assert (allowed in tests)
-    "S104",   # Binding to 0.0.0.0 (needed for Docker)
-]
+extend = "../../ruff.toml"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "N"]
-
-[tool.ruff.lint.flake8-bugbear]
-# FastAPI dependency injection uses function calls in parameter defaults
-# (Depends/Query/File/...) — this is intentional and bytes-stable, so treat
-# them as immutable like FastAPI's own lint config does.
-extend-immutable-calls = [
-    "fastapi.Depends",
-    "fastapi.Query",
-    "fastapi.Path",
-    "fastapi.Header",
-    "fastapi.Cookie",
-    "fastapi.Body",
-    "fastapi.File",
-    "fastapi.Form",
-]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

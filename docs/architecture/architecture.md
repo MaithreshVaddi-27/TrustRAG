@@ -28,9 +28,12 @@ React 18 + Vite (Port 5173)
     ▼
 FastAPI (Python 3.11+, Default Port 8000)
     │
-    ├─── app/core/         Settings, Logging, Security, Exceptions
-    ├─── app/llm/          ModelRegistry, local LLM clients (Ollama/llama.cpp/MLX),
-    │                      CLI introspection, ONNX embedding engine
+    ├─── app/config/       Settings, model policy (models.yaml), loader
+    ├─── app/llm/          Model registry, local LLM clients (Ollama/llama.cpp/MLX),
+    │                      CLI introspection, the ONNX embedding shim
+    ├─── app/observability/ Logging, metrics, tracing
+    ├─── app/security/     Exceptions, JWT + bcrypt auth
+    ├─── app/core/system/  Concurrency, hardware + memory telemetry
     ├─── app/persistence/  MongoDB (`persistence/mongodb/`) + Qdrant
     │                      (`persistence/qdrant/`) clients
     ├─── app/rag/ingestion/ Document parsing (+ per-page RapidOCR-ONNX fallback for

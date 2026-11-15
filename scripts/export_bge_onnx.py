@@ -35,9 +35,7 @@ BATCH_SIZE = 1  # Dynamic batch axis
 MODEL_NAME = DEFAULT_MODEL_NAME
 
 
-def export_bge_to_onnx(
-    output_path: Path | None = None, model_name: str | None = None
-) -> Path:
+def export_bge_to_onnx(output_path: Path | None = None, model_name: str | None = None) -> Path:
     """Export BGE model to ONNX with dynamic batch size. Returns the model path."""
     import torch
     from sentence_transformers import SentenceTransformer

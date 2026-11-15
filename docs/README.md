@@ -114,11 +114,13 @@ Measured on `feature/trustrag-refined`; the full numbers and the
 method behind them are in
 [`backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`](backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md).
 
-- **Backend tests**: **817 passed** on Python 3.12, **813 passed + 4 skipped** on Python 3.11 (the four skips are the opt-in `cloud` extra — `tavily` and `langchain-google-genai` are not installed). Coverage **80.4 %** (gate 78 %).
+- **Backend tests**: **817 passed** on Python 3.12, **813 passed + 4 skipped** on Python 3.11 (the four skips are the opt-in `cloud` extra — `tavily` and `langchain-google-genai` are not installed). Coverage **80.5 %** (gate 78 %).
 - **Frontend**: **82 Vitest tests** across 17 files, ESLint clean (`--max-warnings 0`), Vite build green.
 - **CI**: Ubuntu jobs + a `cross-platform` smoke matrix (Windows + macOS: backend import/config smoke, frontend lint/test/build), plus Playwright E2E and a k6 load smoke — all green.
-- **Lint**: `ruff check app/ tests/` and `ruff format --check app/ tests/` clean on the pinned `ruff==0.16.9`; the mypy ratchet reports **no new** type errors against the committed ceiling.
-- **Integration**: every frontend API call (25) matches a backend route (39) — 0 missing — and the user flow answers correctly both directly and through the frontend's proxy.
+- **Lint**: the rules live in the repository-root `ruff.toml`, so `ruff check .` from the root holds the whole repository — including the root `scripts/` package, which CI previously never linted at all. Clean on the pinned `ruff==0.16.9`; the mypy ratchet reports **no new** type errors against the committed ceiling.
+- **Integration**: every frontend API call (25) matches a backend route (39) — 0 missing — and the user flow answers correctly both directly and through the frontend's proxy. Reproduce with `apps/api/scripts/validate_integration.py`.
+- **Resilience**: concurrency (4/4 terminal), the rate limit (429 on request 241), a provider outage (503 in ~111 ms) and a database outage (503, not 500) all behave. Reproduce with `apps/api/scripts/validate_resilience.py`.
+- **Cross-platform**: the application code is platform-guarded (darwin / linux / win32 / fallback); the tooling discovers its interpreter and follows `TMPDIR` instead of assuming macOS.
 - **Runtimes**: models run ONNX-only (`onnxruntime` + `transformers` tokenizer; the reranker fails closed to RRF when `use_onnx=true`); torch lives in the `local-models` extra for one-time export only.
 - **Stack**: Python 3.11–3.12 (`requires-python >=3.11,<3.13`), Node 22+ (`engines`), per-OS setup in `ONBOARDING-TROUBLESHOOTING.md`.
 - **Pending operator runs**: pre-IDF knowledge bases need a document re-upload; the chunking/normalization change needs a re-index; OCR models are not pre-warmed; live-model verification (Gemini via the `cloud` extra / MLX) — see `ONBOARDING-TROUBLESHOOTING.md §5`.

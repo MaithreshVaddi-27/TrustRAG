@@ -75,7 +75,10 @@ def load_eval_profile(name: str) -> dict:
     ):
         raise ValueError(f"Invalid evaluation profile values: {path}")
     if name == "local-providers" and profile["provider"] not in {
-        "mlx", "ollama", "llama_cpp", "llamacpp"
+        "mlx",
+        "ollama",
+        "llama_cpp",
+        "llamacpp",
     }:
         raise ValueError("local-providers profile must use a local provider")
     if name == "cloud-provider" and profile["provider"] not in {"gemini"}:
@@ -140,9 +143,11 @@ def local_judge_label(profile: dict, evidence: str, claim: str) -> str:
         message = result.get("message")
     else:
         choices = result.get("choices")
-        message = choices[0].get("message") if (
-            isinstance(choices, list) and choices and isinstance(choices[0], dict)
-        ) else None
+        message = (
+            choices[0].get("message")
+            if (isinstance(choices, list) and choices and isinstance(choices[0], dict))
+            else None
+        )
     if not isinstance(message, dict):
         raise ValueError("Local judge response is missing a message object")
     raw = str(message.get("content") or message.get("reasoning") or "")
@@ -296,12 +301,14 @@ def run_query(args: argparse.Namespace, token: str, row: dict, eval_profile: dic
             predicted = local_judge_label(eval_profile, context, claim.get("text", ""))
             expected = claim.get("state", "NEUTRAL")
             expected = {"NEUTRAL": "INSUFFICIENT"}.get(expected, expected)
-            judge_results.append({
-                "claim": claim.get("text", ""),
-                "expected": expected,
-                "predicted": predicted,
-                "matched": predicted == expected,
-            })
+            judge_results.append(
+                {
+                    "claim": claim.get("text", ""),
+                    "expected": expected,
+                    "predicted": predicted,
+                    "matched": predicted == expected,
+                }
+            )
         scored["judge_claims"] = judge_results
         scored["judge_claim_agreement"] = (
             sum(item["matched"] for item in judge_results) / len(judge_results)
@@ -355,7 +362,11 @@ def main() -> int:
     parser.add_argument("--token", default=None, help="Direct access token (bypasses login)")
     parser.add_argument("--email", default=None, help="User email for login")
     parser.add_argument("--password", default=None, help="User password for login")
-    parser.add_argument("--llm-provider", default=None, help="Provider override: ollama | llama_cpp | mlx | gemini")
+    parser.add_argument(
+        "--llm-provider",
+        default=None,
+        help="Provider override: ollama | llama_cpp | mlx | gemini",
+    )
     parser.add_argument("--llm-model", default=None, help="Model override")
     parser.add_argument("--kb-id", required=True, help="KB containing the fixture corpus")
     parser.add_argument("--dataset", default=str(DATASET_DEFAULT))
@@ -422,8 +433,10 @@ def main() -> int:
         if snapshot.get("config_version"):
             server_versions.add(str(snapshot["config_version"]))
         query_scores.append(scored)
-        print(f"  status={scored['status']} recall={scored['recall_at_k']:.3f} "
-              f"lat={scored['latency_ms']:.0f}ms")
+        print(
+            f"  status={scored['status']} recall={scored['recall_at_k']:.3f} "
+            f"lat={scored['latency_ms']:.0f}ms"
+        )
         if i < len(dataset_rows) - 1:
             time.sleep(args.delay_seconds)
 
@@ -442,8 +455,10 @@ def main() -> int:
     )
     config_version = next(iter(server_versions), None) or repo_config_version()
     if len(server_versions) > 1:
-        print(f"WARNING: server config_version changed mid-run: {sorted(server_versions)}",
-              file=sys.stderr)
+        print(
+            f"WARNING: server config_version changed mid-run: {sorted(server_versions)}",
+            file=sys.stderr,
+        )
 
     results = {
         "config_name": args.config_name,
@@ -487,8 +502,11 @@ def main() -> int:
         print(f"Recorded experiment id={recorded.get('id')}")
 
     if incomplete or any(s["timed_out"] for s in query_scores):
-        print(f"INCOMPLETE: {incomplete} errors, "
-              f"{sum(1 for s in query_scores if s['timed_out'])} timeouts", file=sys.stderr)
+        print(
+            f"INCOMPLETE: {incomplete} errors, "
+            f"{sum(1 for s in query_scores if s['timed_out'])} timeouts",
+            file=sys.stderr,
+        )
         return 2
     return 0
 
