@@ -5,8 +5,7 @@ on:
     # The feature branch is listed so its pushes are validated by the same
     # matrix — including the Windows + macOS cross-platform smoke — instead of
     # waiting for a pull request.
-    branches:
-      [main, develop, ui-redesign, feature/trustrag-dark-luxury-ui-and-backend-hardening]
+    branches: [main, develop, ui-redesign, feature/trustrag-refined]
   pull_request:
     branches: [main, develop, ui-redesign]
   workflow_dispatch:
