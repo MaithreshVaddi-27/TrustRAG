@@ -36,12 +36,8 @@ docs/
 │   └── ONNX_GUARDRAIL_OPTIONS_REVIEW.md
 ├── evaluation/
 │   ├── methodology.md                 # Benchmark dataset, metrics, ablation plan, run procedure
-│   ├── MODEL_BENCHMARK_REPORT.md
-│   ├── FUTURE_IMPROVEMENTS.md
-│   ├── PHASE0_FIXTURE_BASELINE_2026-11-05.md
-│   ├── POST_IMPLEMENTATION_QUALITY_AUDIT_2026-11-05.md
-│   ├── RELIABILITY_PHASE1_ABSTENTION_AUDIT.md
-│   ├── RELIABILITY_PHASE1_RESULTS_2026-11-06.md
+│   ├── MODEL_BENCHMARK_REPORT.md      # Local model inventory + RAG-task notes
+│   ├── FUTURE_IMPROVEMENTS.md         # Deferred items
 │   └── results/                       # Live eval-run JSON (gitignored, local only)
 ├── design/
 │   ├── dark-luxury/                   # The design system: foundations → tokens → components → pages
@@ -90,9 +86,16 @@ docs/
 ### 5. Evaluation
 
 - [**Methodology (`evaluation/methodology.md`)**](evaluation/methodology.md): experiment configs, metrics, ablation plan, frozen `baseline_v1` dataset, live run procedure, measured snapshot table.
-- [**Model Benchmark Report (`evaluation/MODEL_BENCHMARK_REPORT.md`)**](evaluation/MODEL_BENCHMARK_REPORT.md).
-- [**Future Improvements (`evaluation/FUTURE_IMPROVEMENTS.md`)**](evaluation/FUTURE_IMPROVEMENTS.md).
-- Phase reports: `PHASE0_FIXTURE_BASELINE_2026-11-05.md`, `POST_IMPLEMENTATION_QUALITY_AUDIT_2026-11-05.md`, `RELIABILITY_PHASE1_ABSTENTION_AUDIT.md`, `RELIABILITY_PHASE1_RESULTS_2026-11-06.md`.
+- [**Model Benchmark Report (`evaluation/MODEL_BENCHMARK_REPORT.md`)**](evaluation/MODEL_BENCHMARK_REPORT.md): the models discovered on the dev host, with their sizes and their suitability for interactive serving.
+- [**Future Improvements (`evaluation/FUTURE_IMPROVEMENTS.md`)**](evaluation/FUTURE_IMPROVEMENTS.md): the deferred items, and why they are deferred.
+
+The phase reports that once lived here (`PHASE0_FIXTURE_BASELINE_*`,
+`POST_IMPLEMENTATION_QUALITY_AUDIT_*`, `RELIABILITY_PHASE1_*`) were removed in
+the documentation cleanup: each was a point-in-time snapshot of the retired
+27-query baseline, and the abstention audit's Critical findings were closed
+in B2.1–B4 (the rationale for the `VERIFICATION_UNAVAILABLE` diagnosis now
+lives in `app/rag/verification/verdict.py`). Their history remains in git —
+`git log -- docs/evaluation/`.
 
 ### 6. Design
 

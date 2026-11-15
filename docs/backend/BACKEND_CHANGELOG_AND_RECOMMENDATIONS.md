@@ -35,6 +35,7 @@ Every entry is tagged:
 | **B3 — Performance** | ✅ COMPLETE — approved | `/models/providers` 2601→19.6 ms; every read path 1.5–4× faster (settings cache); global rate limit now enforced; N+1 removed; self-heal streamed. See §2 UPGRADE-007..010, §3 DEGRADATION-003, §4.7–4.9. |
 | **B4 — Accuracy** | ✅ COMPLETE — approved | Ground truth grown to 33 probes (27 answerable + 6 unanswerable); the thinking control makes a reasoning model 2.2× faster with identical accuracy; the default-model question is now decided on measurements (DECISION-006). See §2 UPGRADE-011, §5 REFINEMENT-005, §7 DECISION-006..009, §4.10–4.12. |
 | **B5 — Validation** | ✅ COMPLETE | Full suite 810 passed, coverage 80.39 % (gate green); API + quality benchmarks re-run; concurrency (4/4) and three failure injections (rate limit, provider down, database down) all behave. See §4.13. |
+| **B7 — Documentation & cross-platform** | ✅ COMPLETE | The docs told the truth again: 6 broken links, 12 stale module paths, a coverage map of a module that no longer exists and a verification snapshot quoting 665 tests. All fixed; zero broken links. The launcher hardcoded a macOS Homebrew Python path — now discovered, so the tooling runs on Linux and Windows too. 11 superseded point-in-time reports removed. Verified on Python 3.11 and 3.12. See §4.16–4.17. |
 | **B6 — Integration & repo hygiene** | ✅ COMPLETE | The frontend's 25 API calls are now checked against the backend's routes by a script instead of by hand; the whole user flow is exercised through the frontend's own proxy. Four defects found and fixed (database outage answered 500 with a generic message; the model list named every model twice; a stale E2E assertion; the CI type-check ratchet could not pass). The repository lost 2.4 GB of unrelated files. See §2 UPGRADE-012..013, §4.14, §5 REFINEMENT-006, §6 CHANGE REQUIRED-022, §7 DECISION-010..011. |
 
 **Implemented changes to `app/` so far: B2.1 + B2.2 + B3 + B4 + B6** (see §2, §3,
@@ -1013,6 +1014,73 @@ regenerating them means a torch export), `.codegraph/` (38 MB — the code
 index), `apps/api/app/data/qdrant/` (the live local vector store).
 
 **Artifact:** `integration_results.json`, `resilience_results.json`.
+
+---
+
+### 4.16 B7 documentation truth, and the cross-platform pass
+
+**The documentation had drifted from the code.** Measured, not assumed:
+
+| Defect | Count | Evidence |
+|---|---|---|
+| Broken relative links | **5 files, 6 links** | A link checker over every `.md` in the repo |
+| Module paths from before the B2.2 restructure | **12 paths across 6 files** | Every `apps/...` path quoted in the docs, checked against the tree |
+| A test-coverage map of a module that no longer exists in that form | 1 | `analysis_service.py` is now a 114-line re-export shim at **100 %** coverage; the doc mapped a 1,090-line module at 54 % |
+| An index describing a directory deleted two cleanups ago | 1 | `docs/README.md` still listed `docs/audit/` |
+| Verification snapshots quoting superseded numbers | 3 | "665 backend tests", "761 passed / 33 frontend", a 350-file repository — now 817 / 82, 504 files |
+
+**All fixed. The repository now has zero broken relative links.**
+
+**Cross-platform.** The application code needed no change — it already used
+`Path(__file__).resolve()` throughout, and the memory probe already branches
+on darwin / linux / everything-else, so Windows takes the fallback path. The
+**tooling** did need it:
+
+| | Before | After |
+|---|---|---|
+| `start_local_services.sh` interpreter | hardcoded `/opt/homebrew/opt/python@3.12/...` — **macOS-only** | discovered: `$PYTHON`, then the venv in both its POSIX and Windows layouts, then `python3`/`python`; refuses anything outside 3.11–3.12 |
+| `start_local_services.sh` scratch dir | hardcoded `/tmp` | follows `TMPDIR` |
+| `e2e_manual_verify.sh` | hardcoded `/tmp` and `.venv/bin/python` | follows `TMPDIR`; picks `.venv\Scripts\python.exe` on Windows |
+| `start_local_services.sh` health check | `curl` without `--fail` — succeeds on a 500, so a broken API looked healthy | `curl --fail` — only a 2xx/3xx counts |
+
+**Verified on both supported Python versions** (the app supports 3.11–3.12;
+CI runs 3.11):
+
+| | Python 3.12 | Python 3.11 (CI's version) |
+|---|---|---|
+| Backend tests | **817 passed** | **813 passed, 4 skipped** |
+| Coverage | **80.41 %** | **80.08 %** (gate 78 %) |
+| mypy errors | 30 (ceiling 30) | 30 (ceiling 30) |
+
+The four skips are the opt-in `cloud` extra — `tavily` and
+`langchain-google-genai` are not installed by design, and the tests say so.
+
+**Could not be verified locally:** the Docker image build — the Docker daemon
+is not running on this host. CI builds it on every push.
+
+### 4.17 B7 — Files removed
+
+Eleven files, all point-in-time reports whose findings are closed or
+superseded. Nothing was deleted on a hunch: each one was checked against the
+current tree first.
+
+| Removed | Why |
+|---|---|
+| `CONTEXT.md` | Not documentation — **601 lines of raw terminal output** from a past Claude Code session (session header, tool calls, diffs). The project context lives in `docs/`. |
+| `docs/evaluation/POST_IMPLEMENTATION_QUALITY_AUDIT_2026-11-05.md` | Contains analysis the repo itself later declared **factually wrong** (the abstention audit's finding #2: *"The previous audit's root cause for q022/q024 is factually wrong"*). Its 27-query baseline is superseded by the 33-probe set. |
+| `docs/evaluation/RELIABILITY_PHASE1_ABSTENTION_AUDIT.md` | A thorough audit (9 findings) whose **Critical findings were verified fixed**: `VERIFICATION_UNAVAILABLE` exists so a verifier outage is never reported as "insufficient evidence" (`app/rag/verification/verdict.py`), the responsiveness guard and the rewrite guard are in place, and the B4 harness now measures answer accuracy and abstention accuracy separately. The rationale survives in the code and in `tests/test_reliability_phase1.py` (24 tests, still passing). |
+| `docs/evaluation/RELIABILITY_PHASE1_RESULTS_2026-11-06.md` | Results for the retired 27-query baseline. |
+| `docs/evaluation/PHASE0_FIXTURE_BASELINE_2026-11-05.md` | Fixture snapshot for that same retired baseline. |
+| `docs/evaluation/FULLSTACK_QA_AND_FIXES.md` | A 32-line QA snapshot — superseded by `scripts/validate_integration.py`, which repeats the check instead of recording it once. |
+| `docs/cleanup/PHASE_1_REPOSITORY_AUDIT.md` | Describes a 350-file repository; it is 504 files now. |
+| `docs/cleanup/PHASE_1_CLEANUP_REPORT.md` | A report of a past branch's CSS deletions. The files are long gone. |
+| `docs/cleanup/REMAINING_TECHNICAL_DEBT.md` | The debt it lists is largely resolved: lint clean, coverage gate green, N+1 removed, the rate limit enforced. |
+| `docs/engineering/CODEBASE_CLEANUP_REPORT.md` | Point-in-time cleanup report. |
+| `docs/engineering/FINAL_VALIDATION_REPORT.md` | Point-in-time validation snapshot (761 backend / 33 frontend → 817 / 82). |
+
+The now-empty `docs/cleanup/`, `docs/engineering/` and `docs/audit/`
+directories went with them. **History is preserved in git** —
+`git log -- docs/cleanup/` still shows every line.
 
 ---
 

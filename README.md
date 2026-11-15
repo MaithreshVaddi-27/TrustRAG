@@ -747,8 +747,11 @@ Completed `chore(cleanup): Phase 1 repository deep clean` (commit `c39f573`):
 | `scripts/calibrate_local_judge.py` | 1 | Orphan script, zero repo-wide references — **removed** |
 | `scripts/prune_llm_cache.py` | 1 | Orphan script, zero repo-wide references — **removed** |
 
-**Added:** `docs/cleanup/PHASE_1_REPOSITORY_AUDIT.md`, `docs/cleanup/PHASE_1_CLEANUP_REPORT.md`, `docs/cleanup/REMAINING_TECHNICAL_DEBT.md`.
+**Added:** three point-in-time reports under `docs/cleanup/`. They described a
+350-file repository and a debt list that no longer matches the code, so they
+were **removed** in the later documentation cleanup; their history remains in
+git (`git log -- docs/cleanup/`).
 
-**Preserved:** API contracts, auth, DB, RAG algorithms, eval contracts, migrations, fixtures, model weights, user data, and all user in-progress branch work (`docs/design/`, `docs/engineering/`, `screenshots/`, untracked landing + UI components).
+**Preserved:** API contracts, auth, DB, RAG algorithms, eval contracts, migrations, fixtures, model weights, user data, and all user in-progress branch work (`docs/design/`, untracked landing + UI components).
 
 No behavior, contract, or test change resulted from cleanup — 757 backend tests and 33 frontend tests all pass against baseline.

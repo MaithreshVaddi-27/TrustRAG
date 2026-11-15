@@ -1,6 +1,12 @@
 """
-Reliability Phase 1 regression tests (audit: docs/evaluation/
-RELIABILITY_PHASE1_ABSTENTION_AUDIT.md).
+Reliability Phase 1 regression tests.
+
+These were written against the abstention audit that investigated the Gemma +
+CRAFT false abstentions (q022/q024). That audit was a point-in-time report on
+the retired 27-query baseline and was removed in the documentation cleanup;
+the rationale for the fix survives in app/rag/verification/verdict.py, where
+VERIFICATION_UNAVAILABLE keeps a verifier outage from being reported as
+"the evidence was insufficient".
 
 Covers the two defects that produced the Gemma + CRAFT false abstentions
 (q022/q024) and the degenerate-claim laundering that a naive fix would have
