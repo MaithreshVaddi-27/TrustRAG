@@ -2,7 +2,11 @@
 
 **Scope:** `apps/api/app/**` (backend). Frontend, Docker, and infrastructure are out of scope.
 **Owner role:** Principal Backend Engineer + AI/ML Performance Architect.
-**Companion document:** [`BACKEND_AUDIT_B1.md`](./BACKEND_AUDIT_B1.md) — full evidence and measurements.
+**This document is self-contained.** The point-in-time audit that started the
+programme was removed in the final documentation cleanup, so every finding it
+raised is stated here in full, together with what was done about it and the
+measurements that justified it. Section §2 UPGRADE-001…011 is the finding-to-fix
+map; §3 DEGRADATION-001…003 is what was accepted; §4 is the evidence.
 
 ---
 
@@ -29,12 +33,13 @@ Every entry is tagged:
 
 | Phase | State | Notes |
 |---|---|---|
-| **B1 — Audit** | ✅ COMPLETE | Read-only. No `app/` source modified. Findings in `BACKEND_AUDIT_B1.md`. |
+| **B1 — Audit** | ✅ COMPLETE | Read-only. No `app/` source modified. 16 reproduced findings — each one is stated and resolved in this log (§2 UPGRADE-001…011, §3 DEGRADATION-001…003, §6 CHANGE REQUIRED-001…021). The audit document itself was removed in the final cleanup. |
 | **B2.1 — Critical correctness** | ✅ COMPLETE — approved | Gemini probe invocation + contract; recovery-loop routing; verdict preservation. 19 new tests. See §2 UPGRADE-001..004, §3 DEGRADATION-001..002. |
 | **B2.2 — Cleanup** | ✅ COMPLETE — approved | Dead `app/llm/registry/` deleted; embedding modules consolidated to one implementation; stale dirs removed; lint 13→0, format clean. See §2 UPGRADE-005..006, §5 REFINEMENT-003. |
 | **B3 — Performance** | ✅ COMPLETE — approved | `/models/providers` 2601→19.6 ms; every read path 1.5–4× faster (settings cache); global rate limit now enforced; N+1 removed; self-heal streamed. See §2 UPGRADE-007..010, §3 DEGRADATION-003, §4.7–4.9. |
 | **B4 — Accuracy** | ✅ COMPLETE — approved | Ground truth grown to 33 probes (27 answerable + 6 unanswerable); the thinking control makes a reasoning model 2.2× faster with identical accuracy; the default-model question is now decided on measurements (DECISION-006). See §2 UPGRADE-011, §5 REFINEMENT-005, §7 DECISION-006..009, §4.10–4.12. |
 | **B5 — Validation** | ✅ COMPLETE | Full suite 810 passed, coverage 80.39 % (gate green); API + quality benchmarks re-run; concurrency (4/4) and three failure injections (rate limit, provider down, database down) all behave. See §4.13. |
+| **B9 — Final document removals** | ✅ COMPLETE | The point-in-time audit was folded into the living log, which is now self-contained; the academic review deck and the exported project report (9.1 MB together) were moved out of the repository — byte-identical copies are in `~/Downloads/trustrag-deliverables/`. See §4.19. |
 | **B8 — Deep clean** | ✅ COMPLETE | Three real defects found by cleaning: the fresh-clone ONNX bake used a hardcoded stub config and could never export the reranker; the root `scripts/` package was never linted by CI. Dead shims removed, the lint rules moved to a repository-root `ruff.toml`, and the tooling is now genuinely cross-platform. See §4.18. |
 | **B7 — Documentation & cross-platform** | ✅ COMPLETE | The docs told the truth again: 6 broken links, 12 stale module paths, a coverage map of a module that no longer exists and a verification snapshot quoting 665 tests. All fixed; zero broken links. The launcher hardcoded a macOS Homebrew Python path — now discovered, so the tooling runs on Linux and Windows too. 11 superseded point-in-time reports removed. Verified on Python 3.11 and 3.12. See §4.16–4.17. |
 | **B6 — Integration & repo hygiene** | ✅ COMPLETE | The frontend's 25 API calls are now checked against the backend's routes by a script instead of by hand; the whole user flow is exercised through the frontend's own proxy. Four defects found and fixed (database outage answered 500 with a generic message; the model list named every model twice; a stale E2E assertion; the CI type-check ratchet could not pass). The repository lost 2.4 GB of unrelated files. See §2 UPGRADE-012..013, §4.14, §5 REFINEMENT-006, §6 CHANGE REQUIRED-022, §7 DECISION-010..011. |
@@ -1124,6 +1129,50 @@ tests / ESLint clean / build green.
 
 **Not verified locally:** the Docker image build — the Docker daemon is not
 running on this host. CI builds it on every push.
+
+---
+
+### 4.19 B9 — The final document removals
+
+Three files removed at the operator's request. Each was a *point-in-time*
+artefact, and the living log was made self-contained so nothing was lost.
+
+| Removed | Size | Why it could go |
+|---|---|---|
+| `docs/backend/BACKEND_AUDIT_B1.md` | 24.9 KB | The audit that started the programme. Every one of its 16 findings is now **stated in this log** together with the change that closed it and the measurements that justified it — §2 UPGRADE-001…011 is the finding-to-fix map, §3 DEGRADATION-001…003 is what was accepted, §6 CHANGE REQUIRED-001…021 is what is still open. A separate document that goes stale is worse than one self-contained document that does not. |
+| `docs/PPT/T6_review1.pptx` | 7.8 MB | An academic review deck — a course deliverable, not project documentation. 7.7 MB of it was embedded PNGs, and nothing in the repository referenced it. **Moved, not destroyed:** the bytes are in `~/Downloads/trustrag-deliverables/T6_review1.pptx`, verified byte-identical (SHA-256 `c840072b21bdafd60e650a62…`). |
+| `docs/Documentation/TrustRAG_Documentation.pdf` | 1.3 MB | A 37-page "Project Stage I Report" — the BSc Computer Science & Engineering submission. A course deliverable, not project documentation. **Moved, not destroyed:** `~/Downloads/trustrag-deliverables/TrustRAG_Documentation.pdf`, byte-identical (SHA-256 `1b4201808d81f8e68e1022f6…`). |
+
+**Kept, deliberately:** `LAYA_ROI_AUDIT_REPORT.md` (external-library
+assessment), `MULTI_MODEL_ARCHITECTURE_REVIEW_2026-11-05.md` (the decision
+record behind the open default-model decision), `MODEL_BENCHMARK_REPORT.md`,
+`FUTURE_IMPROVEMENTS.md` (refreshed — the per-source benchmark item is now
+marked done, and the mypy backlog and the unmeasured embedding int8 recall
+were added as open items) and `PRODUCTION_CONFIG_GUIDE.md`.
+
+The repository is **9.1 MB lighter in git**, and `docs/` now contains only
+living documents.
+
+---
+
+### 4.20 B9 — The harnesses made self-sufficient
+
+`validate_integration.py` had a hardcoded benchmark credential
+(`probe1@bench.example.com`) and assumed the account already owned a
+knowledge base. When that account was gone the harness failed with a 401, and
+on a fresh account it would have failed with a 404 on `POST /analyses` —
+a harness that cannot run on a clean machine is a harness nobody runs.
+
+**Fixed:** it now uses the shared benchmark account
+(`scripts/bench_auth.register_or_login`, the same helper the accuracy and
+resilience harnesses use — it logs in when the account exists and registers a
+fresh one when it does not), and it creates a throwaway knowledge base when
+the account has none.
+
+Re-verified after the change: 25/25 frontend calls matched, the flow answers
+200/201 on every step directly **and** through the frontend's proxy, and the
+resilience harness still passes all four phases (concurrency 4/4, rate limit
+429, provider outage 503, database outage 503).
 
 ---
 

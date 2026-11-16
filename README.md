@@ -637,8 +637,9 @@ each decision live in one living log:
 It carries the reproduced findings, the upgrades (with before/after numbers),
 the degradations, the refinements, the open decisions and the blockers — and it
 is updated after every change, so it never goes stale the way a point-in-time
-audit does. The initial audit that started the programme is kept alongside it
-as [`docs/backend/BACKEND_AUDIT_B1.md`](docs/backend/BACKEND_AUDIT_B1.md).
+audit does. It is self-contained: the audit that started the programme was
+removed in the final cleanup, and every finding it raised is stated here in
+full, with the change that closed it and the measurements that justified it.
 
 Two scripts keep the frontend and the backend honest about each other:
 

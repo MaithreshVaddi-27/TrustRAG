@@ -39,6 +39,10 @@ REPO = Path(__file__).resolve().parents[3]
 API_DIR = REPO / "apps" / "api"
 WEB_DIR = REPO / "apps" / "web"
 
+# The shared benchmark account helper lives in this package.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts.bench_auth import register_or_login  # noqa: E402
+
 # `api.get('/api/v1/knowledge-bases/${kbId}/documents')` and
 # `api.get(`/api/v1/analyses/${id}/claims`)` — the template literal and the
 # quoted-string forms are both in use.
@@ -236,21 +240,39 @@ async def main() -> None:
     report: dict[str, Any] = {"routes": await _check_routes(args.api_url, calls)}
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        r = await client.post(
-            f"{args.api_url}/api/v1/auth/login",
-            json={"email": "probe1@bench.example.com", "password": "BenchPass-1234!"},
-        )
-        if r.status_code != 200:
-            print(f"login failed: {r.status_code} {r.text[:200]}", file=sys.stderr)
-            raise SystemExit(1)
-        token = r.json()["access_token"]
+        # The shared benchmark account, the same one the other harnesses use:
+        # it logs in when it exists and registers a fresh one when it does not.
+        # Hardcoding a credential here made this script fail the moment that
+        # account was gone.
+        token, _email = await register_or_login(client, args.api_url)
 
         kb_res = await client.get(
             f"{args.api_url}/api/v1/knowledge-bases",
             headers={"Authorization": f"Bearer {token}"},
         )
         kbs = kb_res.json() if kb_res.status_code == 200 else []
-        kb_id = kbs[0]["id"] if kbs else ""
+        if kbs:
+            kb_id = kbs[0]["id"]
+        else:
+            # A fresh benchmark account has no knowledge base, and an analysis
+            # cannot run without one. Create a throwaway collection so the
+            # flow can be exercised on a clean machine.
+            created = await client.post(
+                f"{args.api_url}/api/v1/knowledge-bases",
+                headers={"Authorization": f"Bearer {token}"},
+                json={
+                    "name": "integration-check",
+                    "description": "validate_integration.py",
+                },
+            )
+            if created.status_code not in (200, 201):
+                print(
+                    "could not create a knowledge base: "
+                    f"{created.status_code} {created.text[:200]}",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
+            kb_id = created.json()["id"]
 
     report["flow_direct"] = await _check_flow(args.api_url, token, kb_id)
 

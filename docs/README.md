@@ -21,7 +21,6 @@ docs/
 ├── ANALYSIS_SERVICE_TEST_GAPS.md     # Measured gaps in app/services/** + test-case recipes
 ├── backend/                           # Backend engineering log (living) + benchmark artifacts
 │   ├── BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md  # Audit → changes → measurements → decisions
-│   ├── BACKEND_AUDIT_B1.md            # The audit that started the programme
 │   └── *.json                         # Benchmark / quality / accuracy / resilience results
 ├── architecture/
 │   ├── architecture.md                # End-to-end system design, MCP tools, LangGraph loop, data flow
@@ -45,8 +44,9 @@ docs/
 ├── deployment/
 │   ├── DEPLOYMENT_GUIDE.md            # Cloud production runbook (Pages + GCR + Atlas)
 │   └── README.md                      # Env vars, local/Compose setup, Atlas + Qdrant Cloud setup
-├── PPT/                               # Review deck
-└── Documentation/                     # Exported PDF
+└── (the academic review deck and the exported PDF live outside the
+    repository, in ~/Downloads/trustrag-deliverables/ — they are course
+    deliverables, not project documentation)
 ```
 
 ---
@@ -64,8 +64,7 @@ docs/
 
 ### 2. Backend Engineering
 
-- [**Backend Changelog & Recommendations (`backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`)**](backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md): **the living engineering log.** The audit findings, every upgrade with its measured before/after, the degradations that were accepted, the refinements, the open decisions and the blockers. Updated after every change.
-- [**Backend Audit B1 (`backend/BACKEND_AUDIT_B1.md`)**](backend/BACKEND_AUDIT_B1.md): the reproduced findings that started the programme.
+- [**Backend Changelog & Recommendations (`backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`)**](backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md): **the living engineering log.** The audit findings, every upgrade with its measured before/after, the degradations that were accepted, the refinements, the open decisions and the blockers. Updated after every change, and self-contained — the point-in-time audit it grew out of was removed in the final cleanup, and every finding is stated here in full.
 - **Benchmark artifacts** (`backend/*.json`): API latency, retrieval quality, RAG accuracy across six model configurations, resilience, and the frontend↔backend integration check.
 
 ### 3. Architecture & Design

@@ -11,22 +11,22 @@
         "abstained",
         "abstained"
       ],
-      "elapsed_ms": 29591,
+      "elapsed_ms": 1063,
       "ok": true
     },
     {
       "phase": "rate_limit",
-      "requests": 241,
+      "requests": 240,
       "status": 429,
       "code": "RATE_LIMITED",
-      "retry_after": "53",
+      "retry_after": "46",
       "ok": true
     },
     {
       "phase": "provider_down",
       "stopped": true,
       "status": 503,
-      "elapsed_ms": 180,
+      "elapsed_ms": 102,
       "message": "Local LLM server 'ollama' is not reachable at http://localhost:11434. Start it with 'ollama serve' (then 'ollama pull <model>' if needed).",
       "mentions_provider": true,
       "ok": true
