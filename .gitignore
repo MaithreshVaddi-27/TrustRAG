@@ -174,7 +174,11 @@ docker-compose.override.yml
 docker-compose.override.yaml
 
 # ─── Runtime data (Qdrant collections, caches, model snapshots) ────────────────
-data/
+# Only the repository-root `data/` directory is ignored — never a `data/` folder
+# nested inside source code. The landing page's content lives at
+# `apps/web/src/components/landing/data/` and MUST be tracked: ignoring it
+# silently shipped a landing page with no content.
+/data/
 apps/api/data/
 qdrant_storage/
 

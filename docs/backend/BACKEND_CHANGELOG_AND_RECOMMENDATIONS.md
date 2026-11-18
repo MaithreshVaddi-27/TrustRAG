@@ -1176,6 +1176,28 @@ resilience harness still passes all four phases (concurrency 4/4, rate limit
 
 ---
 
+### 4.21 B9 — The landing page had no content in the repository
+
+`apps/web/src/components/landing/data/` was **gitignored**. The rule that
+ignores the runtime Qdrant store (`data/`) also matched the landing page's
+content directory, so the whole marketing surface — hero, pipeline, benchmark
+tables, scenarios, comparison matrix, CTA, footer — was untracked. A fresh
+clone would have rendered a landing page with no copy, no benchmark figures
+and no scenario cards.
+
+**Fix:** the root ignore rule is now `/data/` (repository-root only), so only
+the top-level data directory is ignored; the `apps/api/data/` rule still
+covers the Qdrant store. The ten landing data files are now tracked.
+
+The hero metric was also stale: it quoted *“Retrieval recall@8 of 0.889,
+measured on a frozen 27-query reliability fixture”*, the retired baseline.
+It now quotes the current measurement: *“Retrieval recall@K of 0.963,
+measured on the current 33-probe ground truth (27 answerable + 6
+unanswerable)”* — the number produced by `scripts/eval/eval_accuracy.py` in
+B4.
+
+---
+
 ## 5. REFINEMENT
 
 ### REFINEMENT-006 — The frontend↔backend contract is checked by a script, not by hand  *(B6, NEW)*
