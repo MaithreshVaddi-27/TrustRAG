@@ -6,10 +6,10 @@
 # starts anything — run it as often as you like.
 #
 # Usage:
-#   ./scripts/setup.sh
+#   ./scripts/setup/setup.sh
 set -uo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PASS=0
 FAIL=0
 
@@ -20,7 +20,7 @@ echo "[setup] TRUSTRAG local prerequisites — $ROOT_DIR"
 echo
 if [ "${OS:-}" = "Windows_NT" ]; then
   echo "  NOTE: native Windows shell detected — run this script under Git Bash or WSL:"
-  echo "         Git Bash:  bash scripts/setup.sh    WSL:  wsl ./scripts/setup.sh"
+  echo "         Git Bash:  bash scripts/setup/setup.sh    WSL:  wsl ./scripts/setup/setup.sh"
 fi
 echo
 
@@ -62,18 +62,18 @@ echo "─ Embeddings (default provider: onnx, torch-free) ─"
 if [ -f "$ROOT_DIR/apps/api/.model_cache/bge-small-en-v1.5.onnx" ]; then
   ok "ONNX embedding model present (onnx provider ready, torch-free)"
 elif [ -x "$VPY" ] && "$VPY" -c "import sentence_transformers" 2>/dev/null; then
-  ok "torch embedding stack present (huggingface provider ready; run python scripts/bootstrap.py for the default onnx path)"
+  ok "torch embedding stack present (huggingface provider ready; run python scripts/setup/bootstrap.py for the default onnx path)"
 elif [ ! -x "$VPY" ]; then
   warn "backend venv missing — embedding checks skipped" "Run: cd apps/api && python3 -m venv .venv && . .venv/bin/activate (Windows: .venv\\Scripts\\Activate.ps1) && pip install -e \".[dev,local-models]\""
 else
-  warn "no embedding stack" "Run: apps/api/.venv/bin/python scripts/bootstrap.py  (downloads/exports ONNX weights into apps/api/.model_cache/; needs network once)"
+  warn "no embedding stack" "Run: apps/api/.venv/bin/python scripts/setup/bootstrap.py  (downloads/exports ONNX weights into apps/api/.model_cache/; needs network once)"
 fi
-if [ -x "$VPY" ] && "$VPY" "$ROOT_DIR/scripts/ensure_onnx_models.py" --verify >/dev/null 2>&1; then
+if [ -x "$VPY" ] && "$VPY" "$ROOT_DIR/scripts/setup/ensure_onnx_models.py" --verify >/dev/null 2>&1; then
   ok "ONNX cache verified (embedding + reranker)"
 elif [ ! -x "$VPY" ]; then
   echo "  • ONNX verify skipped (no venv yet — see above)"
 else
-  warn "ONNX cache incomplete" "Run: apps/api/.venv/bin/python scripts/bootstrap.py"
+  warn "ONNX cache incomplete" "Run: apps/api/.venv/bin/python scripts/setup/bootstrap.py"
 fi
 
 echo "─ Frontend deps ─"
@@ -105,7 +105,7 @@ if (echo > /dev/tcp/127.0.0.1/8080) 2>/dev/null; then
   fi
 else
   echo "  • No MLX server on :8080 — start it with:"
-  echo "      ./scripts/start_mlx_server.sh   # reads the model + port from config"
+  echo "      ./scripts/servers/start_mlx_server.sh   # reads the model + port from config"
 fi
 if command -v mlx_lm.server >/dev/null 2>&1; then
   ok "mlx_lm.server installed (Apple Silicon local inference)"
@@ -117,7 +117,7 @@ fi
 
 echo "─ Ports ─"
 # Read from config/ports.yaml (single source of truth) so this script cannot
-# drift from `python3 scripts/apply_ports.py`.
+# drift from `python3 scripts/checks/apply_ports.py`.
 _PORTS=$(python3 - "$ROOT_DIR/config/ports.yaml" <<'PYEOF' 2>/dev/null || echo "8000 5173 9931 8080"
 import sys, yaml
 d = yaml.safe_load(open(sys.argv[1]))["ports"]
@@ -136,9 +136,9 @@ echo
 echo "[setup] $PASS checks passed, $FAIL need attention."
 if [ "$FAIL" -eq 0 ]; then
   echo "Next:"
-  echo "  1. ./scripts/start_local_llm.sh        # boot the local model server"
+  echo "  1. ./scripts/servers/start_local_llm.sh        # boot the local model server"
   echo "  2. cd apps/api && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
   echo "  3. cd apps/web && npm run dev          # open http://localhost:5173"
-  echo "  Model weights live in apps/api/.model_cache/ (via scripts/bootstrap.py) — never committed."
+  echo "  Model weights live in apps/api/.model_cache/ (via scripts/setup/bootstrap.py) — never committed."
 fi
 exit "$FAIL"

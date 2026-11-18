@@ -213,7 +213,7 @@ def test_create_analysis_fails_fast_when_local_llm_down(
                 side_effect=LLMUnavailableError(
                     "Local LLM server 'llama_cpp' is not reachable at "
                     "http://127.0.0.1:8080/v1. Start it with "
-                    "'./scripts/start_local_llm.sh' (llama-server on :8080)."
+                    "'./scripts/servers/start_local_llm.sh' (llama-server on :8080)."
                 )
             ),
         ),

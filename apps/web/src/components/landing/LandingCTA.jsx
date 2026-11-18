@@ -17,7 +17,7 @@ export default function LandingCTA() {
       <p className="lx-lede lx-cta__lede">{CTA.lede}</p>
 
       <div className="lx-cta__actions">
-        <Link to="/register" className="lx-btn lx-btn--primary lx-btn--large">
+        <Link to="/register" className="lx-btn lx-btn--attention lx-btn--large">
           Start auditing
           <ArrowRight className="lx-btn__icon" size={16} strokeWidth={1.5} aria-hidden="true" />
         </Link>

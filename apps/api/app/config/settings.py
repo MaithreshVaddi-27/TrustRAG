@@ -30,7 +30,7 @@ _ports_cache: dict[str, Any] = {"mtime": None, "ports": None}
 # apps/api/ root (two levels above this file: config/ -> app/)
 _API_ROOT = Path(__file__).resolve().parents[2]
 _MODELS_YAML_PATH = _API_ROOT / "config" / "models.yaml"
-# Repo root config/ports.yaml — canonical port registry (see scripts/apply_ports.py)
+# Repo root config/ports.yaml — canonical port registry (see scripts/checks/apply_ports.py)
 _PORTS_YAML_PATH = _API_ROOT.parent.parent / "config" / "ports.yaml"
 
 # P0-CFG FIX (2026-09-06 audit): ModelConfig reads os.environ directly while
@@ -147,7 +147,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("HF_TOKENIZER_REVISION"),
         description=(
             "Pinned tokenizer revision for ONNX embeddings (Bandit B615 supply-chain "
-            "pin). Only change alongside a fresh `scripts/export_bge_onnx.py` run."
+            "pin). Only change alongside a fresh `scripts/setup/export_bge_onnx.py` run."
         ),
     )
     hf_reranker_tokenizer_revision: str = Field(

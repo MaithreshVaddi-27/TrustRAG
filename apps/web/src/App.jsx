@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
-import ErrorBoundary from '@/components/ErrorBoundary'
+import ErrorBoundary from '@/components/app/ErrorBoundary'
 import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 // Public Landing page

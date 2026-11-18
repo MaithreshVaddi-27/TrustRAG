@@ -86,7 +86,7 @@ curl http://localhost:8000/api/v1/health
 
 ```bash
 # Local LLM (start before or after backend — either order is fine)
-./scripts/start_local_llm.sh   # Metal/CUDA auto-detect + GPU offload
+./scripts/servers/start_local_llm.sh   # Metal/CUDA auto-detect + GPU offload
 # (or: ollama serve, if AI_PROVIDER=ollama)
 
 # Backend
@@ -104,7 +104,7 @@ npm ci
 npm run dev
 ```
 
-> **Embeddings:** TRUSTRAG runs one local embedding engine — ONNX BGE (`BAAI/bge-small-en-v1.5`, 384d) from `embedding.model` in `models.yaml`. Zero cloud cost, zero keys, no provider choice. One-time fetch with `apps/api/.venv/bin/python scripts/bootstrap.py`. Cloud embeddings were removed.
+> **Embeddings:** TRUSTRAG runs one local embedding engine — ONNX BGE (`BAAI/bge-small-en-v1.5`, 384d) from `embedding.model` in `models.yaml`. Zero cloud cost, zero keys, no provider choice. One-time fetch with `apps/api/.venv/bin/python scripts/setup/bootstrap.py`. Cloud embeddings were removed.
 >
 > **OCR:** scanned/image PDF pages fall back to local RapidOCR-ONNX (`rapidocr-onnxruntime`, a default `pyproject.toml` dependency reusing the shipped `onnxruntime` — no Dockerfile change, no system binaries). Models download once to `~/.onnx` on the first scanned page and are cached afterwards: **pre-warm on deploy** (ingest one scanned PDF) or the first scanned upload stalls on the download. Disable per-deploy with `ingestion.ocr.enabled: false` in `models.yaml` if scanned input is out of scope.
 >
@@ -359,7 +359,7 @@ TRUSTRAG uses one local embedding engine — ONNX BGE (`BAAI/bge-small-en-v1.5`,
 
 ```bash
 # One-time fetch/export (needs the backend venv + network, once)
-apps/api/.venv/bin/python scripts/bootstrap.py
+apps/api/.venv/bin/python scripts/setup/bootstrap.py
 ```
 
 Knowledge bases indexed with a retired embedding model must be re-uploaded.
@@ -371,7 +371,7 @@ Knowledge bases indexed with a retired embedding model must be re-uploaded.
 
 ### Local model server offline
 
-- Start llama.cpp: `./scripts/start_local_llm.sh` (auto-detects Metal/CUDA)
+- Start llama.cpp: `./scripts/servers/start_local_llm.sh` (auto-detects Metal/CUDA)
 - Or start Ollama: `ollama serve` (only needed when `AI_PROVIDER=ollama`)
 
 ### Gemini API errors (only when a Gemini provider/model is selected)

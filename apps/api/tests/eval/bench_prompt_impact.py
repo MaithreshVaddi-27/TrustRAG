@@ -8,7 +8,7 @@ model on real hardware:
 
 Run with the local LLM serving on LLAMACPP_BASE_URL:
 
-    ./scripts/start_local_llm.sh --max 1 --port 8080
+    ./scripts/servers/start_local_llm.sh --max 1 --port 8080
     .venv/bin/python -m tests.eval.bench_prompt_impact
 
 This is a latency probe, not an accuracy suite. Accuracy lives in

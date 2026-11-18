@@ -117,8 +117,8 @@ method behind them are in
 - **Frontend**: **82 Vitest tests** across 17 files, ESLint clean (`--max-warnings 0`), Vite build green.
 - **CI**: Ubuntu jobs + a `cross-platform` smoke matrix (Windows + macOS: backend import/config smoke, frontend lint/test/build), plus Playwright E2E and a k6 load smoke — all green.
 - **Lint**: the rules live in the repository-root `ruff.toml`, so `ruff check .` from the root holds the whole repository — including the root `scripts/` package, which CI previously never linted at all. Clean on the pinned `ruff==0.16.9`; the mypy ratchet reports **no new** type errors against the committed ceiling.
-- **Integration**: every frontend API call (25) matches a backend route (39) — 0 missing — and the user flow answers correctly both directly and through the frontend's proxy. Reproduce with `apps/api/scripts/validate_integration.py`.
-- **Resilience**: concurrency (4/4 terminal), the rate limit (429 on request 241), a provider outage (503 in ~111 ms) and a database outage (503, not 500) all behave. Reproduce with `apps/api/scripts/validate_resilience.py`.
+- **Integration**: every frontend API call (25) matches a backend route (39) — 0 missing — and the user flow answers correctly both directly and through the frontend's proxy. Reproduce with `apps/api/scripts/verify/validate_integration.py`.
+- **Resilience**: concurrency (4/4 terminal), the rate limit (429 on request 241), a provider outage (503 in ~111 ms) and a database outage (503, not 500) all behave. Reproduce with `apps/api/scripts/verify/validate_resilience.py`.
 - **Cross-platform**: the application code is platform-guarded (darwin / linux / win32 / fallback); the tooling discovers its interpreter and follows `TMPDIR` instead of assuming macOS.
 - **Runtimes**: models run ONNX-only (`onnxruntime` + `transformers` tokenizer; the reranker fails closed to RRF when `use_onnx=true`); torch lives in the `local-models` extra for one-time export only.
 - **Stack**: Python 3.11–3.12 (`requires-python >=3.11,<3.13`), Node 22+ (`engines`), per-OS setup in `ONBOARDING-TROUBLESHOOTING.md`.

@@ -259,12 +259,12 @@ Docker Compose connects to host MongoDB; Atlas remains supported via
 
 **Rationale:**
 - llama.cpp's local OpenAI-compatible server is thin and conventionally sits on :8080. Conflicts with the backend broke dev setup ("`Address already in use`" for the model server).
-- `config/ports.yaml` (`config/ports.yaml`) is now the canonical registry — backend `8000`, frontend `5173`, ollama `11434`, llamacpp `8080` — and `scripts/apply_ports.py` distributes changes to all consumers.
+- `config/ports.yaml` (`config/ports.yaml`) is now the canonical registry — backend `8000`, frontend `5173`, ollama `11434`, llamacpp `8080` — and `scripts/checks/apply_ports.py` distributes changes to all consumers.
 - macOS AirPlay conflicts on :8000 are handled by using `--host 127.0.0.1` during dev (no system clash) and honoring `PORT` on Render/GCR.
 
 **Files layered on top of D-14:**
 - `config/ports.yaml` (new canonical registry)
-- `scripts/apply_ports.py` (propagator)
+- `scripts/checks/apply_ports.py` (propagator)
 - `apps/api/app/config/` (Settings defaults read ports.yaml)
 - `apps/api/app/llm/local_llm.py` (`INSTALLED_*` provider lists)
 
@@ -296,7 +296,7 @@ normalization change requires a re-index — combine all three into one re-uploa
 - `apps/api/app/config/`, `apps/api/app/api/v1/schemas/analysis.py` (allowlists)
 - `apps/api/app/api/v1/models.py`, `apps/web/.../QueryPanel.jsx`, `apps/web/.../SettingsPage.jsx` (UI)
 - `apps/api/app/rag/ingestion/pipeline.py` (Gemini rate-limit pacing removed)
-- `apps/api/config/models.yaml`, `.env.example`, `scripts/setup.sh` (new), docs
+- `apps/api/config/models.yaml`, `.env.example`, `scripts/setup/setup.sh` (new), docs
 
 ---
 
@@ -365,7 +365,7 @@ output across all local LLM providers.
 
 **Decision:** Add an `onnx` embedding provider (`EMBEDDING_PROVIDER=onnx`) that runs
 `BAAI/bge-small-en-v1.5` via ONNX Runtime instead of PyTorch/sentence-transformers.
-The model is exported once (`scripts/export_bge_onnx.py`: transformer + CLS pooling +
+The model is exported once (`scripts/setup/export_bge_onnx.py`: transformer + CLS pooling +
 L2 norm [correction 2026-09-22: CLS, not mean — BGE uses `pooling_mode="cls"`],
 dynamic batch/sequence axes, single 128 MB file) and served from
 `apps/api/.model_cache/bge-small-en-v1.5.onnx` with the same two-tier cache
@@ -381,7 +381,7 @@ dynamic batch/sequence axes, single 128 MB file) and served from
   so no new cross-space risk.
 
 **Files:**
-- `scripts/export_bge_onnx.py` (new), `apps/api/app/rag/embedding/engine.py` (new)
+- `scripts/setup/export_bge_onnx.py` (new), `apps/api/app/rag/embedding/engine.py` (new)
 - `apps/api/app/llm/model_registry.py` (`onnx` provider branch), `config.py`
   (`embedding_max_seq_length`), `config/models.yaml` (`max_seq_length: 512`)
 

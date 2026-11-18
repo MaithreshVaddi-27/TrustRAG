@@ -77,7 +77,7 @@ llm:
     - gemini-2.5-flash
     - gemini-2.5-pro
 
-  temperature: 0.2
+  temperature: 0.0
   top_p: 0.9
   # Whether the VERIFIER may use a reasoning model's thinking trace. Measured
   # on qwen3-1.7b: identical verdicts, 4-5x faster without the trace (the
@@ -310,7 +310,7 @@ cost_controls:
   # Lean 8GB: local models only
   lean_tier:
     max_verification_claims: 5
-    max_context_chunks: 5
+    max_context_chunks: 3
     max_claim_retrievals: 2
   # Balanced 16GB: local models with more headroom
   balanced_tier:
@@ -325,7 +325,7 @@ cost_controls:
 
 # ─── Inference Acceleration & KV Cache Optimization ───────────────────────────
 optimization:
-  kv_cache_quantization: "q8_0"                 # q8_0 (measured default) | q4_0 | q4_1 — honored by scripts/start_local_llm.sh (unknown values fall back to q8_0; "fp16" is not a valid llama-server k-quant)
+  kv_cache_quantization: "q8_0"                 # q8_0 (measured default) | q4_0 | q4_1 — honored by scripts/servers/start_local_llm.sh (unknown values fall back to q8_0; "fp16" is not a valid llama-server k-quant)
   flash_attention: true                         # Computes attention in SRAM tiles (O(N) memory)
   prompt_caching: true                          # Reuses KV cache for static system prompt prefixes
   # Context Compression (Phase 2.4) — hierarchical summarization before LLM call

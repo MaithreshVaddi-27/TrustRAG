@@ -73,7 +73,7 @@ meter fills. The `lx-micro` utility deliberately steps up to
 
 ### Where crimson is allowed
 
-Crimson marks exactly four things. Used anywhere else, it stops meaning
+Crimson marks exactly five things. Used anywhere else, it stops meaning
 anything.
 
 1. **A caught contradiction** — the verdict, its record edge, its seal.
@@ -81,6 +81,14 @@ anything.
    active scenario, the TrustRAG column in the comparison matrix.
 3. **A live status** — the engine dot, the "unrecoverable" outcome.
 4. **Keyboard focus.**
+5. **The focal action of a view** — the one button the eye should land on:
+   Sign in, Create account, Get started. One per surface. Two crimson
+   actions on one screen means there is no attention at all.
+
+Crimson also carries the alarm register: a failure, a destructive action.
+Those are the *same* colour on purpose — both say "this one matters" — but
+they are different shades, so a destructive confirmation never reads as an
+entry point.
 
 ### The rules — chrome silver at low opacity
 
@@ -114,9 +122,29 @@ contrast of any button on the page, and it keeps crimson free to mean
 
 ```css
 --color-accent: var(--color-silver-050);   /* #f7f7f6 */
---color-accent-hover: #ffffff;
+--color-accent-hover: var(--color-silver-100); /* #e9e9e7 */
 --color-on-accent: var(--color-obsidian-950); /* #080808 */
 ```
+
+### The attention and alarm registers
+
+Crimson enters the interface through two named registers, so the usage is
+enumerable rather than a matter of taste.
+
+| Token | Resolves to | Use |
+|---|---|---|
+| `--color-attention` | `--color-crimson-500` | The focal action of a view — the filled crimson button |
+| `--color-attention-hover` | `--color-crimson-400` | Its hover state |
+| `--color-on-attention` | `--color-silver-050` | Text on the crimson fill |
+| `--color-attention-quiet` | `--color-crimson-400` | Crimson text and hairline, no fill |
+| `--color-alarm` | `--color-crimson-600` | A destructive action's fill — deeper than attention on purpose |
+| `--color-alarm-hover` | `--color-crimson-700` | Its hover state |
+| `--color-alarm-text` | `--color-crimson-300` | Error text on a dark surface |
+| `--color-alarm-wash` | `rgba(212, 21, 20, 0.09)` | The background of an error surface |
+| `--color-alarm-rule` | `rgba(212, 21, 20, 0.34)` | The hairline of an error surface |
+
+Attention gathers the eye; alarm warns it away. They share a hue on purpose
+and are separated by depth.
 
 ---
 

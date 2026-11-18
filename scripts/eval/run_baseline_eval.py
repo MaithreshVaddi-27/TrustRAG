@@ -13,7 +13,7 @@ Prerequisites (operator):
   3. A registered user (email + password).
 
 Example:
-  python scripts/run_baseline_eval.py \\
+  python scripts/eval/run_baseline_eval.py \\
       --email ops@example.com --password '...' --kb-id <KB_ID> --post-experiment
 
 Stdlib only. Respects the 10-analyses/minute rate limit via --delay-seconds.
@@ -35,7 +35,7 @@ from pathlib import Path
 
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "apps" / "api" / "tests"))
 
 from eval import metrics  # noqa: E402  (sys.path wired above)

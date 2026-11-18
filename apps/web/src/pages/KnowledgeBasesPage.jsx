@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Database, X } from 'lucide-react'
 import AppLayout from '@/layouts/AppLayout'
-import PageHeader from '@/components/ui/PageHeader'
+import PageHeader from '@/components/common/PageHeader'
 import AsyncState from '@/components/app/AsyncState'
 import CollectionLedger from '@/components/kb/CollectionLedger'
 import CreateCollectionForm from '@/components/kb/CreateCollectionForm'
@@ -93,7 +93,7 @@ export default function KnowledgeBasesPage() {
                 setIsCreating(true)
                 setCreateError(null)
               }}
-              className="lx-btn lx-btn--primary"
+              className="lx-btn lx-btn--attention"
             >
               <Plus size={15} strokeWidth={1.75} aria-hidden="true" />
               <span>New collection</span>
@@ -187,7 +187,7 @@ export default function KnowledgeBasesPage() {
             <button
               type="button"
               onClick={() => setIsCreating(true)}
-              className="lx-btn lx-btn--primary"
+              className="lx-btn lx-btn--attention"
             >
               <Plus size={15} strokeWidth={1.75} aria-hidden="true" />
               <span>Create a collection</span>

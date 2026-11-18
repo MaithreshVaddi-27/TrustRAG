@@ -2,7 +2,7 @@
 # TRUSTRAG — Canonical Port & Service Registry (SINGLE SOURCE OF TRUTH)
 # ─────────────────────────────────────────────────────────────────────────────
 # Change a port HERE, then run:
-#   python3 scripts/apply_ports.py
+#   python3 scripts/checks/apply_ports.py
 #
 # to propagate it to docker-compose.yml, Dockerfiles, Vite config, .env
 # templates, Playwright/k6 defaults, CI workflow, and models.yaml.

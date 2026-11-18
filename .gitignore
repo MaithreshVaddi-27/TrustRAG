@@ -180,7 +180,7 @@ qdrant_storage/
 
 # ─── ML / Model cache (sentence-transformers, HuggingFace Hub, GGUF) ──────────
 # Model weights are NEVER committed — every machine fetches them once via
-# scripts/bootstrap.py into apps/api/.model_cache/ (override: MODEL_CACHE_DIR).
+# scripts/setup/bootstrap.py into apps/api/.model_cache/ (override: MODEL_CACHE_DIR).
 .cache/
 .cache/huggingface/
 .model_cache/
@@ -197,7 +197,7 @@ models/
 llama-server.log
 .huggingface/
 
-# Local-LLM launcher output (scripts/start_local_llm.sh, start_mlx_server.sh)
+# Local-LLM launcher output (scripts/servers/start_local_llm.sh, start_mlx_server.sh)
 *.mlx.server.log
 mlx-server.log
 mlx_lm.server.log

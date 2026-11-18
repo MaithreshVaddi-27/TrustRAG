@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[4]
-SCRIPT = ROOT / "scripts" / "run_ragas_eval.py"
+SCRIPT = ROOT / "scripts" / "eval" / "run_ragas_eval.py"
 
 spec = importlib.util.spec_from_file_location("run_ragas_eval", SCRIPT)
 assert spec and spec.loader

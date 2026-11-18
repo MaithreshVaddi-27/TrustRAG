@@ -52,8 +52,8 @@ const ENGINES = [
 
 const RECOVERY_COMMANDS = {
   ollama: 'ollama serve',
-  llama_cpp: './scripts/start_local_llm.sh --port 9931',
-  mlx: './scripts/start_mlx_server.sh --port 8080',
+  llama_cpp: './scripts/servers/start_local_llm.sh --port 9931',
+  mlx: './scripts/servers/start_mlx_server.sh --port 8080',
 }
 
 export default function LocalLLMPanel({ providers, providersPending = false }) {

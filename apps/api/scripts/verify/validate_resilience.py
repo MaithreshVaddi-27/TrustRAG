@@ -31,9 +31,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from scripts.bench_auth import register_or_login
+from scripts.bench.bench_auth import register_or_login
 
 REPO = Path(__file__).resolve().parents[3]
 API_DIR = REPO / "apps" / "api"

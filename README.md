@@ -150,7 +150,7 @@ directly from `app.rag.embedding`.
 
 Model weights (`apps/api/.model_cache/*.onnx`, `*.gguf`, Hugging Face
 snapshots) are **never committed to git** — every machine fetches them once
-via `scripts/bootstrap.py` (see [Installation](#installation)).
+via `scripts/setup/bootstrap.py` (see [Installation](#installation)).
 
 ---
 
@@ -233,20 +233,20 @@ ollama pull gemma3:1b        # lightweight default (or: ollama pull llama3)
 
 # llama.cpp (local GGUF models) — hardware-aware launcher, serves on :9931
 brew install llama.cpp   # provides the `llama-server` binary used below
-./scripts/start_local_llm.sh   # auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
+./scripts/servers/start_local_llm.sh   # auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
 
 # MLX (Apple Silicon only, optional) — serves on :8080
 # See [MLX on Mac](docs/PERFORMANCE-GUIDE.md#4-mlx-on-mac-apple-silicon-free-fastest-toks-per-watt)
 pipx install mlx-lm
-./scripts/start_mlx_server.sh              # model + port come from config/ports.yaml
-./scripts/start_mlx_server.sh --check      # scan :8080-:8084, list what is up
-./scripts/start_mlx_server.sh --port 8081  # extra model on the next port (1 model/process)
+./scripts/servers/start_mlx_server.sh              # model + port come from config/ports.yaml
+./scripts/servers/start_mlx_server.sh --check      # scan :8080-:8084, list what is up
+./scripts/servers/start_mlx_server.sh --port 8081  # extra model on the next port (1 model/process)
 
 # Backend (terminal 1)
 cd apps/api
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,local-models]"
-python ../../scripts/bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
+python ../../scripts/setup/bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
 uvicorn app.main:app --reload --port 8000
 
 # Frontend (terminal 2)
@@ -283,13 +283,13 @@ ollama pull gemma3:1b        # or: ollama pull llama3
 # llama.cpp (local GGUF models) — hardware-aware launcher
 # Install the binary first: download a release from
 # https://github.com/ggerganov/llama.cpp/releases (needs `llama-server` on PATH)
-./scripts/start_local_llm.sh   # auto-detects CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
+./scripts/servers/start_local_llm.sh   # auto-detects CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
 
 # Backend (terminal 1)
 cd apps/api
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,local-models]"
-python ../../scripts/bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
+python ../../scripts/setup/bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
 uvicorn app.main:app --reload --port 8000
 
 # Frontend (terminal 2)
@@ -315,7 +315,7 @@ ollama pull gemma3:1b
 ```powershell
 # llama.cpp (local GGUF models) — use the provided startup script or run llama-server directly
 # For now, use WSL2 for llama.cpp on Windows (see Linux instructions)
-# Start: wsl ./scripts/start_local_llm.sh
+# Start: wsl ./scripts/servers/start_local_llm.sh
 ```
 
 ```powershell
@@ -344,7 +344,7 @@ MongoDB and the LLM stay on the host; `api` reaches them via `host.docker.intern
 ```bash
 cp .env.example .env   # set JWT_SECRET (see step 1)
 # One-time on the HOST (the api image is torch-free and cannot export itself):
-apps/api/.venv/bin/python scripts/bootstrap.py   # Windows: apps\api\.venv\Scripts\python.exe scripts\bootstrap.py
+apps/api/.venv/bin/python scripts/setup/bootstrap.py   # Windows: apps\api\.venv\Scripts\python.exe scripts\bootstrap.py
 docker compose up -d
 # One-time: copy the host-exported weights into the api container's cache volume:
 docker cp apps/api/.model_cache/. trustrag_api:/app/.model_cache/
@@ -364,9 +364,9 @@ auto-downloaded.
 
 ```bash
 # From the repo root, using the backend venv (macOS/Linux):
-apps/api/.venv/bin/python scripts/bootstrap.py
-# Check only, no downloads (also covered by ./scripts/setup.sh):
-apps/api/.venv/bin/python scripts/bootstrap.py --verify
+apps/api/.venv/bin/python scripts/setup/bootstrap.py
+# Check only, no downloads (also covered by ./scripts/setup/setup.sh):
+apps/api/.venv/bin/python scripts/setup/bootstrap.py --verify
 # Windows PowerShell:
 apps\api\.venv\Scripts\python.exe scripts\bootstrap.py
 ```
@@ -382,7 +382,7 @@ fetched (`--force` rebuilds everything).
 ### 4. Verify the install
 
 ```bash
-./scripts/setup.sh                          # prerequisite checker (prints fixes)
+./scripts/setup/setup.sh                          # prerequisite checker (prints fixes)
 curl http://localhost:8000/api/v1/health   # → {"status":"ok"}
 # Open http://localhost:5173 in your browser
 ```
@@ -390,10 +390,10 @@ curl http://localhost:8000/api/v1/health   # → {"status":"ok"}
 > **Run both llama.cpp and MLX simultaneously (Apple Silicon):**
 > ```bash
 > # Terminal 1: llama.cpp on :9931
-> ./scripts/start_local_llm.sh
+> ./scripts/servers/start_local_llm.sh
 >
 > # Terminal 2: MLX on :8080 (id must match MLX_MODEL in .env / model_mlx in models.yaml)
-> ./scripts/start_mlx_server.sh mlx-community/Llama-3.2-3B-Instruct-4bit
+> ./scripts/servers/start_mlx_server.sh mlx-community/Llama-3.2-3B-Instruct-4bit
 >
 > # Terminal 3: Backend (auto-detects both)
 > cd apps/api && source .venv/bin/activate && uvicorn app.main:app --reload --port 8000
@@ -430,7 +430,7 @@ APP_ENV=production                # production requires QDRANT_API_KEY
 CORS_ORIGINS=https://your-domain.com
 ```
 
-Default ports: API `8000` · Vite `5173` · llama-server `9931` · **MLX server `8080`** · Ollama `11434` · MongoDB `27017` · Qdrant `6335→6333`. Change ports in `config/ports.yaml`, then run `python3 scripts/apply_ports.py` (enforced in CI with `--check`).
+Default ports: API `8000` · Vite `5173` · llama-server `9931` · **MLX server `8080`** · Ollama `11434` · MongoDB `27017` · Qdrant `6335→6333`. Change ports in `config/ports.yaml`, then run `python3 scripts/checks/apply_ports.py` (enforced in CI with `--check`).
 
 ### Optional cloud extras
 
@@ -524,9 +524,9 @@ TrustRAG supports multiple LLM providers interchangeably. Switch via `LLM_PROVID
 
 | Provider | Models | RAM | Notes |
 |----------|--------|-----|-------|
-| **llama_cpp** | LFM2.5-1.2B, Granite-4.2-3B, SmolLM3-3B, EXAONE-2.4B, SmolLM2-1.7B | 2–4 GB | Default. Hardware-aware `scripts/start_local_llm.sh` auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 concurrent model on 8 GB |
+| **llama_cpp** | LFM2.5-1.2B, Granite-4.2-3B, SmolLM3-3B, EXAONE-2.4B, SmolLM2-1.7B | 2–4 GB | Default. Hardware-aware `scripts/servers/start_local_llm.sh` auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 concurrent model on 8 GB |
 | **ollama** | gemma3:1b, qwen3:1.7b, llama3 | 1–3 GB | `ollama serve` + `ollama pull <model>`. Set `OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1` for 8 GB RAM |
-| **mlx** | Llama-3.2-1B-4bit, Llama-3.2-3B-4bit, LFM2.5-1.2B-4bit | 1–3 GB | Apple Silicon only. `./scripts/start_mlx_server.sh [id]` on :8080. Runs alongside llama.cpp on :9931 |
+| **mlx** | Llama-3.2-1B-4bit, Llama-3.2-3B-4bit, LFM2.5-1.2B-4bit | 1–3 GB | Apple Silicon only. `./scripts/servers/start_mlx_server.sh [id]` on :8080. Runs alongside llama.cpp on :9931 |
 
 #### Small vs large models
 
@@ -543,8 +543,8 @@ Detection is by model-id size marker (`is_small_model()` in `app/llm/local_llm.p
 Measured prompt sizes — the win is mostly *rule count*, not characters: generation 2356→773 (33%), decompose 1037→494 (48%), single-claim NLI 969→626 (65%), batch NLI 977→715 (73%). To compare providers on the frozen dataset:
 
 ```bash
-./scripts/eval_provider.sh llama_cpp --email you@example.com --password '…' --kb-id $ID
-./scripts/eval_provider.sh gemini    --email you@example.com --password '…' --kb-id $ID
+./scripts/eval/eval_provider.sh llama_cpp --email you@example.com --password '…' --kb-id $ID
+./scripts/eval/eval_provider.sh gemini    --email you@example.com --password '…' --kb-id $ID
 ```
 
 Each provider writes to its own `docs/evaluation/results/<provider>/` and records a separate experiment.
@@ -608,11 +608,11 @@ Both need the live stack (see the fastest path above):
 # Integration — every API call the frontend makes is checked against the
 # backend's routes, and the whole user flow is exercised directly and
 # through the frontend's own proxy.
-cd apps/api && python scripts/validate_integration.py
+cd apps/api && python scripts/verify/validate_integration.py
 
 # Resilience — concurrency, the rate limit, a provider outage and a
 # database outage, each induced and repaired.
-cd apps/api && python scripts/validate_resilience.py
+cd apps/api && python scripts/verify/validate_resilience.py
 ```
 
 Lint — the rules live in the repository-root `ruff.toml`, so the same standard
@@ -645,8 +645,8 @@ Two scripts keep the frontend and the backend honest about each other:
 
 | Script | What it proves |
 |---|---|
-| `apps/api/scripts/validate_integration.py` | Every API call the frontend makes exists on the backend, and the whole user flow answers correctly — directly and through the frontend's own proxy |
-| `apps/api/scripts/validate_resilience.py` | Concurrency, the rate limit, a provider outage and a database outage all behave as designed |
+| `apps/api/scripts/verify/validate_integration.py` | Every API call the frontend makes exists on the backend, and the whole user flow answers correctly — directly and through the frontend's own proxy |
+| `apps/api/scripts/verify/validate_resilience.py` | Concurrency, the rate limit, a provider outage and a database outage all behave as designed |
 
 Frontend architecture, design system compliance (cyber-dark palette,
 `.glass-card` material tokens, WCAG AA contrast) and component decomposition
@@ -664,7 +664,7 @@ claim/evidence vault and the auth service — are mapped in
 | Component | Local dev | Docker Compose | Production |
 |-----------|-----------|----------------|------------|
 | **LLM** | Ollama / llama.cpp on host | Host via `host.docker.internal` | Self-hosted Ollama or Gemini |
-| **Embeddings** | ONNX BGE-small via `scripts/bootstrap.py` (~120 MB, one-time) | Host-exported ONNX via `docker cp` into the cache volume | Same as dev |
+| **Embeddings** | ONNX BGE-small via `scripts/setup/bootstrap.py` (~120 MB, one-time) | Host-exported ONNX via `docker cp` into the cache volume | Same as dev |
 | **Vectors** | Qdrant embedded (`local`) | `qdrant` container + volume | Qdrant Cloud |
 | **Database** | Host MongoDB | Host via `host.docker.internal` | MongoDB Atlas |
 | **API** | `uvicorn … --reload` | `api` container (non-root, hot-reload) | Cloud Run / Render / Railway / Fly.io |
@@ -754,14 +754,14 @@ Full per-OS field guide (20-row failure table): [docs/ONBOARDING-TROUBLESHOOTING
 
 | Issue | Fix |
 |-------|-----|
-| `LLM_UNAVAILABLE` (llama.cpp) | Start `./scripts/start_local_llm.sh --max 1` (serves on :9931) |
+| `LLM_UNAVAILABLE` (llama.cpp) | Start `./scripts/servers/start_local_llm.sh --max 1` (serves on :9931) |
 | `LLM_UNAVAILABLE` (ollama) | `ollama serve` + `ollama pull <model>` |
 | `LLM_UNAVAILABLE` (gemini) | Check API key, retry, or switch provider |
-| `LLM_UNAVAILABLE` (MLX) | `./scripts/start_mlx_server.sh` (Apple Silicon); `--check` to see which ports are up |
+| `LLM_UNAVAILABLE` (MLX) | `./scripts/servers/start_mlx_server.sh` (Apple Silicon); `--check` to see which ports are up |
 | `Database not initialized` | Ensure MongoDB running; check `MONGODB_URI` |
 | `503 Service Unavailable` | DB not connected; check `connect_db()` in lifespan |
 | OOM on 8 GB | `export OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1 OLLAMA_MAX_LOADED_MODELS=1` |
-| ONNX weights missing / stale after `git pull` | `apps/api/.venv/bin/python scripts/bootstrap.py` (`--verify` to check, `--force` to rebuild) |
+| ONNX weights missing / stale after `git pull` | `apps/api/.venv/bin/python scripts/setup/bootstrap.py` (`--verify` to check, `--force` to rebuild) |
 | ONNX export fails (`No module named 'onnxscript'` / `torch` / `onnx`) | Reinstall export deps: `cd apps/api && .venv/bin/pip install -e ".[local-models]"`, then re-run bootstrap |
 
 ---
@@ -771,7 +771,7 @@ Full per-OS field guide (20-row failure table): [docs/ONBOARDING-TROUBLESHOOTING
 See [CONTRIBUTING.md](CONTRIBUTING.md) (workflow: `READ → PLAN → BUILD → VERIFY → FIX → DOCUMENT → NEXT`; model IDs in `apps/api/config/models.yaml`, secrets in `.env` only; conventional commits `feat:`/`fix:`/`docs:`/`test:`/`refactor:`). Security policy: [SECURITY.md](SECURITY.md).
 
 ```bash
-./scripts/setup.sh
+./scripts/setup/setup.sh
 cd apps/api && ruff check app/ tests/ && python3 -m pytest -v
 cd apps/web && npm run lint && npm test
 ```

@@ -222,7 +222,7 @@ Query → Route (deterministic regex: SIMPLE/TEMPORAL/COMPARISON/COMPLEX)
 - `HallucinationMetric` — unsupported claim detection
 - CI/CD integration with thresholds (`deepeval test run --threshold 0.7`)
 
-**Integration:** Add `apps/api/scripts/eval_accuracy.py`, wire into `scripts/run_baseline_eval.py`, configure GitHub Action.
+**Integration:** Add `apps/api/scripts/eval/eval_accuracy.py`, wire into `scripts/eval/run_baseline_eval.py`, configure GitHub Action.
 
 ### ✅ ADOPT — RAGAS
 **Reason:** Complementary RAG-specific metrics (Context Entity Recall, reference-free Faithfulness). Synthetic test generation from KBs aligns with TrustRAG's document ingestion pipeline.

@@ -33,9 +33,9 @@ export default class ErrorBoundary extends Component {
     if (this.state.hasError) {
       return (
         <div className="min-h-[40vh] flex items-center justify-center p-6">
-          <div className="max-w-md w-full rounded-2xl border border-red-800/50 bg-red-950/30 p-6 text-center">
-            <AlertTriangle className="mx-auto mb-3 text-red-400" size={28} />
-            <h2 className="text-sm font-semibold text-red-300 mb-1">
+          <div className="max-w-md w-full rounded-2xl border border-crimson-700/50 bg-crimson-950/30 p-6 text-center">
+            <AlertTriangle className="mx-auto mb-3 text-crimson-400" size={28} />
+            <h2 className="text-sm font-semibold text-crimson-300 mb-1">
               Something went wrong in this view
             </h2>
             <p className="text-xs text-slate-400 mb-4 break-words">

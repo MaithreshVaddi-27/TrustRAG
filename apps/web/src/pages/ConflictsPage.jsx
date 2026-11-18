@@ -9,7 +9,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import AppLayout from '@/layouts/AppLayout'
-import PageHeader from '@/components/ui/PageHeader'
+import PageHeader from '@/components/common/PageHeader'
 import AsyncState from '@/components/app/AsyncState'
 import ExplainerList from '@/components/app/ExplainerList'
 import { conflictService } from '@/services/api'
@@ -57,7 +57,7 @@ export default function ConflictsPage() {
           }
           description="Contradictions and integrity flags detected across document versions and queries."
           actions={
-            <Link to="/playground" className="lx-btn lx-btn--primary">
+            <Link to="/playground" className="lx-btn lx-btn--attention">
               Run new query
               <ArrowRight size={13} strokeWidth={1.5} aria-hidden="true" />
             </Link>

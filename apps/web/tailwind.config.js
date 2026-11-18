@@ -4,9 +4,9 @@
  * TrustRAG — Obsidian Black × Chrome Silver × Laser Crimson.
  *
  * The palette is deliberately near-monochrome. Chrome Silver carries the
- * interface and the single accent; Laser Crimson is an alarm and appears
- * only where a claim has failed, a verification seal is stamped, or focus
- * lands.
+ * interface; Laser Crimson is a signal, not a decoration. Crimson appears
+ * only where a claim has failed, a verification seal is stamped, a focal
+ * action needs the eye, or focus lands.
  *
  * This file is the build-layer mirror of `src/styles/tokens/`. Raw values
  * live in the token stylesheets; change them there and here together.
@@ -70,6 +70,26 @@ export default {
         graphite,
         obsidian,
         crimson,
+
+        // ── Named crimson registers ─────────────────────────────────────
+        // The two places crimson is allowed to appear as a surface. They
+        // share the hue on purpose and are separated by depth: attention
+        // gathers the eye (one focal action per view), alarm warns it away
+        // (a failure, a destructive action). Mirrors the --color-attention
+        // and --color-alarm aliases in src/styles/tokens/color.css.
+        attention: {
+          300: crimson[300],
+          400: crimson[400],
+          500: crimson[500],
+          600: crimson[600],
+        },
+        alarm: {
+          300: crimson[300],
+          400: crimson[400],
+          500: crimson[500],
+          600: crimson[600],
+          700: crimson[700],
+        },
 
         // ── Mapped families ─────────────────────────────────────────────
         // The product was cyan-on-slate. Those families now resolve into

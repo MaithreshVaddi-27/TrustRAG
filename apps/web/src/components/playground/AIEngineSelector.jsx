@@ -22,7 +22,7 @@ const OFFLINE_MESSAGES = {
   ),
   llama_cpp: (
     <>
-      Run <code>./scripts/start_local_llm.sh</code> in a terminal, then recheck.
+      Run <code>./scripts/servers/start_local_llm.sh</code> in a terminal, then recheck.
     </>
   ),
   mlx: (

@@ -133,7 +133,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         cache_dir = _Path(cfg_probe.embedding_cache_dir)
         # Real weight files only — a stray config.json must not count as cached.
         # .onnx counts: the engine is always ONNX, whose weights live as
-        # <cache>/bge-small-en-v1.5.onnx (see scripts/ensure_onnx_models.py).
+        # <cache>/bge-small-en-v1.5.onnx (see scripts/setup/ensure_onnx_models.py).
         # cache_dir may be relative (".model_cache") — anchor to apps/api.
         if not cache_dir.is_absolute():
             cache_dir = _Path(__file__).resolve().parent.parent / cache_dir
@@ -172,21 +172,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Fail loudly on a missing ONNX bake: without embedding weights every
     # query 500s, and without reranker weights reranking silently degrades to
-    # RRF order. Both are deploy-time problems (run scripts/bootstrap.py and
+    # RRF order. Both are deploy-time problems (run scripts/setup/bootstrap.py and
     # bake .model_cache into the image) — never per-request surprises.
     onnx_status = onnx_model_status()
     if not onnx_status["embedding_onnx_present"]:
         logger.error(
             "ONNX embedding weights missing — every query will fail. "
-            "Run 'python scripts/bootstrap.py' (or "
-            "'python scripts/ensure_onnx_models.py') then bake "
+            "Run 'python scripts/setup/bootstrap.py' (or "
+            "'python scripts/setup/ensure_onnx_models.py') then bake "
             "apps/api/.model_cache into the image",
             path=onnx_status["embedding_onnx_path"],
         )
     if cfg.reranker_enabled and cfg.reranker_use_onnx and not onnx_status["reranker_onnx_present"]:
         logger.warning(
             "ONNX reranker weights missing — reranking degrades to RRF order. "
-            "Run 'python scripts/ensure_onnx_models.py' to enable it",
+            "Run 'python scripts/setup/ensure_onnx_models.py' to enable it",
             path=onnx_status["reranker_onnx_path"],
         )
 
@@ -224,7 +224,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.debug("Analysis reaper skipped", error=str(_reap_exc))
 
     # Seed the local-model discovery cache from the persisted snapshot so a
-    # pre-run `scripts/bootstrap.py` (or any earlier process) is
+    # pre-run `scripts/setup/bootstrap.py` (or any earlier process) is
     # honored before the server answers its first request.
     load_discovery_snapshot()
 

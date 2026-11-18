@@ -239,9 +239,9 @@ ONNX (Open Neural Network Exchange) is a portable representation for trained neu
 The runtime does not train models. A one-time setup path exports/obtains model files in `apps/api/.model_cache`:
 
 ```text
-scripts/bootstrap.py
-    └─ scripts/ensure_onnx_models.py
-         ├─ scripts/export_bge_onnx.py       BGE transformer + CLS + L2 normalisation
+scripts/setup/bootstrap.py
+    └─ scripts/setup/ensure_onnx_models.py
+         ├─ scripts/setup/export_bge_onnx.py       BGE transformer + CLS + L2 normalisation
          └─ app/rag/retrieval/onnx_reranker.py  cross-encoder export + optional int8 quantisation
 ```
 
@@ -430,7 +430,7 @@ External MCP tool calls require a service token. Bound service tokens are limite
 
 - `apps/api/config/models.yaml`: versioned non-secret policy—models, retrieval widths, chunking, verification thresholds, recovery budgets, and optimisation switches.
 - `.env`: deployment secrets and override values such as `JWT_SECRET`, `MONGODB_URI`, API keys, CORS origins, and server URLs.
-- `config/ports.yaml`: canonical ports. `scripts/apply_ports.py` propagates a port change to related files.
+- `config/ports.yaml`: canonical ports. `scripts/checks/apply_ports.py` propagates a port change to related files.
 
 Environment values win over YAML defaults. This is useful for choosing a different provider in deployment, but it means the startup log is the best source for the **effective** model configuration.
 
@@ -449,7 +449,7 @@ MongoDB and optional local LLM servers are expected on the host and reached from
 1. Copy `.env.example` to `.env`; provide a strong `JWT_SECRET` and a MongoDB URI.
 2. Ensure MongoDB is running and start Qdrant (Docker compose can do this).
 3. Install backend dependencies. For a first ONNX export, install the optional local-model export dependencies too.
-4. Run `python scripts/bootstrap.py` to prepare ONNX artifacts and snapshot local model availability.
+4. Run `python scripts/setup/bootstrap.py` to prepare ONNX artifacts and snapshot local model availability.
 5. Start a local LLM server matching the selected provider/model, or configure a permitted cloud provider key.
 6. Start FastAPI and the Vite web app, then open the frontend on port 5173.
 
@@ -457,13 +457,13 @@ The repository also includes two local-LLM launchers and a setup flow:
 
 | Script | Serves | Port | Notes |
 |---|---|---|---|
-| `scripts/start_local_llm.sh` | llama.cpp `llama-server` (router mode) | **:9931** | Hardware-aware flags (Metal/CUDA, KV q8_0, flash-attn, RAM-tiered `--max`) |
-| `scripts/start_mlx_server.sh` | MLX `mlx_lm.server` | **:8080** | Apple Silicon only; one model per process — use `--port 8081` for more. `--check` scans the range |
-| `scripts/setup.sh` | — | — | Verifier: prints copy-paste fixes for a misconfigured host |
+| `scripts/servers/start_local_llm.sh` | llama.cpp `llama-server` (router mode) | **:9931** | Hardware-aware flags (Metal/CUDA, KV q8_0, flash-attn, RAM-tiered `--max`) |
+| `scripts/servers/start_mlx_server.sh` | MLX `mlx_lm.server` | **:8080** | Apple Silicon only; one model per process — use `--port 8081` for more. `--check` scans the range |
+| `scripts/setup/setup.sh` | — | — | Verifier: prints copy-paste fixes for a misconfigured host |
 
 Both launchers read their port from `config/ports.yaml` and their model id from
 `config/models.yaml`, so they cannot drift from what the backend expects. Run
-`python3 scripts/apply_ports.py` after editing ports.
+`python3 scripts/checks/apply_ports.py` after editing ports.
 
 ## 19. What to say in a faculty demo
 
@@ -501,7 +501,7 @@ This map lets a presenter answer “where is that implemented?” without relyin
 | app startup, middleware, error mapping | `apps/api/app/main.py`, `app/api/router.py` |
 | central settings/model policy | `app/config/`, `apps/api/config/models.yaml`, `.env.example` |
 | model selection/local LLM clients | `app/core/model_registry.py`, `app/core/local_llm.py`, `app/core/llm_utils.py`, `app/core/llm_ledger.py` |
-| ONNX embedding/reranking | `app/llm/onnx_embeddings.py`, `app/rag/retrieval/onnx_reranker.py`, `scripts/ensure_onnx_models.py`, `scripts/export_bge_onnx.py` |
+| ONNX embedding/reranking | `app/llm/onnx_embeddings.py`, `app/rag/retrieval/onnx_reranker.py`, `scripts/setup/ensure_onnx_models.py`, `scripts/setup/export_bge_onnx.py` |
 | document parsing/OCR/chunking | `app/rag/ingestion/parser.py`, `ocr.py`, `preprocessor.py`, `chunker.py`, `chunking_strategies.py`, `page_images.py` |
 | indexing/vector DB | `app/rag/ingestion/pipeline.py`, `sparse_vector.py`, `app/persistence/qdrant/`, `app/persistence/mongodb/` |
 | retrieval/reranking/router | `app/rag/retrieval/retriever.py`, `reranker.py`, `app/rag/agent/router.py` |

@@ -2,8 +2,8 @@
 TRUSTRAG — Port propagator (single source of truth: config/ports.yaml).
 
 Usage:
-  python3 scripts/apply_ports.py          # rewrite all consumers in place
-  python3 scripts/apply_ports.py --check  # exit 1 with diff if anything drifts (CI gate)
+  python3 scripts/checks/apply_ports.py          # rewrite all consumers in place
+  python3 scripts/checks/apply_ports.py --check  # exit 1 with diff if anything drifts (CI gate)
 
 Propagates the canonical ports to:
   docker-compose.yml, apps/api/Dockerfile, apps/api/config/models.yaml,
@@ -26,7 +26,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 PORTS_YAML = ROOT / "config" / "ports.yaml"
 
 
@@ -168,7 +168,7 @@ def apply(check: bool = False) -> int:
     if compose.exists():
         _sync_compose(compose, ports, check, failed)
     if check and failed:
-        print(f"\nDRIFT in: {', '.join(failed)} — run `python3 scripts/apply_ports.py`")
+        print(f"\nDRIFT in: {', '.join(failed)} — run `python3 scripts/checks/apply_ports.py`")
         return 1
     if not check:
         print("ports in sync.")

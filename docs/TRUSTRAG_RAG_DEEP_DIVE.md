@@ -255,7 +255,7 @@ The embedding cache separates `query` and `document` modes. This is necessary be
 
 The normal API runtime depends on `onnxruntime` and `transformers`, not the optional PyTorch export dependencies. The optional `local-models` extra provides sentence-transformers, PyTorch-related export dependencies, ONNX, and ONNX Script.
 
-`scripts/bootstrap.py` calls `ensure_onnx_models.py`. That script checks for model artifacts, exports missing models, and verifies the embedding graph’s output dimension and L2 norm. `export_bge_onnx.py` compares ONNX output against the PyTorch wrapper. Startup reports a missing embedding artifact because dense retrieval depends on it. A missing reranker can degrade ranking to the previous order.
+`scripts/setup/bootstrap.py` calls `ensure_onnx_models.py`. That script checks for model artifacts, exports missing models, and verifies the embedding graph’s output dimension and L2 norm. `export_bge_onnx.py` compares ONNX output against the PyTorch wrapper. Startup reports a missing embedding artifact because dense retrieval depends on it. A missing reranker can degrade ranking to the previous order.
 
 **Useful explanation:** “ONNX lets the app run its repeated local text-understanding steps efficiently; it does not generate the final answer. The answer is still written by the configured LLM.”
 

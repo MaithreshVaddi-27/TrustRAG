@@ -66,8 +66,12 @@ border-color: var(--rule);             /* the only structural device */
 background: var(--color-accent);        /* #f7f7f6 — off-white plate */
 color: var(--color-on-accent);          /* #080808 — obsidian text */
 
+/* The attention — one focal action per view */
+background: var(--color-attention);     /* #d41514 — Laser Crimson */
+color: var(--color-on-attention);       /* #f7f7f6 */
+
 /* The alarm */
-color: var(--color-crimson-500);        /* #d41514 */
+color: var(--color-alarm-text);         /* #f26a68 */
 outline: 2px solid var(--focus-ring);   /* #f04a48 */
 ```
 

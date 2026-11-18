@@ -72,7 +72,7 @@ services:
       - ./apps/api/tests:/app/tests:ro
       # Bind-mount host-exported ONNX weights (P1-16): a named volume would
       # shadow `docker cp` content. Export once on the host:
-      #   python scripts/bootstrap.py   # writes apps/api/.model_cache/*.onnx
+      #   python scripts/setup/bootstrap.py   # writes apps/api/.model_cache/*.onnx
       # (torch/sentence-transformers are NOT in the image by design — the
       # single ONNX engine is the only embedding path.)
       - ./apps/api/.model_cache:/app/.model_cache:ro

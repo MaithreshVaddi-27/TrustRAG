@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { ArrowRight, Brain } from 'lucide-react'
 import AppLayout from '@/layouts/AppLayout'
-import PageHeader from '@/components/ui/PageHeader'
+import PageHeader from '@/components/common/PageHeader'
 import AsyncState from '@/components/app/AsyncState'
 import ExplainerList from '@/components/app/ExplainerList'
 import { ClaimInspector } from '@/components/workbench/ClaimInspector'
@@ -57,7 +57,7 @@ export default function ClaimsPage() {
           }
           description="Atomic assertions decomposed from model answers, each verified against its cited evidence by natural language inference."
           actions={
-            <Link to="/playground" className="lx-btn lx-btn--primary">
+            <Link to="/playground" className="lx-btn lx-btn--attention">
               Run new query
               <ArrowRight size={13} strokeWidth={1.5} aria-hidden="true" />
             </Link>
@@ -74,7 +74,7 @@ export default function ClaimsPage() {
           emptyTitle="No claims extracted yet"
           emptyBody="Run an analysis in the playground to decompose a response into atomic propositions and verify each one."
           emptyAction={
-            <Link to="/playground" className="lx-btn lx-btn--primary">
+            <Link to="/playground" className="lx-btn lx-btn--attention">
               Decompose claims in the playground
               <ArrowRight size={13} strokeWidth={1.5} aria-hidden="true" />
             </Link>

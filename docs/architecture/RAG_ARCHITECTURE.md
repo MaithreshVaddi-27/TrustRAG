@@ -356,9 +356,9 @@ conservative id-size classifier picks a compact CRAFT prompt and the two-step
 verification path for ≤3B models, and the full prompt plus the fused
 decompose+verify call for larger ones. Cloud providers are never downgraded.
 
-Consumed by `scripts/start_local_llm.sh` (llama.cpp on :8080) and
-`scripts/start_mlx_server.sh` (MLX on :8090, Apple Silicon). Both read the
-canonical ports from `config/ports.yaml` — `scripts/apply_ports.py` propagates
+Consumed by `scripts/servers/start_local_llm.sh` (llama.cpp on :8080) and
+`scripts/servers/start_mlx_server.sh` (MLX on :8090, Apple Silicon). Both read the
+canonical ports from `config/ports.yaml` — `scripts/checks/apply_ports.py` propagates
 any change to every consumer, so the registry cannot drift.
 
 **Local development** — all services run natively; `ports.yaml` ensures consistent port assignments across team members.

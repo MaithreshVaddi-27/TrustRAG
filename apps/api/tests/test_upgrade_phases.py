@@ -253,14 +253,15 @@ def test_export_fn_accepts_model_name():
     import sys
     from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+    scripts_dir = Path(__file__).resolve().parents[3] / "scripts" / "setup"
+    sys.path.insert(0, str(scripts_dir))
     try:
         import export_bge_onnx
 
         params = inspect.signature(export_bge_onnx.export_bge_to_onnx).parameters
         assert "model_name" in params
     finally:
-        sys.path.remove(str(Path(__file__).resolve().parents[3] / "scripts"))
+        sys.path.remove(str(scripts_dir))
 
 
 def test_parse_document_rejects_eicar():
@@ -367,11 +368,12 @@ def test_ports_registry_includes_mlx():
     import sys
     from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+    scripts_dir = Path(__file__).resolve().parents[3] / "scripts" / "checks"
+    sys.path.insert(0, str(scripts_dir))
     try:
         from apply_ports import load_ports
 
         ports = load_ports()
         assert ports["mlx"] == 8080
     finally:
-        sys.path.remove(str(Path(__file__).resolve().parents[3] / "scripts"))
+        sys.path.remove(str(scripts_dir))

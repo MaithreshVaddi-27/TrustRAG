@@ -1,6 +1,6 @@
 # TRUSTRAG — Evaluation Methodology
 
-> Last measured: 2026-09-19 (snapshot below) · Runner: `scripts/run_baseline_eval.py` ·
+> Last measured: 2026-09-19 (snapshot below) · Runner: `scripts/eval/run_baseline_eval.py` ·
 > Dataset: `apps/api/tests/eval/datasets/baseline_v1.jsonl` (frozen) ·
 > Raw run JSON: `docs/evaluation/results/` (gitignored, local only).
 
@@ -97,7 +97,7 @@ To change the set, add `baseline_v2.jsonl` and keep v1 for comparability.
 ### Run procedure (live numbers)
 
 1. Ingest the 6 fixture files as documents into a fresh knowledge base.
-2. Run: `python scripts/run_baseline_eval.py --email ... --password ... \
+2. Run: `python scripts/eval/run_baseline_eval.py --email ... --password ... \
    --kb-id <KB_ID> --post-experiment`
    (7s gap between queries respects the 10-analyses/min rate limit;
    ~27 queries take ~5–10 min plus LLM time.)

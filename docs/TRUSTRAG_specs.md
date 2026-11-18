@@ -1173,7 +1173,7 @@ Integrity logic off/on
 ```
 
 No fabricated results. Live baseline runs use the frozen 25-query set
-(`apps/api/tests/eval/datasets/baseline_v1.jsonl`) via `scripts/run_baseline_eval.py`;
+(`apps/api/tests/eval/datasets/baseline_v1.jsonl`) via `scripts/eval/run_baseline_eval.py`;
 results land in `docs/evaluation/results/` and the methodology snapshot table.
 Runs are PENDING operator execution — no measured rows may be invented.
 

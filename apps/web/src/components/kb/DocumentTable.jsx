@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Upload, Loader2, Check, AlertTriangle, FileText } from 'lucide-react'
-import ConfirmDialog from '@/components/ConfirmDialog'
+import ConfirmDialog from '@/components/kb/ConfirmDialog'
 import DocumentRow from './DocumentRow'
 import { kbService } from '@/services/api'
 

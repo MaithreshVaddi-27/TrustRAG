@@ -9,14 +9,14 @@ The exported graph MUST contain transformer + CLS pooling + L2 normalization:
 app/core/onnx_embeddings.py assumes `session.run(...)` returns ready-to-use
 L2-normalized vectors (see "Already L2 normalized by the model"). A bare
 backbone export (e.g. via optimum) yields raw hidden states and silently
-corrupts every vector — scripts/ensure_onnx_models.py verifies this.
+corrupts every vector — scripts/setup/ensure_onnx_models.py verifies this.
 
 Usage:
-    python scripts/export_bge_onnx.py
+    python scripts/setup/export_bge_onnx.py
     # Outputs to apps/api/.model_cache/bge-small-en-v1.5.onnx (canonical;
     # the backend reads exactly this path — see app/core/model_registry.py)
 
-    python scripts/bootstrap.py   # preferred: checks cache first, exports only if missing
+    python scripts/setup/bootstrap.py   # preferred: checks cache first, exports only if missing
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from pathlib import Path
 
 # ─── Config ─────────────────────────────────────────────────────────────────────
 DEFAULT_MODEL_NAME = "BAAI/bge-small-en-v1.5"
-_API_ROOT = Path(__file__).resolve().parents[1] / "apps" / "api"
+_API_ROOT = Path(__file__).resolve().parents[2] / "apps" / "api"
 OUTPUT_PATH = _API_ROOT / ".model_cache" / "bge-small-en-v1.5.onnx"
 MAX_SEQ_LENGTH = 512
 BATCH_SIZE = 1  # Dynamic batch axis

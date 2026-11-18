@@ -5,10 +5,10 @@ TRUSTRAG — Ensure ONNX models are present in cache.
 Works both inside Docker and on host. Single script for all environments.
 
 Usage:
-  python scripts/ensure_onnx_models.py              # check + export if missing
-  python scripts/ensure_onnx_models.py --verify     # only verify, don't export
-  python scripts/ensure_onnx_models.py --force      # re-export even if present
-  python scripts/ensure_onnx_models.py --docker     # Docker mode (bakes into image)
+  python scripts/setup/ensure_onnx_models.py              # check + export if missing
+  python scripts/setup/ensure_onnx_models.py --verify     # only verify, don't export
+  python scripts/setup/ensure_onnx_models.py --force      # re-export even if present
+  python scripts/setup/ensure_onnx_models.py --docker     # Docker mode (bakes into image)
 
 Env vars:
   MODEL_CACHE_DIR           # override weights dir (default: apps/api/.model_cache)
@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 # Add apps/api to path for imports
-_API_ROOT = Path(__file__).resolve().parents[1] / "apps" / "api"
+_API_ROOT = Path(__file__).resolve().parents[2] / "apps" / "api"
 if str(_API_ROOT) not in sys.path:
     sys.path.insert(0, str(_API_ROOT))
 
@@ -125,7 +125,7 @@ def _file_sha256(path: Path) -> str:
 def _export_embedding_onnx(cfg, emb_path: Path) -> bool:
     """Export embedding model to ONNX (canonical .model_cache path).
 
-    Delegates to scripts/export_bge_onnx.py, whose graph contains transformer
+    Delegates to scripts/setup/export_bge_onnx.py, whose graph contains transformer
     + CLS pooling + L2 normalization — exactly what app/core/onnx_embeddings.py
     expects. A bare backbone export does NOT satisfy this contract.
     """

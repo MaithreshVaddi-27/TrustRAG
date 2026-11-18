@@ -2,7 +2,7 @@
 # One-shot E2E manual verification: boots API+web, exercises the live flow,
 # and prints PASS/FAIL per step. Servers are torn down at the end.
 set -u
-cd "$(dirname "$0")/.."   # repo root
+cd "$(dirname "$0")/../.."   # repo root
 
 PASS=0; FAIL=0
 ok()  { echo "  PASS: $1"; PASS=$((PASS+1)); }

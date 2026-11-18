@@ -8,7 +8,7 @@
 - Promote 3B+ models (SmolLM3-3B, Llama-3.2-3B, gemma-3-4b) to interactive
   serving only after 16 GB+ host validation.
 - ~~Add per-source benchmark harness with measured latency/memory numbers.~~
-  **Done (B4)** — `apps/api/scripts/eval_accuracy.py` measures six model
+  **Done (B4)** — `apps/api/scripts/eval/eval_accuracy.py` measures six model
   configurations against a 33-probe ground truth (27 answerable + 6
   unanswerable), reporting answer accuracy, abstention accuracy, Recall@K,
   Precision@K, MRR and mean latency. Results in
@@ -16,7 +16,7 @@
   §4.10.
 - Deeper browser QA of upload/indexing/chat/citations flows (requires
   authenticated seeded data). Partly covered by
-  `apps/api/scripts/validate_integration.py`, which walks the whole flow
+  `apps/api/scripts/verify/validate_integration.py`, which walks the whole flow
   through the frontend's own proxy — but it does not drive the browser UI.
 - Performance profiling of hybrid retrieval on large knowledge bases.
 
@@ -30,7 +30,7 @@
 - **The mypy backlog — 30 errors in 10 modules.** The ratchet ceiling is
   committed at 30, so CI fails only on *new* errors; the backlog itself is
   untouched. Each fix can ratchet the ceiling down by one. The ratchet
-  script is `scripts/typecheck_ratchet.sh` and the ceiling is
+  script is `scripts/checks/typecheck_ratchet.sh` and the ceiling is
   `apps/api/mypy-error-ceiling.txt`.
 - **Embedding int8 recall is still unmeasured.** Only the fp32 export exists
   locally (`apps/api/.model_cache/bge-small-en-v1.5.onnx`, 134 MB). Producing

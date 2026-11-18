@@ -4,11 +4,12 @@
  * base.css and this file exposes no light-mode values.
  *
  * The system is deliberately near-monochrome. Chrome Silver carries the
- * interface; Laser Crimson is an alarm, not a decoration. Crimson appears only
- * where a claim has failed, a verification seal is stamped, or focus lands.
+ * interface; Laser Crimson is a signal, not a decoration. Crimson appears only
+ * where a claim has failed, a verification seal is stamped, a focal action
+ * needs the eye, or focus lands.
  *
  * Source of truth for raw values. Mirrored in tailwind.config.js — change
- * both, or use the `palette.sync` check in scripts/check-token-drift.mjs.
+ * both, or run the token-drift check in scripts/checks/.
  * ─────────────────────────────────────────────────────────────────────────── */
 
 :root {
@@ -68,10 +69,58 @@
   --verdict-contradicted: var(--color-crimson-400);
   --verdict-unknown: var(--color-silver-500);
 
-  /* ── Accent ───────────────────────────────────────────────────────────────
-   * Chrome Silver is the accent. Dark themes read more deliberate when the
-   * primary action is off-white with dark text and the colour is reserved. */
+  /* ── Accent — the neutral primary action ─────────────────────────────────
+   * Chrome Silver. The default primary button is a silver plate: off-white
+   * fill, obsidian text, deliberate and quiet. This is the colour every
+   * ordinary action in the product wears.
+   *
+   *   obsidian-950 on silver-050   17.8:1  (AAA normal text)
+   *   obsidian-950 on silver-100   15.7:1  (the hover state)
+   */
   --color-accent: var(--color-silver-050);
-  --color-accent-hover: #ffffff;
+  --color-accent-hover: var(--color-silver-100);
   --color-on-accent: var(--color-obsidian-950);
+  --color-on-accent-hover: var(--color-obsidian-950);
+
+  /* ── Attention — the gather ───────────────────────────────────────────────
+   * Laser Crimson, used once per view: the single action the eye should
+   * land on. Sign in. Get started. The one thing the page is about.
+   *
+   *   silver-050 on crimson-500      4.9:1  (AA normal text)
+   *   obsidian-950 on crimson-400    5.4:1  (the hover state)
+   *
+   * Attention is not a general button colour and never decoration. If a
+   * view has two equally crimson actions, it has no attention — and the
+   * crimson has stopped meaning anything. Everything else in the product
+   * stays silver, so the one crimson surface is the one that counts.
+   */
+  --color-attention: var(--color-crimson-500);
+  --color-attention-hover: var(--color-crimson-400);
+  --color-on-attention: var(--color-silver-050);
+  --color-on-attention-hover: var(--color-obsidian-950);
+  /* The quiet register of the same intent: crimson text and hairline, no
+   * fill. For a second placement of the same focal action. */
+  --color-attention-quiet: var(--color-crimson-400);
+
+  /* ── Alarm — the destructive one ─────────────────────────────────────────
+   * Deeper than attention on purpose. A destructive confirmation must not
+   * read as the same gesture as the entry action: attention gathers the
+   * eye, alarm warns it away.
+   *
+   *   silver-050 on crimson-600      7.0:1  (AAA normal text)
+   */
+  --color-alarm: var(--color-crimson-600);
+  --color-alarm-hover: var(--color-crimson-700);
+  --color-on-alarm: var(--color-silver-050);
+  /* Error text on a dark surface. */
+  --color-alarm-text: var(--color-crimson-300);
+  /* The wash and the hairline an alarm surface is built from. */
+  --color-alarm-wash: rgba(212, 21, 20, 0.09);
+  --color-alarm-rule: rgba(212, 21, 20, 0.34);
+
+  /* The focus ring on a crimson fill cannot be crimson (1.2:1 against the
+   * button it outlines). A filled crimson button opts out of the global
+   * crimson focus token and uses silver instead; everything else keeps
+   * crimson. */
+  --focus-ring-on-accent: var(--color-silver-050);
 }

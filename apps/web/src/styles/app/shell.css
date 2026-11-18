@@ -236,9 +236,9 @@
 }
 
 .lx-icon-btn--alarm:hover {
-  color: var(--color-crimson-300);
-  border-color: rgba(212, 21, 20, 0.35);
-  background-color: rgba(212, 21, 20, 0.07);
+  color: var(--color-alarm-text);
+  border-color: var(--color-alarm-rule);
+  background-color: var(--color-alarm-wash);
 }
 
 /* ── User chip ──────────────────────────────────────────────────────────────

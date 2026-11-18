@@ -231,7 +231,7 @@ class ModelConfig:
     @property
     def embedding_cache_dir(self) -> str:
         # MODEL_CACHE_DIR wins so the backend reads the same directory that
-        # scripts/bootstrap.py writes (see ensure_onnx_models._cache_dir).
+        # scripts/setup/bootstrap.py writes (see ensure_onnx_models._cache_dir).
         env_dir = os.environ.get("MODEL_CACHE_DIR")
         if env_dir and env_dir.strip():
             return env_dir

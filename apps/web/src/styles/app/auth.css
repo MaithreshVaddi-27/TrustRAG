@@ -201,9 +201,9 @@
 
 /* An error is the one thing on this page that earns crimson. */
 .lx-alert--error {
-  background-color: rgba(212, 21, 20, 0.09);
-  border: 1px solid rgba(212, 21, 20, 0.34);
-  color: var(--color-crimson-300);
+  background-color: var(--color-alarm-wash);
+  border: 1px solid var(--color-alarm-rule);
+  color: var(--color-alarm-text);
 }
 
 .lx-alert--info {

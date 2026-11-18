@@ -15,7 +15,7 @@ export function RunButton({ loading, elapsedSec, disabled, onClick }) {
       onClick={onClick}
       disabled={disabled || loading || !onClick}
       id="run-analysis"
-      className="lx-btn lx-btn--primary w-full justify-center"
+      className="lx-btn lx-btn--attention w-full justify-center"
       aria-busy={loading}
       aria-label={
         loading ? `Executing the pipeline, ${elapsedSec} seconds elapsed` : 'Run analysis'

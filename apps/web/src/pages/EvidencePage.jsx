@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { ArrowRight, FileSearch, Database, Hash, GitMerge } from 'lucide-react'
 import AppLayout from '@/layouts/AppLayout'
-import PageHeader from '@/components/ui/PageHeader'
+import PageHeader from '@/components/common/PageHeader'
 import AsyncState from '@/components/app/AsyncState'
 import ExplainerList from '@/components/app/ExplainerList'
 import { EvidenceViewer } from '@/components/workbench/EvidenceViewer'
@@ -56,7 +56,7 @@ export default function EvidencePage() {
           }
           description="Retrieved evidence chunks across every analysis, with provenance, score breakdown and integrity audit."
           actions={
-            <Link to="/playground" className="lx-btn lx-btn--primary">
+            <Link to="/playground" className="lx-btn lx-btn--attention">
               Run new query
               <ArrowRight size={13} strokeWidth={1.5} aria-hidden="true" />
             </Link>
@@ -73,7 +73,7 @@ export default function EvidencePage() {
           emptyTitle="No evidence segments retrieved yet"
           emptyBody="Run an analysis in the playground to ingest, score and persist evidence chunks into the audit vault with verified token spans."
           emptyAction={
-            <Link to="/playground" className="lx-btn lx-btn--primary">
+            <Link to="/playground" className="lx-btn lx-btn--attention">
               Launch a playground analysis
               <ArrowRight size={13} strokeWidth={1.5} aria-hidden="true" />
             </Link>

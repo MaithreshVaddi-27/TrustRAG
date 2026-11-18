@@ -101,7 +101,7 @@ apps/web/src/styles/
 | `--rule` | `rgba(205, 203, 202, 0.16)` | Default card and panel border |
 | `--rule-strong` | `rgba(205, 203, 202, 0.28)` | Raised or hovered border |
 
-### Verdict and accent aliases
+### Verdict, accent and alarm aliases
 
 | Token | Resolves to | Use |
 |---|---|---|
@@ -110,8 +110,18 @@ apps/web/src/styles/
 | `--verdict-contradicted` | `--color-crimson-400` | |
 | `--verdict-unknown` | `--color-silver-500` | |
 | `--color-accent` | `--color-silver-050` | The primary action's plate |
-| `--color-accent-hover` | `#ffffff` | |
+| `--color-accent-hover` | `--color-silver-100` | |
 | `--color-on-accent` | `--color-obsidian-950` | The primary action's text |
+| `--color-attention` | `--color-crimson-500` | The focal action's crimson fill |
+| `--color-attention-hover` | `--color-crimson-400` | |
+| `--color-on-attention` | `--color-silver-050` | Text on the crimson fill |
+| `--color-attention-quiet` | `--color-crimson-400` | Crimson text and hairline, no fill |
+| `--color-alarm` | `--color-crimson-600` | A destructive action's fill |
+| `--color-alarm-hover` | `--color-crimson-700` | |
+| `--color-on-alarm` | `--color-silver-050` | Text on the alarm fill |
+| `--color-alarm-text` | `--color-crimson-300` | Error text |
+| `--color-alarm-wash` | `rgba(212, 21, 20, 0.09)` | An error surface's background |
+| `--color-alarm-rule` | `rgba(212, 21, 20, 0.34)` | An error surface's hairline |
 
 ---
 

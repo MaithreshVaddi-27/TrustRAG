@@ -41,17 +41,16 @@ jobs:
         run: pip install "ruff==0.16.9" mypy
 
       - name: Lint
-        run: ruff check app/ tests/
+        run: ruff check app/ tests/ scripts/
 
       - name: Format check
-        run: ruff format --check app/ tests/
+        run: ruff format --check app/ tests/ scripts/
 
       - name: Lint the repository-root scripts
-        # The root `scripts/` package (bootstrap, port registry, ONNX export,
-        # eval harnesses) was never linted: the job's working directory is
-        # `apps/api`, so it only ever saw `app/` and `tests/`. The shared
-        # rules now live in the repository-root `ruff.toml`, so the same
-        # standard applies to both.
+        # The root `scripts/` package (setup, servers, checks, eval) was
+        # never linted: the job's working directory is `apps/api`, so it only
+        # ever saw `app/` and `tests/`. The shared rules now live in the
+        # repository-root `ruff.toml`, so the same standard applies to both.
         working-directory: ./
         run: ruff check scripts/ && ruff format --check scripts/
 
@@ -59,10 +58,10 @@ jobs:
         # N-94: mypy was configured but never run, so its 48-error backlog was
         # invisible. Fails only on NEW errors (ceiling ratchets down over time).
         working-directory: ./
-        run: ./scripts/typecheck_ratchet.sh
+        run: ./scripts/checks/typecheck_ratchet.sh
 
       - name: Port registry drift check
-        run: python3 ../../scripts/apply_ports.py --check
+        run: python3 ../../scripts/checks/apply_ports.py --check
 
   backend-test:
     name: Backend — Tests
@@ -237,7 +236,7 @@ jobs:
       - name: Backend import + config smoke
         run: |
           python -c "import app.rag.ingestion.parser, app.rag.ingestion.chunker, app.rag.ingestion.chunking_strategies, app.rag.ingestion.pipeline, app.llm.model_registry, app.core.system.hardware, app.core.system.memory; print('imports OK')"
-          python ../../scripts/apply_ports.py --check
+          python ../../scripts/checks/apply_ports.py --check
         env:
           JWT_SECRET: test-secret-minimum-32-chars-long-padding
           GEMINI_API_KEY: test-key

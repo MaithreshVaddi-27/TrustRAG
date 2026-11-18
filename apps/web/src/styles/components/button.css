@@ -1,7 +1,13 @@
 /* ── TrustRAG · Buttons ──────────────────────────────────────────────────────
- * One accent: Chrome Silver. On a dark theme the primary action is an
- * off-white surface with dark text, which reads more deliberate than a
- * coloured button and lets Laser Crimson keep its meaning as an alarm.
+ * One button, four registers. The default is a silver plate; crimson is
+ * reserved for the two moments that earn it — the focal action of a view
+ * and a destructive action.
+ *
+ *   --primary          silver plate. The ordinary action.
+ *   --attention        crimson fill. One per view: Sign in, Get started.
+ *   --attention-quiet  crimson hairline and text. A second placement of the
+ *                      same focal action, at a lower volume.
+ *   --alarm            crimson, deeper. This destroys something.
  *
  * Every interactive target is at least 44×44.
  * ─────────────────────────────────────────────────────────────────────────── */
@@ -34,7 +40,7 @@
   cursor: not-allowed;
 }
 
-/* Primary — off-white plate, obsidian text. */
+/* Primary — silver plate, obsidian text. The ordinary action. */
 .lx-btn--primary {
   background-color: var(--color-accent);
   color: var(--color-on-accent);
@@ -42,6 +48,43 @@
 
 .lx-btn--primary:hover:not(:disabled) {
   background-color: var(--color-accent-hover);
+  color: var(--color-on-accent-hover);
+}
+
+/* Attention — Laser Crimson. The one focal action on a view: Sign in,
+ * Get started, Start auditing. If a view has two of these, it has no
+ * attention at all, and the crimson has stopped meaning anything. */
+.lx-btn--attention {
+  background-color: var(--color-attention);
+  color: var(--color-on-attention);
+}
+
+.lx-btn--attention:hover:not(:disabled) {
+  background-color: var(--color-attention-hover);
+  color: var(--color-on-attention-hover);
+}
+
+/* A crimson fill cannot carry a crimson focus ring (1.2:1). The ring on a
+ * filled crimson button is silver, which reads against both the button and
+ * the obsidian page around it. */
+.lx-btn--attention:focus-visible,
+.lx-btn--alarm:focus-visible {
+  outline: 2px solid var(--focus-ring-on-accent);
+  outline-offset: 2px;
+}
+
+/* Attention, quiet — the same intent without a fill. Crimson text on a
+ * crimson hairline. Used where a focal action needs a second placement
+ * that must not compete with the filled one. */
+.lx-btn--attention-quiet {
+  border-color: var(--color-alarm-rule);
+  color: var(--color-attention-quiet);
+}
+
+.lx-btn--attention-quiet:hover:not(:disabled) {
+  border-color: var(--color-attention);
+  background-color: var(--color-alarm-wash);
+  color: var(--color-crimson-300);
 }
 
 /* Secondary — hairline outline, silver text. */
@@ -66,14 +109,15 @@
   color: var(--color-silver-050);
 }
 
-/* Alarm — a destructive action. The only filled crimson button. */
+/* Alarm — a destructive action. Deeper crimson than attention on purpose:
+ * attention gathers the eye, alarm warns it away. */
 .lx-btn--alarm {
-  background-color: var(--color-crimson-500);
-  color: var(--color-silver-050);
+  background-color: var(--color-alarm);
+  color: var(--color-on-alarm);
 }
 
 .lx-btn--alarm:hover:not(:disabled) {
-  background-color: var(--color-crimson-600);
+  background-color: var(--color-alarm-hover);
 }
 
 .lx-btn--large {

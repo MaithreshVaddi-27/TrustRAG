@@ -40,8 +40,8 @@ API_DIR = REPO / "apps" / "api"
 WEB_DIR = REPO / "apps" / "web"
 
 # The shared benchmark account helper lives in this package.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from scripts.bench_auth import register_or_login  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from scripts.bench.bench_auth import register_or_login  # noqa: E402
 
 # `api.get('/api/v1/knowledge-bases/${kbId}/documents')` and
 # `api.get(`/api/v1/analyses/${id}/claims`)` — the template literal and the

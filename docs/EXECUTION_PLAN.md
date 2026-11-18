@@ -23,7 +23,7 @@ Status legend: ✅ done · 🔶 open · ⏳ scheduled.
    `ANALYSIS_SERVICE_TEST_GAPS.md`, 17-test plan).
 2. O-2: Redis-backed rate limiting for multi-worker prod (`SLOWAPI_STORAGE_URI`).
 3. U-1: per-host-class `ONNX_*` / Ollama env profiles (lean ≤8 GB values in the audit doc).
-4. U-4: nightly live E2E in CI (`scripts/e2e_manual_verify.sh` + Mongo service).
+4. U-4: nightly live E2E in CI (`scripts/checks/e2e_manual_verify.sh` + Mongo service).
 
 ## Phase 3 — LATER (premium polish, only after Phase 2 is green) ⏳
 

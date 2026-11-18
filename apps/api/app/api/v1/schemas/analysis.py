@@ -90,7 +90,7 @@ class AnalysisCreate(BaseModel):
             # instead of a bare "not enabled" rejection.
             start_hints = {
                 "ollama": "'ollama pull granite4.2:3b-q4_K_M' + 'ollama serve'",
-                "llama_cpp": "place a GGUF and run ./scripts/start_local_llm.sh",
+                "llama_cpp": "place a GGUF and run ./scripts/servers/start_local_llm.sh",
                 "mlx": "'pip install mlx-lm' then 'mlx_lm.server --model "
                 "mlx-community/Llama-3.2-1B-Instruct-4bit --port 8080' (Apple Silicon only)",
             }

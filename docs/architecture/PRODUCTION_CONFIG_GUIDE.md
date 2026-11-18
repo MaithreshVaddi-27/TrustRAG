@@ -198,7 +198,7 @@ one-shot rewriting task, not a reasoning one.
 
 **Where the numbers come from:** the 33-probe evaluation in
 [`../backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`](../backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md)
-(§4.10), reproducible with `apps/api/scripts/eval_accuracy.py`.
+(§4.10), reproducible with `apps/api/scripts/eval/eval_accuracy.py`.
 
 ### 3.3 Enabling the ONNX Cross-Encoder Reranker
 

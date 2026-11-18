@@ -1,7 +1,7 @@
 """
 TRUSTRAG — End-to-end accuracy evaluation.
 
-Runs the ground-truth probe set in `eval_set.py` against a live API and scores
+Runs the ground-truth probe set in `eval/eval_set.py` against a live API and scores
 the two halves of the product's promise:
 
 - **answer accuracy** — an answerable probe must be answered, and the answer
@@ -31,10 +31,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from scripts.bench_auth import register_or_login
-from scripts.eval_set import CORPUS, PROBES
+from scripts.bench.bench_auth import register_or_login
+from scripts.eval.eval_set import CORPUS, PROBES
 
 
 async def _seed_kb(client, base_url: str, token: str) -> str:

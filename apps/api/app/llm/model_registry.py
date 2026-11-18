@@ -320,7 +320,7 @@ def get_embedding_model() -> Embeddings:
     except ImportError as exc:
         raise ConfigurationError(
             "ONNX embedding stack missing (needs 'onnxruntime' + 'transformers'). "
-            "Run 'python scripts/bootstrap.py' from a venv with the base "
+            "Run 'python scripts/setup/bootstrap.py' from a venv with the base "
             "requirements installed: 'cd apps/api && pip install -e .'.",
             detail=str(exc)[:200],
         ) from exc
@@ -336,8 +336,8 @@ def get_embedding_model() -> Embeddings:
             f"ONNX embedding model not found in {cache_dir} "
             f"(looked for '{active_model.split('/')[-1]}.onnx' and legacy "
             "underscored variant). "
-            "Run 'python scripts/bootstrap.py' (or "
-            "'python scripts/ensure_onnx_models.py') to download/export it.",
+            "Run 'python scripts/setup/bootstrap.py' (or "
+            "'python scripts/setup/ensure_onnx_models.py') to download/export it.",
         )
 
     logger.info(
@@ -361,7 +361,7 @@ def get_embedding_model() -> Embeddings:
     except Exception as exc:
         raise ConfigurationError(
             f"Failed to load ONNX embedding model from {onnx_model_path}. "
-            "Re-run 'python scripts/bootstrap.py --force' to re-export it.",
+            "Re-run 'python scripts/setup/bootstrap.py --force' to re-export it.",
             detail=str(exc)[:300],
         ) from exc
     wrapped = ONNXBGEEmbeddingsWrapper(base_emb, model_name=f"onnx::{active_model}")
@@ -401,7 +401,7 @@ def get_reranker():  # type: ignore[return]
             logger.info("Initializing ONNX reranker", model=cfg.reranker_model)
 
             # Determine ONNX model path (canonical: reranker-<base>_int8.onnx,
-            # next to the embedding ONNX — see scripts/ensure_onnx_models.py).
+            # next to the embedding ONNX — see scripts/setup/ensure_onnx_models.py).
             # Anchored to api_base (not CWD) so repo-root and apps/api runs
             # share one cache.
             onnx_path = cfg.reranker_onnx_model_path
@@ -415,7 +415,7 @@ def get_reranker():  # type: ignore[return]
             if not Path(onnx_path).exists():
                 logger.warning(
                     "ONNX reranker weights missing, reranker disabled, using Hybrid RRF. "
-                    "Run 'python scripts/ensure_onnx_models.py' to export it.",
+                    "Run 'python scripts/setup/ensure_onnx_models.py' to export it.",
                 )
                 return None
 
@@ -444,7 +444,7 @@ def get_reranker():  # type: ignore[return]
     if cfg.reranker_use_onnx:
         logger.warning(
             "ONNX reranker unavailable and use_onnx=true: reranker disabled, using Hybrid RRF. "
-            "Run 'python scripts/ensure_onnx_models.py' to export it, or set "
+            "Run 'python scripts/setup/ensure_onnx_models.py' to export it, or set "
             "reranker.use_onnx=false to explicitly opt into the PyTorch CrossEncoder."
         )
         return None

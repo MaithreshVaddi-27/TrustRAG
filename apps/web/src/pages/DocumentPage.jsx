@@ -9,7 +9,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import AppLayout from '@/layouts/AppLayout'
-import PageHeader from '@/components/ui/PageHeader'
+import PageHeader from '@/components/common/PageHeader'
 import AsyncState from '@/components/app/AsyncState'
 import { kbService } from '@/services/api'
 import { copyToClipboard } from '@/lib/clipboard'

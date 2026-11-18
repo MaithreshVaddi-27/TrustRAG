@@ -183,7 +183,7 @@ export function Navbar({ isOnline, recheck, setIsMobileOpen }) {
           <button
             type="button"
             onClick={() => navigate('/playground')}
-            className="lx-btn lx-btn--primary lx-topbar__run"
+            className="lx-btn lx-btn--attention lx-topbar__run"
           >
             <Zap size={13} strokeWidth={1.5} aria-hidden="true" />
             <span className="lx-topbar__run-label">Run analysis</span>

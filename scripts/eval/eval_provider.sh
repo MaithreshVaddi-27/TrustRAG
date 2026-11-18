@@ -12,24 +12,24 @@
 # it answers, and runs the shared dataset.
 #
 # Usage:
-#   ./scripts/eval_provider.sh <provider> [model] --email X --password Y --kb-id Z
+#   ./scripts/eval/eval_provider.sh <provider> [model] --email X --password Y --kb-id Z
 #
 #   provider : ollama | llama_cpp | mlx | gemini
 #   model    : optional id override (defaults to models.yaml for that provider)
 #
 # Examples:
 #   # small local model (auto-picks models.yaml default, uses :8080)
-#   ./scripts/eval_provider.sh llama_cpp --email ops@example.com --password '...' --kb-id $ID
+#   ./scripts/eval/eval_provider.sh llama_cpp --email ops@example.com --password '...' --kb-id $ID
 #   # large local model on a different port
-#   ./scripts/eval_provider.sh mlx mlx-community/Llama-3.2-3B-Instruct-4bit --email ... --kb-id $ID
+#   ./scripts/eval/eval_provider.sh mlx mlx-community/Llama-3.2-3B-Instruct-4bit --email ... --kb-id $ID
 #   # cloud
-#   ./scripts/eval_provider.sh gemini --email ... --kb-id $ID
+#   ./scripts/eval/eval_provider.sh gemini --email ... --kb-id $ID
 #
 # Prereqs: API + MongoDB + Qdrant up, a KB holding tests/eval/fixtures/corpus/*,
 # and the provider already serving (start_local_llm.sh / start_mlx_server.sh).
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PY="$ROOT_DIR/apps/api/.venv/bin/python"
 
 if [ -z "${PY:-}" ] || [ ! -x "$PY" ]; then
@@ -92,8 +92,8 @@ if [ "$PROVIDER" != "gemini" ] && [ -n "$BASE_URL" ]; then
   else
     echo "WARNING: no server answering at $BASE_URL — start it first:" >&2
     case "$PROVIDER" in
-      mlx)        echo "  ./scripts/start_mlx_server.sh" >&2 ;;
-      llama_cpp)  echo "  ./scripts/start_local_llm.sh" >&2 ;;
+      mlx)        echo "  ./scripts/servers/start_mlx_server.sh" >&2 ;;
+      llama_cpp)  echo "  ./scripts/servers/start_local_llm.sh" >&2 ;;
       ollama)     echo "  ollama serve && ollama pull <model>" >&2 ;;
     esac
   fi
@@ -112,7 +112,7 @@ if [ -n "${EFFECTIVE_MODEL:-}" ]; then
   EXTRA_ARGS+=(--llm-model "$EFFECTIVE_MODEL")
 fi
 
-exec "$PY" "$ROOT_DIR/scripts/run_baseline_eval.py" \
+exec "$PY" "$ROOT_DIR/scripts/eval/run_baseline_eval.py" \
   --out-dir "$OUT_DIR" \
   --config-name "trustrag_baseline_${PROVIDER}" \
   --description "Frozen baseline (baseline_v1) on ${PROVIDER}: ${EFFECTIVE_MODEL:-server default}" \

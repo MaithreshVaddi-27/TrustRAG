@@ -286,13 +286,13 @@ async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 
     elif norm == "mlx":
         probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
         start_hint = (
-            "Start it with './scripts/start_mlx_server.sh' or "
+            "Start it with './scripts/servers/start_mlx_server.sh' or "
             "'mlx_lm.server --model <mlx-community/...-4bit> --port 8080' "
             "(Apple Silicon only; pip install mlx-lm)."
         )
     else:
         probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
-        start_hint = "Start it with './scripts/start_local_llm.sh' (llama-server on :9931)."
+        start_hint = "Start it with './scripts/servers/start_local_llm.sh' (llama-server on :9931)."
     last_exc: Exception | None = None
     for _ in range(max(1, PROBE_ATTEMPTS)):
         try:

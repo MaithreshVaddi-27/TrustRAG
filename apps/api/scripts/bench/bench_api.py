@@ -20,9 +20,9 @@ from typing import Any
 
 import httpx
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from scripts.bench_auth import register_or_login
+from scripts.bench.bench_auth import register_or_login
 
 
 def _pct(values: list[float], pct: float) -> float:

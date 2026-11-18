@@ -931,7 +931,7 @@ across every run.
 
 ### 4.13.3 Resilience (concurrency + failure injection)
 
-`scripts/validate_resilience.py` — each outage induced with a graceful
+`scripts/verify/validate_resilience.py` — each outage induced with a graceful
 SIGTERM and then repaired; nothing is deleted.
 
 | Phase | Result |
@@ -966,8 +966,8 @@ locally, job by job, against the live services.
 |---|---|---|
 | backend-lint | `ruff check app/ tests/` | **All checks passed** (was 8 errors) |
 | backend-lint | `ruff format --check app/ tests/` | **197 files already formatted** (was 3 to reformat) |
-| backend-lint | `scripts/typecheck_ratchet.sh` | **PASS: no new type errors** (30 errors, ceiling 30) |
-| backend-lint | `scripts/apply_ports.py --check` | **OK** |
+| backend-lint | `scripts/checks/typecheck_ratchet.sh` | **PASS: no new type errors** (30 errors, ceiling 30) |
+| backend-lint | `scripts/checks/apply_ports.py --check` | **OK** |
 | backend-test | `pytest tests/ -v --no-header` | **817 passed**, coverage **80.41 %** (gate 78 %) |
 | backend-config-validate | `models.yaml` schema + secret scan | **passed** |
 | frontend-lint | `npm run lint` | **clean** (`--max-warnings 0`) |
@@ -1077,7 +1077,7 @@ current tree first.
 | `docs/evaluation/RELIABILITY_PHASE1_ABSTENTION_AUDIT.md` | A thorough audit (9 findings) whose **Critical findings were verified fixed**: `VERIFICATION_UNAVAILABLE` exists so a verifier outage is never reported as "insufficient evidence" (`app/rag/verification/verdict.py`), the responsiveness guard and the rewrite guard are in place, and the B4 harness now measures answer accuracy and abstention accuracy separately. The rationale survives in the code and in `tests/test_reliability_phase1.py` (24 tests, still passing). |
 | `docs/evaluation/RELIABILITY_PHASE1_RESULTS_2026-11-06.md` | Results for the retired 27-query baseline. |
 | `docs/evaluation/PHASE0_FIXTURE_BASELINE_2026-11-05.md` | Fixture snapshot for that same retired baseline. |
-| `docs/evaluation/FULLSTACK_QA_AND_FIXES.md` | A 32-line QA snapshot — superseded by `scripts/validate_integration.py`, which repeats the check instead of recording it once. |
+| `docs/evaluation/FULLSTACK_QA_AND_FIXES.md` | A 32-line QA snapshot — superseded by `scripts/verify/validate_integration.py`, which repeats the check instead of recording it once. |
 | `docs/cleanup/PHASE_1_REPOSITORY_AUDIT.md` | Describes a 350-file repository; it is 504 files now. |
 | `docs/cleanup/PHASE_1_CLEANUP_REPORT.md` | A report of a past branch's CSS deletions. The files are long gone. |
 | `docs/cleanup/REMAINING_TECHNICAL_DEBT.md` | The debt it lists is largely resolved: lint clean, coverage gate green, N+1 removed, the rate limit enforced. |
@@ -1096,8 +1096,8 @@ directories went with them. **History is preserved in git** —
 
 | # | Defect | Consequence | Fix |
 |---|---|---|---|
-| 1 | `scripts/ensure_onnx_models.py` imported `app.core.config` — a module the B2.2 restructure deleted | The `ImportError` was swallowed by a fallback that returned a **hardcoded stub config**. An operator who changed the embedding model in `models.yaml` would have had the *wrong* model baked. | Import `app.config.get_model_config`. The fallback now only fires when the package genuinely is not importable. |
-| 2 | `scripts/ensure_onnx_models.py` imported `app.llm.onnx_reranker` — also deleted by the restructure | The reranker export **never ran**, and the `except ImportError` blamed the user's dependencies: *"Missing dependencies for reranker export: No module named 'app.llm.onnx_reranker'"*. | Import `app.rag.retrieval.onnx_reranker`, and import it **separately** from the third-party dependency so that our own missing module can no longer be reported as a missing dependency. |
+| 1 | `scripts/setup/ensure_onnx_models.py` imported `app.core.config` — a module the B2.2 restructure deleted | The `ImportError` was swallowed by a fallback that returned a **hardcoded stub config**. An operator who changed the embedding model in `models.yaml` would have had the *wrong* model baked. | Import `app.config.get_model_config`. The fallback now only fires when the package genuinely is not importable. |
+| 2 | `scripts/setup/ensure_onnx_models.py` imported `app.llm.onnx_reranker` — also deleted by the restructure | The reranker export **never ran**, and the `except ImportError` blamed the user's dependencies: *"Missing dependencies for reranker export: No module named 'app.llm.onnx_reranker'"*. | Import `app.rag.retrieval.onnx_reranker`, and import it **separately** from the third-party dependency so that our own missing module can no longer be reported as a missing dependency. |
 | 3 | The root `scripts/` package was **never linted** — CI's lint job runs from `apps/api` and only sees `app/` and `tests/` | Six real violations sat in the scripts a new user runs first (`bootstrap.py`, `apply_ports.py`, `ensure_onnx_models.py`, `run_baseline_eval.py`), and they were formatted with ruff's *defaults* locally because no config was found above the repository root. | The rules moved to a repository-root `ruff.toml`; `apps/api/pyproject.toml` now extends it; CI lints `scripts/` too. |
 
 **Dead code removed** — each verified against the import graph, not by eye:
@@ -1164,7 +1164,7 @@ on a fresh account it would have failed with a 404 on `POST /analyses` —
 a harness that cannot run on a clean machine is a harness nobody runs.
 
 **Fixed:** it now uses the shared benchmark account
-(`scripts/bench_auth.register_or_login`, the same helper the accuracy and
+(`scripts/bench/bench_auth.register_or_login`, the same helper the accuracy and
 resilience harnesses use — it logs in when the account exists and registers a
 fresh one when it does not), and it creates a throwaway knowledge base when
 the account has none.
@@ -1180,7 +1180,7 @@ resilience harness still passes all four phases (concurrency 4/4, rate limit
 
 ### REFINEMENT-006 — The frontend↔backend contract is checked by a script, not by hand  *(B6, NEW)*
 
-**Change:** `apps/api/scripts/validate_integration.py` (new).
+**Change:** `apps/api/scripts/verify/validate_integration.py` (new).
 
 The frontend calls the API by string literal. **Nothing** in either codebase
 cross-checked those literals against the backend's routes: a renamed or
@@ -1223,8 +1223,8 @@ a broken API as healthy.
 
 ### REFINEMENT-005 — The ground-truth evaluation set, grown to something that can decide  *(B4)*
 
-**Change:** `apps/api/scripts/eval_set.py` (new), `apps/api/scripts/eval_accuracy.py`
-(new), `apps/api/scripts/bench_auth.py` (new).
+**Change:** `apps/api/scripts/eval/eval_set.py` (new), `apps/api/scripts/eval/eval_accuracy.py`
+(new), `apps/api/scripts/bench/bench_auth.py` (new).
 
 The first evaluation corpus was **one document with five probes**. It could not
 support an accuracy claim: it was too small to separate a real change from
@@ -2195,4 +2195,4 @@ egress is opt-in via the `cloud` extra.
 | BLK-5 | The default model answers 37 % of answerable questions | The product's usefulness is bounded by the 1B model, not by the pipeline | **Measured in B4 (DECISION-006): `qwen3:1.7b` answers 93 % with perfect abstention at 4.3× the latency. The default is a deployment choice and is left to the operator.** |
 | BLK-6 | The host was not idle during the B4/B5 runs (load 5.5–17.0) | Short-endpoint p50 is noise-dominated across runs | The `min` column is the load-robust signal (§4.11); every conclusion in this log rests on differences far larger than the observed noise |
 | BLK-7 | 30 mypy errors remain in `app/` | The type-check job can only fail on *new* errors, not on old ones | The ratchet ceiling is corrected to 30 (DECISION-011) and this branch introduces **zero** new ones. The backlog is a separate piece of work: each error is a candidate for a ratchet-down commit. |
-| BLK-8 | The frontend↔backend contract was never checked by anything | A renamed endpoint would surface as a broken page, not a failed build | **Closed in B6** by `scripts/validate_integration.py`, which extracts every frontend API call from the source and compares it against the live OpenAPI document (25 calls, 39 routes, 0 missing). |
+| BLK-8 | The frontend↔backend contract was never checked by anything | A renamed endpoint would surface as a broken page, not a failed build | **Closed in B6** by `scripts/verify/validate_integration.py`, which extracts every frontend API call from the source and compares it against the live OpenAPI document (25 calls, 39 routes, 0 missing). |

@@ -121,7 +121,7 @@
  * fit on one line. The primary action stays in the hero, so the nav keeps
  * the brand and the menu. */
 @media (max-width: 520px) {
-  .lx-nav__actions .lx-btn--primary {
+  .lx-nav__actions .lx-btn--attention-quiet {
     display: none;
   }
 }

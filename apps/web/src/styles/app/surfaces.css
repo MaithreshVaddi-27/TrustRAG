@@ -380,9 +380,9 @@
 }
 
 .lx-message--alarm {
-  border-color: rgba(212, 21, 20, 0.34);
-  background-color: rgba(212, 21, 20, 0.08);
-  color: var(--color-crimson-300);
+  border-color: var(--color-alarm-rule);
+  background-color: var(--color-alarm-wash);
+  color: var(--color-alarm-text);
 }
 
 .lx-message__icon {

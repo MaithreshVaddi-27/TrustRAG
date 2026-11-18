@@ -11,7 +11,7 @@ from ipaddress import ip_address
 from pathlib import Path
 from urllib.parse import urlsplit
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 PROFILE_PATH = ROOT / "apps" / "api" / "config" / "evaluation" / "local-providers.yaml"
 
 
@@ -29,7 +29,8 @@ def load_samples(results_path: Path) -> tuple[dict, list[dict]]:
         if not isinstance(sample, dict) or not required <= sample.keys():
             raise ValueError(
                 "Baseline result lacks a complete evaluation_sample; rerun "
-                "scripts/run_baseline_eval.py to capture actual answers and retrieved contexts."
+                "scripts/eval/run_baseline_eval.py to capture actual answers "
+                "and retrieved contexts."
             )
         samples.append({"query_id": row.get("query_id", "unknown"), **sample})
     return results, samples
@@ -71,7 +72,7 @@ def main() -> int:
     parser.add_argument(
         "--baseline-result",
         required=True,
-        help="JSON artifact produced by scripts/run_baseline_eval.py",
+        help="JSON artifact produced by scripts/eval/run_baseline_eval.py",
     )
     parser.add_argument("--out", required=True, help="Output JSON path")
     parser.add_argument("--base-url", help="Override the local OpenAI-compatible judge URL")

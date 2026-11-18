@@ -3,9 +3,9 @@
 # was invisible. This runs mypy and fails only when the error count EXCEEDS the
 # committed ceiling — the ceiling ratchets down as errors are fixed.
 #
-# Usage: scripts/typecheck_ratchet.sh [ceiling]
+# Usage: scripts/checks/typecheck_ratchet.sh [ceiling]
 set -uo pipefail
-cd "$(dirname "$0")/../apps/api"
+cd "$(dirname "$0")/../../apps/api"
 
 CEILING_FILE="mypy-error-ceiling.txt"
 if [ $# -ge 1 ]; then

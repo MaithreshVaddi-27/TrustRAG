@@ -81,7 +81,7 @@ cloud = [
 local-models = [
     "sentence-transformers>=3.0.0",
     "langchain-huggingface>=0.1.0",
-    # One-time ONNX export (scripts/bootstrap.py / ensure_onnx_models.py /
+    # One-time ONNX export (scripts/setup/bootstrap.py / ensure_onnx_models.py /
     # export_bge_onnx.py). Runtime stays torch-free via onnxruntime (main
     # dependencies); `onnx` + `onnxscript` are only needed to run
     # torch.onnx.export + checker.

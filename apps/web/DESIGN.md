@@ -34,7 +34,7 @@ signal, not a decoration.
 
 ### Where crimson is allowed
 
-Crimson marks exactly four things. Used anywhere else it stops meaning
+Crimson marks exactly five things. Used anywhere else it stops meaning
 anything.
 
 1. A caught contradiction — the verdict, its record edge, its seal.
@@ -42,6 +42,37 @@ anything.
    active scenario, the TrustRAG column in the comparison matrix.
 3. A live status — the engine dot, the "unrecoverable" outcome.
 4. Keyboard focus.
+5. The focal action of a view — one per surface: **Sign in**, **Create
+   account**, **Get started**. Two crimson actions on one screen means there
+   is no attention at all.
+
+Crimson also carries the **alarm** register: failures and destructive
+actions. Same hue, different depth — a destructive confirmation never reads
+as an entry point.
+
+| Register | Fill | Use |
+|---|---|---|
+| `--color-attention` | `crimson-500` | The focal action's filled button |
+| `--color-attention-quiet` | `crimson-400` text + hairline | A second placement of the same action |
+| `--color-alarm` | `crimson-600` | A destructive action's filled button |
+| `--color-alarm-text` | `crimson-300` | Error text on a dark surface |
+
+### Buttons
+
+The default button is a **silver plate** (`--color-accent`), not a coloured
+one. Crimson is entered only through the two registers above:
+
+| Class | Treatment | Use |
+|---|---|---|
+| `.lx-btn--primary` | Silver plate, obsidian text | The ordinary action — the default |
+| `.lx-btn--attention` | Crimson fill | The focal action of a view |
+| `.lx-btn--attention-quiet` | Crimson hairline + text | A second placement of the focal action |
+| `.lx-btn--secondary` | Hairline outline, silver text | Everything else |
+| `.lx-btn--quiet` | Text only | Tertiary, inline |
+| `.lx-btn--alarm` | Deep crimson fill | A destructive action |
+
+A filled crimson button carries a **silver** focus ring (a crimson ring on a
+crimson fill is 1.2:1). Every other focusable element keeps the crimson ring.
 
 ### Verdict family
 
@@ -176,30 +207,38 @@ src/styles/
 ├── tokens/
 │   ├── index.css          ← the token layer, imported FIRST
 │   ├── color.css          ← Obsidian / Chrome Silver / Laser Crimson
+│   │                        + the accent, attention and alarm aliases
 │   ├── typography.css     ← families, scale, weights, measures
 │   ├── spacing.css        ← 4px grid, section rhythm, gutters
 │   ├── radius.css         ← control / card / panel / large
 │   ├── elevation.css      ← surfaces, the one shadow, the focus ring
-│   ├── motion.css         ← durations, easing, springs
-│   └── compat.css         ← legacy names → new palette (temporary)
-├── base.css               ← element defaults, browser surfaces, preferences
+│   └── motion.css         ← durations, easing, springs
+├── animations.css         ← the global keyframes
+├── materials.css          ← browser surfaces nobody designed
+├── landing.css            ← the landing-page scope
+├── loaders.css            ← the loading states
+├── base.css               ← element defaults, preferences
 ├── utilities.css          ← the small shared vocabulary
-├── legacy-components.css  ← classes the app surfaces still use
-├── app/
-│   ├── shell.css          ← the application shell
-│   └── auth.css           ← authentication surfaces
-└── components/            ← one stylesheet per component family
-    ├── button.css  nav.css  section.css  hero.css  capabilities.css
-    ├── ledger.css  pipeline.css  matrix.css  benchmarks.css  footer.css
+├── components/            ← one stylesheet per component family
+│   ├── index.css          ← the family index
+│   ├── button.css  nav.css  section.css  hero.css  capabilities.css
+│   ├── ledger.css  pipeline.css  matrix.css  benchmarks.css  footer.css
+└── app/                   ← the application shell
+    ├── shell.css          ← navbar, sidebar, drawer, chrome
+    ├── auth.css           ← authentication surfaces
+    ├── surfaces.css       ← cards, panels, messages, the workbench
+    ├── layers.css         ← stacking and scroll layers
+    └── markdown.css       ← the rendered-answer typography
 ```
 
 **Import order matters.** Tokens come first, so every `var(--…)` resolves.
 Tailwind's layers come last, so utility classes win on a tie — the
 convention the rest of the codebase already assumes.
 
-`compat.css` exists only while the application surfaces are still on the
-old token names. It re-points every legacy name at a token defined
-elsewhere; it holds no raw values. Delete it when the migration completes.
+The rule that keeps the folder structure professional: **a raw colour value
+lives in `tokens/color.css` and nowhere else.** A component stylesheet may
+only reference a token. That is what makes "change the alarm shade" a
+one-line change instead of a search across fifteen files.
 
 ---
 
@@ -207,7 +246,7 @@ elsewhere; it holds no raw values. Delete it when the migration completes.
 
 | Class | Purpose |
 |---|---|
-| `.lx-btn` + `--primary` / `--secondary` / `--quiet` | The one button |
+| `.lx-btn` + `--primary` / `--attention` / `--secondary` / `--quiet` | The one button |
 | `.lx-panel` | The one translucent surface (used sparingly) |
 | `.lx-surface` | A flat surface with a hairline |
 | `.lx-display` … `.lx-micro` | The type scale |

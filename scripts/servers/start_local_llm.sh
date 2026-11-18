@@ -5,14 +5,14 @@
 # Models are loaded on-demand when selected from UI.
 #
 # Usage:
-#   ./scripts/start_local_llm.sh [--max N] [--port PORT]
+#   ./scripts/servers/start_local_llm.sh [--max N] [--port PORT]
 #   --max N : maximum concurrent loaded models (default: RAM-aware — 1 on
 #             ≤8 GB hosts, 2 on ≤16 GB, 4 above; an explicit --max always wins)
 #   --port PORT : port to serve on (default: ports.yaml `llamacpp`, currently 9931)
 #   Default: serves all cached GGUF models from HuggingFace cache.
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 API_DIR="$ROOT_DIR/apps/api"
 PY="$API_DIR/.venv/bin/python"
 if [ ! -x "$PY" ] && [ -x "$API_DIR/.venv/Scripts/python.exe" ]; then
@@ -41,7 +41,7 @@ read -ra LAUNCH_FLAGS <<< "$_LAUNCH_FLAGS_LINE"
 # Parse args.
 MAX_MODELS=""
 # Port comes from config/ports.yaml (single source of truth) so
-# `python3 scripts/apply_ports.py` propagates it everywhere. Overridable.
+# `python3 scripts/checks/apply_ports.py` propagates it everywhere. Overridable.
 PORT=$(cd "$API_DIR" && "$PY" -c "
 from app.core.config.settings import get_ports
 print(get_ports().get('llamacpp', 9931))

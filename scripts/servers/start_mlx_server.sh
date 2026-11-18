@@ -7,14 +7,14 @@
 # check_mlx_status() scans a range and aggregates what it finds.
 #
 # Usage:
-#   ./scripts/start_mlx_server.sh [MODEL] [--port PORT] [--dry-run] [--check]
+#   ./scripts/servers/start_mlx_server.sh [MODEL] [--port PORT] [--dry-run] [--check]
 #   MODEL : HF repo id (default: models.yaml `llm.model_mlx`)
 #   --port PORT  : override (default: ports.yaml `mlx`, currently 8080)
 #   --dry-run     : print the command, don't start
 #   --check       : report status of the MLX port range, then exit
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 API_DIR="$ROOT_DIR/apps/api"
 PY="$API_DIR/.venv/bin/python"
 if [ ! -x "$PY" ]; then
@@ -70,7 +70,7 @@ fi
 # Architecture gate: mlx_lm only runs on Apple Silicon.
 if [ "$(uname -s)" != "Darwin" ] || [ "$(uname -m)" != "arm64" ]; then
   echo "ERROR: MLX requires Apple Silicon (macOS arm64); this host is $(uname -s)/$(uname -m)." >&2
-  echo "  The 'llama_cpp' provider is the portable fallback: ./scripts/start_local_llm.sh" >&2
+  echo "  The 'llama_cpp' provider is the portable fallback: ./scripts/servers/start_local_llm.sh" >&2
   exit 1
 fi
 
