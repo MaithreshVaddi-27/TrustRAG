@@ -4,21 +4,21 @@ import { clsx } from 'clsx'
 /**
  * TrustRAG — brand mark.
  *
- * Redrawn flat for the Obsidian / Chrome Silver / Laser Crimson system.
- * The previous mark was a gradient-glass shield with a glow; both are
- * excluded by the design direction, so this is linework only.
+ * A verification seal: a rounded-square boundary (the claim's evidence
+ * perimeter) with a checkmark formed by two converging evidence streams
+ * meeting at the verdict point. The checkmark's tail breaks past the seal's
+ * bottom edge — a verified claim escapes its evidence boundary instead of
+ * being contained by it. Crimson appears exactly once, at the verdict.
  *
- * The mark is an architectural "T" — a bar and a stem — with the calibrated
- * truth core at its foot in Laser Crimson. Crimson appears exactly once, at
- * the point where a claim is verified, and nowhere else in the mark.
+ * Redrawn for the Obsidian / Chrome Silver / Laser Crimson system.
+ * Flat linework only — no gradients, filters, or live text.
  */
 
 export const TrustRagEmblem = memo(function TrustRagEmblem({
   size = 32,
   className = '',
   framed = true,
-  // `glow` is accepted by existing call sites and deliberately ignored: the
-  // mark is flat linework now and emits no glow.
+  // `glow` is accepted by existing call sites and deliberately ignored.
   title,
 }) {
   const stroke = '#cdcbcA' // Chrome Silver
@@ -49,16 +49,30 @@ export const TrustRagEmblem = memo(function TrustRagEmblem({
         />
       )}
 
-      {/* The T — the bar and the stem. */}
-      <path
-        d="M9 10.5h14M16 10.5v13"
+      {/* The seal — the claim's evidence boundary. */}
+      <rect
+        x="4"
+        y="4"
+        width="24"
+        height="24"
+        rx="7"
         stroke={stroke}
-        strokeWidth="2"
-        strokeLinecap="square"
+        strokeWidth="1.5"
+        fill="none"
       />
 
-      {/* Calibrated truth core — the verified point. */}
-      <path d="M16 23.5l2.4 2.4L16 28.3l-2.4-2.4z" fill={core} />
+      {/* The checkmark — two converging evidence streams meeting at the verdict. */}
+      <path
+        d="M 10 16.5 L 14 20.5 L 22 11.5"
+        stroke={core}
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+
+      {/* Verdict point — the single crimson dot. */}
+      <circle cx="22" cy="11.5" r="1.2" fill={core} />
     </svg>
   )
 })
