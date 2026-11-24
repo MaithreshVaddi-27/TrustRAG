@@ -11,7 +11,7 @@
 
 **Production audit: 73/100 — launchable with caveats.**
 
-The product starts from a clean checkout with documented commands, the local inference path now completes an end-to-end verified analysis, and the frontend renders the new brand mark without console errors. The embedding warm-up failure (F1) is fixed and verified live. Remaining caveats are a document-upload status mismatch, 28 pre-existing backend test failures, and unpushed commits.
+The product starts from a clean checkout with documented commands, the local inference path now completes an end-to-end verified analysis, and the frontend renders the new brand mark without console errors. The embedding warm-up failure (F1) is fixed and verified live. F3 was a false alarm from invoking pytest at the repo root instead of `apps/api` — the documented command passes 827 tests. Remaining caveats are the re-ingest gap after a failed document (F2), a few small API/UI refinements, and unpushed commits.
 
 Strengths, briefly: strict dark design system with one accent; claim-level NLI verification with evidence integrity; authentication on sensitive routes; no tracked secrets or runtime state; complete brand kit and usage docs.
 
@@ -80,7 +80,7 @@ One minor UI observation: the document list badge still read `Indexing` after in
 | 4 | Generation & NLI verification | Green | One SUPPORTED claim, one VERIFIED evidence, full trace |
 | 5 | Reliability scoring | Amber | `verdict_status` and `reliability_score` null on a completed run |
 | 6 | Frontend & brand | Green | Brave DevTools snapshot/screenshot, 0 console errors, lint clean, 82/82 tests |
-| 7 | Quality gates | Amber | `ruff check .` clean; backend suite on this host (Python 3.11.15) 28 failed / 797 passed / 4 skipped, identical at unmodified HEAD; `docs/README.md` records 813 passed + 4 skipped in CI, so local/CI drift needs reconciling |
+| 7 | Quality gates | Green | `ruff check .` clean; `cd apps/api && .venv/bin/python -m pytest -q` → 827 passed / 4 skipped, coverage 80.19% (gate 78%). Running pytest from the repo root drops `asyncio_mode = auto` and produces 28 false failures — use the documented command |
 | 8 | Docs & handover | Green | README, DESIGN.md, dark-luxury docs, backend changelog, brand README and board all present |
 | 9 | Security & operations | Amber | Auth on sensitive routes, secrets ignored, CI workflows present; remote CI status and rollback drill not checked |
 
@@ -93,8 +93,8 @@ One minor UI observation: the document list badge still read `Indexing` after in
 | ID | Priority | Area | Finding | Suggested action |
 |---|---|---|---|---|
 | F1 | P1 | Retrieval / ops | First embedding load in a fresh API process can fail with a retrieval outage, even with weights present | Make warm-up synchronous with a bounded retry, surface the underlying exception, and mark ingestion as failed rather than silently continuing |
-| F2 | P1 | Ingestion API | `POST /documents` returned 201 while ingestion had failed; re-uploading the same file returned 409 | Return an ingestion status the client can poll, and allow re-ingest of a document whose ingestion failed |
-| F3 | P1 | Quality gate | 28 backend tests fail on this checkout; identical count at unmodified HEAD, so pre-existing | Triage by module (verification, upgrade phases, hardware) and fix or quarantine with documented reasons |
+| F2 | P1 | Ingestion API | Async upload returns 201 with `ingestion_status` in `DocResponse` (already pollable); a document left in `failed` state blocks re-upload of the same content hash with 409 | Allow re-ingest when the existing document's status is `failed`, and keep the UI badge in sync (I5) |
+| F3 | P1 | Quality gate | RESOLVED — not a code defect. Root-level pytest invocation ignores `asyncio_mode = auto`, producing 28 false async failures | Always run `cd apps/api && .venv/bin/python -m pytest -q`; 827 pass, 4 skipped |
 | F4 | P2 | Git hygiene | `b7f49b3` is not pushed | Push when the owner is ready |
 
 ### Update
