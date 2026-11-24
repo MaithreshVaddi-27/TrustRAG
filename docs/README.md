@@ -61,6 +61,7 @@ docs/
 - [**Performance Guide (`PERFORMANCE-GUIDE.md`)](PERFORMANCE-GUIDE.md): free efficiency changes (config-only speed/RAM wins) plus MLX local inference on Apple Silicon.
 - [**Onboarding & Troubleshooting (`ONBOARDING-TROUBLESHOOTING.md`)](ONBOARDING-TROUBLESHOOTING.md): per-OS setup guide (macOS / Linux / Windows), failure table, live verification backlog.
 - [**Service-Layer Test Gaps (`ANALYSIS_SERVICE_TEST_GAPS.md`)**](ANALYSIS_SERVICE_TEST_GAPS.md): the measured gaps in `app/services/**` — the SSE pub/sub, the user-level claim/evidence vault, the auth service and the knowledge-base snapshots — with concrete test-case recipes.
+- [**Project Status & Deep Audit (`PROJECT_STATUS_AND_AUDIT.md`)**](PROJECT_STATUS_AND_AUDIT.md): live runtime and inference verification, phase-by-phase status, and the prioritized improve/update/refine/refactor backlog.
 
 ### 2. Backend Engineering
 
