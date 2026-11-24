@@ -110,16 +110,16 @@ One minor UI observation: the document list badge still read `Indexing` after in
 | ID | Priority | Area | Finding | Suggested action |
 |---|---|---|---|---|
 | R1 | P2 | Error reporting | `ConfigurationError.detail` is capped at 300 chars and not exposed by the API | Add a correlation id or a safe debug field so warm-up failures are diagnosable |
-| R2 | P3 | Landing content | `recall@K 0.963` is a static figure in the UI | Keep, but document provenance next to the number or link the methodology from it |
+| R2 | P3 | Landing content | RESOLVED — already implemented. `hero.js` carries the 33-probe provenance in `note.text` and links `docs/evaluation/methodology.md` | No change needed; verified the linked file exists |
 | R3 | P3 | API surface | `/api/v1/models/providers` requires auth, so anonymous health checks cannot see inference readiness | Add an unauthenticated readiness summary that exposes only provider status, not model details |
 
 ### Refactor
 
 | ID | Priority | Area | Finding | Suggested action |
 |---|---|---|---|---|
-| C1 | P3 | Memory utilities | `check_and_enforce_memory_guard` is documented in the backend changelog as having no production caller | Decide explicitly: wire it in or remove it with its tests |
-| C2 | P3 | Tailwind naming | Legacy `cyan-400` classes still appear in `traceEvents.js`; they map to silver in `tailwind.config.js` | Replace with `silver-400` for naming consistency (no visual change) |
-| C3 | P3 | Design docs | `docs/design/*.svg` concept boards still show the older "T" mark | Label them as historical or archive them; the canonical system is `docs/design/dark-luxury/` |
+| C1 | P3 | Memory utilities | RESOLVED — removed the uncalled `check_and_enforce_memory_guard` and its test assertions. `trim_memory` remains wired into the coordinator, ingestion pipeline and ops endpoint |
+| C2 | P3 | Tailwind naming | RESOLVED — six `text-cyan-400` classes in `traceEvents.js` replaced with `text-silver-400`; the alias made this a no-visual-change rename |
+| C3 | P3 | Design docs | RESOLVED — `docs/design/README.md` labels the SVG boards as historical concept work and points to the canonical system and brand kit |
 
 ### Improve
 

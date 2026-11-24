@@ -15,11 +15,7 @@ from app.core.system.hardware import (
     get_optimal_torch_device,
     get_system_memory_info,
 )
-from app.core.system.memory import (
-    check_and_enforce_memory_guard,
-    get_memory_usage_mb,
-    trim_memory,
-)
+from app.core.system.memory import get_memory_usage_mb, trim_memory
 
 
 def test_get_optimal_torch_device():
@@ -246,11 +242,6 @@ def test_memory_utilities():
 
     # Ensure trim_memory executes without raising exceptions
     trim_memory()
-
-    # Test guard check
-    guard = check_and_enforce_memory_guard(max_rss_mb=100000.0)
-    assert "rss_mb" in guard
-    assert guard["status"] == "healthy"
 
 
 def test_ingest_embed_batch_size_follows_tier():
