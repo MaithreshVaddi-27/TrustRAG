@@ -461,7 +461,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p apps/api/.model_cache
-          docker compose up -d qdrant api
+          if ! docker compose up -d qdrant api; then
+            echo "compose failed to start; qdrant state and logs:"
+            docker compose ps -a
+            docker compose logs --tail=120 qdrant
+            docker compose down
+            exit 1
+          fi
           for i in $(seq 1 90); do
             if curl -sf http://localhost:8000/api/v1/health/ready > /dev/null 2>&1; then
               echo "api ready after ${i}s"
