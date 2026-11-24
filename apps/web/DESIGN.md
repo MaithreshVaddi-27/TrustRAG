@@ -301,7 +301,7 @@ Silver ring (the corpus). The single Laser Crimson point sits at the centre of t
 half — support is the overlap; everything outside it is unsupported. Flat linework, one
 accent, drawn from the same palette as the interface.
 
-- Master: `brand/final-symbol.svg` · usage board: `brand/brand-board.png` · docs: `brand/README.md`
+- Master: `brand/trustrag-symbol.svg` · usage board: `brand/brand-board.png` · docs: `brand/README.md`
 - Rendered in the app by `src/components/common/TrustRagLogo.jsx` (`TrustRagEmblem`)
 - Web/app icons: `public/icons/`, wired through `index.html` and `public/manifest.json`
 

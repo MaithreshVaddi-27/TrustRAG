@@ -12,7 +12,7 @@ Obsidian substrate, Chrome Silver as the voice, and Laser Crimson exactly once �
 
 | File | Use |
 |---|---|
-| `final-symbol.svg` | Master symbol (256×256 viewBox, transparent) |
+| `trustrag-symbol.svg` | Master symbol (256×256 viewBox, transparent) |
 | `lockup-horizontal.svg` | Symbol + wordmark, horizontal |
 | `lockup-stacked.svg` | Symbol above wordmark, stacked |
 | `kit/` | Export set: black / white / mono variants, square, favicon, app icon, PNG + web/PWA icons |
