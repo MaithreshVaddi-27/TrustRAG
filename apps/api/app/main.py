@@ -69,6 +69,41 @@ from app.security.exceptions import (
 logger = get_logger(__name__)
 
 
+def _embedding_stack_is_cached(cfg) -> bool:
+    """Only go offline when weights and tokenizer files are both on disk.
+
+    ONNX weights live in the app cache; the tokenizer lives in the HF hub cache.
+    Forcing offline with only the weights makes AutoTokenizer's
+    local_files_only lookup fail, so the first query becomes a retrieval outage.
+    """
+    from pathlib import Path
+
+    try:
+        hub_snapshot = (
+            Path.home()
+            / ".cache"
+            / "huggingface"
+            / "hub"
+            / ("models--" + cfg.embedding_model.replace("/", "--"))
+        )
+        tokenizer_cached = any(
+            next(hub_snapshot.rglob(name), None) is not None
+            for name in ("tokenizer.json", "tokenizer_config.json", "vocab.txt")
+        )
+        if not tokenizer_cached:
+            return False
+
+        cache_dir = Path(cfg.embedding_cache_dir)
+        if not cache_dir.is_absolute():
+            cache_dir = Path(__file__).resolve().parent.parent / cache_dir
+        return cache_dir.exists() and any(
+            next(cache_dir.rglob(pattern), None) is not None
+            for pattern in ("*.safetensors", "*.bin", "*.pt", "*.onnx")
+        )
+    except Exception:
+        return False
+
+
 # ─── Lifespan ────────────────────────────────────────────────────────────────
 
 
@@ -102,8 +137,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         raise
 
     # Enforce strict offline operation for all auxiliary tools & telemetry.
-    # Offline model loading is only forced when the embedding weights are
-    # already cached — a fresh machine must be allowed to download them once.
+    # Offline loading is only forced when weights and tokenizer are both cached —
+    # a fresh machine must be allowed to download the tokenizer once.
     import os
 
     os.environ["LANGCHAIN_TRACING_V2"] = "false"
@@ -118,31 +153,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         os.environ.setdefault("OMP_NUM_THREADS", str(max(1, min(4, _cpu))))
     except Exception:
         os.environ.setdefault("OMP_NUM_THREADS", "4")
-    _model_cached = False
     try:
-        cfg_probe = get_model_config()
-        from pathlib import Path as _Path
-
-        hub_snapshot = (
-            _Path.home()
-            / ".cache"
-            / "huggingface"
-            / "hub"
-            / ("models--" + cfg_probe.embedding_model.replace("/", "--"))
-        )
-        cache_dir = _Path(cfg_probe.embedding_cache_dir)
-        # Real weight files only — a stray config.json must not count as cached.
-        # .onnx counts: the engine is always ONNX, whose weights live as
-        # <cache>/bge-small-en-v1.5.onnx (see scripts/setup/ensure_onnx_models.py).
-        # cache_dir may be relative (".model_cache") — anchor to apps/api.
-        if not cache_dir.is_absolute():
-            cache_dir = _Path(__file__).resolve().parent.parent / cache_dir
-        has_weights = hub_snapshot.exists() or (
-            cache_dir.exists()
-            and any(cache_dir.rglob(p) for p in ("*.safetensors", "*.bin", "*.pt", "*.onnx"))
-        )
-        if has_weights:
-            _model_cached = True
+        _model_cached = _embedding_stack_is_cached(get_model_config())
     except Exception:
         _model_cached = False
     if _model_cached:

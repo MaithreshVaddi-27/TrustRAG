@@ -11,7 +11,7 @@
 
 **Production audit: 73/100 — launchable with caveats.**
 
-The product starts from a clean checkout with documented commands, the local inference path now completes an end-to-end verified analysis, and the frontend renders the new brand mark without console errors. The caveats are a first-query embedding warm-up failure, a document-upload status mismatch, 28 pre-existing backend test failures, and one unpushed commit.
+The product starts from a clean checkout with documented commands, the local inference path now completes an end-to-end verified analysis, and the frontend renders the new brand mark without console errors. The embedding warm-up failure (F1) is fixed and verified live. Remaining caveats are a document-upload status mismatch, 28 pre-existing backend test failures, and unpushed commits.
 
 Strengths, briefly: strict dark design system with one accent; claim-level NLI verification with evidence integrity; authentication on sensitive routes; no tracked secrets or runtime state; complete brand kit and usage docs.
 
@@ -49,6 +49,23 @@ A real user was registered through the API, a knowledge base created, a small te
 - Landing page loaded at `http://localhost:5173/`; accessibility snapshot shows the main landmark, heading, navigation, both CTAs, and the verification-ledger section.
 - Screenshot confirmed the dark Obsidian theme, Chrome Silver type, Laser Crimson focal button, and the new Overlap mark in the navbar.
 - Console: 3 messages, all Vite/React info or debug; **0 errors**.
+
+### 2.4 Manual UI pass (Brave DevTools MCP)
+
+Driven in the real browser against the live stack:
+
+| Flow | Result |
+|---|---|
+| Sign out → register → redirect to dashboard | Passed; new account created through the form |
+| Sign out → sign in with that account | Passed; redirected to dashboard |
+| Knowledge bases → New collection | Passed; collection appeared with name and description |
+| Upload `.txt` into the collection | Passed; document appeared, detail page shows `Indexed`, SHA-256 hash and vector space |
+| Playground → run query | Passed; `100% TRUSTED`, 1 evidence chunk, 1 claim, grounded answer |
+| Answer / Evidence / Claims / Trace tabs | All rendered; trace shows retrieval 182 ms, generation 2110 ms, then claims verified |
+| Dashboard after the run | 1 KB, 1 document, 1 analysis, mean reliability 100%, 1 supported claim |
+| Console across every step | 0 errors |
+
+One minor UI observation: the document list badge still read `Indexing` after ingestion completed and only showed `Indexed` on the document detail page or after navigation. Added as I5.
 
 ---
 
@@ -112,6 +129,7 @@ A real user was registered through the API, a knowledge base created, a small te
 | I2 | P2 | CI verification | Workflows exist (`.github/workflows/ci.yml`, `security.yml`) but remote run status was not checked | Check the latest run on the branch before any release |
 | I3 | P3 | Responsive UI | Only desktop viewport was inspected in this audit | Add a 390 px / 320 px Playwright or Brave DevTools pass |
 | I4 | P3 | Load/resilience | k6 smoke and resilience scripts were not run in this audit | Run them against the live stack before a public launch |
+| I5 | P3 | Frontend | Document list badge stayed `Indexing` after ingestion finished; detail page was correct | Refresh the document row when ingestion reaches a terminal state |
 
 ---
 

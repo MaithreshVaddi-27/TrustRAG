@@ -14,6 +14,8 @@ DB + index sequence, and a clean shutdown.
 from __future__ import annotations
 
 import os
+from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -247,3 +249,53 @@ async def test_settings_failure_is_reported_as_first_run_trap():
     message = " ".join(str(c) for c in spy_error.call_args_list)
     assert "JWT_SECRET" in message
     assert ".env" in message
+
+
+@pytest.mark.asyncio
+async def test_offline_mode_waits_for_the_tokenizer_cache(tmp_path, monkeypatch):
+    """Weights without tokenizer files must not force transformers offline.
+
+    AutoTokenizer reads from the HF cache with local_files_only=True when
+    HF_HUB_OFFLINE=1. Enabling that with only ONNX weights cached makes the
+    first embedding load fail and turns the first query into a retrieval outage.
+    """
+    cache = tmp_path / "model_cache"
+    cache.mkdir()
+    (cache / "bge-small-en-v1.5.onnx").write_bytes(b"weights")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+
+    with ExitStack() as stack:
+        for p in _patches(cfg=_cfg(embedding_cache_dir=str(cache))):
+            stack.enter_context(p)
+        await _run_lifespan([])
+
+    assert os.environ.get("HF_HUB_OFFLINE") is None, "offline mode set without a cached tokenizer"
+    assert os.environ.get("TRANSFORMERS_OFFLINE") is None
+
+
+@pytest.mark.asyncio
+async def test_offline_mode_when_weights_and_tokenizer_are_cached(tmp_path, monkeypatch):
+    """A complete offline cache still enables strict offline operation."""
+    cache = tmp_path / "model_cache"
+    cache.mkdir()
+    (cache / "bge-small-en-v1.5.onnx").write_bytes(b"weights")
+    snapshot = (
+        tmp_path
+        / ".cache"
+        / "huggingface"
+        / "hub"
+        / "models--BAAI--bge-small-en-v1.5"
+        / "snapshots"
+        / "rev"
+    )
+    snapshot.mkdir(parents=True)
+    (snapshot / "tokenizer.json").write_text("{}")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+
+    with ExitStack() as stack:
+        for p in _patches(cfg=_cfg(embedding_cache_dir=str(cache))):
+            stack.enter_context(p)
+        await _run_lifespan([])
+
+    assert os.environ.get("HF_HUB_OFFLINE") == "1"
+    assert os.environ.get("TRANSFORMERS_OFFLINE") == "1"
