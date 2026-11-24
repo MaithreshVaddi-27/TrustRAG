@@ -104,7 +104,12 @@ def _fake_tokenizer():
 
 
 def _make_embedder(session, **kwargs):
-    """Construct ONNXBGEEmbeddings without touching onnxruntime or transformers."""
+    """Construct ONNXBGEEmbeddings without touching onnxruntime or transformers.
+
+    The micro-batch is pinned to 32 here: models.yaml uses 0 (auto), which
+    resolves from the host RAM tier. That made the exact-batch assertions below
+    pass on a laptop and fail on a larger CI runner without any code change.
+    """
     from app.config import get_model_config
     from app.llm import onnx_embeddings as mod
 
@@ -120,6 +125,7 @@ def _make_embedder(session, **kwargs):
                 # Default tokenizer resolves from models.yaml (embedding.model),
                 # never pinned here — a yaml edit propagates to tests too.
                 tokenizer_name=kwargs.pop("tokenizer_name", get_model_config().embedding_model),
+                micro_batch_size=kwargs.pop("micro_batch_size", 32),
                 **kwargs,
             )
     emb.tokenizer = tok  # our instrumented tokenizer

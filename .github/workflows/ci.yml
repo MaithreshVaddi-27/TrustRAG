@@ -236,7 +236,9 @@ jobs:
       - name: Backend import + config smoke
         run: |
           python -c "import app.rag.ingestion.parser, app.rag.ingestion.chunker, app.rag.ingestion.chunking_strategies, app.rag.ingestion.pipeline, app.llm.model_registry, app.core.system.hardware, app.core.system.memory; print('imports OK')"
-          python ../../scripts/checks/apply_ports.py --check
+          # No defaults.working-directory on this job, so these commands run at
+          # the repo root. ../../ would resolve above the checkout on Windows.
+          python scripts/checks/apply_ports.py --check
         env:
           JWT_SECRET: test-secret-minimum-32-chars-long-padding
           GEMINI_API_KEY: test-key
@@ -339,10 +341,11 @@ jobs:
           set -euo pipefail
           VER=v2.2.0
           BASE=https://github.com/grafana/k6/releases/download/${VER}
-          curl -sSfL -o k6.tar.gz "${BASE}/k6-${VER}-linux-amd64.tar.gz"
+          ARCHIVE="k6-${VER}-linux-amd64.tar.gz"
+          curl -sSfL -o "${ARCHIVE}" "${BASE}/${ARCHIVE}"
           curl -sSfL -o checksums.txt "${BASE}/k6-${VER}-checksums.txt"
-          grep "k6-${VER}-linux-amd64.tar.gz" checksums.txt | sha256sum --check --strict -
-          tar xz k6.tar.gz --strip-components=1
+          grep "${ARCHIVE}" checksums.txt | sha256sum --check --strict -
+          tar xz "${ARCHIVE}" --strip-components=1
           ./k6 version
 
       - name: Run k6 API load smoke

@@ -80,7 +80,7 @@ One minor UI observation: the document list badge still read `Indexing` after in
 | 4 | Generation & NLI verification | Green | One SUPPORTED claim, one VERIFIED evidence, full trace |
 | 5 | Reliability scoring | Amber | `verdict_status` and `reliability_score` null on a completed run |
 | 6 | Frontend & brand | Green | Brave DevTools snapshot/screenshot, 0 console errors, lint clean, 84/84 tests |
-| 7 | Quality gates | Green | `ruff check .` clean; `cd apps/api && .venv/bin/python -m pytest -q` → 827 passed / 4 skipped, coverage 80.19% (gate 78%). Running pytest from the repo root drops `asyncio_mode = auto` and produces 28 false failures — use the documented command |
+| 7 | Quality gates | Amber locally, red remotely | Local: `ruff check .` clean; `cd apps/api && .venv/bin/python -m pytest -q` → 829 passed / 4 skipped, coverage 80.32%. Remote CI run `45431899850` was red (see I2); fixes are in the working tree and need a fresh push to verify |
 | 8 | Docs & handover | Green | README, DESIGN.md, dark-luxury docs, backend changelog, brand README and board all present |
 | 9 | Security & operations | Amber | Auth on sensitive routes, secrets ignored, CI workflows present; remote CI status and rollback drill not checked |
 
@@ -126,8 +126,8 @@ One minor UI observation: the document list badge still read `Indexing` after in
 | ID | Priority | Area | Finding | Suggested action |
 |---|---|---|---|---|
 | I1 | P2 | E2E coverage | No CI-safe test covers register → KB → document → analysis with mocked embeddings | Add one deterministic smoke test to protect the launch-critical path |
-| I2 | P2 | CI verification | Workflows exist (`.github/workflows/ci.yml`, `security.yml`) but remote run status was not checked | Check the latest run on the branch before any release |
-| I3 | P3 | Responsive UI | Only desktop viewport was inspected in this audit | Add a 390 px / 320 px Playwright or Brave DevTools pass |
+| I2 | P2 | CI verification | Checked: latest run `45431899850` was red with four distinct causes — Windows `apply_ports.py` path, Docker `COPY` without destination, k6 checksum filename mismatch, and host-dependent ONNX batch-size assertions. All four fixed locally; re-run required after push | Push the branch, then confirm the new CI run is green before release |
+| I3 | P3 | Responsive UI | RESOLVED — Brave DevTools at 390 px and 320 px: landing and authenticated dashboard/playground render with no horizontal overflow and 0 console errors | No code change needed |
 | I4 | P3 | Load/resilience | k6 smoke and resilience scripts were not run in this audit | Run them against the live stack before a public launch |
 | I5 | P3 | Frontend | RESOLVED — the document list now polls only while a row is unsettled and stops once all rows are terminal. Live-verified: badge reached `Indexed` without navigation | Two component tests cover refresh and polling shutdown |
 
