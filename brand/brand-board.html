@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TrustRAG — Overlap · brand board</title>
+<style>
+  :root {
+    --bg:#080808; --card:#0c0c0d; --rule:rgba(205,203,202,0.16); --rule-strong:rgba(205,203,202,0.28);
+    --silver:#cdcbcA; --silver-2:#e9e9e7; --silver-4:#a3a2a0; --silver-5:#8a8987; --crimson:#d41514;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--silver-2);
+    font-family:system-ui,-apple-system,"SF Pro Text","Helvetica Neue",Arial,sans-serif; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1400px; margin:0 auto; padding:52px 48px 60px; }
+  .eyebrow { color:var(--crimson); font-size:12px; letter-spacing:.14em; text-transform:uppercase; margin:0 0 10px; }
+  h1 { font-family:Didot,"Bodoni 72","Playfair Display",Georgia,serif; font-weight:400; font-size:42px; line-height:1.05; margin:0 0 10px; }
+  .sub { color:var(--silver-4); font-size:15px; margin:0 0 26px; max-width:76ch; }
+  .tokens { display:flex; gap:18px; align-items:center; margin:0 0 32px; padding:12px 16px; border:1px solid var(--rule); border-radius:10px; background:var(--card); width:max-content; }
+  .tokens span { color:var(--silver-5); font-size:12px; }
+  .sw { width:14px; height:14px; border-radius:3px; display:inline-block; vertical-align:-2px; margin-right:6px; }
+  .grid { display:grid; grid-template-columns:1.1fr 1fr 1fr; gap:22px; }
+  .card { background:var(--card); border:1px solid var(--rule); border-radius:14px; padding:22px; }
+  .card h3 { font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--silver-5); margin:0 0 14px; font-weight:600; }
+  .stage { background:#080808; border:1px solid var(--rule); border-radius:10px; display:grid; place-items:center; padding:18px; }
+  .stage.tall { aspect-ratio:1/1; }
+  .stage.wide { aspect-ratio:720/256; }
+  .stage.square { aspect-ratio:1/1; }
+  .stage svg, .stage img { max-width:100%; max-height:100%; }
+  .stage.tall svg { width:78%; }
+  .lockups { grid-column:1 / -1; display:grid; grid-template-columns:1.6fr 1fr; gap:22px; }
+  .icons { grid-column:1 / -1; display:flex; gap:22px; align-items:center; flex-wrap:wrap; }
+  .icons figure { margin:0; text-align:center; }
+  .icons figcaption { color:var(--silver-5); font-size:11px; margin-top:8px; }
+  .icons img { display:block; margin:0 auto; }
+  .variants { grid-column:1 / -1; display:grid; grid-template-columns:repeat(3,1fr); gap:22px; }
+  .variants .stage { aspect-ratio:1/1; }
+  .rules { grid-column:1 / -1; display:grid; grid-template-columns:repeat(2,1fr); gap:10px 32px; margin-top:8px; }
+  .rules p { margin:0; color:var(--silver-4); font-size:13px; line-height:1.55; }
+  .rules b { color:var(--silver-2); font-weight:600; }
+  .foot { margin-top:26px; padding-top:18px; border-top:1px solid var(--rule); color:var(--silver-5); font-size:12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">TrustRAG · brand mark</p>
+  <h1>Overlap</h1>
+  <p class="sub">The claim is a solid Chrome Silver disc; the corpus is a Chrome Silver ring. Exactly half the
+     claim is grounded inside the evidence, and the single Laser Crimson point sits at the centre of that supported
+     half — support is the overlap; everything outside it is unsupported.</p>
+  <div class="tokens">
+    <span><i class="sw" style="background:#080808;border:1px solid var(--rule-strong)"></i>#080808 · obsidian ground</span>
+    <span><i class="sw" style="background:#cdcbcA"></i>#cdcbcA · chrome silver</span>
+    <span><i class="sw" style="background:#a3a2a0"></i>#a3a2a0 · corpus ring</span>
+    <span><i class="sw" style="background:#d41514"></i>#d41514 · laser crimson · once</span>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Master symbol</h3>
+      <div class="stage tall"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" role="img" aria-label="TrustRAG — Overlap">
+  <!-- TrustRAG · Overlap — master symbol.
+       The claim is a solid Chrome Silver disc; the corpus is a Chrome Silver ring.
+       Exactly half the claim is grounded inside the evidence. The single Laser
+       Crimson point sits at the centre of the supported half. Flat linework. -->
+  <title>TrustRAG — Overlap</title>
+  <circle cx="177" cy="128" r="54" fill="#cdcbcA"/>
+  <circle cx="101" cy="128" r="76" stroke="#a3a2a0" stroke-width="18"/>
+  <circle cx="154" cy="128" r="11" fill="#d41514"/>
+</svg></div>
+    </div>
+
+    <div class="card">
+      <h3>App icon / favicon tile</h3>
+      <div class="stage square"><img src="kit/trustrag-app-icon.svg" alt="TrustRAG app icon"></div>
+    </div>
+
+    <div class="card">
+      <h3>Favicon sizes</h3>
+      <div class="icons" style="gap:18px">
+        <figure><img src="kit/favicon-16.png" width="32" height="32" alt="16 px"><figcaption>16</figcaption></figure>
+        <figure><img src="kit/favicon-32.png" width="48" height="48" alt="32 px"><figcaption>32</figcaption></figure>
+        <figure><img src="kit/favicon-48.png" width="64" height="64" alt="48 px"><figcaption>48</figcaption></figure>
+        <figure><img src="kit/maskable-512.png" width="64" height="64" alt="maskable"><figcaption>maskable</figcaption></figure>
+      </div>
+    </div>
+
+    <div class="lockups">
+      <div class="card">
+        <h3>Horizontal lockup</h3>
+        <div class="stage wide"><img src="lockup-horizontal.svg" alt="horizontal lockup"></div>
+      </div>
+      <div class="card">
+        <h3>Stacked lockup</h3>
+        <div class="stage square"><img src="lockup-stacked.svg" alt="stacked lockup"></div>
+      </div>
+    </div>
+
+    <div class="variants">
+      <div class="card">
+        <h3>One-colour · black</h3>
+        <div class="stage"><img src="kit/trustrag-black.svg" alt="black variant"></div>
+      </div>
+      <div class="card">
+        <h3>One-colour · white</h3>
+        <div class="stage"><img src="kit/trustrag-white.svg" alt="white variant"></div>
+      </div>
+      <div class="card">
+        <h3>Mono · chrome silver</h3>
+        <div class="stage"><img src="kit/trustrag-mono-cdcbca.svg" alt="mono variant"></div>
+      </div>
+    </div>
+
+    <div class="rules">
+      <p><b>Clear space.</b> Keep a margin equal to the crimson verdict point's diameter (22 units) on every side.</p>
+      <p><b>Minimum size.</b> Mark 20 px; app-tile / favicon 16 px. Below 20 px use the tile, never the bare mark.</p>
+      <p><b>Colour.</b> Solid disc #cdcbcA, corpus ring #a3a2a0, one #d41514 verdict point. Nothing else carries colour.</p>
+      <p><b>Backgrounds.</b> Obsidian #080808 and graphite surfaces only. On light grounds use the black or mono variant.</p>
+      <p><b>Never.</b> Rotate, tilt, outline, add gradients/glows/shadows, recolour the disc or ring, move the crimson point.</p>
+      <p><b>Type.</b> Wordmark uses the system sans stack, weight 500, tracking −0.02em. Outline before embedding elsewhere.</p>
+    </div>
+  </div>
+
+  <p class="foot">Masters and variants: <code>brand/final-symbol.svg</code>, <code>brand/kit/</code>,
+     <code>brand/lockup-horizontal.svg</code>, <code>brand/lockup-stacked.svg</code>.
+     The in-app mark lives in <code>apps/web/src/components/common/TrustRagLogo.jsx</code>.</p>
+</div>
+</body>
+</html>

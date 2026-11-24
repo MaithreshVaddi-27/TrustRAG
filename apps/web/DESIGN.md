@@ -291,3 +291,20 @@ error checks, and Lighthouse.
 
 Current Lighthouse on the landing page: **Accessibility 100 · Best Practices
 100 · SEO 100 · Agentic Browsing 97.**
+
+---
+
+## 10. The brand mark — Overlap
+
+The mark is **Overlap**: a solid Chrome Silver disc (the claim) half-grounded in a Chrome
+Silver ring (the corpus). The single Laser Crimson point sits at the centre of the supported
+half — support is the overlap; everything outside it is unsupported. Flat linework, one
+accent, drawn from the same palette as the interface.
+
+- Master: `brand/final-symbol.svg` · usage board: `brand/brand-board.png` · docs: `brand/README.md`
+- Rendered in the app by `src/components/common/TrustRagLogo.jsx` (`TrustRagEmblem`)
+- Web/app icons: `public/icons/`, wired through `index.html` and `public/manifest.json`
+
+Rules: clear space = the crimson point's diameter; minimum 20 px for the mark, 16 px for the
+app-tile/favicon; obsidian/graphite grounds only (black or mono variant on light); never
+rotate, outline, recolour, or move the crimson point.
