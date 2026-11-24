@@ -676,6 +676,10 @@ claim/evidence vault and the auth service — are mapped in
 
 ## Deployment
 
+The rollback drill procedure is in
+[`docs/DEPLOYMENT_RUNBOOK.md`](docs/DEPLOYMENT_RUNBOOK.md). Run it against
+staging before a public release; do not treat an unexecuted rollback as a plan.
+
 | Component | Local dev | Docker Compose | Production |
 |-----------|-----------|----------------|------------|
 | **LLM** | Ollama / llama.cpp on host | Host via `host.docker.internal` | Self-hosted Ollama or Gemini |

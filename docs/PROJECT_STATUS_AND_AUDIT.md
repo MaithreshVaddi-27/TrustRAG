@@ -78,11 +78,11 @@ One minor UI observation: the document list badge still read `Indexing` after in
 | 2 | Ingestion & data | Green | Upload returns 201 with a pollable `ingestion_status`; failed documents can be re-ingested under the same ID (live-verified) |
 | 3 | Retrieval | Amber | First query hit an embedding warm-up outage; later run scored 0.849 and used self-heal batching |
 | 4 | Generation & NLI verification | Green | One SUPPORTED claim, one VERIFIED evidence, full trace |
-| 5 | Reliability scoring | Amber | `verdict_status` and `reliability_score` null on a completed run |
+| 5 | Reliability scoring | Green | Live completed run returned `reliability: {status: TRUSTED, score: 1.0}`; UI badge showed `100% TRUSTED` (see U1) |
 | 6 | Frontend & brand | Green | Brave DevTools snapshot/screenshot, 0 console errors, lint clean, 84/84 tests |
 | 7 | Quality gates | Amber locally, red remotely | Local: `ruff check .` clean; `cd apps/api && .venv/bin/python -m pytest -q` → 829 passed / 4 skipped, coverage 80.32%. Remote CI run `45431899850` was red (see I2); fixes are in the working tree and need a fresh push to verify |
 | 8 | Docs & handover | Green | README, DESIGN.md, dark-luxury docs, backend changelog, brand README and board all present |
-| 9 | Security & operations | Amber | Auth on sensitive routes, secrets ignored, CI workflows present; remote CI status and rollback drill not checked |
+| 9 | Security & operations | Amber | Auth on sensitive routes, secrets ignored; remote CI was red and its four causes are fixed but need a fresh push to verify. Rollback drill documented but not executed (U3) |
 
 ---
 
@@ -103,15 +103,15 @@ One minor UI observation: the document list badge still read `Indexing` after in
 |---|---|---|---|---|
 | U1 | P2 | Reliability contract | RESOLVED — not a defect. The published schema uses `reliability: {status, score}`; a live completed run returns `{status: "TRUSTED", score: 1.0}` and the UI badge reads `100% TRUSTED`. The probed `verdict_status` / `reliability_score` keys are internal pipeline state, not API fields | Document the published contract in the README so future audits probe the right keys |
 | U2 | P2 | README | RESOLVED — quickstart now states the tokenizer-cache gating, the first-run recovery step, and the published `reliability: {status, score}` contract | README updated in the install and API-reference sections |
-| U3 | P3 | Ops docs | No rollback drill was performed in this audit | Add a short rollback verification to the deployment runbook |
+| U3 | P3 | Ops docs | Runbook added at `docs/DEPLOYMENT_RUNBOOK.md` with preconditions, drill steps and cadence; the drill itself has not been executed | Execute against staging before the first public release |
 
 ### Refine
 
 | ID | Priority | Area | Finding | Suggested action |
 |---|---|---|---|---|
-| R1 | P2 | Error reporting | `ConfigurationError.detail` is capped at 300 chars and not exposed by the API | Add a correlation id or a safe debug field so warm-up failures are diagnosable |
+| R1 | P2 | Error reporting | RESOLVED — already implemented. `request_id_middleware` sets `X-Request-ID`, logs bind `request_id`, and `apps/web/src/lib/apiResponse.js` captures it into `Error.requestId`; the capped `detail` stays server-side by design | No change needed |
 | R2 | P3 | Landing content | RESOLVED — already implemented. `hero.js` carries the 33-probe provenance in `note.text` and links `docs/evaluation/methodology.md` | No change needed; verified the linked file exists |
-| R3 | P3 | API surface | `/api/v1/models/providers` requires auth, so anonymous health checks cannot see inference readiness | Add an unauthenticated readiness summary that exposes only provider status, not model details |
+| R3 | P3 | API surface | Deferred by design. Public `/health` and `/health/ready` already cover API/datastore readiness; `/models/providers` deliberately requires auth because it exposes internal base URLs and model lists. An anonymous network-probing endpoint would add an unauthenticated DoS surface for little operational gain | Revisit only if an external anonymous consumer is identified |
 
 ### Refactor
 
@@ -125,10 +125,10 @@ One minor UI observation: the document list badge still read `Indexing` after in
 
 | ID | Priority | Area | Finding | Suggested action |
 |---|---|---|---|---|
-| I1 | P2 | E2E coverage | No CI-safe test covers register → KB → document → analysis with mocked embeddings | Add one deterministic smoke test to protect the launch-critical path |
+| I1 | P2 | E2E coverage | RESOLVED — `tests/test_launch_path.py` drives register → KB → upload (indexing mocked) → analysis → detail through the real FastAPI stack and asserts the public wire shapes | 1 new test; full backend suite 830 passed / 4 skipped |
 | I2 | P2 | CI verification | Checked: latest run `45431899850` was red with four distinct causes — Windows `apply_ports.py` path, Docker `COPY` without destination, k6 checksum filename mismatch, and host-dependent ONNX batch-size assertions. All four fixed locally; re-run required after push | Push the branch, then confirm the new CI run is green before release |
 | I3 | P3 | Responsive UI | RESOLVED — Brave DevTools at 390 px and 320 px: landing and authenticated dashboard/playground render with no horizontal overflow and 0 console errors | No code change needed |
-| I4 | P3 | Load/resilience | k6 smoke and resilience scripts were not run in this audit | Run them against the live stack before a public launch |
+| I4 | P3 | Load/resilience | Partially run — k6 v2.2.0 smoke against a local API with CI's rate-limit setting: 2907 requests, 0 HTTP failures, p95 144 ms (gate <300 ms). Its two health assertions failed because this host has no Qdrant service, so `/health` was legitimately `degraded`. CI runs with a Qdrant service | Re-run the gate in CI where Qdrant is available |
 | I5 | P3 | Frontend | RESOLVED — the document list now polls only while a row is unsettled and stops once all rows are terminal. Live-verified: badge reached `Indexed` without navigation | Two component tests cover refresh and polling shutdown |
 
 ---
@@ -152,7 +152,7 @@ One minor UI observation: the document list badge still read `Indexing` after in
 
 ## 7. Next action
 
-F1–F3, U1 and I5 are resolved. Next: **U2** (first-run/reliability docs), then the smaller R/C/I items and the ops checks that need external access.
+F1–F3, U1, U2, R1, R2, C1–C3, I1, I3 and I5 are resolved. I2's four CI blockers are fixed but unverified remotely; U3 and I4 need a staging environment with Qdrant. The remaining action is to push and confirm a green CI run.
 
 ---
 
