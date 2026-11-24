@@ -181,6 +181,10 @@ docker-compose.override.yaml
 /data/
 apps/api/data/
 qdrant_storage/
+# Local runtime state generated at startup: model-discovery snapshot and
+# embedded Qdrant metadata. Never commit machine-specific state.
+apps/api/app/data/discovered_models.json
+apps/api/app/data/qdrant/
 
 # ─── ML / Model cache (sentence-transformers, HuggingFace Hub, GGUF) ──────────
 # Model weights are NEVER committed — every machine fetches them once via
