@@ -102,7 +102,7 @@ One minor UI observation: the document list badge still read `Indexing` after in
 | ID | Priority | Area | Finding | Suggested action |
 |---|---|---|---|---|
 | U1 | P2 | Reliability contract | RESOLVED — not a defect. The published schema uses `reliability: {status, score}`; a live completed run returns `{status: "TRUSTED", score: 1.0}` and the UI badge reads `100% TRUSTED`. The probed `verdict_status` / `reliability_score` keys are internal pipeline state, not API fields | Document the published contract in the README so future audits probe the right keys |
-| U2 | P2 | README | Quickstart does not explain first-run embedding warm-up behaviour or the exact recovery step | Add a short "first run" note referencing `bootstrap.py` and the health endpoint |
+| U2 | P2 | README | RESOLVED — quickstart now states the tokenizer-cache gating, the first-run recovery step, and the published `reliability: {status, score}` contract | README updated in the install and API-reference sections |
 | U3 | P3 | Ops docs | No rollback drill was performed in this audit | Add a short rollback verification to the deployment runbook |
 
 ### Refine

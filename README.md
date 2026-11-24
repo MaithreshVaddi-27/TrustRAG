@@ -379,6 +379,14 @@ Already cached → exits in ~1 s. After `git pull`, re-run it: a changed
 `models.yaml` model ID is detected automatically and only the new weights are
 fetched (`--force` rebuilds everything).
 
+**First run after boot.** The API pre-warms the embedding stack at startup and
+enables Hugging Face offline mode only when *both* the ONNX weights and the
+tokenizer files are cached. On a fresh cache startup stays online and fetches
+the tokenizer once; later runs reuse it. `GET /api/v1/health` is the readiness
+check. If an analysis fails with `retrieval.outage` on a brand-new machine,
+re-run bootstrap with `--force`, restart the API, and retry: the API log names
+the component that failed to load.
+
 ### 4. Verify the install
 
 ```bash
@@ -576,6 +584,13 @@ Interactive docs: <http://localhost:8000/docs> (Swagger) · `/redoc`. Base URL `
 | **Evidence & claims** | `GET /api/v1/evidence` · `GET /api/v1/claims` · `GET /api/v1/conflicts` |
 | **Documents** | `GET/DELETE /api/v1/documents/{id}` |
 | **Ops** | `GET /api/v1/health` · `GET /api/v1/health/detailed` · `GET /api/v1/metrics` · `GET /api/v1/models/providers` · `GET /api/v1/models/hardware` · `POST /api/v1/internal/ingest/document` · `POST /api/v1/internal/ingest/url` · `POST /api/v1/internal/search` · `POST /api/v1/internal/verify/claims` (service-token auth) |
+
+**Analysis result contract.** `GET /api/v1/analyses/{id}` exposes the verdict as
+`reliability: { status, score }`, where `status` is one of `TRUSTED`,
+`UNCERTAIN`, `FAILED` or `ABSTAINED` and `score` is a float in `[0, 1]`.
+`diagnosis: { type, failures }` explains any non-trusted result. Internal
+pipeline keys such as `verdict_status` and `reliability_score` are not part of
+the public response; `GET …/{id}/detail` adds claims, evidence and trace.
 
 ---
 
