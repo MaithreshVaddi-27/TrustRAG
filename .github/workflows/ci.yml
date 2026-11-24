@@ -345,7 +345,8 @@ jobs:
           curl -sSfL -o "${ARCHIVE}" "${BASE}/${ARCHIVE}"
           curl -sSfL -o checksums.txt "${BASE}/k6-${VER}-checksums.txt"
           grep "${ARCHIVE}" checksums.txt | sha256sum --check --strict -
-          tar xz "${ARCHIVE}" --strip-components=1
+          # -f is required: without it GNU tar reads the archive from stdin.
+          tar -xzf "${ARCHIVE}" --strip-components=1
           ./k6 version
 
       - name: Run k6 API load smoke
@@ -436,6 +437,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Create test env file
+        # compose declares `env_file: .env`; the checkout never contains it
+        # (secrets are local only), so CI must provide a throwaway one.
+        run: |
+          cat > .env <<'EOF'
+          JWT_SECRET=test-secret-minimum-32-chars-long-padding
+          MONGODB_URI=mongodb://host.docker.internal:27017
+          MONGODB_DATABASE=trustrag_compose_smoke
+          QDRANT_URL=http://qdrant:6333
+          QDRANT_API_KEY=trustrag-dev-key-change-me
+          APP_ENV=development
+          EOF
 
       - name: Validate compose file
         run: docker compose config --quiet

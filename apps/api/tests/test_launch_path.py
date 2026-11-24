@@ -154,13 +154,26 @@ def test_register_kb_document_analysis_detail_chain(current_user):
     assert upload.json()["id"] == DOC_ID
     index_task.assert_awaited()
 
-    with patch(
-        "app.api.v1.analyses.analysis_service.create_analysis",
-        AsyncMock(return_value=_analysis_response()),
-    ) as create:
+    # Model allowlists are discovered from the running inference server. CI has
+    # no Ollama, so pin the discovery result instead of depending on a host.
+    with (
+        patch(
+            "app.api.v1.schemas.analysis._local_llm_mod.get_discovered_llms",
+            MagicMock(return_value=["gemma3:1b"]),
+        ),
+        patch(
+            "app.api.v1.analyses.analysis_service.create_analysis",
+            AsyncMock(return_value=_analysis_response()),
+        ) as create,
+    ):
         analysis = client.post(
             "/api/v1/analyses",
-            json={"knowledge_base_id": KB_ID, "query": "What is the default request rate limit?"},
+            json={
+                "knowledge_base_id": KB_ID,
+                "query": "What is the default request rate limit?",
+                "llm_provider": "ollama",
+                "llm_model": "gemma3:1b",
+            },
         )
     assert analysis.status_code == 201, analysis.text
     assert analysis.json()["reliability"] == {"score": 1.0, "status": "TRUSTED"}
