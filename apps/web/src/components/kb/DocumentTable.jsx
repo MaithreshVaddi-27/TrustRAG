@@ -14,12 +14,20 @@ import { kbService } from '@/services/api'
  *
  * The document list is fetched only when the collection is opened, so a
  * workspace with forty collections does not issue forty document queries
- * on load.
+ * on load. While a document is still ingesting, this one open collection is
+ * polled until every row reaches a terminal state — otherwise the badge sits
+ * on "Indexing" long after the document is queryable.
  */
 const ACCEPT = '.pdf,.txt,.md,.docx,.csv,.json,.html,.htm'
 const FORMATS = ['PDF', 'DOCX', 'MD', 'TXT', 'CSV', 'JSON', 'HTML']
 
-export default function DocumentTable({ kb }) {
+const TERMINAL_STATES = new Set(['completed', 'failed'])
+
+function isIngestionSettled(doc) {
+  return TERMINAL_STATES.has(doc.ingestion_status || doc.status || 'completed')
+}
+
+export default function DocumentTable({ kb, pollIntervalMs = 2000 }) {
   const queryClient = useQueryClient()
   const fileInputRef = useRef(null)
   const [uploadStatus, setUploadStatus] = useState(null)
@@ -29,6 +37,10 @@ export default function DocumentTable({ kb }) {
   const { data: documents = [], isLoading: docsLoading } = useQuery({
     queryKey: ['documents', kb.id],
     queryFn: () => kbService.listDocuments(kb.id),
+    // Only the open collection is polled, and only while something is still
+    // indexing. Once all rows are settled the interval turns itself off.
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((doc) => !isIngestionSettled(doc)) ? pollIntervalMs : false,
   })
 
   const deleteDocMutation = useMutation({

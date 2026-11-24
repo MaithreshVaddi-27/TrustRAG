@@ -79,7 +79,7 @@ One minor UI observation: the document list badge still read `Indexing` after in
 | 3 | Retrieval | Amber | First query hit an embedding warm-up outage; later run scored 0.849 and used self-heal batching |
 | 4 | Generation & NLI verification | Green | One SUPPORTED claim, one VERIFIED evidence, full trace |
 | 5 | Reliability scoring | Amber | `verdict_status` and `reliability_score` null on a completed run |
-| 6 | Frontend & brand | Green | Brave DevTools snapshot/screenshot, 0 console errors, lint clean, 82/82 tests |
+| 6 | Frontend & brand | Green | Brave DevTools snapshot/screenshot, 0 console errors, lint clean, 84/84 tests |
 | 7 | Quality gates | Green | `ruff check .` clean; `cd apps/api && .venv/bin/python -m pytest -q` → 827 passed / 4 skipped, coverage 80.19% (gate 78%). Running pytest from the repo root drops `asyncio_mode = auto` and produces 28 false failures — use the documented command |
 | 8 | Docs & handover | Green | README, DESIGN.md, dark-luxury docs, backend changelog, brand README and board all present |
 | 9 | Security & operations | Amber | Auth on sensitive routes, secrets ignored, CI workflows present; remote CI status and rollback drill not checked |
@@ -101,7 +101,7 @@ One minor UI observation: the document list badge still read `Indexing` after in
 
 | ID | Priority | Area | Finding | Suggested action |
 |---|---|---|---|---|
-| U1 | P2 | Reliability contract | Completed run has verified claims but null `verdict_status` / `reliability_score` | Define and document when the score is emitted; align the API schema and UI badge |
+| U1 | P2 | Reliability contract | RESOLVED — not a defect. The published schema uses `reliability: {status, score}`; a live completed run returns `{status: "TRUSTED", score: 1.0}` and the UI badge reads `100% TRUSTED`. The probed `verdict_status` / `reliability_score` keys are internal pipeline state, not API fields | Document the published contract in the README so future audits probe the right keys |
 | U2 | P2 | README | Quickstart does not explain first-run embedding warm-up behaviour or the exact recovery step | Add a short "first run" note referencing `bootstrap.py` and the health endpoint |
 | U3 | P3 | Ops docs | No rollback drill was performed in this audit | Add a short rollback verification to the deployment runbook |
 
@@ -129,7 +129,7 @@ One minor UI observation: the document list badge still read `Indexing` after in
 | I2 | P2 | CI verification | Workflows exist (`.github/workflows/ci.yml`, `security.yml`) but remote run status was not checked | Check the latest run on the branch before any release |
 | I3 | P3 | Responsive UI | Only desktop viewport was inspected in this audit | Add a 390 px / 320 px Playwright or Brave DevTools pass |
 | I4 | P3 | Load/resilience | k6 smoke and resilience scripts were not run in this audit | Run them against the live stack before a public launch |
-| I5 | P3 | Frontend | Document list badge stayed `Indexing` after ingestion finished; detail page was correct | Refresh the document row when ingestion reaches a terminal state |
+| I5 | P3 | Frontend | RESOLVED — the document list now polls only while a row is unsettled and stops once all rows are terminal. Live-verified: badge reached `Indexed` without navigation | Two component tests cover refresh and polling shutdown |
 
 ---
 
@@ -152,7 +152,7 @@ One minor UI observation: the document list badge still read `Indexing` after in
 
 ## 7. Next action
 
-F1, F2 and F3 are resolved. Next: **U1** (null verdict/reliability on a completed run), then **I5** (stale document badge), **U2** (first-run docs), and the smaller R/C/I items.
+F1–F3, U1 and I5 are resolved. Next: **U2** (first-run/reliability docs), then the smaller R/C/I items and the ops checks that need external access.
 
 ---
 
