@@ -11,7 +11,7 @@
 
 **Production audit: 73/100 — launchable with caveats.**
 
-The product starts from a clean checkout with documented commands, the local inference path now completes an end-to-end verified analysis, and the frontend renders the new brand mark without console errors. The embedding warm-up failure (F1) is fixed and verified live. F3 was a false alarm from invoking pytest at the repo root instead of `apps/api` — the documented command passes 827 tests. Remaining caveats are the re-ingest gap after a failed document (F2), a few small API/UI refinements, and unpushed commits.
+The product starts from a clean checkout with documented commands, the local inference path now completes an end-to-end verified analysis, and the frontend renders the new brand mark without console errors. The embedding warm-up failure (F1) is fixed and verified live. F2 is fixed: a document left in `failed` state can be re-uploaded and re-indexed under the same ID instead of being permanently blocked with 409. F3 was a false alarm from invoking pytest at the repo root instead of `apps/api`. Remaining caveats are a few small API/UI refinements and unpushed commits.
 
 Strengths, briefly: strict dark design system with one accent; claim-level NLI verification with evidence integrity; authentication on sensitive routes; no tracked secrets or runtime state; complete brand kit and usage docs.
 
@@ -75,7 +75,7 @@ One minor UI observation: the document list badge still read `Indexing` after in
 |---|---|---|---|
 | 0 | Setup & structure | Green | 14/14 setup checks; 562 tracked files; naming audit found no scratch/space/unicode names; runtime state untracked |
 | 1 | Runtime services | Green | MongoDB, Ollama, API and Vite all reachable; health OK |
-| 2 | Ingestion & data | Amber | Upload returned 201 while the first ingestion failed internally; retry returned 409 |
+| 2 | Ingestion & data | Green | Upload returns 201 with a pollable `ingestion_status`; failed documents can be re-ingested under the same ID (live-verified) |
 | 3 | Retrieval | Amber | First query hit an embedding warm-up outage; later run scored 0.849 and used self-heal batching |
 | 4 | Generation & NLI verification | Green | One SUPPORTED claim, one VERIFIED evidence, full trace |
 | 5 | Reliability scoring | Amber | `verdict_status` and `reliability_score` null on a completed run |
@@ -93,7 +93,7 @@ One minor UI observation: the document list badge still read `Indexing` after in
 | ID | Priority | Area | Finding | Suggested action |
 |---|---|---|---|---|
 | F1 | P1 | Retrieval / ops | First embedding load in a fresh API process can fail with a retrieval outage, even with weights present | Make warm-up synchronous with a bounded retry, surface the underlying exception, and mark ingestion as failed rather than silently continuing |
-| F2 | P1 | Ingestion API | Async upload returns 201 with `ingestion_status` in `DocResponse` (already pollable); a document left in `failed` state blocks re-upload of the same content hash with 409 | Allow re-ingest when the existing document's status is `failed`, and keep the UI badge in sync (I5) |
+| F2 | P1 | Ingestion API | RESOLVED — a `failed` document is reset to `pending` on re-upload instead of returning 409 | Live-verified: same ID returned, status advanced to `completed`. UI badge sync tracked as I5 |
 | F3 | P1 | Quality gate | RESOLVED — not a code defect. Root-level pytest invocation ignores `asyncio_mode = auto`, producing 28 false async failures | Always run `cd apps/api && .venv/bin/python -m pytest -q`; 827 pass, 4 skipped |
 | F4 | P2 | Git hygiene | `b7f49b3` is not pushed | Push when the owner is ready |
 
@@ -152,7 +152,7 @@ One minor UI observation: the document list badge still read `Indexing` after in
 
 ## 7. Next action
 
-Fix **F1** first: make embedding warm-up deterministic and surface its real error. Then address **F2** so ingestion failures are visible to clients, and **F3** to restore a green backend gate.
+F1, F2 and F3 are resolved. Next: **U1** (null verdict/reliability on a completed run), then **I5** (stale document badge), **U2** (first-run docs), and the smaller R/C/I items.
 
 ---
 

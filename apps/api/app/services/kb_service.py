@@ -190,7 +190,9 @@ async def add_document(
 ) -> DocResponse:
     """
     Add a document metadata record. Verifies KB ownership first.
-    Returns 409 Conflict if a document with the same content_hash already exists in the KB.
+    Returns 409 Conflict if a document with the same content_hash already exists in the KB,
+    unless that document failed ingestion — in which case its record is reset so the
+    caller can retry the same bytes instead of being locked out permanently.
     """
     # Verify owner
     await get_kb(kb_id_str, user_id_str)
@@ -218,6 +220,37 @@ async def add_document(
         return serialize_doc(doc_doc)
     except pymongo.errors.DuplicateKeyError as exc:
         if "doc_kb_content_hash_unique" in str(exc):
+            existing = await doc_coll.find_one(
+                {
+                    "user_id": ObjectId(user_id_str),
+                    "knowledge_base_id": ObjectId(kb_id_str),
+                    "content_hash": content_hash,
+                }
+            )
+            if existing is not None and existing.get("ingestion_status") == "failed":
+                # A failed ingest must not poison its content hash forever. Reset
+                # the same record so the caller's background indexing task retries
+                # under a stable document ID. Chunk cleanup is owned by the
+                # indexing pipeline, which clears prior chunks for this document.
+                reset = {
+                    "filename": filename,
+                    "file_size": file_size,
+                    "effective_from": effective_from,
+                    "effective_until": effective_until,
+                    "ingestion_status": "pending",
+                    "error_message": None,
+                    "created_at": datetime.now(UTC),
+                    "version": version,
+                    "is_snapshot": is_snapshot,
+                }
+                await doc_coll.update_one({"_id": existing["_id"]}, {"$set": reset})
+                existing.update(reset)
+                logger.info(
+                    "Failed document reset for re-ingest",
+                    doc_id=str(existing["_id"]),
+                    kb_id=kb_id_str,
+                )
+                return serialize_doc(existing)
             raise ConflictError(
                 "Document with identical content already exists in this knowledge base",
                 detail=f"content_hash: {content_hash}",
