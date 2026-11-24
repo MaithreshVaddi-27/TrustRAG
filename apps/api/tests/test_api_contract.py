@@ -60,9 +60,7 @@ EVIDENCE_RESPONSE_PROPS = {
     "rerank_score",
 }
 
-# main.py `_error_response` nests the envelope under an "error" key:
-#   {"error": {"code": ..., "message": ...}}
-# (The audit wrote this as a flat {code, message}; it is not.)
+# Error responses nest code and message under an "error" key
 ERROR_ENVELOPE_KEY = "error"
 ERROR_ENVELOPE_FIELDS = {"code", "message"}
 

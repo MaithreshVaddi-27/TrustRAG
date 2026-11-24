@@ -12,8 +12,8 @@ import { clsx } from 'clsx'
  * Redrawn for the Obsidian / Chrome Silver / Laser Crimson system.
  * Flat linework only — no gradients, filters, or live text.
  *
- * Legacy call sites still pass `framed` and `glow`; both are accepted and
- * deliberately ignored (the mark carries its own boundary now).
+ * The `framed` and `glow` props are accepted but ignored; the mark carries
+ * its own boundary.
  */
 
 export const TrustRagEmblem = memo(function TrustRagEmblem({

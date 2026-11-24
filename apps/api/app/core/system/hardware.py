@@ -73,8 +73,6 @@ def get_llamacpp_launch_args() -> list[str]:
             "--split-mode",
             "layer",
         ]
-    # else: CPU-only — no GPU flags.
-
     # Context + concurrency budget by available memory.
     # KV cache ~ n_embd(2048) x 2 (K/V) x n_ctx x 4B x slots; conservative.
     # llama-server divides -c evenly across -np slots, and the backend sends

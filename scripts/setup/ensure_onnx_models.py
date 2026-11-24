@@ -25,7 +25,6 @@ change the id in models.yaml and every stage follows.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import os
 import sys
 from pathlib import Path
@@ -112,14 +111,6 @@ def _find_existing_model(cache: Path, base_name: str, kind: str) -> Path | None:
         if cand.exists():
             return cand
     return None
-
-
-def _file_sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def _export_embedding_onnx(cfg, emb_path: Path) -> bool:

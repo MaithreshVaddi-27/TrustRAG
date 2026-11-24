@@ -64,9 +64,6 @@ async def register_user(schema: UserRegister) -> UserResponse:
 
 
 # ─── Login lockout (Mongo TTL collection; works across replicas) ───────────────
-# Collection: failed_logins
-# Document: { _id: "<email>", count: int, attempts: [epoch_ts], window_expires: datetime }
-# TTL index on window_expires auto-cleans expired docs.
 
 
 def _get_failed_logins_coll():
