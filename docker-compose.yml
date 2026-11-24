@@ -28,7 +28,9 @@ services:
       QDRANT__SERVICE__HTTP_PORT: 6333
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-trustrag-dev-key-change-me}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:6333/readyz || exit 1"]
+      # With an API key configured, Qdrant requires it on /readyz too. Without
+      # the header the probe is rejected and the container never turns healthy.
+      test: ["CMD-SHELL", "curl -fsS -H \"api-key: ${QDRANT_API_KEY:-trustrag-dev-key-change-me}\" http://localhost:6333/readyz || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 15
