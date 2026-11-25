@@ -1149,19 +1149,6 @@ select.lx-control {
   }
 }
 
-.lx-grid-3 {
-  display: grid;
-  gap: var(--step-5);
-  grid-template-columns: 1fr;
-}
-
-@media (min-width: 1024px) {
-  .lx-grid-3 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--step-6);
-  }
-}
-
 /* A wide panel beside a narrow list — the dashboard's chart rhythm. */
 .lx-grid-wide-narrow {
   display: grid;

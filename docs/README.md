@@ -36,6 +36,8 @@ docs/
 ├── ROADMAP.md                         # Product vision, milestones, phase tracking
 ├── PERFORMANCE-GUIDE.md               # Free speed/RAM tuning + MLX on Mac
 ├── ONBOARDING-TROUBLESHOOTING.md      # Per-OS setup guide + failure table + live verification backlog
+├── TRUSTRAG_PROJECT_GUIDE.md          # Code-first walkthrough of the whole product
+├── TRUSTRAG_RAG_DEEP_DIVE.md          # Beginner-to-mentor guide to the RAG subsystem
 ├── ANALYSIS_SERVICE_TEST_GAPS.md     # Measured gaps in app/services/** + test-case recipes
 ├── backend/                           # Backend engineering log (living) + benchmark artifacts
 │   ├── BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md  # Audit → changes → measurements → decisions
@@ -61,6 +63,8 @@ docs/
 │   ├── README.md                      # Archive notice + links to the canonical system
 │   ├── UI_DEEP_AUDIT_2026-11-25.md    # Evidence-backed audit of all 11 routes
 │   ├── UI_REVISED_PLAN_2026-11-25.md  # Approved phases, implementation record, handoff
+│   ├── UI_RE_DEEP_AUDIT_2026-11-25.md # Re-audit of the shipped dark-luxury UI
+│   ├── UI_RE_DEEP_PLAN_2026-11-25.md  # Re-deep plan, implementation log, verification
 │   ├── PALETTE_AND_BUTTON_PROPOSAL_2026-11-25.md  # Palette options and the approved direction
 │   ├── COLOR_PALETTE_NEXT_CHANGES_2026-11-25.md   # Contrast fixes, token consolidation, deferred items
 │   └── *.svg                          # Historical concept boards (archive only)
@@ -83,6 +87,8 @@ docs/
 - [**Roadmap (`ROADMAP.md`)**](ROADMAP.md): completed phases, pre-deployment checklist, and prioritized upcoming work.
 - [**Performance Guide**](PERFORMANCE-GUIDE.md): free efficiency changes (config-only speed/RAM wins) plus MLX local inference on Apple Silicon.
 - [**Onboarding & Troubleshooting (`ONBOARDING-TROUBLESHOOTING.md`)](ONBOARDING-TROUBLESHOOTING.md): per-OS setup guide (macOS / Linux / Windows), failure table, live verification backlog.
+- [**Project Guide (`TRUSTRAG_PROJECT_GUIDE.md`)**](TRUSTRAG_PROJECT_GUIDE.md): a code-first walkthrough for someone who did not build the system.
+- [**RAG Deep Dive (`TRUSTRAG_RAG_DEEP_DIVE.md`)**](TRUSTRAG_RAG_DEEP_DIVE.md): a beginner-to-mentor guide to ingestion, retrieval, generation, verification and recovery.
 - [**Service-Layer Test Gaps (`ANALYSIS_SERVICE_TEST_GAPS.md`)**](ANALYSIS_SERVICE_TEST_GAPS.md): the measured gaps in `app/services/**` — the SSE pub/sub, the user-level claim/evidence vault, the auth service and the knowledge-base snapshots — with concrete test-case recipes.
 - [**Project Status & Deep Audit (`PROJECT_STATUS_AND_AUDIT.md`)**](PROJECT_STATUS_AND_AUDIT.md): live runtime and inference verification, phase-by-phase status, and the prioritized improve/update/refine/refactor backlog.
 
@@ -102,6 +108,8 @@ docs/
 - [**Design system (`design/dark-luxury/README.md`)**](design/dark-luxury/README.md): Obsidian / Chrome Silver / Laser Crimson foundations, tokens, components, patterns, accessibility and voice. The shipped implementation is [`apps/web/DESIGN.md`](../apps/web/DESIGN.md).
 - [**UI deep audit (`design/UI_DEEP_AUDIT_2026-11-25.md`)**](design/UI_DEEP_AUDIT_2026-11-25.md): measured baseline across all routes, findings and the revised plan.
 - [**UI revised plan (`design/UI_REVISED_PLAN_2026-11-25.md`)**](design/UI_REVISED_PLAN_2026-11-25.md): approved phases, what shipped, and the handoff record.
+- [**UI re-deep audit (`design/UI_RE_DEEP_AUDIT_2026-11-25.md`)**](design/UI_RE_DEEP_AUDIT_2026-11-25.md): verification of the shipped UI, top three findings and the full evidence register.
+- [**UI re-deep plan (`design/UI_RE_DEEP_PLAN_2026-11-25.md`)**](design/UI_RE_DEEP_PLAN_2026-11-25.md): the executed cleanup plan, implementation log and final verification.
 - [**Palette proposal (`design/PALETTE_AND_BUTTON_PROPOSAL_2026-11-25.md`)**](design/PALETTE_AND_BUTTON_PROPOSAL_2026-11-25.md) and [**remaining colour changes (`design/COLOR_PALETTE_NEXT_CHANGES_2026-11-25.md`)**](design/COLOR_PALETTE_NEXT_CHANGES_2026-11-25.md): the silver-action / crimson-signal decision, measured contrast fixes and what was deliberately deferred.
 
 ### 4. Security
@@ -142,7 +150,7 @@ method behind them are in
 [`backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`](backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md).
 
 - **Backend tests**: **817 passed** on Python 3.12, **813 passed + 4 skipped** on Python 3.11 (the four skips are the opt-in `cloud` extra — `tavily` and `langchain-google-genai` are not installed). Coverage **80.5 %** (gate 78 %).
-- **Frontend**: **82 Vitest tests** across 17 files, ESLint clean (`--max-warnings 0`), Vite build green.
+- **Frontend**: **85 Vitest tests** across 18 files, ESLint clean (`--max-warnings 0`), Vite build green.
 - **CI**: Ubuntu jobs + a `cross-platform` smoke matrix (Windows + macOS: backend import/config smoke, frontend lint/test/build), plus Playwright E2E and a k6 load smoke — all green.
 - **Lint**: the rules live in the repository-root `ruff.toml`, so `ruff check .` from the root holds the whole repository — including the root `scripts/` package, which CI previously never linted at all. Clean on the pinned `ruff==0.16.9`; the mypy ratchet reports **no new** type errors against the committed ceiling.
 - **Integration**: every frontend API call (25) matches a backend route (39) — 0 missing — and the user flow answers correctly both directly and through the frontend's proxy. Reproduce with `apps/api/scripts/verify/validate_integration.py`.

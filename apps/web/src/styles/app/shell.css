@@ -241,17 +241,10 @@
   background-color: var(--color-alarm-wash);
 }
 
-/* ── User chip ──────────────────────────────────────────────────────────────
- * The avatar is now a menu trigger, not a sign-out button.
+/* ── User avatar ────────────────────────────────────────────────────────────
+ * The avatar is a menu trigger, not a sign-out button. The old `.lx-userchip`
+ * wrapper was removed when the account menu replaced the inline sign-out.
  * ─────────────────────────────────────────────────────────────────────────── */
-
-.lx-userchip {
-  display: flex;
-  align-items: center;
-  gap: var(--step-2);
-  padding-left: var(--step-4);
-  border-left: 1px solid var(--rule);
-}
 
 .lx-userchip__avatar {
   display: grid;

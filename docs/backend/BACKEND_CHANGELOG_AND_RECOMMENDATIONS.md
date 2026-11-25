@@ -972,7 +972,7 @@ locally, job by job, against the live services.
 | backend-test | `pytest tests/ -v --no-header` | **817 passed**, coverage **80.41 %** (gate 78 %) |
 | backend-config-validate | `models.yaml` schema + secret scan | **passed** |
 | frontend-lint | `npm run lint` | **clean** (`--max-warnings 0`) |
-| frontend-lint | `npm run test` | **82 passed** (17 files) |
+| frontend-lint | `npm run test` | **85 passed** (18 files) |
 | frontend-build | `npm run build` | **built in 2.17 s** |
 | cross-platform | backend import smoke | **imports OK** |
 | e2e | `npx playwright test` | **2 passed** (was 1 failed) |

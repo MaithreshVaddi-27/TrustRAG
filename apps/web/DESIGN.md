@@ -276,7 +276,7 @@ one-line change instead of a search across fifteen files.
 | `.lx-container` | Page content cap, 1320px |
 | `.lx-section` / `.lx-band` | Section rhythm and the rule between bands |
 | `.lx-signal` | Laser Crimson inline text |
-| `.lx-live-dot` | A live status dot |
+| `.lx-dot--live` | A static live status dot (no idle pulse) |
 | `.lx-tab` | Segmented control |
 | `.lx-rule` | A hairline |
 | `.lx-sr-only` | Screen-reader only text |

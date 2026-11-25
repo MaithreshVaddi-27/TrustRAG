@@ -260,34 +260,6 @@ export async function withRetry(fn, options = {}) {
 // ─── Request Wrapper with Standardized Response ────────────────────────────────
 
 /**
- * Wrap an axios call to return standardized ApiResponse
- * @template T
- * @param {Promise} promise - The axios promise
- * @returns {Promise<ApiResponse<T>>}
- */
-export async function toApiResponse(promise) {
-  try {
-    const response = await promise
-    return {
-      data: response.data,
-      meta: {
-        status: response.status,
-        headers: response.headers,
-      },
-      error: null,
-    }
-  } catch (err) {
-    return {
-      data: null,
-      meta: {
-        status: err.response?.status,
-      },
-      error: normalizeError(err),
-    }
-  }
-}
-
-/**
  * Execute with retry AND standardized response
  * @template T
  * @param {() => Promise} fn - Function returning axios promise
@@ -299,49 +271,4 @@ export async function withRetryAndResponse(fn, options = {}) {
     const result = await fn()
     return result.data // axios response's data
   }, options)
-}
-
-// ─── Higher-Order Service Wrapper ──────────────────────────────────────────────
-
-/**
- * Wrap a service method to add retry and standardized response
- * @template T, Args extends unknown[]
- * @param {function(...Args): Promise} serviceMethod - Original service method
- * @param {Object} options - Retry options
- * @returns {function(...Args): Promise<ApiResponse<T>>}
- */
-export function withApiResponse(serviceMethod, options = {}) {
-  return async (...args) => {
-    return withRetryAndResponse(() => serviceMethod(...args), options)
-  }
-}
-
-// ─── Batch Request Helper ──────────────────────────────────────────────────────
-
-/**
- * Execute multiple requests in parallel with individual error handling
- * @template T
- * @param {Promise[]} promises - Array of axios promises
- * @returns {Promise<ApiResponse<T>[]>}
- */
-export async function batchRequests(promises) {
-  const results = await Promise.allSettled(promises.map(p => toApiResponse(p)))
-  return results.map(r => r.status === 'fulfilled' ? r.value : {
-    data: null,
-    meta: null,
-    error: normalizeError(r.reason),
-  })
-}
-
-export default {
-  ERROR_CODES,
-  normalizeError,
-  isRetryableError,
-  calculateBackoff,
-  withRetry,
-  toApiResponse,
-  withRetryAndResponse,
-  withApiResponse,
-  batchRequests,
-  DEFAULT_RETRY_CONFIG,
 }

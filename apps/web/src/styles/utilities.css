@@ -17,10 +17,6 @@
   padding-block: var(--section-space);
 }
 
-.lx-section--chapter {
-  padding-block: var(--chapter-space);
-}
-
 /* Prose is capped so a line never runs past a comfortable measure. */
 .lx-measure {
   max-width: var(--measure-prose);
@@ -112,10 +108,6 @@
   letter-spacing: var(--tracking-micro);
   font-variant-numeric: tabular-nums;
   color: var(--color-silver-500);
-}
-
-.lx-numeric {
-  font-variant-numeric: tabular-nums;
 }
 
 /* ── Surfaces ─────────────────────────────────────────────────────────────── */

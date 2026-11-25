@@ -4,7 +4,9 @@ Companion to `UI_RE_DEEP_AUDIT_2026-11-25.md`. It does not supersede the directi
 in `UI_REVISED_PLAN_2026-11-25.md`; it completes it. Evidence and finding IDs
 (D1–D5, C1–C5, E1–E3, F1–F3 in the audit) are referenced below.
 
-**Status: AWAITING APPROVAL. No UI code has been changed.**
+**Status: IMPLEMENTED (commit `1d9405e`).** The approval block at the end of
+this document records the choices that were applied; see the implementation log
+for what shipped and the verification results.
 Direction chosen by the user: keep and elevate the existing dark-luxury system;
 all routes in scope; restrained-luxury motion; audit + plan → approval → build;
 full local verification permitted.

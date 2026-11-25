@@ -333,9 +333,10 @@ motion is allowed when it carries brand meaning: the registration seal, the
 scroll-linked pipeline, the claim alignment, the measured bar. Every effect
 stays inside the palette and resolves under `prefers-reduced-motion`.
 
-Loops on **live** elements are permitted, because they report something
-true: a connected provider, a running analysis, a live telemetry stream.
-Those use `.lx-live-dot` and the Tailwind `animate-pulse`.
+Live state is reported without idle loops: `.lx-dot--live` is a static status
+dot, and waiting states use `ThinkingOrbs`, whose three dots align once and
+then rest. A future live indicator may pulse only while it reports a real,
+changing state, and must resolve under `prefers-reduced-motion`.
 
 ### The scroll reveal is fail-safe
 

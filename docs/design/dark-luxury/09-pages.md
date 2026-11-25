@@ -841,7 +841,7 @@ read may be retried.
 | Check | Result |
 |---|---|
 | `npm run lint` | Clean — 0 warnings, 0 errors |
-| `npm run test` | 17 files, 82 tests, all pass (13 new) |
+| `npm run test` | 18 files, 85 tests, all pass |
 | `npm run build` | Succeeds in ~2.1 s |
 | axe-core, WCAG 2.0/2.1/2.2 A + AA + best practice | 0 violations on all ten routes at 1440 and 390 |
 | Lighthouse — landing, desktop | Performance 100 · Accessibility 100 · Best Practices 100 · SEO 100 · Agentic Browsing 100 |

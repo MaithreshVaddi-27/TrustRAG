@@ -17,4 +17,8 @@ The dated 2026-11-25 documents are the decision record for the current UI:
 handoff), [`PALETTE_AND_BUTTON_PROPOSAL`](PALETTE_AND_BUTTON_PROPOSAL_2026-11-25.md)
 (the silver-action / crimson-signal decision), and
 [`COLOR_PALETTE_NEXT_CHANGES`](COLOR_PALETTE_NEXT_CHANGES_2026-11-25.md)
-(contrast fixes, token consolidation and deferred items).
+(contrast fixes, token consolidation and deferred items),
+[`UI_RE_DEEP_AUDIT`](UI_RE_DEEP_AUDIT_2026-11-25.md) (verification of the
+shipped system and the remaining craft debt), and
+[`UI_RE_DEEP_PLAN`](UI_RE_DEEP_PLAN_2026-11-25.md) (the executed cleanup,
+implementation log and verification results).

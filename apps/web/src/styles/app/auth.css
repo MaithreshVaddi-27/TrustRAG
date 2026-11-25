@@ -175,12 +175,6 @@
   color: var(--color-silver-200);
 }
 
-.lx-field__hint {
-  margin-top: var(--step-2);
-  font-size: var(--size-micro);
-  color: var(--color-silver-500);
-}
-
 /* ── Requirement list ──────────────────────────────────────────────────────
  * The password's rules, reported one by one. An unmet rule is a
  * requirement, not an alarm, so it is written in the same quiet silver as

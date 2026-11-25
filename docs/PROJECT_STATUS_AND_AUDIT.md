@@ -79,7 +79,7 @@ One minor UI observation: the document list badge still read `Indexing` after in
 | 3 | Retrieval | Amber | First query hit an embedding warm-up outage; later run scored 0.849 and used self-heal batching |
 | 4 | Generation & NLI verification | Green | One SUPPORTED claim, one VERIFIED evidence, full trace |
 | 5 | Reliability scoring | Green | Live completed run returned `reliability: {status: TRUSTED, score: 1.0}`; UI badge showed `100% TRUSTED` (see U1) |
-| 6 | Frontend & brand | Green | Brave DevTools snapshot/screenshot, 0 console errors, lint clean, 84/84 tests |
+| 6 | Frontend & brand | Green | Brave DevTools snapshot/screenshot, 0 console errors, lint clean, 85/85 tests |
 | 7 | Quality gates | Amber locally, red remotely | Local: `ruff check .` clean; `cd apps/api && .venv/bin/python -m pytest -q` → 829 passed / 4 skipped, coverage 80.32%. Remote CI run `45431899850` was red (see I2); fixes are in the working tree and need a fresh push to verify |
 | 8 | Docs & handover | Green | README, DESIGN.md, dark-luxury docs, backend changelog, brand README and board all present |
 | 9 | Security & operations | Amber | Auth on sensitive routes, secrets ignored; remote CI was red and its four causes are fixed but need a fresh push to verify. Rollback drill documented but not executed (U3) |
