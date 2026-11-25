@@ -59,7 +59,7 @@ export default function EvidenceChunk({ chunk, rank, onCopy, isCopied }) {
           <button
             type="button"
             onClick={onCopy}
-            className="lx-icon-btn h-8 w-8"
+            className="lx-icon-btn h-10 w-10"
             title="Copy the evidence snippet"
             aria-label="Copy the evidence snippet"
           >

@@ -14,9 +14,9 @@ export function PipelineTelemetryHUD({
   events = [],
   query = '',
   enableWebSearch = false,
-  provider = 'ollama',
-  model = 'granite4.2:3b-q4_K_M',
-  embeddingModel = 'BAAI/bge-small-en-v1.5',
+  provider = '',
+  model = '',
+  embeddingModel = '',
   analysisStatus,
 }) {
   const status = useMemo(() => {
@@ -89,7 +89,10 @@ export function PipelineTelemetryHUD({
     {
       index: '03',
       title: 'Grounded synthesis',
-      meta: `${providerLabel} · ${modelShort || 'DEFAULT'}`,
+      meta:
+        providerLabel && modelShort
+          ? `${providerLabel} · ${modelShort}`
+          : 'Engine default',
       state: status.generationDone
         ? 'done'
         : status.retrievalDone || status.generationStarted
@@ -132,9 +135,12 @@ export function PipelineTelemetryHUD({
               {query}
             </span>
           )}
-          <span className="lx-chip" title={model ? `${providerLabel}: ${model}` : providerLabel}>
+          <span
+            className="lx-chip"
+            title={model ? `${providerLabel}: ${model}` : providerLabel || 'Engine'}
+          >
             <Cpu size={11} strokeWidth={1.75} aria-hidden="true" />
-            {providerLabel}: {modelShort || 'DEFAULT'}
+            {providerLabel || 'Engine'}: {modelShort || 'default'}
           </span>
           {embeddingModel && (
             <span className="lx-chip" title={embeddingModel}>

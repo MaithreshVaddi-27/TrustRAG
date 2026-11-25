@@ -58,6 +58,29 @@ select:active {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* Waiting states align once into place; they never breathe or spin. */
+@keyframes lx-orbs-align {
+  from { opacity: 0; transform: translateY(4px) scale(0.9); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes lx-static-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* The hero ledger arrives record by record, 12px into register. */
+@keyframes lx-record-settle {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* A single bounded light catches the registration seal once on load. */
+@keyframes lx-seal-light {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(320%); }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .lx-verdict-badge {
     animation: lx-verdict-settle 320ms var(--motion-ease-out) both;
@@ -78,6 +101,34 @@ select:active {
 
   .lx-auth__seal {
     animation: lx-seal-align 520ms var(--motion-ease-out) 120ms both;
+  }
+
+  /* `backwards` only: the base opacity ramp in loaders.css wins after the
+   * one-shot align, so the three orbs keep their stepped silver values. */
+  .thinking-orbs .orb {
+    animation: lx-orbs-align 240ms var(--motion-ease-out) backwards;
+  }
+
+  .thinking-orbs .orb:nth-child(2) {
+    animation-delay: 60ms;
+  }
+
+  .thinking-orbs .orb:nth-child(3) {
+    animation-delay: 120ms;
+  }
+
+  .skel,
+  .lx-skeleton {
+    animation: lx-static-in 200ms var(--motion-ease-out) both;
+  }
+
+  .lx-record {
+    animation: lx-record-settle 480ms var(--motion-ease-out) both;
+    animation-delay: calc(var(--record-index, 0) * 60ms);
+  }
+
+  .lx-preview__seal-sweep::before {
+    animation: lx-seal-light 620ms var(--motion-ease-out) 900ms both;
   }
 }
 

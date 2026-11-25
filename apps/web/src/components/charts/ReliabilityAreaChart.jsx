@@ -208,7 +208,7 @@ export default function ReliabilityAreaChart({
             left: Math.min(Math.max(activePoint.x + 10, 4), width - 200),
           }}
         >
-          <p className="font-mono text-[0.6875rem] text-silver-500">{activePoint.fullTime}</p>
+          <p className="font-mono text-[var(--size-micro)] text-silver-500">{activePoint.fullTime}</p>
           <p className="mt-0.5 text-[var(--size-body-sm)] text-silver-100">
             {activePoint.query}
           </p>

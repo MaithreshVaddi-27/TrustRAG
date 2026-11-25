@@ -151,7 +151,7 @@ export const EvidenceViewer = memo(function EvidenceViewer({ chunks = [], unavai
                 >
                   {Icon && <Icon size={12} strokeWidth={1.75} aria-hidden="true" />}
                   {source.label}
-                  <span className="ml-1 font-mono text-[0.625rem] text-silver-500">{count}</span>
+                  <span className="ml-1 font-mono text-[var(--size-micro)] text-silver-500">{count}</span>
                 </button>
               )
             })}

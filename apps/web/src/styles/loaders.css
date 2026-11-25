@@ -1,19 +1,19 @@
 /* ── TrustRAG Loader System ─────────────────────────────────────────────────
-   Thinking orbs ("orbs that think while you wait") and layout-matching
-   skeletons. The orbs are Chrome Silver with a crimson core; the skeleton
-   breathes rather than sweeps, because a sweep is a loop that carries no
-   information and, on a dark surface, reads as noise.
+   Thinking orbs and layout-matching skeletons. Both are quiet, finite marks:
+   the orbs align once into a silver ramp, the skeleton fades in once. Neither
+   breathes, spins or glows — a loop that carries no information reads as noise
+   on a dark instrument. The one-shot animations live in animations.css.
 
-   Transform and opacity only, with full reduced-motion and
-   reduced-transparency fallbacks (Apple HIG §14).
-   Imported last in index.css so stream-beam overrides win over landing.css. */
+   Transform and opacity only, with reduced-motion and reduced-transparency
+   fallbacks (Apple HIG §14).
+   ─────────────────────────────────────────────────────────────────────────── */
 
 /* ── Thinking orbs ─────────────────────────────────────────────────────────── */
 .thinking-orbs {
   display: inline-flex;
   align-items: center;
   gap: calc(var(--icon-stroke) * 0.3);
-  font-size: 10px; /* base unit: sm */
+  font-size: 10px; /* sizing unit for the orbs, never body text */
 }
 
 .thinking-orbs--md {
@@ -27,97 +27,47 @@
 .thinking-orbs .orb {
   width: 1em;
   height: 1em;
-  border-radius: 9999px;
-  background: radial-gradient(
-    circle at 35% 35%,
-    var(--color-silver-200) 0%,
-    var(--color-silver-500) 45%,
-    var(--color-crimson-600) 100%
-  );
-  box-shadow: 0 0 0.9em var(--wash-silver-28);
-  opacity: 0.45;
-  transform: scale(0.72);
-  animation: orb-breathe 1.6s ease-in-out infinite;
-  will-change: transform, opacity;
+  border-radius: 50%;
+  background-color: var(--color-silver-500);
+  opacity: 0.5;
 }
 
 .thinking-orbs .orb:nth-child(2) {
-  animation-delay: 0.2s;
+  background-color: var(--color-silver-300);
+  opacity: 0.75;
 }
 
 .thinking-orbs .orb:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes orb-breathe {
-  0%,
-  100% {
-    transform: scale(0.72);
-    opacity: 0.45;
-    box-shadow: 0 0 0.4em var(--wash-silver-18);
-  }
-  50% {
-    transform: scale(1.12);
-    opacity: 1;
-    box-shadow: 0 0 1.1em var(--wash-silver-42);
-  }
+  background-color: var(--color-silver-100);
+  opacity: 0.95;
 }
 
 /* ── Skeleton ────────────────────────────────────────────────────────────────
- * A placeholder in the shape of the content it stands in for. It breathes;
- * it does not sweep.
- */
+   A static placeholder in the shape of the content it stands in for. It fades
+   in once (animations.css); it does not sweep or breathe.
+   ─────────────────────────────────────────────────────────────────────────── */
 .skel {
   position: relative;
   overflow: hidden;
   border-radius: var(--radius-control);
   background-color: var(--surface-inset);
   border: 1px solid var(--rule-faint);
-  animation: skel-breathe 2.4s var(--motion-ease-standard) infinite;
-}
-
-@keyframes skel-breathe {
-  0%,
-  100% {
-    opacity: 0.55;
-  }
-  50% {
-    opacity: 0.9;
-  }
-}
-
-/* ── Stream beam: border-beam at live tempo for the SSE stream card ──────────
-   Usage: className="border-beam stream-beam" (beam base lives in landing.css;
-   this file only quickens the ride while the stream is ACTIVE). */
-.stream-beam::before {
-  animation-duration: 2.2s;
 }
 
 /* ── Reduced motion: static only (Apple HIG §14) ──────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .thinking-orbs .orb {
-    animation: none;
-    transform: scale(1);
-    opacity: 0.9;
-    box-shadow: none;
-  }
-
+  .thinking-orbs .orb,
   .skel {
     animation: none;
-    opacity: 0.7;
   }
 
-  .stream-beam::before {
-    animation: none;
+  .thinking-orbs .orb {
+    opacity: 0.85;
   }
 }
 
-/* ── Reduced transparency: solid fills, no glow ────────────────────────────── */
+/* ── Reduced transparency: solid fills, no glow ───────────────────────────── */
 @media (prefers-reduced-transparency: reduce) {
-  .thinking-orbs .orb {
-    box-shadow: none;
-  }
-
   .skel {
     background-color: var(--surface-inset);
   }

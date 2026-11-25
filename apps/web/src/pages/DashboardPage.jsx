@@ -12,6 +12,7 @@ import { AttentionPanel } from '@/components/dashboard/AttentionPanel'
 import { WorkspacePanel } from '@/components/dashboard/WorkspacePanel'
 import { PipelineArchitecture } from '@/components/dashboard/PipelineArchitecture'
 import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 import { kbService, analysisService, claimService, conflictService } from '@/services/api'
 import { normalizeClaimState } from '@/lib/claimState'
 
@@ -249,12 +250,11 @@ export default function DashboardPage() {
                 className="lx-btn lx-btn--secondary"
                 title="Refresh every feed"
               >
-                <RefreshCw
-                  size={13}
-                  strokeWidth={1.75}
-                  className={isFetchingAnalyses ? 'animate-spin' : ''}
-                  aria-hidden="true"
-                />
+                {isFetchingAnalyses ? (
+                  <ThinkingOrbs size="sm" />
+                ) : (
+                  <RefreshCw size={13} strokeWidth={1.75} aria-hidden="true" />
+                )}
                 <span>Sync now</span>
               </button>
 

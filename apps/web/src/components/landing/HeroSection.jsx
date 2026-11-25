@@ -53,20 +53,33 @@ export default function HeroSection() {
               pixels with the pointer; the ledger itself never moves. */}
           <div className="lx-hero__field" aria-hidden="true">
             <span className="lx-hero__field-rule" />
-            <VerificationSeal className="lx-hero__field-seal" size={22} />
           </div>
 
-          <div className="lx-preview lx-enter" aria-label="Two claims from measured verification runs">
+          <div
+            className="lx-preview"
+            role="group"
+            aria-label="Two claims from measured verification runs"
+          >
             <div className="lx-preview__chrome">
               <span className="lx-preview__title">verification ledger · measured runs</span>
-              <span className="lx-micro">
-                2 claims · <span className="lx-signal">1 contradicted</span>
+              <span className="lx-preview__chrome-meta">
+                <span className="lx-micro">
+                  2 claims · <span className="lx-signal">1 contradicted</span>
+                </span>
+                <span className="lx-preview__seal-wrap">
+                  <VerificationSeal className="lx-preview__seal" size={22} />
+                  <span className="lx-preview__seal-sweep" aria-hidden="true" />
+                </span>
               </span>
             </div>
 
             <div className="lx-preview__body">
-              {HERO_RECORDS.map((record) => (
-                <EvidenceRecord key={record.index} {...record} />
+              {HERO_RECORDS.map((record, index) => (
+                <EvidenceRecord
+                  key={record.index}
+                  {...record}
+                  style={{ '--record-index': index }}
+                />
               ))}
 
               <p className="lx-preview__caption">

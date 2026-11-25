@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import { TrustRagEmblem } from '@/components/common/TrustRagLogo'
@@ -14,6 +14,9 @@ import { NAV_LINKS } from './data/nav'
 export default function LandingNavbar() {
   const [scrolled, setScrolled] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const toggleRef = useRef(null)
+  const drawerRef = useRef(null)
+  const restoreFocusRef = useRef(null)
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8)
@@ -22,18 +25,47 @@ export default function LandingNavbar() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  // Escape closes the drawer; the page behind it must not scroll.
+  // Escape closes the drawer; Tab stays inside it; focus returns to the
+  // control that opened it. The page behind the drawer must not scroll.
   useEffect(() => {
     if (!drawerOpen) return undefined
+    restoreFocusRef.current = document.activeElement
+    const focusables = () => {
+      const drawer = drawerRef.current
+      if (!drawer) return []
+      return [
+        ...drawer.querySelectorAll(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ]
+    }
+    const frame = requestAnimationFrame(() => focusables()[0]?.focus())
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') setDrawerOpen(false)
+      if (event.key === 'Escape') {
+        setDrawerOpen(false)
+        return
+      }
+      if (event.key !== 'Tab') return
+      const items = focusables()
+      if (!items.length) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown', onKeyDown)
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
+      cancelAnimationFrame(frame)
       document.removeEventListener('keydown', onKeyDown)
       document.body.style.overflow = previousOverflow
+      restoreFocusRef.current?.focus?.()
     }
   }, [drawerOpen])
 
@@ -65,6 +97,7 @@ export default function LandingNavbar() {
             </Link>
             <button
               type="button"
+              ref={toggleRef}
               className="lx-nav__toggle"
               aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={drawerOpen}
@@ -81,7 +114,13 @@ export default function LandingNavbar() {
       </header>
 
       {drawerOpen && (
-        <div className="lx-drawer" role="dialog" aria-modal="true" aria-label="Menu">
+        <div
+          ref={drawerRef}
+          className="lx-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menu"
+        >
           <div className="lx-drawer__top">
             <span className="lx-nav__wordmark">TRUSTRAG</span>
             <button

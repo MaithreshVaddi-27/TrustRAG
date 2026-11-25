@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { AlertTriangle } from 'lucide-react'
 import AppLayout from '@/layouts/AppLayout'
 import PageHeader from '@/components/common/PageHeader'
 import ConfirmDialog from '@/components/kb/ConfirmDialog'
@@ -31,13 +32,23 @@ export default function SettingsPage() {
   const [trimResult, setTrimResult] = useState(null)
   const [confirmLogout, setConfirmLogout] = useState(false)
 
-  const { data: health, isLoading, isError: healthError } = useQuery({
+  const {
+    data: health,
+    isLoading,
+    isError: healthError,
+    refetch: refetchHealth,
+  } = useQuery({
     queryKey: ['backend-health'],
     queryFn: healthService.get,
     refetchInterval: 30000,
   })
 
-  const { data: providersData, isLoading: providersLoading, isError: providersError } = useQuery({
+  const {
+    data: providersData,
+    isLoading: providersLoading,
+    isError: providersError,
+    refetch: refetchProviders,
+  } = useQuery({
     queryKey: ['model-providers'],
     queryFn: modelService.getProviders,
     refetchInterval: 30000,
@@ -102,6 +113,7 @@ export default function SettingsPage() {
               health={health}
               isLoading={isLoading}
               healthUnknown={healthUnknown}
+              onRetry={() => refetchHealth()}
             />
 
             <HardwarePanel
@@ -135,8 +147,38 @@ export default function SettingsPage() {
               onSignOut={() => setConfirmLogout(true)}
             />
 
+            {healthError && (
+              <div className="lx-message lx-message--alarm" role="alert">
+                <AlertTriangle size={15} strokeWidth={1.75} className="lx-message__icon" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <span className="lx-message__title">Cluster telemetry unavailable</span>
+                  <span className="lx-message__body">Service health could not be read from the backend.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => refetchHealth()}
+                  className="lx-btn lx-btn--secondary shrink-0"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
             {providersError && (
-              <p className="lx-micro">Model provider telemetry is unavailable.</p>
+              <div className="lx-message lx-message--alarm" role="alert">
+                <AlertTriangle size={15} strokeWidth={1.75} className="lx-message__icon" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <span className="lx-message__title">Model telemetry unavailable</span>
+                  <span className="lx-message__body">Provider state could not be read from the backend.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => refetchProviders()}
+                  className="lx-btn lx-btn--secondary shrink-0"
+                >
+                  Retry
+                </button>
+              </div>
             )}
           </>
         )}

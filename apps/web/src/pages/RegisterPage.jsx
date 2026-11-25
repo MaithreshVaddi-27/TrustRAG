@@ -1,10 +1,11 @@
 import { useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Loader2, Eye, EyeOff, AlertTriangle } from 'lucide-react'
+import { Eye, EyeOff, AlertTriangle } from 'lucide-react'
 import AuthLayout from '@/layouts/AuthLayout'
 import { PasswordRules } from '@/components/auth/PasswordRules'
 import { passwordRuleFailures } from '@/lib/passwordRules'
 import { authService } from '@/services/auth'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
@@ -66,7 +67,7 @@ export default function RegisterPage() {
 
         {loading && (
           <div className="lx-alert lx-alert--info" role="status">
-            <Loader2 size={14} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />
+            <ThinkingOrbs size="sm" />
             <span>Creating account…</span>
           </div>
         )}
@@ -178,7 +179,6 @@ export default function RegisterPage() {
           id="register-submit"
           className="lx-btn lx-btn--primary lx-btn--block lx-btn--large"
         >
-          {loading && <Loader2 size={14} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />}
           {loading ? 'Creating account…' : 'Create account'}
         </button>
       </form>

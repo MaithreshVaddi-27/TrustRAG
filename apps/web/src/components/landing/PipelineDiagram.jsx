@@ -59,6 +59,7 @@ export default function PipelineDiagram() {
       ref={containerRef}
       data-linked={progress > 0}
       style={{ '--pipeline-progress': progress }}
+      role="group"
       aria-label="The six stages of the TrustRAG verification loop"
     >
       <div className="lx-pipeline__head">

@@ -171,14 +171,6 @@ export function ResultsPanel({
               </span>
             )}
 
-            {analysis.reliability && (
-              <ReliabilityBadge
-                score={analysis.reliability.score}
-                status={analysis.reliability.status}
-                size="md"
-              />
-            )}
-
             <button
               type="button"
               onClick={handleExportDossier}

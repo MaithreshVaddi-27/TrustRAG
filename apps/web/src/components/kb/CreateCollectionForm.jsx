@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { Loader2, AlertTriangle } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 /**
  * CreateCollectionForm — the form for a new collection.
@@ -91,7 +92,7 @@ export default function CreateCollectionForm({
           className="lx-btn lx-btn--primary"
         >
           {isPending && (
-            <Loader2 size={13} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />
+            <ThinkingOrbs size="sm" />
           )}
           {isPending ? 'Creating…' : 'Create collection'}
         </button>

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { clsx } from 'clsx'
-import { ChevronRight, Loader2 } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { EVENT_META, compactTraceEvents, displayMessage } from './traceEvents'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 /**
  * ExecutionTrace — the live event feed.
@@ -26,12 +27,7 @@ export function ExecutionTrace({ events = [], isLive = false }) {
     <div className="lx-trace" aria-live="polite" aria-atomic="false">
       {isLive && (
         <div className="flex items-center gap-2 py-2">
-          <Loader2
-            size={12}
-            strokeWidth={1.75}
-            className="animate-spin text-silver-500"
-            aria-hidden="true"
-          />
+          <ThinkingOrbs size="sm" />
           <span className="font-sans text-[var(--size-body-sm)] text-silver-400">
             Pipeline running…
           </span>
@@ -39,9 +35,12 @@ export function ExecutionTrace({ events = [], isLive = false }) {
       )}
 
       {visibleEvents.length === 0 && !isLive && (
-        <p className="py-4 text-center font-sans text-[var(--size-body-sm)] text-silver-500">
-          No trace events yet.
-        </p>
+        <div className="lx-empty">
+          <p className="lx-empty__title">No trace events yet</p>
+          <p className="lx-empty__body">
+            Events appear here as the verification pipeline runs.
+          </p>
+        </div>
       )}
 
       {visibleEvents.map((event, index) => (

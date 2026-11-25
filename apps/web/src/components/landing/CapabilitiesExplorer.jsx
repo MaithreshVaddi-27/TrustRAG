@@ -72,7 +72,12 @@ export default function CapabilitiesExplorer() {
           ))}
         </ul>
 
-        <pre className="lx-code" tabIndex={0}>
+        <pre
+          className="lx-code"
+          role="region"
+          tabIndex={0}
+          aria-label={`${active.title} example configuration`}
+        >
           <code>{active.code}</code>
         </pre>
       </div>

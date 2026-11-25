@@ -61,7 +61,7 @@ Direction stays **Obsidian / Chrome Silver / Laser Crimson**, world stays
    and the seal. On load, a finite ~900ms sequence draws the hairline, moves
    the crimson point into alignment, and settles the ledger 12px into place
    with a 60ms stagger. A single restrained light sweep crosses the seal once.
-   Pointer parallax on the ledger is capped at 8px, rAF-driven and
+   Pointer parallax on the ledger is capped at 6px (the shipped value), rAF-driven and
    interruptible. The crimson contradiction remains the only bright thing.
 2. **Pipeline band — scroll-linked journey.** Replace the one-shot sweep with
    a sweep whose progress is driven by scroll position; each of the six stages

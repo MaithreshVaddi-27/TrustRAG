@@ -70,9 +70,21 @@ describe('FormattedAnswer rendering', () => {
         content={'# Title\n\n- one\n- two\n\n> quoted finding'}
       />
     )
-    expect(container.querySelector('h1')?.textContent).toContain('Title')
+    // Model headings are demoted: the route owns the only <h1> on the page.
+    expect(container.querySelector('h2')?.textContent).toContain('Title')
+    expect(container.querySelector('h1')).toBeNull()
     expect(container.querySelectorAll('li')).toHaveLength(2)
     expect(container.querySelector('blockquote')?.textContent).toContain('quoted finding')
+  })
+
+  it('keeps a model answer from injecting a second h1 into the route', () => {
+    const { container } = render(
+      <FormattedAnswer content={'# First\n\n## Second\n\n### Third'} />
+    )
+    expect(container.querySelectorAll('h1')).toHaveLength(0)
+    expect(container.querySelectorAll('h2')).toHaveLength(1)
+    expect(container.querySelectorAll('h3')).toHaveLength(1)
+    expect(container.querySelectorAll('h4')).toHaveLength(1)
   })
 
   it('applies the caller className alongside the base classes', () => {

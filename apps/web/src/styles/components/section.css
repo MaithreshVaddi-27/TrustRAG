@@ -40,29 +40,6 @@
   }
 }
 
-/* A quiet link that ends a section. */
-.lx-band__more {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--step-2);
-  min-height: 44px;
-  font-size: var(--size-label);
-  color: var(--color-silver-400);
-  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
-}
-
-.lx-band__more:hover {
-  color: var(--color-silver-050);
-}
-
-.lx-band__more svg {
-  transition: transform var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.lx-band__more:hover svg {
-  transform: translateX(3px);
-}
-
 /* ── Tabs ───────────────────────────────────────────────────────────────────
  * A segmented control: a surface step plus a hairline, never a glow.
  * ─────────────────────────────────────────────────────────────────────────── */
@@ -82,7 +59,7 @@
   align-items: center;
   min-height: 44px;
   padding-inline: var(--step-4);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   font-size: var(--size-label);
   color: var(--color-silver-500);
   transition: background-color var(--motion-duration-fast) var(--motion-ease-standard),

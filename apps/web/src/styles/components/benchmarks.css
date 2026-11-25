@@ -60,7 +60,7 @@
   position: relative;
   height: 6px;
   background-color: var(--color-graphite-800);
-  border-radius: 3px;
+  border-radius: var(--radius-pill);
   overflow: hidden;
 }
 
@@ -69,7 +69,7 @@
   inset-block: 0;
   left: 0;
   background-color: var(--color-silver-700);
-  border-radius: 3px;
+  border-radius: var(--radius-pill);
   transform-origin: left center;
 }
 
@@ -98,6 +98,25 @@
 
 .lx-bench__row--lead .lx-bench__fill {
   background-color: var(--color-silver-050);
+}
+
+/* The first set is the one that leads the band: a stronger top rule, a taller
+ * measure and slightly larger figures. The other sets stay quiet tables. */
+.lx-bench[data-lead='true'] {
+  border-top-color: var(--rule-strong);
+}
+
+.lx-bench[data-lead='true'] .lx-bench__row--lead {
+  padding-block: var(--step-6);
+}
+
+.lx-bench[data-lead='true'] .lx-bench__row--lead .lx-bench__label,
+.lx-bench[data-lead='true'] .lx-bench__row--lead .lx-bench__value {
+  font-size: var(--size-lede);
+}
+
+.lx-bench[data-lead='true'] .lx-bench__row--lead .lx-bench__track {
+  height: 10px;
 }
 
 .lx-bench__note {

@@ -25,7 +25,7 @@ export function RunButton({ loading, elapsedSec, disabled, onClick }) {
         <>
           <ThinkingOrbs size="sm" elapsedSec={elapsedSec} />
           <span>Executing pipeline</span>
-          <span className="font-mono text-[0.625rem] tabular-nums opacity-80">
+          <span className="font-mono text-[var(--size-micro)] tabular-nums opacity-80">
             {elapsedSec}s
           </span>
         </>
@@ -33,7 +33,7 @@ export function RunButton({ loading, elapsedSec, disabled, onClick }) {
         <>
           <Zap size={14} strokeWidth={1.75} aria-hidden="true" />
           <span>Run analysis</span>
-          <span className="ml-1 inline-flex items-center gap-0.5 font-mono text-[0.625rem] opacity-70">
+          <span className="ml-1 inline-flex items-center gap-0.5 font-mono text-[var(--size-micro)] opacity-70">
             <CornerDownLeft size={10} aria-hidden="true" />
             ⌘↵
           </span>

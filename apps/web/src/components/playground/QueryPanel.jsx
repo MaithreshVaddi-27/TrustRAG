@@ -67,9 +67,18 @@ export function QueryPanel({
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+      <form id="query-form" onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
         <div className="flex-1 space-y-5 overflow-y-auto">
-          <ErrorDisplay errorMsg={errorMsg} setErrorMsg={setErrorMsg} />
+          <ErrorDisplay
+            errorMsg={errorMsg}
+            setErrorMsg={setErrorMsg}
+            onRetry={() => {
+              setErrorMsg('')
+              requestAnimationFrame(() =>
+                document.getElementById('query-form')?.requestSubmit(),
+              )
+            }}
+          />
 
           <div className="lx-workbench__section space-y-5">
             <KnowledgeBaseSelector

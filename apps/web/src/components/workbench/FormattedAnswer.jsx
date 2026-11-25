@@ -18,9 +18,12 @@ export function FormattedAnswer({ content, className = '' }) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          h1: ({ children }) => <h1>{children}</h1>,
-          h2: ({ children }) => <h2>{children}</h2>,
-          h3: ({ children }) => <h3>{children}</h3>,
+          // Model-generated headings are demoted one level so an answer can
+          // never inject a second <h1> into a route that already owns one.
+          // The deepest level clamps at h4, the last level styled in markdown.css.
+          h1: ({ children }) => <h2>{children}</h2>,
+          h2: ({ children }) => <h3>{children}</h3>,
+          h3: ({ children }) => <h4>{children}</h4>,
           h4: ({ children }) => <h4>{children}</h4>,
           p: ({ children }) => <p>{children}</p>,
           strong: ({ children }) => <strong>{children}</strong>,

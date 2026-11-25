@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Upload, Loader2, Check, AlertTriangle, FileText } from 'lucide-react'
+import { Upload, Check, AlertTriangle, FileText } from 'lucide-react'
 import ConfirmDialog from '@/components/kb/ConfirmDialog'
 import DocumentRow from './DocumentRow'
 import { kbService } from '@/services/api'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 /**
  * DocumentTable — the documents indexed into one collection.
@@ -87,7 +88,7 @@ export default function DocumentTable({ kb, pollIntervalMs = 2000 }) {
           >
             {uploadDocMutation.isPending ? (
               <>
-                <Loader2 size={13} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />
+                <ThinkingOrbs size="sm" />
                 <span>Indexing</span>
               </>
             ) : (
@@ -120,7 +121,7 @@ export default function DocumentTable({ kb, pollIntervalMs = 2000 }) {
       <div aria-live="polite">
         {uploadStatus === 'uploading' && (
           <p className="lx-micro mb-3 flex items-center gap-2">
-            <Loader2 size={12} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />
+            <ThinkingOrbs size="sm" />
             Uploading and queuing the document for indexing…
           </p>
         )}
@@ -142,7 +143,7 @@ export default function DocumentTable({ kb, pollIntervalMs = 2000 }) {
 
       {docsLoading ? (
         <div className="flex items-center justify-center gap-2 px-4 py-8">
-          <Loader2 size={14} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />
+          <ThinkingOrbs size="sm" />
           <span className="lx-micro">Querying the document registry…</span>
         </div>
       ) : documents.length === 0 ? (

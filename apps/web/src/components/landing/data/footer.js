@@ -7,10 +7,9 @@
  * Split by section. Each module owns one export; `data/index.js` re-exports
  * them for the components that want a single import.
  *
- * Benchmark figures carry their provenance in the `note` field. TrustRAG's
- * own numbers are measured on the internal reliability fixture documented in
- * `docs/evaluation/`; competitor figures are published literature values.
- * Do not add a number without a source.
+ * Benchmark figures carry their provenance in the `note` field. Every number
+ * is measured on the internal reliability fixture documented in
+ * `docs/evaluation/`. Do not add a number without a source.
  */
 
 /**

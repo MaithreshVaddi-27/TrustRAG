@@ -36,7 +36,7 @@ export default function AccountPanel({ user, copied, onCopyId, onSignOut }) {
                 <button
                   type="button"
                   onClick={onCopyId}
-                  className="lx-icon-btn h-7 w-7 shrink-0"
+                  className="lx-icon-btn h-10 w-10 shrink-0"
                   title="Copy tenant ID"
                   aria-label="Copy tenant ID"
                 >

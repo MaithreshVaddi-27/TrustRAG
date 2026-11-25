@@ -32,32 +32,32 @@ export default class ErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-[40vh] flex items-center justify-center p-6">
-          <div className="max-w-md w-full rounded-2xl border border-crimson-700/50 bg-crimson-950/30 p-6 text-center">
-            <AlertTriangle className="mx-auto mb-3 text-crimson-400" size={28} />
-            <h2 className="text-sm font-semibold text-crimson-300 mb-1">
-              Something went wrong in this view
-            </h2>
-            <p className="text-xs text-slate-400 mb-4 break-words">
-              {this.state.error?.message || 'An unexpected error occurred.'}
-            </p>
-            <div className="flex justify-center gap-2">
-              <button
-                onClick={this.handleReset}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-surface-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-surface-700 transition-colors"
-              >
-                <RefreshCcw size={12} />
+        <main id="main-content" className="lx-auth">
+          <div className="lx-auth__column">
+            <div className="lx-message lx-message--alarm" role="alert">
+              <AlertTriangle size={15} strokeWidth={1.75} className="lx-message__icon" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <h1 className="lx-message__title">Something went wrong in this view</h1>
+                <p className="lx-message__body break-words">
+                  {this.state.error?.message || 'An unexpected error occurred.'}
+                </p>
+              </div>
+              <button type="button" onClick={this.handleReset} className="lx-btn lx-btn--secondary shrink-0">
+                <RefreshCcw size={12} strokeWidth={1.75} aria-hidden="true" />
                 Try again
               </button>
+            </div>
+            <div className="mt-4 flex justify-end">
               <button
+                type="button"
                 onClick={() => window.location.assign('/dashboard')}
-                className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
+                className="lx-btn lx-btn--quiet"
               >
                 Back to dashboard
               </button>
             </div>
           </div>
-        </div>
+        </main>
       )
     }
 

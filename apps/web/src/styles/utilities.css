@@ -147,33 +147,6 @@
   color: var(--signal-text);
 }
 
-/* A live status dot. Only for something that is genuinely live. */
-.lx-live-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: var(--color-crimson-500);
-  box-shadow: 0 0 0 3px var(--signal-ring);
-  vertical-align: middle;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .lx-live-dot {
-    animation: lx-pulse 2.4s var(--motion-ease-standard) infinite;
-  }
-}
-
-@keyframes lx-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.45;
-  }
-}
-
 /* ── Rules ────────────────────────────────────────────────────────────────── */
 
 .lx-rule {
@@ -239,7 +212,6 @@ html.lx-js [data-lx-reveal].lx-reveal--pending {
   transform: translateY(16px);
   transition: opacity var(--motion-duration-slow) var(--motion-ease-out),
     transform var(--motion-duration-slow) var(--motion-ease-out);
-  transition-delay: var(--reveal-delay, 0ms);
   will-change: opacity, transform;
 }
 

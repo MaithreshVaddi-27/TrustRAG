@@ -66,12 +66,45 @@
   animation: lx-register 720ms var(--motion-ease-out) 160ms both;
 }
 
-.lx-hero__field-seal {
-  position: absolute;
-  right: -6px;
-  top: -6px;
+/* The seal belongs to the ledger, not to the empty space around it: it sits
+ * in the header strip, attached to the object it registers. */
+.lx-preview__chrome-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-3);
+  flex-shrink: 0;
+}
+
+.lx-preview__seal-wrap {
+  position: relative;
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.lx-preview__seal {
+  display: block;
   opacity: 0;
   animation: lx-seal-settle 560ms var(--motion-ease-out) 640ms both;
+}
+
+/* One neutral highlight crosses the seal, once, after it settles. It is a
+ * light catching the material, not a glow around it. */
+.lx-preview__seal-sweep {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.lx-preview__seal-sweep::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--wash-silver-28), transparent);
+  transform: translateX(-120%);
 }
 
 @keyframes lx-register {
@@ -268,27 +301,6 @@
   color: var(--color-silver-400);
 }
 
-.lx-record__evidence {
-  margin: 0 var(--step-4) var(--step-4);
-  padding: var(--step-3) var(--step-4);
-  border-left: 1px solid var(--rule);
-  background-color: var(--scrim-45);
-}
-
-.lx-record__evidence-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--step-2) var(--step-4);
-  margin-bottom: var(--step-2);
-}
-
-.lx-record__evidence-text {
-  font-size: var(--size-body-sm);
-  line-height: var(--leading-body-sm);
-  color: var(--color-silver-500);
-}
-
 .lx-record__foot {
   display: flex;
   align-items: center;
@@ -368,13 +380,23 @@
   }
 
   .lx-hero__field-rule,
-  .lx-hero__field-seal,
+  .lx-preview__seal,
   /* Match the nth-child specificity above, or the base rule wins on
    * specificity even inside this media query. */
   .lx-record:nth-child(n) .lx-seal {
     animation: none;
     opacity: 1;
     transform: none;
+  }
+
+  .lx-record {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .lx-preview__seal-sweep {
+    display: none;
   }
 }
 

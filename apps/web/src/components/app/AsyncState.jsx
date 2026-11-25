@@ -8,7 +8,7 @@ import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
  * and its own empty card, and each one looked slightly different. This is
  * the single version:
  *
- *   loading — a breathing skeleton in the surface's own shape
+ *   loading — a quiet skeleton in the surface's own shape, or the orbs
  *   error   — crimson, names the problem, offers the recovery
  *   empty   — a heading, one sentence, and the action that fills it
  *

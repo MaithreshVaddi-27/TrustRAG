@@ -101,7 +101,7 @@ function CollectionRows({ kb, isOpen, onToggle, onDelete }) {
               onClick={onToggle}
               aria-expanded={isOpen}
               aria-controls={bodyId}
-              className="lx-icon-btn h-7 w-7 shrink-0"
+              className="lx-icon-btn h-10 w-10 shrink-0"
               title={isOpen ? 'Hide documents' : 'Show documents'}
               aria-label={
                 isOpen
@@ -140,7 +140,7 @@ function CollectionRows({ kb, isOpen, onToggle, onDelete }) {
           <button
             type="button"
             onClick={onDelete}
-            className="lx-icon-btn lx-icon-btn--alarm h-8 w-8"
+            className="lx-icon-btn lx-icon-btn--alarm h-10 w-10"
             title="Delete collection"
             aria-label={`Delete collection ${kb.name}`}
           >

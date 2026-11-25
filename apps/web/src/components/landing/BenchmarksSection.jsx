@@ -35,6 +35,7 @@ export default function BenchmarksSection() {
       <div
         key={active.id}
         className="lx-bench"
+        data-lead={active.id === BENCHMARK_TABS[0].id ? 'true' : undefined}
         role="tabpanel"
         id={`bench-panel-${active.id}`}
         aria-labelledby={`bench-tab-${active.id}`}

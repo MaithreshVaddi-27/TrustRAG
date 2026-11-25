@@ -120,7 +120,7 @@ export function EmptyState({ enableWebSearch = false }) {
             <p className="lx-micro flex items-center gap-2">
               <Terminal size={13} strokeWidth={1.75} aria-hidden="true" />
               Ready to verify. Press{' '}
-              <kbd className="inline-flex items-center gap-0.5 rounded border border-[color:var(--rule)] bg-surface-inset px-1.5 py-0.5 font-mono text-[0.625rem] text-silver-300">
+              <kbd className="inline-flex items-center gap-0.5 rounded border border-[color:var(--rule)] bg-surface-inset px-1.5 py-0.5 font-mono text-[var(--size-micro)] text-silver-300">
                 <CornerDownLeft size={10} aria-hidden="true" /> ⌘↵
               </kbd>{' '}
               to run.

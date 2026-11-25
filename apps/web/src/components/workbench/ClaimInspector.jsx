@@ -132,7 +132,7 @@ export const ClaimInspector = memo(function ClaimInspector({ claims = [] }) {
                 className="lx-tab"
               >
                 {entry.label}
-                <span className="ml-1 font-mono text-[0.625rem] text-silver-500">{count}</span>
+                <span className="ml-1 font-mono text-[var(--size-micro)] text-silver-500">{count}</span>
               </button>
             )
           })}

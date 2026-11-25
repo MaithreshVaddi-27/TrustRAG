@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Eye, EyeOff, Loader2, AlertTriangle, Check } from 'lucide-react'
+import { Eye, EyeOff, AlertTriangle, Check } from 'lucide-react'
 import AuthLayout from '@/layouts/AuthLayout'
 import { authService } from '@/services/auth'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -50,7 +51,7 @@ export default function LoginPage() {
 
         {loading && (
           <div className="lx-alert lx-alert--info" role="status">
-            <Loader2 size={14} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />
+            <ThinkingOrbs size="sm" />
             <span>Signing in…</span>
           </div>
         )}
@@ -105,7 +106,6 @@ export default function LoginPage() {
         </div>
 
         <button type="submit" disabled={loading} id="login-submit" className="lx-btn lx-btn--primary lx-btn--block lx-btn--large">
-          {loading && <Loader2 size={14} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />}
           {loading ? 'Signing in…' : 'Sign in'}
         </button>
       </form>

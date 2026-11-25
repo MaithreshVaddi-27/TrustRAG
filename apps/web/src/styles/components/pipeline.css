@@ -1,9 +1,9 @@
 /* ── TrustRAG · Pipeline diagram ─────────────────────────────────────────────
  * The signature technical visualisation. Six stages of the closed loop,
  * drawn as linework: a hairline runs the whole chain, each stage is a node
- * on it, and a single sweep travels the chain when the diagram enters the
- * viewport. That sweep is the only looping-free authored motion in the
- * product — it explains what the pipeline does rather than decorating it.
+ * on it, and a single sweep follows the reader's scroll position through the
+ * chain. That scroll-linked sweep is the one authored journey in the product —
+ * it explains what the pipeline does rather than decorating it.
  * ─────────────────────────────────────────────────────────────────────────── */
 
 .lx-pipeline {
@@ -188,8 +188,17 @@
 }
 
 @media (max-width: 899px) {
+  /* The authored journey stays visible on small screens: the same progress
+   * hairline turns vertical and follows the stage column. */
   .lx-chain::after {
-    display: none;
+    left: 11px;
+    right: auto;
+    top: 23px;
+    bottom: 23px;
+    width: 1px;
+    height: auto;
+    transform: scaleY(var(--pipeline-progress, 0));
+    transform-origin: top center;
   }
 }
 

@@ -115,7 +115,7 @@ export function AIEngineSelector({
             >
               {Icon && <Icon size={12} strokeWidth={1.5} aria-hidden="true" />}
               {provider.label}
-              <span className="ml-1 font-mono text-[0.625rem] text-silver-500">{provider.port}</span>
+              <span className="ml-1 font-mono text-[var(--size-micro)] text-silver-500">{provider.port}</span>
             </button>
           )
         })}
@@ -129,7 +129,7 @@ export function AIEngineSelector({
           type="button"
           onClick={refetchProviders}
           disabled={loading}
-          className="lx-icon-btn h-7 w-7"
+          className="lx-icon-btn h-10 w-10"
           title="Refresh the model list"
           aria-label="Refresh the model list"
         >

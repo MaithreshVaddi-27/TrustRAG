@@ -163,6 +163,15 @@
   white-space: nowrap;
 }
 
+/* Chips used as controls keep the quiet surface, but grow to a real touch
+ * target on coarse pointers. Counts stay small. */
+@media (pointer: coarse) {
+  .lx-chip--control {
+    min-height: 44px;
+    padding-inline: var(--step-3);
+  }
+}
+
 .lx-chip--alarm {
   border-color: var(--crimson-rule);
   background-color: var(--color-alarm-wash);
@@ -643,25 +652,15 @@ select.lx-control {
  * ─────────────────────────────────────────────────────────────────────────── */
 
 .lx-skeleton {
+  display: block;
   background-color: var(--surface-inset);
   border-radius: var(--radius-control);
-  animation: lx-breathe 2.4s var(--motion-ease-standard) infinite;
-}
-
-@keyframes lx-breathe {
-  0%,
-  100% {
-    opacity: 0.55;
-  }
-  50% {
-    opacity: 0.9;
-  }
+  /* The one-shot fade-in lives in animations.css. Nothing breathes here. */
 }
 
 @media (prefers-reduced-motion: reduce) {
   .lx-skeleton {
     animation: none;
-    opacity: 0.7;
   }
 }
 
@@ -737,26 +736,6 @@ select.lx-control {
   font-variant-numeric: tabular-nums;
   color: var(--color-silver-200);
   white-space: nowrap;
-}
-
-/* ── Skeleton ───────────────────────────────────────────────────────────────
- * A placeholder in the shape of the thing it stands in for. It breathes
- * rather than sweeps: a sweep is a loop that carries no information, and on
- * a dark surface it reads as noise.
- * ─────────────────────────────────────────────────────────────────────────── */
-
-.lx-skeleton {
-  display: block;
-  border-radius: var(--radius-control);
-  background-color: var(--surface-inset);
-  animation: lx-breathe 2.4s var(--motion-ease-standard) infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lx-skeleton {
-    animation: none;
-    opacity: 0.7;
-  }
 }
 
 /* A definition list of measurements. Every value in it is a single

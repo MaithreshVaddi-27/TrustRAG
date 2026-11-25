@@ -4,30 +4,9 @@
  * and hairlines, and the only shadow in the system belongs to the hero
  * preview.
  *
- * What remains is the part that is not decoration — the scrollbar, the
- * selection colour, and the high-contrast overrides.
+ * What remains is the part that is not decoration — the selection colour and
+ * the high-contrast overrides. The scrollbar lives in base.css (one block).
  * ─────────────────────────────────────────────────────────────────────────── */
-
-/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
-
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--color-obsidian-950);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-graphite-700);
-  border-radius: var(--radius-pill);
-  border: 2px solid var(--color-obsidian-950);
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-silver-600);
-}
 
 /* ── Selection ─────────────────────────────────────────────────────────────── */
 

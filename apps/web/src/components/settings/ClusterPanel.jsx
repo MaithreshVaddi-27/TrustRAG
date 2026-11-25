@@ -1,4 +1,5 @@
-import { Server, Database, Layers, ShieldCheck, Clock, Loader2 } from 'lucide-react'
+import { Server, Database, Layers, ShieldCheck, Clock, AlertTriangle } from 'lucide-react'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 /**
  * ClusterPanel — where the data lives and what is running.
@@ -24,8 +25,9 @@ const SERVICES = [
   },
 ]
 
-export default function ClusterPanel({ health, isLoading, healthUnknown }) {
+export default function ClusterPanel({ health, isLoading, healthUnknown, onRetry = null }) {
   const isUp = (key) => health?.services?.[key] === 'ok'
+  const anyDown = SERVICES.some(({ key }) => !isUp(key))
 
   return (
     <section className="lx-panel-block" aria-labelledby="cluster-heading">
@@ -35,7 +37,7 @@ export default function ClusterPanel({ health, isLoading, healthUnknown }) {
           Cluster infrastructure and storage
         </h2>
         {isLoading && (
-          <Loader2 size={14} strokeWidth={1.75} className="animate-spin text-silver-500" aria-hidden="true" />
+          <ThinkingOrbs size="sm" />
         )}
       </div>
 
@@ -52,11 +54,10 @@ export default function ClusterPanel({ health, isLoading, healthUnknown }) {
                   <span className="lx-micro">: {endpoint}</span>
                 </dt>
                 <dd
-                  className="lx-deflist__value"
-                  style={
+                  className={
                     !unknown && !connected
-                      ? { color: 'var(--color-crimson-300)' }
-                      : undefined
+                      ? 'lx-deflist__value lx-signal'
+                      : 'lx-deflist__value'
                   }
                 >
                   {unknown ? 'Unknown' : connected ? 'Connected' : 'Disconnected'}
@@ -85,6 +86,21 @@ export default function ClusterPanel({ health, isLoading, healthUnknown }) {
             </dd>
           </div>
         </dl>
+
+        {!isLoading && !healthUnknown && anyDown && (
+          <div className="lx-message lx-message--alarm mt-4" role="alert">
+            <AlertTriangle size={15} strokeWidth={1.75} className="lx-message__icon" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <span className="lx-message__title">A storage service is not answering</span>
+              <span className="lx-message__body">Checks and ingestion that need it will fail until it reconnects.</span>
+            </div>
+            {onRetry && (
+              <button type="button" onClick={onRetry} className="lx-btn lx-btn--secondary shrink-0">
+                Retry
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="lx-panel-block__foot">

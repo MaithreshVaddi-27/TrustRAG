@@ -1,18 +1,13 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import {
-  ArrowLeft,
-  Check,
-  AlertTriangle,
-  Copy,
-  Loader2,
-} from 'lucide-react'
+import { ArrowLeft, Check, AlertTriangle, Copy } from 'lucide-react'
 import AppLayout from '@/layouts/AppLayout'
 import PageHeader from '@/components/common/PageHeader'
 import AsyncState from '@/components/app/AsyncState'
 import { kbService } from '@/services/api'
 import { copyToClipboard } from '@/lib/clipboard'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 /**
  * DocumentPage — one indexed document, in full.
@@ -47,6 +42,7 @@ export default function DocumentPage() {
 
   const {
     data: doc,
+    isLoading,
     isError,
     error,
     refetch,
@@ -89,7 +85,8 @@ export default function DocumentPage() {
         />
 
         <AsyncState
-          status={isError ? 'error' : 'ready'}
+          status={isLoading ? 'loading' : isError ? 'error' : 'ready'}
+          loadingLabel="Loading document record…"
           errorTitle="Failed to load the document"
           errorMessage={error?.message}
           onRetry={refetch}
@@ -133,7 +130,7 @@ export default function DocumentPage() {
                           <button
                             type="button"
                             onClick={handleCopy}
-                            className="lx-icon-btn h-7 w-7 shrink-0"
+                            className="lx-icon-btn h-10 w-10 shrink-0"
                             title="Copy the content hash"
                             aria-label="Copy the content hash"
                           >
@@ -153,7 +150,7 @@ export default function DocumentPage() {
                           </button>
                         ) : (
                           <span
-                            className="lx-icon-btn h-7 w-7 shrink-0"
+                            className="lx-icon-btn h-10 w-10 shrink-0"
                             aria-hidden="true"
                           />
                         )}
@@ -289,7 +286,7 @@ function StateChip({ status }) {
 
   return (
     <span className="lx-chip">
-      <Loader2 size={11} strokeWidth={2} className="animate-spin" aria-hidden="true" />
+      <ThinkingOrbs size="sm" />
       {status === 'pending' ? 'Queued' : 'Processing'}
     </span>
   )

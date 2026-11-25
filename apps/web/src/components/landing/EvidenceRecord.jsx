@@ -25,9 +25,13 @@ const EvidenceRecord = memo(function EvidenceRecord({
   score,
   sealed = false,
   className = '',
+  style,
 }) {
   return (
-    <article className={clsx('lx-record', status === 'contradicted' && 'lx-record--contradicted', className)}>
+    <article
+      className={clsx('lx-record', status === 'contradicted' && 'lx-record--contradicted', className)}
+      style={style}
+    >
       <header className="lx-record__head">
         <span className="lx-micro">{index}</span>
         {sealed && (

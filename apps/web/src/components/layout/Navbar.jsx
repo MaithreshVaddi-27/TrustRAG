@@ -55,8 +55,7 @@ export function Navbar({ isOnline, recheck, setIsMobileOpen }) {
   const isEngineOverride = Boolean(
     playgroundEngine?.model && playgroundEngine.model !== serverModel,
   )
-  const effEmbeddingModel =
-    providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
+  const effEmbeddingModel = providersData?.active_embedding_model || null
   const accelerator = providersData?.hardware?.accelerator
 
   const acceleratorLabel =
@@ -164,7 +163,7 @@ export function Navbar({ isOnline, recheck, setIsMobileOpen }) {
         >
           <Layers size={12} strokeWidth={1.5} aria-hidden="true" />
           <span className="lx-truncate">
-            {shortModelId(effEmbeddingModel) || 'bge-small-en-v1.5'}
+            {shortModelId(effEmbeddingModel) || 'Embedding model'}
           </span>
         </span>
 

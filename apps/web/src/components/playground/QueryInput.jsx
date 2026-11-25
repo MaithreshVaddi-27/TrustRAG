@@ -89,7 +89,7 @@ export function QueryInput({ query, setQuery, loading, handleSubmit, handlePrese
                 disabled={loading}
                 title={preset.full}
                 aria-label={preset.full}
-                className="lx-chip transition-colors hover:border-[color:var(--rule-strong)] hover:text-silver-200"
+                className="lx-chip lx-chip--control transition-colors hover:border-[color:var(--rule-strong)] hover:text-silver-200"
               >
                 <Icon size={11} strokeWidth={1.75} aria-hidden="true" />
                 {preset.text}

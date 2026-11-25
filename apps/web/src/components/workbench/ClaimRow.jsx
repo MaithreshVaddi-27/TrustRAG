@@ -61,7 +61,7 @@ export default function ClaimRow({ claim, index, isForceExpanded, onCopy, isCopi
           <button
             type="button"
             onClick={onCopy}
-            className="lx-icon-btn h-8 w-8"
+            className="lx-icon-btn h-10 w-10"
             title="Copy the claim"
             aria-label={`Copy claim ${index}`}
           >
@@ -75,7 +75,7 @@ export default function ClaimRow({ claim, index, isForceExpanded, onCopy, isCopi
           <button
             type="button"
             onClick={() => setOpen((previous) => !previous)}
-            className="lx-icon-btn h-8 w-8"
+            className="lx-icon-btn h-10 w-10"
             aria-label={isExpanded ? 'Collapse the claim detail' : 'Expand the claim detail'}
           >
             {isExpanded ? (

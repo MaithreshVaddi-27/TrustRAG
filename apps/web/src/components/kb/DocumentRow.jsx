@@ -1,13 +1,8 @@
 import { memo } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  Check,
-  AlertTriangle,
-  Loader2,
-  Trash2,
-  FileText,
-} from 'lucide-react'
+import { Check, AlertTriangle, Trash2, FileText } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 /**
  * DocumentRow — one document inside a collection.
@@ -66,7 +61,7 @@ const DocumentRow = memo(function DocumentRow({ doc, onDelete }) {
             </span>
           ) : (
             <span className="lx-chip">
-              <Loader2 size={11} strokeWidth={2} className="animate-spin" aria-hidden="true" />
+              <ThinkingOrbs size="sm" />
               Indexing
             </span>
           )}
@@ -76,7 +71,7 @@ const DocumentRow = memo(function DocumentRow({ doc, onDelete }) {
           <button
             type="button"
             onClick={() => onDelete(doc)}
-            className="lx-icon-btn lx-icon-btn--alarm h-8 w-8"
+            className="lx-icon-btn lx-icon-btn--alarm h-10 w-10"
             title="Delete document"
             aria-label={`Remove document ${doc.filename}`}
           >

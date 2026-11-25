@@ -144,6 +144,14 @@
   border-left-color: var(--crimson-rule-strong);
 }
 
+/* The contradiction is the resolving beat of the simulation band: the verdict
+ * settles into registration with its evidence, once, after the row arrives. */
+@media (prefers-reduced-motion: no-preference) {
+  .lx-claim--contradicted .lx-verdict {
+    animation: lx-verdict-settle 320ms var(--motion-ease-out) 180ms both;
+  }
+}
+
 /* A run that abstained asserted nothing, so there is nothing to audit. */
 .lx-claim--empty {
   background-color: var(--scrim-35);

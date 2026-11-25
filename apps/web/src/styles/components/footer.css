@@ -80,30 +80,69 @@
   border-radius: var(--radius-large);
   background-color: var(--surface-panel);
   padding: var(--step-12) var(--step-6);
-  text-align: center;
+}
+
+/* The closing gesture is the product's own, not the centred SaaS card. */
+.lx-cta::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--step-6);
+  right: var(--step-6);
+  height: 1px;
+  background-color: var(--rule-strong);
+  transform: scaleX(0);
+  transform-origin: left center;
 }
 
 @media (min-width: 1024px) {
   .lx-cta {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: var(--step-12);
     padding: var(--step-16) var(--step-12);
+  }
+
+  .lx-cta::before {
+    left: var(--step-12);
+    right: var(--step-12);
   }
 }
 
 .lx-cta__headline {
   max-width: 20ch;
-  margin-inline: auto;
 }
 
 .lx-cta__lede {
   max-width: 48ch;
-  margin: var(--step-5) auto 0;
+  margin-top: var(--step-5);
 }
 
 .lx-cta__actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
   gap: var(--step-3);
   margin-top: var(--step-8);
+}
+
+@media (min-width: 1024px) {
+  .lx-cta__actions {
+    margin-top: 0;
+    justify-content: flex-end;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lx-cta::before {
+    animation: lx-register 680ms var(--motion-ease-out) 180ms both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lx-cta::before {
+    animation: none;
+    transform: none;
+  }
 }

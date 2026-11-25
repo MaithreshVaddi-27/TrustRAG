@@ -97,7 +97,7 @@ read from the running application.
 | Check | Result |
 |---|---|
 | `npm run lint` | Clean — 0 warnings, 0 errors |
-| `npm run test` | 17 files, 82 tests, all pass |
+| `npm run test` | 18 files, 84 tests, all pass |
 | `npm run build` | Succeeds in ~2.1s |
 | Lighthouse — every route, desktop and mobile | Accessibility 100 · Best Practices 100 · Agentic Browsing 100 |
 | Lighthouse — landing | SEO 100 · Performance 100 desktop, 99 mobile (LCP 2.0 s) |

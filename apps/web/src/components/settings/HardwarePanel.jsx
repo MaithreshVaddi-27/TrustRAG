@@ -1,4 +1,5 @@
-import { Zap, Activity, Loader2 } from 'lucide-react'
+import { Zap, Activity } from 'lucide-react'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 /**
  * HardwarePanel — what the machine can actually do.
@@ -41,7 +42,7 @@ export default function HardwarePanel({
             className="lx-btn lx-btn--secondary"
           >
             {trimming ? (
-              <Loader2 size={13} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />
+              <ThinkingOrbs size="sm" />
             ) : (
               <Activity size={13} strokeWidth={1.75} aria-hidden="true" />
             )}

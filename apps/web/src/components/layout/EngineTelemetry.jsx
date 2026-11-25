@@ -45,7 +45,7 @@ export function EngineTelemetry({ isOnline, recheck }) {
   const effProvider = playgroundEngine?.provider || providersData?.active_provider
   const effModel = playgroundEngine?.model || providersData?.active_model
   const isEngineOverride = !!playgroundEngine?.model && playgroundEngine.model !== providersData?.active_model
-  const effEmbeddingModel = providersData?.active_embedding_model || 'BAAI/bge-small-en-v1.5'
+  const effEmbeddingModel = providersData?.active_embedding_model || null
   const accelerator = providersData?.hardware?.accelerator
 
   return (
@@ -112,7 +112,7 @@ export function EngineTelemetry({ isOnline, recheck }) {
       >
         <Layers size={12} strokeWidth={1.5} aria-hidden="true" />
         <span className="max-w-[220px] truncate">
-          {shortModelId(effEmbeddingModel) || 'bge-small-en-v1.5'}
+          {shortModelId(effEmbeddingModel) || 'Embedding model'}
         </span>
       </span>
 

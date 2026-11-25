@@ -1,11 +1,4 @@
 /* ── Landing Page Specific Styles ─────────────────────────────────────────── */
-/* The landing page has its own surface vocabulary under `components/`.
-   This file holds only the landing-specific overrides that are still live. */
-
-/* The fine grid behind the hero. A texture, not an illustration. */
-.bg-cyber-grid {
-  background-image:
-    linear-gradient(var(--wash-silver-01) 1px, transparent 1px),
-    linear-gradient(90deg, var(--wash-silver-01) 1px, transparent 1px);
-  background-size: 60px 60px;
-}
+/* The landing page's surface vocabulary lives in `styles/components/`.
+ * This file is intentionally empty: no global landing overrides survive the
+ * dark-luxury system. Keep it imported so route-specific rules have a home. */

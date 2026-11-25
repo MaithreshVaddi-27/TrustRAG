@@ -10,11 +10,13 @@ import { CTA } from './data/cta'
 export default function LandingCTA() {
   return (
     <section className="lx-cta" aria-labelledby="cta-heading">
-      <h2 id="cta-heading" className="lx-display-sm lx-cta__headline">
-        {CTA.headline}
-      </h2>
+      <div className="lx-cta__statement">
+        <h2 id="cta-heading" className="lx-display-sm lx-cta__headline">
+          {CTA.headline}
+        </h2>
 
-      <p className="lx-lede lx-cta__lede">{CTA.lede}</p>
+        <p className="lx-lede lx-cta__lede">{CTA.lede}</p>
+      </div>
 
       <div className="lx-cta__actions">
         <Link to="/register" className="lx-btn lx-btn--primary lx-btn--large">
