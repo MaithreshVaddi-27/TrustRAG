@@ -65,7 +65,7 @@ echo "$REG" | grep -q '"email"' && ok "register returns profile (no token)" || b
 LOGIN=$(curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$EMAIL\",\"password\":\"Str0ng!Passphrase2026\"}")
-TOKEN=$(echo "$LOGIN" | python3 -c "import sys,json;print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null)
+TOKEN=$(echo "$LOGIN" | "$VENV_PY" -c "import sys,json;print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null)
 [ -n "$TOKEN" ] && ok "login returns JWT (${#TOKEN} chars)" || bad "login failed: $LOGIN"
 
 ME=$(curl -s http://127.0.0.1:8000/api/v1/auth/me -H "Authorization: Bearer $TOKEN")
@@ -79,20 +79,20 @@ echo "── 3. Knowledge base + document ───────────"
 KB=$(curl -s -X POST http://127.0.0.1:8000/api/v1/knowledge-bases \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"name":"E2E KB","description":"live verification"}')
-KB_ID=$(echo "$KB" | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
+KB_ID=$(echo "$KB" | "$VENV_PY" -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
 [ -n "$KB_ID" ] && ok "KB created: $KB_ID" || bad "KB create: $KB"
 
 printf 'TrustRAG verification pipeline splits answers into atomic claims and checks each against retrieved evidence using natural language inference. Sources are audited with SHA-256 hashes. The system self-heals with bounded recovery attempts or safely abstains.' > "$SCRATCH/trustrag_e2e_doc.md"
 DOC=$(curl -s -X POST "http://127.0.0.1:8000/api/v1/knowledge-bases/$KB_ID/documents" \
   -H "Authorization: Bearer $TOKEN" -F "file=@$SCRATCH/trustrag_e2e_doc.md")
-DOC_ID=$(echo "$DOC" | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
+DOC_ID=$(echo "$DOC" | "$VENV_PY" -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
 [ -n "$DOC_ID" ] && ok "document ingested: $DOC_ID" || bad "ingest: $DOC"
 
 # Wait for async indexing (chunk count on the KB document record)
 INDEXED=""
 for i in $(seq 1 30); do
   DOC_STATUS=$(curl -s "http://127.0.0.1:8000/api/v1/documents/$DOC_ID" -H "Authorization: Bearer $TOKEN" \
-    | python3 -c "import sys,json;print(json.load(sys.stdin).get('ingestion_status',''))" 2>/dev/null)
+    | "$VENV_PY" -c "import sys,json;print(json.load(sys.stdin).get('ingestion_status',''))" 2>/dev/null)
   [ "$DOC_STATUS" = "completed" ] && { INDEXED=yes; break; }
   sleep 1
 done
@@ -102,13 +102,13 @@ echo "── 4. Analysis run (no LLM required: abstains or answers) ──"
 AN=$(curl -s -X POST http://127.0.0.1:8000/api/v1/analyses \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d "{\"knowledge_base_id\":\"$KB_ID\",\"query\":\"How does TrustRAG verify answers?\"}")
-AN_ID=$(echo "$AN" | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
+AN_ID=$(echo "$AN" | "$VENV_PY" -c "import sys,json;print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
 [ -n "$AN_ID" ] && ok "analysis created: $AN_ID" || bad "analysis create: $AN"
 
 FINAL=""
 for i in $(seq 1 90); do
   STATUS=$(curl -s "http://127.0.0.1:8000/api/v1/analyses/$AN_ID" -H "Authorization: Bearer $TOKEN" \
-    | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))" 2>/dev/null)
+    | "$VENV_PY" -c "import sys,json;print(json.load(sys.stdin).get('status',''))" 2>/dev/null)
   case "$STATUS" in
     completed|abstained|failed) FINAL=$STATUS; break ;;
   esac
@@ -120,7 +120,7 @@ done
 
 if [ -n "$FINAL" ] && [ "$FINAL" != "failed" ]; then
   CLAIMS=$(curl -s "http://127.0.0.1:8000/api/v1/analyses/$AN_ID/claims" -H "Authorization: Bearer $TOKEN")
-  echo "$CLAIMS" | python3 -c "import sys,json;d=json.load(sys.stdin);print(f'  claims persisted: {len(d)}')" \
+  echo "$CLAIMS" | "$VENV_PY" -c "import sys,json;d=json.load(sys.stdin);print(f'  claims persisted: {len(d)}')" \
     && ok "claims endpoint responds" || bad "claims: $CLAIMS"
   TRACE=$(curl -s "http://127.0.0.1:8000/api/v1/analyses/$AN_ID/trace" -H "Authorization: Bearer $TOKEN")
   echo "$TRACE" | grep -q '"event"' && ok "execution trace populated" || bad "trace: $(echo $TRACE | head -c 120)"
@@ -134,7 +134,7 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/auth/register \
 TOKEN2=$(curl -s -X POST http://127.0.0.1:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$OTHER_EMAIL\",\"password\":\"Str0ng!Passphrase2026\"}" \
-  | python3 -c "import sys,json;print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null)
+  | "$VENV_PY" -c "import sys,json;print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null)
 CROSS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8000/api/v1/knowledge-bases/$KB_ID" \
   -H "Authorization: Bearer $TOKEN2")
 [ "$CROSS" = "403" ] || [ "$CROSS" = "404" ] \

@@ -17,8 +17,21 @@
 set -uo pipefail
 
 API_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-REPO_ROOT="$(cd "$API_DIR/.." && pwd)"
-PY="/opt/homebrew/opt/python@3.12/libexec/bin/python3"
+# Same venv discovery as start_local_llm.sh / typecheck_ratchet.sh: the venv
+# layout differs on Windows, and a Homebrew-only absolute path broke Linux and
+# Windows outright.
+if [ -x "$API_DIR/.venv/bin/python" ]; then
+  PY="$API_DIR/.venv/bin/python"
+elif [ -x "$API_DIR/.venv/Scripts/python.exe" ]; then
+  PY="$API_DIR/.venv/Scripts/python.exe"
+elif [ -x "$API_DIR/.venv/Scripts/python" ]; then
+  PY="$API_DIR/.venv/Scripts/python"
+elif command -v python3 >/dev/null 2>&1; then
+  PY="$(command -v python3)"
+else
+  echo "ERROR: no Python 3.11/3.12 found — create apps/api/.venv first." >&2
+  exit 1
+fi
 MODELS_YAML="$API_DIR/config/models.yaml"
 API_URL="http://127.0.0.1:8000"
 
@@ -34,12 +47,30 @@ trap restore EXIT INT TERM
 
 ONLY="${1:-all}"
 
+stop_api() {
+  # `pkill -f` is not available on Windows; the health probe below is the
+  # authority anyway. Prefer a recorded PID, then a best-effort pkill.
+  if [ -n "${API_PID:-}" ]; then
+    kill "$API_PID" 2>/dev/null || true
+    wait "$API_PID" 2>/dev/null || true
+    API_PID=""
+  fi
+  if command -v pkill >/dev/null 2>&1; then
+    pkill -f "uvicorn app.main:app" 2>/dev/null || true
+  elif command -v taskkill >/dev/null 2>&1; then
+    taskkill //F //IM python.exe 2>/dev/null || true
+  fi
+  sleep 3
+}
+
 start_api() {
   # start_api <extra env assignments...>
-  pkill -f "uvicorn app.main:app" 2>/dev/null
-  sleep 3
-  ( cd "$API_DIR" && env "$@" nohup "$PY" -m uvicorn app.main:app \
-      --host 127.0.0.1 --port 8000 --log-level warning >/tmp/trustrag_api.log 2>&1 & )
+  stop_api
+  # Background the subshell itself and exec uvicorn inside it, so $! is the
+  # process we later need to stop (nested `&` would lose that PID).
+  ( cd "$API_DIR" && exec env "$@" "$PY" -m uvicorn app.main:app \
+      --host 127.0.0.1 --port 8000 --log-level warning >"$API_DIR/eval_api.log" 2>&1 ) &
+  API_PID=$!
   for _ in $(seq 1 60); do
     if curl -sf -o /dev/null --max-time 2 "$API_URL/api/v1/health"; then return 0; fi
     sleep 1
