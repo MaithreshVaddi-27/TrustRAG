@@ -173,9 +173,61 @@ def terminate(pid: int) -> None:
         )
     else:
         try:
-            os.kill(pid, signal.SIGTERM)
-        except OSError:
-            pass
+            # Daemons start in their own session, so the recorded PID is the
+            # process-group leader. Killing the group also reaps stray children.
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+        except (OSError, PermissionError):
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+
+
+def port_pids(port: int) -> set[int]:
+    """PIDs currently listening on a TCP port, using only OS tools.
+
+    A stale server that still owns the port is worse than no server: the
+    launcher starts a second process, which then cannot open embedded Qdrant
+    storage and fails on every retrieval. Resolve owners before starting.
+    """
+    pids: set[int] = set()
+    if os.name == "nt":
+        netstat = windows_tool("netstat")
+        result = subprocess.run(  # noqa: S603 — resolved system tool, fixed argv
+            [netstat, "-ano", "-p", "TCP"], capture_output=True, text=True, check=False
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if (
+                len(parts) >= 5
+                and parts[-2].upper() == "LISTENING"
+                and parts[1].endswith(f":{port}")
+            ):
+                if parts[-1].isdigit():
+                    pids.add(int(parts[-1]))
+        return pids
+
+    lsof = shutil.which("lsof")
+    if not lsof:
+        return pids
+    result = subprocess.run(  # noqa: S603 — resolved system tool, fixed argv
+        [lsof, "-ti", f"tcp:{port}"], capture_output=True, text=True, check=False
+    )
+    for line in result.stdout.splitlines():
+        if line.strip().isdigit():
+            pids.add(int(line.strip()))
+    return pids
+
+
+def clear_stale_listeners(service: str, ports: dict[str, int], state: dict) -> None:
+    """Terminate untracked processes holding a port before starting a new one."""
+    port_key = "backend" if service == "backend" else "frontend"
+    port = ports.get(port_key, DEFAULT_PORTS[port_key])
+    tracked = {int(entry.get("pid", 0)) for entry in state.values()}
+    for pid in port_pids(port):
+        if pid not in tracked and pid != os.getpid():
+            terminate(pid)
+            print(f"[serve] cleared stale listener on :{port} (pid {pid})")
 
 
 def find_python() -> str | None:
@@ -368,6 +420,7 @@ def cmd_serve(args: argparse.Namespace, ports: dict[str, int]) -> int:
             start_service("ollama", ["ollama", "serve"], REPO, state)
 
     if only in ("all", "backend") and not probe("backend", ports):
+        clear_stale_listeners("backend", ports, state)
         start_service(
             "backend",
             [
@@ -387,6 +440,7 @@ def cmd_serve(args: argparse.Namespace, ports: dict[str, int]) -> int:
         )
 
     if only in ("all", "frontend") and not probe("frontend", ports):
+        clear_stale_listeners("frontend", ports, state)
         env = dict(os.environ, VITE_BACKEND_PORT=str(ports["backend"]))
         with EnvOverride(env):
             pid = start_daemon(

@@ -100,6 +100,28 @@ def test_probe_returns_false_on_connection_error(monkeypatch) -> None:
     assert serve.probe("frontend", serve.DEFAULT_PORTS) is False
 
 
+def test_port_pids_parses_lsof_output(monkeypatch) -> None:
+    class _Result:
+        stdout = "4242\n4243\n"
+
+    monkeypatch.setattr(serve.os, "name", "posix")
+    monkeypatch.setattr(serve.shutil, "which", lambda _name: "/usr/sbin/lsof")
+    monkeypatch.setattr(serve.subprocess, "run", lambda *_a, **_kw: _Result())
+    assert serve.port_pids(8000) == {4242, 4243}
+
+
+def test_clear_stale_listeners_keeps_tracked_pid(monkeypatch) -> None:
+    stopped = []
+    monkeypatch.setattr(serve, "port_pids", lambda _port: {100, 200})
+    monkeypatch.setattr(serve, "terminate", lambda pid: stopped.append(pid))
+    monkeypatch.setattr(serve.os, "getpid", lambda: 999)
+    state = {"backend": {"pid": 100}}
+
+    serve.clear_stale_listeners("backend", serve.DEFAULT_PORTS, state)
+
+    assert stopped == [200]
+
+
 @pytest.mark.parametrize(
     ("content", "expected"),
     [

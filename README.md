@@ -559,6 +559,17 @@ TrustRAG supports multiple LLM providers interchangeably. Switch via `LLM_PROVID
 | **llama_cpp** | LFM2.5-1.2B, Granite-4.2-3B, SmolLM3-3B, EXAONE-2.4B, SmolLM2-1.7B | 2–4 GB | Default. Hardware-aware `scripts/servers/start_local_llm.sh` auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 concurrent model on 8 GB |
 | **ollama** | gemma3:1b, qwen3:1.7b, llama3 | 1–3 GB | `ollama serve` + `ollama pull <model>`. Set `OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1` for 8 GB RAM |
 | **mlx** | Llama-3.2-1B-4bit, Llama-3.2-3B-4bit, LFM2.5-1.2B-4bit | 1–3 GB | Apple Silicon only. `./scripts/servers/start_mlx_server.sh [id]` on :8080. Runs alongside llama.cpp on :9931 |
+| **gemini** (cloud) | gemini-3.5-flash-lite, gemini-3.5-flash, gemini-2.5-flash/pro | — | Opt-in only. Sends document text off-box. Install the extra below and set `GEMINI_API_KEY` in the repo-root `.env` |
+
+Gemini is not part of the default install. Enable it explicitly:
+
+```bash
+cd apps/api
+python -m pip install -e ".[cloud]"   # use `python -m pip`, not a bare pip script
+# set GEMINI_API_KEY in the repo-root .env, then restart the API
+```
+
+A missing extra or key produces an actionable error instead of a silent abstention. Note that a virtualenv created by a different Python version can leave `pip` pointing at another interpreter: `python -m pip` always installs into the interpreter that runs the server.
 
 #### Small vs large models
 
