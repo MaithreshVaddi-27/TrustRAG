@@ -33,7 +33,7 @@ export default function HeroSection() {
           <p className="lx-lede lx-hero__lede lx-enter">{HERO.lede}</p>
 
           <div className="lx-hero__actions lx-enter">
-            <Link to="/register" className="lx-btn lx-btn--attention lx-btn--large">
+            <Link to="/register" className="lx-btn lx-btn--primary lx-btn--large">
               Start auditing
               <ArrowRight className="lx-btn__icon" size={16} strokeWidth={1.5} aria-hidden="true" />
             </Link>

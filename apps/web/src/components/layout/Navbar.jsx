@@ -29,6 +29,7 @@ export function Navbar({ isOnline, recheck, setIsMobileOpen }) {
   const navigate = useNavigate()
   const location = useLocation()
   const isPlayground = location.pathname === '/playground'
+  const isDashboard = location.pathname === '/dashboard'
 
   const [playgroundEngine, setPlaygroundEngine] = useState(readPlaygroundEngine)
   useEffect(() => {
@@ -183,7 +184,7 @@ export function Navbar({ isOnline, recheck, setIsMobileOpen }) {
           <button
             type="button"
             onClick={() => navigate('/playground')}
-            className="lx-btn lx-btn--attention lx-topbar__run"
+            className={`lx-btn ${isDashboard ? 'lx-btn--primary' : 'lx-btn--secondary'} lx-topbar__run`}
           >
             <Zap size={13} strokeWidth={1.5} aria-hidden="true" />
             <span className="lx-topbar__run-label">Run analysis</span>

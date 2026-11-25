@@ -62,7 +62,7 @@ export function ActivityFeed({ analyses = [], kbNames = {} }) {
               Ask a question against an indexed collection and the pipeline
               will verify it against the evidence.
             </p>
-            <Link to="/playground" className="lx-btn lx-btn--primary">
+            <Link to="/playground" className="lx-btn lx-btn--secondary">
               Start the first analysis
             </Link>
           </div>

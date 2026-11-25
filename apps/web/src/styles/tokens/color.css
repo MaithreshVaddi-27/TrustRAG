@@ -82,25 +82,26 @@
   --color-on-accent: var(--color-obsidian-950);
   --color-on-accent-hover: var(--color-obsidian-950);
 
-  /* ── Attention — the gather ───────────────────────────────────────────────
-   * Laser Crimson, used once per view: the single action the eye should
-   * land on. Sign in. Get started. The one thing the page is about.
+  /* ── Attention — now an alias of the silver plate ─────────────────────────
+   * The action colour is the neutral plate, not a hue. Crimson is reserved
+   * for signals: a caught contradiction, the registration seal, a live
+   * status, focus, and destruction. One focal silver action per view.
    *
-   *   silver-050 on crimson-500      4.9:1  (AA normal text)
-   *   obsidian-950 on crimson-400    5.4:1  (the hover state)
+   *   obsidian-950 on silver-050   17.8:1  (the focal fill)
+   *   obsidian-950 on silver-100   15.7:1  (the hover state)
    *
-   * Attention is not a general button colour and never decoration. If a
-   * view has two equally crimson actions, it has no attention — and the
-   * crimson has stopped meaning anything. Everything else in the product
-   * stays silver, so the one crimson surface is the one that counts.
+   * These aliases remain so older call sites keep working; do not use them
+   * in new code — use --color-accent / --color-accent-hover.
    */
-  --color-attention: var(--color-crimson-500);
-  --color-attention-hover: var(--color-crimson-400);
-  --color-on-attention: var(--color-silver-050);
-  --color-on-attention-hover: var(--color-obsidian-950);
-  /* The quiet register of the same intent: crimson text and hairline, no
-   * fill. For a second placement of the same focal action. */
-  --color-attention-quiet: var(--color-crimson-400);
+
+  --color-attention: var(--color-accent);
+  --color-attention-hover: var(--color-accent-hover);
+  --color-on-attention: var(--color-on-accent);
+  --color-on-attention-hover: var(--color-on-accent-hover);
+  --color-attention-quiet: var(--color-silver-300);
+
+  /* The bottom registration hairline on the focal silver plate. */
+  --button-inset-rule: rgba(8, 8, 8, 0.18);
 
   /* ── Alarm — the destructive one ─────────────────────────────────────────
    * Deeper than attention on purpose. A destructive confirmation must not

@@ -104,7 +104,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <button type="submit" disabled={loading} id="login-submit" className="lx-btn lx-btn--attention lx-btn--block lx-btn--large">
+        <button type="submit" disabled={loading} id="login-submit" className="lx-btn lx-btn--primary lx-btn--block lx-btn--large">
           {loading && <Loader2 size={14} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />}
           {loading ? 'Signing in…' : 'Sign in'}
         </button>

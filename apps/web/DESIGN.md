@@ -34,45 +34,41 @@ signal, not a decoration.
 
 ### Where crimson is allowed
 
-Crimson marks exactly five things. Used anywhere else it stops meaning
-anything.
+Crimson marks four things. Used anywhere else it stops meaning anything.
 
 1. A caught contradiction — the verdict, its record edge, its seal.
 2. The active selection — the sidebar's left rule, the active tab, the
    active scenario, the TrustRAG column in the comparison matrix.
 3. A live status — the engine dot, the "unrecoverable" outcome.
 4. Keyboard focus.
-5. The focal action of a view — one per surface: **Sign in**, **Create
-   account**, **Get started**. Two crimson actions on one screen means there
-   is no attention at all.
 
-Crimson also carries the **alarm** register: failures and destructive
-actions. Same hue, different depth — a destructive confirmation never reads
+Actions are **never** crimson. The only crimson control is a destructive one,
+in the deeper **alarm** register — a destructive confirmation must never read
 as an entry point.
 
 | Register | Fill | Use |
 |---|---|---|
-| `--color-attention` | `crimson-500` | The focal action's filled button |
-| `--color-attention-quiet` | `crimson-400` text + hairline | A second placement of the same action |
+| `--color-accent` | `silver-050` | The focal action's filled plate |
 | `--color-alarm` | `crimson-600` | A destructive action's filled button |
 | `--color-alarm-text` | `crimson-300` | Error text on a dark surface |
 
 ### Buttons
 
-The default button is a **silver plate** (`--color-accent`), not a coloured
-one. Crimson is entered only through the two registers above:
+The button colour is **Chrome Silver**. Crimson is a signal and appears on a
+control only for destruction. One focal silver plate per view; every other
+action is a hairline.
 
 | Class | Treatment | Use |
 |---|---|---|
-| `.lx-btn--primary` | Silver plate, obsidian text | The ordinary action — the default |
-| `.lx-btn--attention` | Crimson fill | The focal action of a view |
-| `.lx-btn--attention-quiet` | Crimson hairline + text | A second placement of the focal action |
+| `.lx-btn--primary` | Silver plate, obsidian text, bottom registration hairline | The one focal action |
 | `.lx-btn--secondary` | Hairline outline, silver text | Everything else |
 | `.lx-btn--quiet` | Text only | Tertiary, inline |
 | `.lx-btn--alarm` | Deep crimson fill | A destructive action |
+| `.lx-btn--attention`, `.lx-btn--attention-quiet` | Deprecated aliases of silver | Read-only, do not use in new code |
 
-A filled crimson button carries a **silver** focus ring (a crimson ring on a
-crimson fill is 1.2:1). Every other focusable element keeps the crimson ring.
+A filled crimson (alarm) button carries a **silver** focus ring, because a
+crimson ring on a crimson fill is 1.2:1. Every other focusable element keeps
+the crimson ring.
 
 ### Verdict family
 

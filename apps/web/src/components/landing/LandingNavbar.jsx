@@ -60,7 +60,7 @@ export default function LandingNavbar() {
             <Link to="/login" className="lx-nav__signin">
               Sign in
             </Link>
-            <Link to="/register" className="lx-btn lx-btn--attention-quiet">
+            <Link to="/register" className="lx-btn lx-btn--secondary">
               Get started
             </Link>
             <button
@@ -111,7 +111,7 @@ export default function LandingNavbar() {
           </nav>
 
           <div className="lx-drawer__actions">
-            <Link to="/register" className="lx-btn lx-btn--attention-quiet lx-btn--block" onClick={closeDrawer}>
+            <Link to="/register" className="lx-btn lx-btn--primary lx-btn--block" onClick={closeDrawer}>
               Get started
             </Link>
             <Link to="/login" className="lx-btn lx-btn--secondary lx-btn--block" onClick={closeDrawer}>

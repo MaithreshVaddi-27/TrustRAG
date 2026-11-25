@@ -57,7 +57,7 @@ export default function ClaimsPage() {
           }
           description="Atomic assertions decomposed from model answers, each verified against its cited evidence by natural language inference."
           actions={
-            <Link to="/playground" className="lx-btn lx-btn--attention">
+            <Link to="/playground" className="lx-btn lx-btn--primary">
               Run new query
               <ArrowRight size={13} strokeWidth={1.5} aria-hidden="true" />
             </Link>
@@ -74,7 +74,7 @@ export default function ClaimsPage() {
           emptyTitle="No claims extracted yet"
           emptyBody="Run an analysis in the playground to decompose a response into atomic propositions and verify each one."
           emptyAction={
-            <Link to="/playground" className="lx-btn lx-btn--attention">
+            <Link to="/playground" className="lx-btn lx-btn--secondary">
               Decompose claims in the playground
               <ArrowRight size={13} strokeWidth={1.5} aria-hidden="true" />
             </Link>

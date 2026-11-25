@@ -56,7 +56,7 @@ export default function EvidencePage() {
           }
           description="Retrieved evidence chunks across every analysis, with provenance, score breakdown and integrity audit."
           actions={
-            <Link to="/playground" className="lx-btn lx-btn--attention">
+            <Link to="/playground" className="lx-btn lx-btn--primary">
               Run new query
               <ArrowRight size={13} strokeWidth={1.5} aria-hidden="true" />
             </Link>
@@ -73,7 +73,7 @@ export default function EvidencePage() {
           emptyTitle="No evidence segments retrieved yet"
           emptyBody="Run an analysis in the playground to ingest, score and persist evidence chunks into the audit vault with verified token spans."
           emptyAction={
-            <Link to="/playground" className="lx-btn lx-btn--attention">
+            <Link to="/playground" className="lx-btn lx-btn--secondary">
               Launch a playground analysis
               <ArrowRight size={13} strokeWidth={1.5} aria-hidden="true" />
             </Link>

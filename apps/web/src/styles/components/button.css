@@ -1,13 +1,13 @@
 /* ── TrustRAG · Buttons ──────────────────────────────────────────────────────
- * One button, four registers. The default is a silver plate; crimson is
- * reserved for the two moments that earn it — the focal action of a view
- * and a destructive action.
+ * One button, three live registers. Silver is the action colour; crimson is
+ * a signal and appears on a control only for destruction.
  *
- *   --primary          silver plate. The ordinary action.
- *   --attention        crimson fill. One per view: Sign in, Get started.
- *   --attention-quiet  crimson hairline and text. A second placement of the
- *                      same focal action, at a lower volume.
- *   --alarm            crimson, deeper. This destroys something.
+ *   --primary          the focal silver plate. One per view.
+ *   --secondary        hairline outline. Every other action.
+ *   --alarm            deep crimson. This destroys something.
+ *
+ * --attention and --attention-quiet are deprecated aliases of silver, kept
+ * for older call sites. New code uses --primary / --secondary.
  *
  * Every interactive target is at least 44×44.
  * ─────────────────────────────────────────────────────────────────────────── */
@@ -40,10 +40,12 @@
   cursor: not-allowed;
 }
 
-/* Primary — silver plate, obsidian text. The ordinary action. */
+/* Primary — the focal silver plate. A bottom registration hairline is its
+ * only ornament; hierarchy comes from size and placement, never hue. */
 .lx-btn--primary {
   background-color: var(--color-accent);
   color: var(--color-on-accent);
+  box-shadow: inset 0 -1px 0 var(--button-inset-rule);
 }
 
 .lx-btn--primary:hover:not(:disabled) {
@@ -51,12 +53,11 @@
   color: var(--color-on-accent-hover);
 }
 
-/* Attention — Laser Crimson. The one focal action on a view: Sign in,
- * Get started, Start auditing. If a view has two of these, it has no
- * attention at all, and the crimson has stopped meaning anything. */
+/* Deprecated alias — resolves to the silver plate. */
 .lx-btn--attention {
   background-color: var(--color-attention);
   color: var(--color-on-attention);
+  box-shadow: inset 0 -1px 0 var(--button-inset-rule);
 }
 
 .lx-btn--attention:hover:not(:disabled) {
@@ -64,27 +65,23 @@
   color: var(--color-on-attention-hover);
 }
 
-/* A crimson fill cannot carry a crimson focus ring (1.2:1). The ring on a
- * filled crimson button is silver, which reads against both the button and
- * the obsidian page around it. */
-.lx-btn--attention:focus-visible,
+/* A crimson fill cannot carry a crimson focus ring (1.2:1), so only the
+ * destructive button opts out. Silver plates keep the global crimson ring. */
 .lx-btn--alarm:focus-visible {
   outline: 2px solid var(--focus-ring-on-accent);
   outline-offset: 2px;
 }
 
-/* Attention, quiet — the same intent without a fill. Crimson text on a
- * crimson hairline. Used where a focal action needs a second placement
- * that must not compete with the filled one. */
+/* Deprecated alias — a slightly stronger silver hairline. */
 .lx-btn--attention-quiet {
-  border-color: var(--color-alarm-rule);
+  border-color: var(--rule-strong);
   color: var(--color-attention-quiet);
 }
 
 .lx-btn--attention-quiet:hover:not(:disabled) {
-  border-color: var(--color-attention);
-  background-color: var(--color-alarm-wash);
-  color: var(--color-crimson-300);
+  border-color: var(--color-silver-400);
+  background-color: var(--wash-silver-04);
+  color: var(--color-silver-050);
 }
 
 /* Secondary — hairline outline, silver text. */

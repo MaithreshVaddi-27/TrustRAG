@@ -57,7 +57,7 @@ export default function ConflictsPage() {
           }
           description="Contradictions and integrity flags detected across document versions and queries."
           actions={
-            <Link to="/playground" className="lx-btn lx-btn--attention">
+            <Link to="/playground" className="lx-btn lx-btn--primary">
               Run new query
               <ArrowRight size={13} strokeWidth={1.5} aria-hidden="true" />
             </Link>

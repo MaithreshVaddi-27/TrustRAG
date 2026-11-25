@@ -15,7 +15,7 @@ export default function AccountPanel({ user, copied, onCopyId, onSignOut }) {
           <User size={16} strokeWidth={1.5} aria-hidden="true" />
           Account and multi-tenant isolation
         </h2>
-        <button type="button" onClick={onSignOut} className="lx-btn lx-btn--alarm">
+        <button type="button" onClick={onSignOut} className="lx-btn lx-btn--secondary">
           <LogOut size={13} strokeWidth={1.75} aria-hidden="true" />
           <span>Sign out</span>
         </button>

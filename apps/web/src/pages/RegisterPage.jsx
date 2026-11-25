@@ -176,7 +176,7 @@ export default function RegisterPage() {
           type="submit"
           disabled={loading}
           id="register-submit"
-          className="lx-btn lx-btn--attention lx-btn--block lx-btn--large"
+          className="lx-btn lx-btn--primary lx-btn--block lx-btn--large"
         >
           {loading && <Loader2 size={14} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />}
           {loading ? 'Creating account…' : 'Create account'}

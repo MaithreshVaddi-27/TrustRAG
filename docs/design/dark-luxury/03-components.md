@@ -11,8 +11,9 @@ when **not** to use it.
    layout device, and it does not nest.
 2. **One accent.** Chrome Silver is the accent. The primary action is an
    off-white plate with obsidian text.
-3. **One alarm.** Laser Crimson means attention — the focal action of a
-   view, a failure, or a destructive action. It is never decoration.
+3. **One alarm.** Laser Crimson is a signal: a caught contradiction, the
+   registration seal, a live status, focus, or a destructive action. It is
+   never an action colour and never decoration.
 4. **One icon set.** Lucide. One size. 1.5px stroke. Icons take the
    colour of their text role and never get a colour of their own.
 5. **One focus ring.** 2px Laser Crimson at 3px offset.
@@ -23,20 +24,18 @@ when **not** to use it.
 ## Buttons — `.lx-btn`
 
 ```jsx
-<button className="lx-btn lx-btn--primary">Upload document</button>
-<button className="lx-btn lx-btn--attention">Sign in</button>
-<button className="lx-btn lx-btn--secondary">Sign in</button>
-<a className="lx-btn lx-btn--quiet">Read the methodology</a>
+<button className="lx-btn lx-btn--primary">Sign in</button>
+<button className="lx-btn lx-btn--secondary">Read the methodology</button>
+<a className="lx-btn lx-btn--quiet">Back to overview</a>
 ```
 
 | Variant | Treatment | Use |
 |---|---|---|
-| `--primary` | Chrome Silver plate, obsidian text | The ordinary action. The default. |
-| `--attention` | Laser Crimson fill | The focal action of a view — one per surface |
-| `--attention-quiet` | Crimson hairline and text | A second placement of the same focal action |
+| `--primary` | Chrome Silver plate, obsidian text, bottom registration hairline | The one focal action per view |
 | `--secondary` | Hairline outline, silver text | Everything else |
 | `--quiet` | Text only, no border | Tertiary, inline, navigational |
 | `--alarm` | Deep crimson fill | A destructive action |
+| `--attention`, `--attention-quiet` | Deprecated silver aliases | Do not use in new code |
 
 | Modifier | Effect |
 |---|---|
@@ -45,11 +44,10 @@ when **not** to use it.
 
 Minimum target: 44×44px. Press feedback scales to 0.985 in 80ms.
 
-**Do not** use a gradient button, a glow, or a second attention action on the
-same surface. If two actions matter, one is attention and one is secondary;
-if both are ordinary, both are primary.
+**Do not** use a gradient button, a glow, or a second primary action on the
+same surface. If two actions matter, one is primary and one is secondary.
 
-A filled crimson button carries a silver focus ring: a crimson ring on a
+Only a filled crimson (alarm) button carries a silver focus ring: a crimson ring on a
 crimson fill is 1.2:1 against the button it outlines. Every other focusable
 element keeps the crimson ring.
 

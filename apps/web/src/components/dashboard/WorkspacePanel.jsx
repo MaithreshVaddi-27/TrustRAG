@@ -28,7 +28,7 @@ export function WorkspacePanel({ kbs = [], lastRunByKb = {} }) {
               Create a collection, upload documents, and the corpus becomes
               queryable.
             </p>
-            <Link to="/knowledge-bases" className="lx-btn lx-btn--primary">
+            <Link to="/knowledge-bases" className="lx-btn lx-btn--secondary">
               Create a collection
               <ArrowRight size={13} strokeWidth={1.75} aria-hidden="true" />
             </Link>

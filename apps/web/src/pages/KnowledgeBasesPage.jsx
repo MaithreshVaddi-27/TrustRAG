@@ -93,7 +93,7 @@ export default function KnowledgeBasesPage() {
                 setIsCreating(true)
                 setCreateError(null)
               }}
-              className="lx-btn lx-btn--attention"
+              className={`lx-btn ${isCreating ? 'lx-btn--secondary' : 'lx-btn--primary'}`}
             >
               <Plus size={15} strokeWidth={1.75} aria-hidden="true" />
               <span>New collection</span>
@@ -187,7 +187,7 @@ export default function KnowledgeBasesPage() {
             <button
               type="button"
               onClick={() => setIsCreating(true)}
-              className="lx-btn lx-btn--attention"
+              className="lx-btn lx-btn--secondary"
             >
               <Plus size={15} strokeWidth={1.75} aria-hidden="true" />
               <span>Create a collection</span>
