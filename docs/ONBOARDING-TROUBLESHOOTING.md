@@ -19,22 +19,29 @@
 8. frontend: cd apps/web && npm install && npm run dev   # :5173
 ```
 
-**One command instead of steps 4, 7 and 8** — `apps/api/scripts/start_local_services.sh`
-starts MongoDB, Ollama and the API, and waits until the API answers:
+**One command instead of steps 4, 7 and 8** — `scripts/serve.py` starts
+MongoDB, Ollama, the API and Vite, then waits until each answers. It uses
+only the Python standard library and works in bash, PowerShell and cmd.exe:
 
 ```bash
-bash apps/api/scripts/start_local_services.sh
+python scripts/serve.py doctor
+python scripts/serve.py serve        # Ctrl+C stops every service
+python scripts/serve.py status
+python scripts/serve.py stop
 ```
 
-It runs under **bash on macOS, Linux and Windows (Git Bash or WSL)**. It
-discovers a Python 3.11–3.12 interpreter itself — `$PYTHON`, then the
-project virtualenv (`.venv/bin/python`, or `.venv/Scripts/python.exe` on
-Windows), then `python3`/`python` on `PATH` — so nothing about it is
-macOS-specific. The children are started in **their own session**, so they
-survive the shell that launched them, and the API's pid is written to
-`$TMPDIR/trustrag_api.pid` so a stale process holding the port can be
-replaced. Re-running it is safe: it starts only what is not already
-listening.
+On Windows: `powershell -ExecutionPolicy Bypass -File scripts\serve.ps1 serve`.
+All ports come from `config/ports.yaml`; the launcher discovers a Python
+3.11–3.12 interpreter itself (`$PYTHON`, then the project virtualenv in both
+POSIX and Windows layouts, then `python3`/`python` on `PATH`). Children run
+in their own session so they survive the launching shell, and their PIDs and
+logs are recorded under the OS temp directory. Re-running is safe: it starts
+only what is not already listening.
+
+`doctor` also checks the local dev-proxy configuration (see failure #28 below).
+
+`apps/api/scripts/start_local_services.sh` remains as the backend-only path
+under Git Bash or WSL on Windows.
 
 `bootstrap.py` delegates to `scripts/setup/ensure_onnx_models.py`, which guarantees
 two files in `apps/api/.model_cache/`:
@@ -150,16 +157,18 @@ net start MongoDB
 | 15 | `setup.sh` warns `:9931/:8080 already in use` while LLM checks above say healthy | False alarm: occupied LLM ports **are** the healthy state | Ignore if the LLM lines above report the servers |
 | 16 | Small local model abstains on questions a cloud model answers | ≤3B gets a compact prompt + the two-step verify path automatically, but it is still much weaker | Compare objectively: `./scripts/eval/eval_provider.sh llama_cpp …` vs `./scripts/eval/eval_provider.sh gemini …` |
 | 17 | A strong model behaves like a small one | `is_small_model()` matched its id (e.g. a size marker in the name) | Check `python -c "from app.llm.local_llm import is_small_model; print(is_small_model('<id>'))"`; the classifier is conservative by design |
-| 16 | `python3.11: command not found` on Ubuntu | Stock Ubuntu ships 3.10 | deadsnakes PPA (see Linux section) |
-| 17 | MongoDB apt 404 on Ubuntu 24.04 | README repo line hardcodes `jammy` | Use the `noble` repo path or Docker MongoDB |
-| 18 | `pip install mlx-lm` fails on Intel Mac / Linux | MLX is Apple-Silicon-only | Skip MLX; use Ollama or llama.cpp |
-| 19 | First query slow (~minutes), then fast | Cold ONNX load + hardware probe + disk cache warmup (by design, non-blocking) | Wait for `Embedding model pre-warmed` in logs |
-| 20 | `Large diff` / OOM during export on 8 GB hosts | torch export + `/tmp` spikes on top of the ~8 GB note | Close browsers/IDEs, ensure ~4 GB free beyond the README figure |
-| 21 | `Invalid QDRANT_URL` at first KB op | URL without scheme (e.g. `localhost:6333`) — rejected instead of being mkdir'd | Use `http://localhost:6333`, `local`, `:memory:`, or a path |
-| 22 | `pip install -e .` fails on Python 3.13+ | `requires-python` now caps at `<3.13` (torch/onnxscript export incompatible) | Use Python 3.11 or 3.12 |
-| 23 | `mlx_lm.server not applicable here` from `setup.sh` | Host is not Apple Silicon (check is now platform-gated) | Expected — use Ollama or llama.cpp instead |
-| 24 | `No Python 3.11-3.12 interpreter found` from `start_local_services.sh` | No supported interpreter on `PATH`, and no project virtualenv | Create the venv first (step 2 above), or point the script at one: `PYTHON=/path/to/python3.12 bash apps/api/scripts/start_local_services.sh` |
-| 25 | The API is up but every request answers 429 `RATE_LIMITED` | The global abuse guard is 240 requests/minute per client per path. A load test or a polling loop can exceed it | Expected behaviour, not a bug — wait for the window to roll over (`Retry-After` says how long), or raise the budget for a measured run with `RATE_LIMIT_PER_MINUTE` |
+| 18 | `python3.11: command not found` on Ubuntu | Stock Ubuntu ships 3.10 | deadsnakes PPA (see Linux section) |
+| 19 | MongoDB apt 404 on Ubuntu 24.04 | README repo line hardcodes `jammy` | Use the `noble` repo path or Docker MongoDB |
+| 20 | `pip install mlx-lm` fails on Intel Mac / Linux | MLX is Apple-Silicon-only | Skip MLX; use Ollama or llama.cpp |
+| 21 | First query slow (~minutes), then fast | Cold ONNX load + hardware probe + disk cache warmup (by design, non-blocking) | Wait for `Embedding model pre-warmed` in logs |
+| 22 | `Large diff` / OOM during export on 8 GB hosts | torch export + `/tmp` spikes on top of the ~8 GB note | Close browsers/IDEs, ensure ~4 GB free beyond the README figure |
+| 23 | `Invalid QDRANT_URL` at first KB op | URL without scheme (e.g. `localhost:6333`) — rejected instead of being mkdir'd | Use `http://localhost:6333`, `local`, `:memory:`, or a path |
+| 24 | `pip install -e .` fails on Python 3.13+ | `requires-python` now caps at `<3.13` (torch/onnxscript export incompatible) | Use Python 3.11 or 3.12 |
+| 25 | `mlx_lm.server not applicable here` from `setup.sh` | Host is not Apple Silicon (check is now platform-gated) | Expected — use Ollama or llama.cpp instead |
+| 26 | `No Python 3.11-3.12 interpreter found` from `start_local_services.sh` | No supported interpreter on `PATH`, and no project virtualenv | Create the venv first (step 2 above), or point the script at one: `PYTHON=/path/to/python3.12 bash apps/api/scripts/start_local_services.sh` |
+| 27 | The API is up but every request answers 429 `RATE_LIMITED` | The global abuse guard is 240 requests/minute per client per path. A load test or a polling loop can exceed it | Expected behaviour, not a bug — wait for the window to roll over (`Retry-After` says how long), or raise the budget for a measured run with `RATE_LIMIT_PER_MINUTE` |
+| 28 | Dashboard says "API offline"; console shows CORS `No 'Access-Control-Allow-Origin' header` | `apps/web/.env` sets `VITE_API_URL` to a remote origin. That bypasses the Vite dev proxy, so the browser calls :8000 cross-origin | Clear `VITE_API_URL` in `apps/web/.env` and restart Vite. `python scripts/serve.py doctor` now detects this |
+| 29 | Playwright E2E registration answers 429 | `/auth/register` is capped at 3/hour per IP and the API is long-lived | Reuse an existing account: set `E2E_TEST_EMAIL` / `E2E_TEST_PASSWORD` (`$env:…` in PowerShell) before `npm run test:e2e` |
 
 ---
 

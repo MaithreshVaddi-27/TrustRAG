@@ -107,7 +107,7 @@ The signature is the **registration seal** (two opposing corner brackets and one
 Motion is finite or tied to input: one entrance, one scroll reveal, a scroll-linked six-stage pipeline, claim alignment, and short state transitions. Nothing loops for decoration, and `prefers-reduced-motion` resolves every effect to a static state.
 
 - Source of truth: [`apps/web/DESIGN.md`](apps/web/DESIGN.md) and [`docs/design/dark-luxury/`](docs/design/dark-luxury/README.md).
-- Decision record for the 2026-11-25 palette work: [`docs/design/PALETTE_AND_BUTTON_PROPOSAL_2026-11-25.md`](docs/design/PALETTE_AND_BUTTON_PROPOSAL_2026-11-25.md), [`docs/design/COLOR_PALETTE_NEXT_CHANGES_2026-11-25.md`](docs/design/COLOR_PALETTE_NEXT_CHANGES_2026-11-25.md), [`docs/design/UI_DEEP_AUDIT_2026-11-25.md`](docs/design/UI_DEEP_AUDIT_2026-11-25.md).
+- Design history and decision records: [`docs/design/README.md`](docs/design/README.md).
 - Brand mark and kit: [`brand/README.md`](brand/README.md).
 
 ---
@@ -207,31 +207,40 @@ python3 -c "import secrets; print(secrets.token_hex(64))"
 
 ### 2. Fastest path — one command (macOS, Linux, Windows)
 
-If MongoDB, Ollama and a Python 3.11–3.12 are already installed, this starts
-everything and waits until the API answers:
+`scripts/serve.py` is the single cross-platform entry point for the whole
+local stack. It reads every port from `config/ports.yaml`, starts MongoDB,
+Ollama, the API and Vite if they are not already listening, and waits until
+each answers. It uses only the Python standard library, so the same command
+works in bash, PowerShell and cmd.exe:
 
 ```bash
-bash apps/api/scripts/start_local_services.sh
+python scripts/serve.py doctor    # check prerequisites before starting
+python scripts/serve.py serve     # start everything; Ctrl+C stops it all
+python scripts/serve.py status    # health + recorded PIDs
+python scripts/serve.py stop      # stop everything started by the launcher
 ```
 
-It starts MongoDB, Ollama and the API, then blocks until
-`GET /api/v1/health` returns 200. Re-running it is safe — it starts only what
-is not already listening. The interpreter is discovered automatically
-(`$PYTHON`, then the project virtualenv in both its POSIX and Windows
-layouts, then `python3` / `python` on `PATH`), and the scratch directory
-follows `TMPDIR`.
+On Windows, the PowerShell wrapper finds Python for you:
 
-Under **Git Bash** or **WSL** on Windows, the same command works:
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\serve.ps1 doctor
+powershell -ExecutionPolicy Bypass -File scripts\serve.ps1 serve
+```
+
+For a detached session (logs and PIDs live under the OS temp directory):
 
 ```bash
-bash apps/api/scripts/start_local_services.sh
+python scripts/serve.py serve --detach
 ```
 
-Then the frontend, in a second terminal:
+To start only one side: `serve --only backend` / `serve --only frontend`.
 
-```bash
-cd apps/web && npm install && npm run dev
-```
+`apps/api/scripts/start_local_services.sh` remains available as the
+backend-only path (Git Bash or WSL on Windows) if you already have a frontend
+terminal open. Re-running either launcher is safe: it starts only what is not
+already listening. The interpreter is discovered automatically (`$PYTHON`,
+then the project virtualenv in both its POSIX and Windows layouts, then
+`python3` / `python` on `PATH`).
 
 ### 2a. macOS
 
@@ -339,7 +348,7 @@ cd apps\api
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev,local-models]"
-python ..\..\scripts\bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
+python ..\..\scripts\setup\bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -634,8 +643,16 @@ npm run test:e2e:ui       # interactive
 # Re-running locally against a long-lived API? /auth/register is capped at
 # 3/hour per IP. Point both e2e specs at an existing synthetic account:
 E2E_TEST_EMAIL=someone@example.com E2E_TEST_PASSWORD='…' npm run test:e2e
+# Windows PowerShell equivalent:
+#   $env:E2E_TEST_EMAIL='someone@example.com'
+#   $env:E2E_TEST_PASSWORD='...'
+#   npm run test:e2e
+# The Playwright web server is started by scripts/e2e-preview.mjs (no POSIX
+# shell syntax), so the suite works unchanged on macOS, Linux and Windows.
 # CI starts a fresh API, so the default strict-registration path is used there.
 # Use the single repo-root .env (gitignored); copy .env.example if absent.
+# Local dev: leave VITE_API_URL empty in apps/web/.env so /api uses the Vite
+# proxy; a remote origin there bypasses it and produces CORS errors.
 
 # Load — k6 (repo root)
 k6 run load-test/smoke.js
@@ -675,11 +692,8 @@ each decision live in one living log:
 **[`docs/backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`](docs/backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md)**.
 
 It carries the reproduced findings, the upgrades (with before/after numbers),
-the degradations, the refinements, the open decisions and the blockers — and it
-is updated after every change, so it never goes stale the way a point-in-time
-audit does. It is self-contained: the audit that started the programme was
-removed in the final cleanup, and every finding it raised is stated here in
-full, with the change that closed it and the measurements that justified it.
+the degradations, the refinements, the open decisions and the blockers, each
+with the change that closed it and the measurements that justified it.
 
 Two scripts keep the frontend and the backend honest about each other:
 
@@ -815,7 +829,8 @@ Full per-OS field guide (20-row failure table): [docs/ONBOARDING-TROUBLESHOOTING
 See [CONTRIBUTING.md](CONTRIBUTING.md) (workflow: `READ → PLAN → BUILD → VERIFY → FIX → DOCUMENT → NEXT`; model IDs in `apps/api/config/models.yaml`, secrets in `.env` only; conventional commits `feat:`/`fix:`/`docs:`/`test:`/`refactor:`). Security policy: [SECURITY.md](SECURITY.md).
 
 ```bash
-./scripts/setup/setup.sh
+python scripts/serve.py doctor        # cross-platform prerequisite check
+./scripts/setup/setup.sh              # deeper POSIX-only setup check
 cd apps/api && ruff check app/ tests/ && python3 -m pytest -v
 cd apps/web && npm run lint && npm test
 ```
@@ -824,31 +839,8 @@ cd apps/web && npm run lint && npm test
 
 ## Note
 
-- For **macOS**, use the provided brew commands and remember to set environment variables for JVM/Ollama tuning on low-memory machines.
+- For **macOS**, use the provided brew commands and set Ollama tuning variables on low-memory machines.
 - For **Linux**, ensure MongoDB service is enabled and started; Ollama service can be managed via systemd if preferred.
-- For **Windows**, PowerShell execution policy may need adjustment; using WSL2 is recommended for a native Linux-like experience.
+- For **Windows**, the native PowerShell launcher is supported (`scripts\serve.ps1`); WSL2 is optional, not required.
 - Docker setup simplifies evaluation but expects MongoDB and LLM on the host; adjust `.env` for production secrets and external services.
 - MLX is Apple‑Silicon only; ensure you have the appropriate hardware and follow the [MLX on Mac guide](docs/PERFORMANCE-GUIDE.md#4-mlx-on-mac-apple-silicon-free-fastest-toks-per-watt) if you wish to use it alongside Ollama or llama.cpp.
-
----
-
-## Repository Cleanup (Phase 1)
-
-Completed `chore(cleanup): Phase 1 repository deep clean` (commit `c39f573`):
-
-| Removed | Count | Rationale |
-|---------|-------|-----------|
-| `apps/web/public/audit-*.png` | 11 (~5.4 MB) | Unreferenced audit screenshots |
-| `apps/web/public/styles/*.css` | 6 | Unreferenced legacy stylesheets |
-| `dompurify`, `htmlparser2` | 2 npm deps | Zero imports; removed from `package.json` |
-| `scripts/calibrate_local_judge.py` | 1 | Orphan script, zero repo-wide references — **removed** |
-| `scripts/prune_llm_cache.py` | 1 | Orphan script, zero repo-wide references — **removed** |
-
-**Added:** three point-in-time reports under `docs/cleanup/`. They described a
-350-file repository and a debt list that no longer matches the code, so they
-were **removed** in the later documentation cleanup; their history remains in
-git (`git log -- docs/cleanup/`).
-
-**Preserved:** API contracts, auth, DB, RAG algorithms, eval contracts, migrations, fixtures, model weights, user data, and all user in-progress branch work (`docs/design/`, untracked landing + UI components).
-
-No behavior, contract, or test change resulted from cleanup — 757 backend tests and 33 frontend tests all pass against baseline.

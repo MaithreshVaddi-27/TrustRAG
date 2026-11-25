@@ -5,6 +5,24 @@ Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench
 > **Note:** Point-in-time audit reports (`docs/audit/`, `PHASE_AUDIT_*.md`, `TRUSTRAG_AUDIT_2026-09-21.md`, `SESSION_SUMMARY_2026-09-21.md`, `TRUSTRAG_OPTIMIZATION_PLAN.md`) and the stale agent work-plan (`docs/superpowers/`) were removed during cleanup. Their history remains in git (e.g. `git log -- docs/TRUSTRAG_AUDIT_2026-09-21.md`).
 >
 > The backend audit and every change made against it now live in one **living log** — [`backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`](backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md) — rather than in a series of point-in-time reports that go stale. It is updated after every change.
+>
+> The JSON files under `backend/` are **frozen evidence snapshots** cited by that log, not disposable output. Regenerate them deliberately with the scripts in `apps/api/scripts/`; new local runs should be kept out of the tracked tree.
+
+---
+
+## Running locally (all platforms)
+
+```bash
+python scripts/serve.py doctor   # prerequisites + health
+python scripts/serve.py serve    # MongoDB, Ollama, API and Vite; Ctrl+C stops all
+python scripts/serve.py status
+python scripts/serve.py stop
+```
+
+Windows: `powershell -ExecutionPolicy Bypass -File scripts\serve.ps1 serve`.
+The launcher is documented in [`scripts/README.md`](../scripts/README.md) and
+the per-OS troubleshooting table in
+[`ONBOARDING-TROUBLESHOOTING.md`](ONBOARDING-TROUBLESHOOTING.md).
 
 ---
 
@@ -63,7 +81,7 @@ docs/
 - [**Specification (`TRUSTRAG_specs.md`)**](TRUSTRAG_specs.md): product definition, engineering principles, stack, architecture, config, ingestion → recovery pipeline, API, testing, acceptance criteria. Read this first before contributing.
 - [**Execution Plan (`EXECUTION_PLAN.md`)**](EXECUTION_PLAN.md): the implementation plan and what was actually built.
 - [**Roadmap (`ROADMAP.md`)**](ROADMAP.md): completed phases, pre-deployment checklist, and prioritized upcoming work.
-- [**Performance Guide (`PERFORMANCE-GUIDE.md`)](PERFORMANCE-GUIDE.md): free efficiency changes (config-only speed/RAM wins) plus MLX local inference on Apple Silicon.
+- [**Performance Guide**](PERFORMANCE-GUIDE.md): free efficiency changes (config-only speed/RAM wins) plus MLX local inference on Apple Silicon.
 - [**Onboarding & Troubleshooting (`ONBOARDING-TROUBLESHOOTING.md`)](ONBOARDING-TROUBLESHOOTING.md): per-OS setup guide (macOS / Linux / Windows), failure table, live verification backlog.
 - [**Service-Layer Test Gaps (`ANALYSIS_SERVICE_TEST_GAPS.md`)**](ANALYSIS_SERVICE_TEST_GAPS.md): the measured gaps in `app/services/**` — the SSE pub/sub, the user-level claim/evidence vault, the auth service and the knowledge-base snapshots — with concrete test-case recipes.
 - [**Project Status & Deep Audit (`PROJECT_STATUS_AND_AUDIT.md`)**](PROJECT_STATUS_AND_AUDIT.md): live runtime and inference verification, phase-by-phase status, and the prioritized improve/update/refine/refactor backlog.
@@ -71,7 +89,7 @@ docs/
 ### 2. Backend Engineering
 
 - [**Backend Changelog & Recommendations (`backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`)**](backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md): **the living engineering log.** The audit findings, every upgrade with its measured before/after, the degradations that were accepted, the refinements, the open decisions and the blockers. Updated after every change, and self-contained — the point-in-time audit it grew out of was removed in the final cleanup, and every finding is stated here in full.
-- **Benchmark artifacts** (`backend/*.json`): API latency, retrieval quality, RAG accuracy across six model configurations, resilience, and the frontend↔backend integration check.
+- **Benchmark artifacts** (`backend/*.json`): frozen API latency, retrieval quality, RAG accuracy, resilience and frontend↔backend integration snapshots cited by the living log. `integration_results.json` is refreshed by `apps/api/scripts/verify/validate_integration.py`.
 
 ### 3. Architecture & Design
 

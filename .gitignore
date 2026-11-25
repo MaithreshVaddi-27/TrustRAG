@@ -112,8 +112,6 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-apps/web/dist/
-apps/web/dist-ssr/
 apps/web/*.local
 .vite/
 .vitest/
@@ -164,6 +162,8 @@ apps/web/coverage/
 ._*
 .Spotlight-V100
 .Trashes
+.fseventsd
+*.stackdump
 ehthumbs.db
 Thumbs.db
 desktop.ini
@@ -299,6 +299,13 @@ audit-*.png
 
 # ─── Evaluation run artifacts (runner JSON output; methodology stays tracked) ──
 docs/evaluation/results/
+# NOTE: docs/backend/*_results.json ARE tracked on purpose. The living backend
+# log cites them as frozen evidence snapshots; do not add a rule here.
+
+# ─── Cross-platform launcher scratch state ─────────────────────────────────────
+# serve.py keeps PIDs and logs in the OS temp dir, but honour an explicit
+# in-repo override used by local debugging.
+.trustrag-serve/
 
 # ─── k6 / load-test raw output ────────────────────────────────────────────────
 load-test/*.har
