@@ -17,9 +17,31 @@ Never continue with known failures. Do not generate the whole project blindly.
 ## Rules
 
 - **No model IDs in code.** All model identifiers go in `apps/api/config/models.yaml`
-- **No secrets in code or YAML.** Secrets in `.env` only
+- **No secrets in code or YAML.** Secrets go in the single repo-root `.env` only —
+  do not create `apps/api/.env` or another env file: a second file shadows the
+  first (pydantic-settings gives later files precedence) and empty duplicates
+  silently erase real keys
 - **No invented requirements.** Only implement what the spec mandates
 - **No scope creep.** See spec §34 for explicit out-of-scope items
+
+## Repository layout & naming
+
+```
+apps/api/     FastAPI backend, models.yaml, tests, bench/eval/verify scripts
+apps/web/     React frontend, e2e tests, public assets
+brand/        Brand kit and exported logo set (source of truth for icons)
+config/       ports.yaml (single source of truth for ports)
+docs/         Spec, ADRs, living engineering logs, design system
+scripts/      Cross-cutting checks, setup, eval runners, server launchers
+load-test/    k6 load profiles
+```
+
+- Python packages and modules: `snake_case`; React components: `PascalCase`
+  filenames; everything else (scripts, docs, CSS, assets): `kebab-case`.
+- One concern per directory. A test lives beside the module it covers
+  (`*.test.jsx` / `test_*.py`), not in a separate top-level test tree.
+- Generated output (`dist/`, `test-results/`, `__pycache__/`, caches) stays
+  gitignored and out of the working tree; never commit a generated artefact.
 
 ## Setup
 
