@@ -35,7 +35,10 @@ from typing import Any
 
 import httpx
 
-REPO = Path(__file__).resolve().parents[3]
+# apps/api/scripts/verify/ -> repo root is parents[4]. Using parents[3]
+# pointed at apps/, so WEB_DIR became apps/apps/web, extraction found zero
+# frontend calls, and the contract check passed without checking anything.
+REPO = Path(__file__).resolve().parents[4]
 API_DIR = REPO / "apps" / "api"
 WEB_DIR = REPO / "apps" / "web"
 
@@ -233,7 +236,14 @@ async def main() -> None:
         help="the Vite dev server; when given, the flow is exercised through "
         "the frontend's own /api proxy instead of against the API directly",
     )
-    ap.add_argument("--out", default="integration_results.json")
+    # Default to the canonical tracked report under docs/backend. A bare
+    # relative name wrote integration_results.json into whatever directory the
+    # script happened to be run from (usually apps/api), leaving an untracked
+    # stray file after every verification.
+    ap.add_argument(
+        "--out",
+        default=str(REPO / "docs" / "backend" / "integration_results.json"),
+    )
     args = ap.parse_args()
 
     calls = _frontend_calls()
