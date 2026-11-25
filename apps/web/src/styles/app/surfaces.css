@@ -434,6 +434,14 @@
   }
 }
 
+/* Past 1280 there is room to give the query pane 32px more without squeezing
+ * the results: below that the results column still needs the wider share. */
+@media (min-width: 1280px) {
+  .lx-workbench {
+    grid-template-columns: 28rem minmax(0, 1fr);
+  }
+}
+
 .lx-workbench__pane {
   min-width: 0;
   min-height: 0;
