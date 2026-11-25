@@ -6,7 +6,8 @@ CI-safe smoke for the launch-critical path:
 The external boundaries (user store, KB store, parser, embedder, analysis
 worker) are mocked; the FastAPI routing, schemas, dependency injection and the
 public wire shapes are real. This is the deterministic counterpart to the live
-end-to-end run recorded in docs/PROJECT_STATUS_AND_AUDIT.md.
+end-to-end verification recorded in
+docs/backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md.
 """
 
 from __future__ import annotations

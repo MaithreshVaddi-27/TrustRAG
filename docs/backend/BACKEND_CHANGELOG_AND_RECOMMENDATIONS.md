@@ -969,7 +969,7 @@ locally, job by job, against the live services.
 | backend-lint | `ruff format --check app/ tests/` | **197 files already formatted** (was 3 to reformat) |
 | backend-lint | `scripts/checks/typecheck_ratchet.sh` | **PASS: no new type errors** (30 errors, ceiling 30) |
 | backend-lint | `scripts/checks/apply_ports.py --check` | **OK** |
-| backend-test | `pytest tests/ -v --no-header` | **817 passed**, coverage **80.41 %** (gate 78 %) |
+| backend-test | `pytest tests/ -v --no-header` | **870 passed**, coverage **80.66 %** (gate 78 %) |
 | backend-config-validate | `models.yaml` schema + secret scan | **passed** |
 | frontend-lint | `npm run lint` | **clean** (`--max-warnings 0`) |
 | frontend-lint | `npm run test` | **85 passed** (18 files) |
@@ -1144,15 +1144,16 @@ artefact, and the living log was made self-contained so nothing was lost.
 | `docs/PPT/T6_review1.pptx` | 7.8 MB | An academic review deck — a course deliverable, not project documentation. 7.7 MB of it was embedded PNGs, and nothing in the repository referenced it. **Moved, not destroyed:** the bytes are in `~/Downloads/trustrag-deliverables/T6_review1.pptx`, verified byte-identical (SHA-256 `c840072b21bdafd60e650a62…`). |
 | `docs/Documentation/TrustRAG_Documentation.pdf` | 1.3 MB | A 37-page "Project Stage I Report" — the BSc Computer Science & Engineering submission. A course deliverable, not project documentation. **Moved, not destroyed:** `~/Downloads/trustrag-deliverables/TrustRAG_Documentation.pdf`, byte-identical (SHA-256 `1b4201808d81f8e68e1022f6…`). |
 
-**Kept, deliberately:** `LAYA_ROI_AUDIT_REPORT.md` (external-library
-assessment), `MULTI_MODEL_ARCHITECTURE_REVIEW_2026-11-05.md` (the decision
-record behind the open default-model decision), `MODEL_BENCHMARK_REPORT.md`,
-`FUTURE_IMPROVEMENTS.md` (refreshed — the per-source benchmark item is now
-marked done, and the mypy backlog and the unmeasured embedding int8 recall
-were added as open items) and `PRODUCTION_CONFIG_GUIDE.md`.
+A later documentation cleanup also removed the point-in-time reviews that were
+kept at the time — `LAYA_ROI_AUDIT_REPORT.md`,
+`MULTI_MODEL_ARCHITECTURE_REVIEW_2026-11-05.md`, `MODEL_BENCHMARK_REPORT.md` and
+`FUTURE_IMPROVEMENTS.md`. Their history remains in git; the decisions they
+recorded are either in `architecture/decision-log.md` or no longer open.
+`PRODUCTION_CONFIG_GUIDE.md` remains canonical.
 
-The repository is **9.1 MB lighter in git**, and `docs/` now contains only
-living documents.
+`docs/` now contains only living documents: the specification, architecture and
+decision records, security controls, evaluation method, this log with its frozen
+evidence, the design system and the current UI decision record.
 
 ---
 

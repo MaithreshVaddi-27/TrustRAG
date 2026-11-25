@@ -1,24 +1,18 @@
-# Design archive
-
-The SVG boards in this directory are **historical concept work**. They were
-produced before the Overlap brand mark was adopted and still show the earlier
-"T" symbol. They are kept for traceability only and are not a styling source.
+# Design documentation
 
 The canonical, maintained design system is
-[`docs/design/dark-luxury/`](dark-luxury/README.md). The live brand kit lives in
-[`brand/`](../../brand/README.md), and the shipped components follow
-[`apps/web/DESIGN.md`](../../apps/web/DESIGN.md).
+[`docs/design/dark-luxury/`](dark-luxury/README.md): foundations → tokens →
+components → patterns → accessibility → voice → verification → pages. The live
+brand kit lives in [`brand/`](../../brand/README.md), and the shipped components
+follow [`apps/web/DESIGN.md`](../../apps/web/DESIGN.md).
 
-Do not copy colours, marks or copy from the archived boards.
+The current UI decision record is the 2026-11-25 pair:
 
-The dated 2026-11-25 documents are the decision record for the current UI:
-[`UI_DEEP_AUDIT`](UI_DEEP_AUDIT_2026-11-25.md) (measured baseline),
-[`UI_REVISED_PLAN`](UI_REVISED_PLAN_2026-11-25.md) (approved phases and
-handoff), [`PALETTE_AND_BUTTON_PROPOSAL`](PALETTE_AND_BUTTON_PROPOSAL_2026-11-25.md)
-(the silver-action / crimson-signal decision), and
-[`COLOR_PALETTE_NEXT_CHANGES`](COLOR_PALETTE_NEXT_CHANGES_2026-11-25.md)
-(contrast fixes, token consolidation and deferred items),
-[`UI_RE_DEEP_AUDIT`](UI_RE_DEEP_AUDIT_2026-11-25.md) (verification of the
-shipped system and the remaining craft debt), and
-[`UI_RE_DEEP_PLAN`](UI_RE_DEEP_PLAN_2026-11-25.md) (the executed cleanup,
-implementation log and verification results).
+- [`UI_RE_DEEP_AUDIT`](UI_RE_DEEP_AUDIT_2026-11-25.md) — verification of the
+  shipped system, the top three findings and the full evidence register.
+- [`UI_RE_DEEP_PLAN`](UI_RE_DEEP_PLAN_2026-11-25.md) — the executed cleanup plan,
+  implementation log and final verification.
+
+Earlier audits, revised plans, palette proposals and historical concept SVGs
+have been removed; their history remains in git. Do not treat them as styling
+sources.

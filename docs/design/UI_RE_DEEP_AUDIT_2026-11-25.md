@@ -6,11 +6,12 @@ Crimson** dark-luxury system; world = registration press / proof lab; signature 
 registration seal. No new identity, no new dependency, no invented claim.
 **Status:** audit only — no UI code changed.
 
-This supersedes neither prior document; it is a verification pass on top of
-`UI_DEEP_AUDIT_2026-11-25.md` and `UI_REVISED_PLAN_2026-11-25.md`, both of which
-claimed all phases complete. The question here is whether that claim still holds
-and what remains before the site reads as a deliberately designed product rather
-than a well-set document.
+This was a verification pass on top of the earlier 2026-11-25 UI audit and
+revised plan, both of which claimed all phases complete. Those point-in-time
+documents have since been removed in the documentation cleanup; their history
+remains in git. The question here was whether the claim still held and what
+remained before the site read as a deliberately designed product rather than a
+well-set document.
 
 ---
 
@@ -188,7 +189,7 @@ quiet. Same words, same numbers, same section order.
 | D2 | Model-generated markdown `#` becomes a literal `<h1>`, so an answer can inject a second `h1` on `/playground`. Static structure is fine; live rendering is not guaranteed. | `FormattedAnswer.jsx:21`, rendered at `AnswerTab.jsx:137`. |
 | D3 | Two `<div>`s carry `aria-label` without a role; generic element labels are not reliably exposed. `CapabilitiesExplorer.jsx:75` is a focusable `<pre>` with no accessible name. | `HeroSection.jsx:59`; `PipelineDiagram.jsx:62`; `CapabilitiesExplorer.jsx:75`. |
 | D4 | Landing mobile drawer has Escape and scroll lock but no focus move, trap, or restore (the app drawer has all three). | `LandingNavbar.jsx:26-38,83-122`. |
-| D5 | Docs ↔ code drift: parallax 8px vs 6px; pipeline CSS still calls the sweep one-shot; `loaders.css` import-order and `.border-beam` claims are false; footer still mentions a removed competitor column; verification doc says 82 tests vs 84. | `UI_REVISED_PLAN_2026-11-25.md:64`; `pipeline.css:4-6`; `loaders.css:9,89-94`; `data/footer.js:12`; `08-verification.md:100`. |
+| D5 | Docs ↔ code drift: parallax 8px vs 6px; pipeline CSS still calls the sweep one-shot; `loaders.css` import-order and `.border-beam` claims are false; footer still mentions a removed competitor column; verification doc says 82 tests vs 84. | The revised plan (removed, history in git); `pipeline.css:4-6`; `loaders.css:9,89-94`; `data/footer.js:12`; `08-verification.md:100`. All corrected in the cleanup. |
 
 ### P2 — craft debt (design-system drift)
 

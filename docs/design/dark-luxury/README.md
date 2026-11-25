@@ -38,7 +38,6 @@ That discipline is the whole system. Every rule below exists to protect it.
 | 04 | [Patterns](./04-patterns.md) | Page and section layouts, states, data display |
 | 05 | [Accessibility](./05-accessibility.md) | The measurable standard every surface must meet |
 | 06 | [Voice and copy](./06-voice-and-copy.md) | How the product talks |
-| 07 | [Migration](./07-migration.md) | How the old surfaces map onto the new system |
 | 08 | [Verification](./08-verification.md) | The gate, the commands, the browser checklist |
 | 09 | [Pages](./09-pages.md) | The page-by-page redesign, and what each phase changed |
 

@@ -713,14 +713,15 @@ Two scripts keep the frontend and the backend honest about each other:
 | `apps/api/scripts/verify/validate_integration.py` | Every API call the frontend makes exists on the backend, and the whole user flow answers correctly — directly and through the frontend's own proxy |
 | `apps/api/scripts/verify/validate_resilience.py` | Concurrency, the rate limit, a provider outage and a database outage all behave as designed |
 
-Frontend architecture, design system compliance (cyber-dark palette,
-`.glass-card` material tokens, WCAG AA contrast) and component decomposition
-live in [`docs/design/dark-luxury/`](docs/design/dark-luxury/) and
+Frontend architecture, the Obsidian / Chrome Silver / Laser Crimson design
+system, WCAG AA contrast and component decomposition live in
+[`docs/design/dark-luxury/`](docs/design/dark-luxury/) and
 [`apps/web/DESIGN.md`](apps/web/DESIGN.md).
 
-Test-coverage gaps in the service layer — the SSE pub/sub, the user-level
-claim/evidence vault and the auth service — are mapped in
-[`docs/ANALYSIS_SERVICE_TEST_GAPS.md`](docs/ANALYSIS_SERVICE_TEST_GAPS.md).
+Service-layer contracts and acceptance criteria are specified in
+[`docs/TRUSTRAG_specs.md`](docs/TRUSTRAG_specs.md); verification results are
+tracked in the living
+[`backend changelog`](docs/backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md).
 
 ---
 

@@ -1,8 +1,9 @@
 # TrustRAG — Re-deep implementation plan (25 Nov 2026)
 
-Companion to `UI_RE_DEEP_AUDIT_2026-11-25.md`. It does not supersede the direction
-in `UI_REVISED_PLAN_2026-11-25.md`; it completes it. Evidence and finding IDs
-(D1–D5, C1–C5, E1–E3, F1–F3 in the audit) are referenced below.
+Companion to `UI_RE_DEEP_AUDIT_2026-11-25.md`. It keeps the direction of the
+earlier revised plan, which was removed in the documentation cleanup (its
+history remains in git). Evidence and finding IDs (D1–D5, C1–C5, E1–E3, F1–F3
+in the audit) are referenced below.
 
 **Status: IMPLEMENTED (commit `1d9405e`).** The approval block at the end of
 this document records the choices that were applied; see the implementation log
