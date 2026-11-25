@@ -6,8 +6,10 @@ import VerificationSeal from '@/components/landing/VerificationSeal'
 /**
  * AuthLayout — the authentication surface.
  *
- * A centred column on obsidian with one hairline card. No ambient colour
- * wash: the page is quiet so the form is the only thing on it.
+ * A centred column on obsidian with one hairline card. The card borrows the
+ * ledger's chrome — a mono header strip and the registration seal — so the
+ * credential form reads as another record in the same instrument, not as a
+ * generic sign-in card. No ambient colour wash.
  */
 export default function AuthLayout({ children, title, subtitle }) {
   return (
@@ -18,7 +20,7 @@ export default function AuthLayout({ children, title, subtitle }) {
           <span>Back to overview</span>
         </Link>
 
-        <div className="lx-auth__brand">
+        <div className="lx-auth__brand lx-enter">
           <Link to="/" aria-label="TrustRAG home">
             <TrustRagEmblem size={52} framed />
           </Link>
@@ -28,16 +30,21 @@ export default function AuthLayout({ children, title, subtitle }) {
           </div>
         </div>
 
-        <div className="lx-auth__card">
+        <div className="lx-auth__card lx-enter">
           {title && (
-            <div className="mb-6">
-              <VerificationSeal size={16} className="lx-auth__seal" />
-              {/* The page's heading is its first-level heading. Every other
-                  route opens with one <h1>; the auth surface opened with an
-                  <h2> and had none. */}
-              <h1 className="lx-auth__title">{title}</h1>
-              {subtitle && <p className="lx-auth__subtitle">{subtitle}</p>}
-            </div>
+            <>
+              <div className="lx-auth__card-head">
+                <span className="lx-auth__card-ref">credential check</span>
+                <VerificationSeal size={14} className="lx-auth__seal" />
+              </div>
+              <div className="lx-auth__title-block">
+                {/* The page's heading is its first-level heading. Every other
+                    route opens with one <h1>; the auth surface opened with an
+                    <h2> and had none. */}
+                <h1 className="lx-auth__title">{title}</h1>
+                {subtitle && <p className="lx-auth__subtitle">{subtitle}</p>}
+              </div>
+            </>
           )}
           {children}
         </div>

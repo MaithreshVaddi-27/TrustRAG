@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { ShieldCheck, ShieldAlert, CircleSlash, ArrowRight } from 'lucide-react'
+import VerificationSeal from '@/components/landing/VerificationSeal'
 
 /**
  * AttentionPanel — what the reliability instrument is reporting.
@@ -23,6 +24,7 @@ export function AttentionPanel({ conflicts = [], contradictedClaims = 0, failedR
             <ShieldCheck size={15} strokeWidth={1.5} aria-hidden="true" className="text-silver-500" />
             Needs attention
           </h2>
+          <VerificationSeal tone="silver" size={14} />
         </div>
         <div className="lx-panel-block__body">
           <p className="lx-body-sm">
@@ -41,9 +43,12 @@ export function AttentionPanel({ conflicts = [], contradictedClaims = 0, failedR
           <ShieldAlert size={15} strokeWidth={1.5} aria-hidden="true" className="text-crimson-400" />
           Needs attention
         </h2>
-        <span className="lx-chip lx-chip--alarm">
-          {total} {total === 1 ? 'item' : 'items'}
-        </span>
+        <div className="flex items-center gap-2">
+          <VerificationSeal tone="crimson" size={14} />
+          <span className="lx-chip lx-chip--alarm">
+            {total} {total === 1 ? 'item' : 'items'}
+          </span>
+        </div>
       </div>
 
       <div className="lx-list">

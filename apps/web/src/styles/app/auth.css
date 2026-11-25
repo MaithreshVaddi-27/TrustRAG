@@ -68,6 +68,31 @@
   border: 1px solid var(--rule);
   border-radius: var(--radius-panel);
   background-color: var(--surface-card);
+  overflow: hidden;
+}
+
+/* The ledger's chrome, reused: a mono header strip on a raised surface,
+ * separated from the record body by a hairline. */
+.lx-auth__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-3);
+  margin: calc(var(--step-6) * -1) calc(var(--step-6) * -1) var(--step-6);
+  padding: var(--step-3) var(--step-6);
+  border-bottom: 1px solid var(--rule);
+  background-color: var(--surface-raised);
+}
+
+.lx-auth__card-ref {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+}
+
+.lx-auth__title-block {
+  margin-bottom: var(--step-6);
 }
 
 .lx-auth__title {

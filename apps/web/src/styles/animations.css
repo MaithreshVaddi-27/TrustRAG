@@ -31,7 +31,7 @@ select:active {
 
 .lx-auth__seal {
   display: block;
-  margin-bottom: var(--step-3);
+  flex-shrink: 0;
 }
 
 .lx-results-seal {

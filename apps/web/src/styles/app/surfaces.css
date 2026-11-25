@@ -197,6 +197,15 @@
   border-bottom: 1px solid var(--rule-faint);
 }
 
+/* The verdict panel's registration seal stamps once, like the result header.
+ * No other panel head carries a seal. */
+@media (prefers-reduced-motion: no-preference) {
+  .lx-panel-block__head > .lx-seal,
+  .lx-panel-block__head > div > .lx-seal {
+    animation: lx-seal-align 460ms var(--motion-ease-out) both;
+  }
+}
+
 .lx-panel-block__title {
   /* A panel heading is chrome, not editorial. The display face is reserved
    * for the screen's own title. */

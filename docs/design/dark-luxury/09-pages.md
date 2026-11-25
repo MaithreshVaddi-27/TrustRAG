@@ -115,6 +115,11 @@ falls back to the local part of the email — "AR" for "Audit Reviewer",
 
 The operator's overview. Four questions, in the order they matter.
 
+The panel that answers the first question carries the registration seal: silver
+when the instrument has nothing to report, crimson when it catches a conflict
+or contradiction. It is the same mark used on verified records — no new colour,
+no second accent.
+
 ### What was wrong
 
 | # | Problem | Severity |
@@ -622,6 +627,11 @@ corrected.
 
 **A new account is acknowledged.** The login page reads the flag the
 register page has always been sending.
+
+**The card is another record in the instrument.** A mono `credential check`
+strip with a hairline and the registration seal puts the form in the same
+visual language as the evidence ledger. The brand and card share one finite
+entrance; reduced motion makes both static.
 
 ### Files
 
