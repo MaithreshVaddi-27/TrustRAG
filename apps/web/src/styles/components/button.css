@@ -6,9 +6,6 @@
  *   --secondary        hairline outline. Every other action.
  *   --alarm            deep crimson. This destroys something.
  *
- * --attention and --attention-quiet are deprecated aliases of silver, kept
- * for older call sites. New code uses --primary / --secondary.
- *
  * Every interactive target is at least 44×44.
  * ─────────────────────────────────────────────────────────────────────────── */
 
@@ -58,23 +55,10 @@
   color: var(--color-on-accent-hover);
 }
 
-/* Deprecated alias — resolves to the silver plate. */
-.lx-btn--attention {
-  background-color: var(--color-attention);
-  color: var(--color-on-attention);
-  box-shadow: inset 0 -1px 0 var(--button-inset-rule);
-}
-
-.lx-btn--attention:hover:not(:disabled) {
-  background-color: var(--color-attention-hover);
-  color: var(--color-on-attention-hover);
-}
-
 /* Two focus exceptions. A crimson fill cannot carry a crimson ring, so the
  * destructive button uses silver. A silver plate needs the darker crimson
  * (7.13:1) — the global crimson-400 is only 3.39:1 on silver. */
-.lx-btn--primary:focus-visible,
-.lx-btn--attention:focus-visible {
+.lx-btn--primary:focus-visible {
   outline: 2px solid var(--focus-ring-on-plate);
   outline-offset: 2px;
 }
@@ -82,18 +66,6 @@
 .lx-btn--alarm:focus-visible {
   outline: 2px solid var(--focus-ring-on-accent);
   outline-offset: 2px;
-}
-
-/* Deprecated alias — a slightly stronger silver hairline. */
-.lx-btn--attention-quiet {
-  border-color: var(--rule-strong);
-  color: var(--color-attention-quiet);
-}
-
-.lx-btn--attention-quiet:hover:not(:disabled) {
-  border-color: var(--color-silver-400);
-  background-color: var(--wash-silver-04);
-  color: var(--color-silver-050);
 }
 
 /* Secondary — hairline outline, silver text. */
@@ -118,8 +90,8 @@
   color: var(--color-silver-050);
 }
 
-/* Alarm — a destructive action. Deeper crimson than attention on purpose:
- * attention gathers the eye, alarm warns it away. */
+/* Alarm — a destructive action. Deeper than a signal mark on purpose: it
+ * warns the eye away instead of drawing it in. */
 .lx-btn--alarm {
   background-color: var(--color-alarm);
   color: var(--color-on-alarm);

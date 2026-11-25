@@ -117,8 +117,8 @@ verdict also carries an icon shape and a word.
 
 On a dark theme the primary action is an **off-white plate with dark text**.
 It reads more deliberate than a coloured button, it gives the highest
-contrast of any button on the page, and it keeps crimson free to mean
-"attention".
+contrast of any button on the page, and it keeps crimson free to mean a
+signal — a caught contradiction, a seal, a live state, focus, or alarm.
 
 ```css
 --color-accent: var(--color-silver-050);   /* #f7f7f6 */
@@ -126,25 +126,23 @@ contrast of any button on the page, and it keeps crimson free to mean
 --color-on-accent: var(--color-obsidian-950); /* #080808 */
 ```
 
-### The attention and alarm registers
+### The signal and alarm registers
 
-Crimson enters the interface through two named registers, so the usage is
-enumerable rather than a matter of taste.
+Crimson enters the interface as a signal, never as an action colour. Named
+tokens make the usage enumerable rather than a matter of taste.
 
 | Token | Resolves to | Use |
 |---|---|---|
-| `--color-attention` | `--color-crimson-500` | The focal action of a view — the filled crimson button |
-| `--color-attention-hover` | `--color-crimson-400` | Its hover state |
-| `--color-on-attention` | `--color-silver-050` | Text on the crimson fill |
-| `--color-attention-quiet` | `--color-crimson-400` | Crimson text and hairline, no fill |
-| `--color-alarm` | `--color-crimson-600` | A destructive action's fill — deeper than attention on purpose |
+| `--signal-text` | `--color-crimson-400` | Verdict text on obsidian — 5.51:1 |
+| `--signal-mark` | `--color-crimson-500` | The registration seal, solid marks |
+| `--signal-on-plate` | `--color-crimson-600` | Marks and focus on silver — 7.13:1 |
+| `--color-alarm` | `--color-crimson-600` | A destructive action's fill |
 | `--color-alarm-hover` | `--color-crimson-700` | Its hover state |
 | `--color-alarm-text` | `--color-crimson-300` | Error text on a dark surface |
 | `--color-alarm-wash` | `rgba(212, 21, 20, 0.09)` | The background of an error surface |
 | `--color-alarm-rule` | `rgba(212, 21, 20, 0.34)` | The hairline of an error surface |
 
-Attention gathers the eye; alarm warns it away. They share a hue on purpose
-and are separated by depth.
+A filled plate draws the eye; alarm warns it away. They do not share a hue.
 
 ---
 

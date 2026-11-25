@@ -2,8 +2,9 @@
 
 **Status: approved (Option A) and implemented on 25 Nov 2026.**
 
-Implementation record: `--attention*` tokens now alias silver; `lx-btn--attention*`
-call sites were migrated to `--primary` / `--secondary`; the focal silver plate
+Implementation record: `lx-btn--attention*` call sites were migrated to
+`--primary` / `--secondary`, then the deprecated aliases were removed in a
+later cleanup; the focal silver plate
 gains a bottom registration hairline; the destructive `--alarm` register is the
 only crimson control (confirm-dialog deletions). Sign out was moved off alarm
 because ending a session is not destructive. The topbar "Run analysis" is

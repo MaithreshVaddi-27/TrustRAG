@@ -90,13 +90,12 @@ at once — depth must be declared once per the design system.
   would break the single-accent rule; use weight and position instead.
 - **Warm Ivory / Cool Platinum variants** from the approved proposal remain on
   the table only if the brand character changes. Not needed now.
-- **Remove the deprecated `--attention*` aliases** in a future cleanup release,
-  once no external consumers exist.
-- **Automate the one-primary-per-view rule** with a test that fails if a route
-  renders more than one `.lx-btn--primary`; the rule is currently verified by
-  hand.
-- **Re-run Lighthouse** after the palette change (Accessibility / Best
-  Practices / SEO were 100 before).
+- ~~Remove the deprecated `--attention*` aliases~~ — done; no source uses them.
+- ~~Automate the one-primary-per-view rule~~ — done via `e2e/design.spec.js`,
+  which counts primary controls inside the viewport after a real sign-in.
+- **Re-run Lighthouse** — not available locally: neither a Lighthouse package
+  nor a global binary is installed, and installing one is out of scope for this
+  task. The previous result was Accessibility / Best Practices / SEO 100.
 
 ---
 
@@ -115,13 +114,18 @@ at once — depth must be declared once per the design system.
   corrected to "SVG charts".
 - **7:** the narrow obsidian ladder and the "hairlines are the depth cue" rule
   are now explicit in `DESIGN.md` §3 and `docs/design/dark-luxury/02-tokens.md`.
-- Verified: lint clean, 84/84 tests, `check:tokens` passes, build with zero
-  warnings; focus ring measured 2px `#a81010` on the silver plate in both
-  normal and high-contrast modes; no console errors or overflow on five routes.
+- **Cleanup:** the deprecated `--attention*` tokens and button classes were
+  removed once no source used them; a stale mobile-nav selector that still hid
+  `--attention-quiet` was corrected to `--secondary`. All design docs were
+  brought in line with the silver-action / crimson-signal split.
+- **Guard:** `e2e/design.spec.js` signs in through the real UI and asserts at
+  most one focal control above the fold on eleven routes; both tests pass.
 
-**Deliberately not done (P2):** warm/cool palette variants and a success hue
-would contradict the single-accent decision; the deprecated `--attention*`
-aliases still have value as a compatibility layer and can go in a future
-cleanup; the automated one-primary-per-view test needs e2e infrastructure and
-is better added with a broader test task; Lighthouse can be re-run when a
-stable server session is available.
+Verified: lint clean, 84/84 unit tests, 2/2 new e2e tests, `check:tokens`
+passes, build with zero warnings; focus ring measured 2px `#a81010` on the
+silver plate in normal and high-contrast modes; no console errors or overflow.
+
+**Deliberately not done:** warm/cool palette variants and a success hue
+would contradict the single-accent decision. Lighthouse is not installed
+locally (no package or global binary), so its previous 100/100/100 result
+stands un-re-run.

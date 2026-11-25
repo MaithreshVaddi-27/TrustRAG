@@ -66,9 +66,9 @@ border-color: var(--rule);             /* the only structural device */
 background: var(--color-accent);        /* #f7f7f6 — off-white plate */
 color: var(--color-on-accent);          /* #080808 — obsidian text */
 
-/* The attention — one focal action per view */
-background: var(--color-attention);     /* #d41514 — Laser Crimson */
-color: var(--color-on-attention);       /* #f7f7f6 */
+/* The signal — never an action colour */
+color: var(--signal-text);              /* #f04a48 — on obsidian, 5.51:1 */
+color: var(--signal-on-plate);          /* #a81010 — on silver, 7.13:1 */
 
 /* The alarm */
 color: var(--color-alarm-text);         /* #f26a68 */

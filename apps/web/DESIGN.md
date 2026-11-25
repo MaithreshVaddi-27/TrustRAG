@@ -71,7 +71,6 @@ action is a hairline.
 | `.lx-btn--secondary` | Hairline outline, silver text | Everything else |
 | `.lx-btn--quiet` | Text only | Tertiary, inline |
 | `.lx-btn--alarm` | Deep crimson fill | A destructive action |
-| `.lx-btn--attention`, `.lx-btn--attention-quiet` | Deprecated aliases of silver | Read-only, do not use in new code |
 
 A filled crimson (alarm) button carries a **silver** focus ring, because a
 crimson ring on a crimson fill is 1.2:1. Every other focusable element keeps
@@ -230,7 +229,7 @@ src/styles/
 ├── tokens/
 │   ├── index.css          ← the token layer, imported FIRST
 │   ├── color.css          ← Obsidian / Chrome Silver / Laser Crimson
-│   │                        + the accent, attention and alarm aliases
+│   │                        + the accent, signal, disabled and alarm tokens
 │   ├── typography.css     ← families, scale, weights, measures
 │   ├── spacing.css        ← 4px grid, section rhythm, gutters
 │   ├── radius.css         ← control / card / panel / large
@@ -269,7 +268,7 @@ one-line change instead of a search across fifteen files.
 
 | Class | Purpose |
 |---|---|
-| `.lx-btn` + `--primary` / `--attention` / `--secondary` / `--quiet` | The one button |
+| `.lx-btn` + `--primary` / `--secondary` / `--quiet` / `--alarm` | The one button |
 | `.lx-panel` | The one translucent surface (used sparingly) |
 | `.lx-surface` | A flat surface with a hairline |
 | `.lx-display` … `.lx-micro` | The type scale |

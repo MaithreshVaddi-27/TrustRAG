@@ -112,10 +112,6 @@ apps/web/src/styles/
 | `--color-accent` | `--color-silver-050` | The primary action's plate |
 | `--color-accent-hover` | `--color-silver-100` | |
 | `--color-on-accent` | `--color-obsidian-950` | The primary action's text |
-| `--color-attention` | `--color-accent` | Deprecated alias — now silver, not crimson |
-| `--color-attention-hover` | `--color-accent-hover` | Deprecated alias |
-| `--color-on-attention` | `--color-on-accent` | Deprecated alias |
-| `--color-attention-quiet` | `--color-silver-300` | Deprecated alias — silver hairline text |
 | `--color-alarm` | `--color-crimson-600` | A destructive action's fill |
 | `--color-alarm-hover` | `--color-crimson-700` | |
 | `--color-on-alarm` | `--color-silver-050` | Text on the alarm fill |

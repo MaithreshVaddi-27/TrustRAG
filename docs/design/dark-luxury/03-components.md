@@ -35,7 +35,6 @@ when **not** to use it.
 | `--secondary` | Hairline outline, silver text | Everything else |
 | `--quiet` | Text only, no border | Tertiary, inline, navigational |
 | `--alarm` | Deep crimson fill | A destructive action |
-| `--attention`, `--attention-quiet` | Deprecated silver aliases | Do not use in new code |
 
 | Modifier | Effect |
 |---|---|
