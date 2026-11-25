@@ -81,10 +81,18 @@ async def generation_node(state: AgentState) -> AgentState:
 
     from app.rag.agent.graph.build import _execute_with_fallback
 
-    return await _execute_with_fallback(
+    result = await _execute_with_fallback(
         state=state,
         node_name="generation",
         operation=_run_generation,
         fallback_state=fallback_state,
         timeout_seconds=generation_timeout,
     )
+    if result.get("diagnosis_type") == "GENERATION_ERROR":
+        errors = result.get("node_errors") or []
+        if errors:
+            result = {
+                **result,
+                "diagnosis_failures": [str(errors[-1].get("message") or "Generation failed")],
+            }
+    return result

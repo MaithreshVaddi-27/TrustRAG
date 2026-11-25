@@ -60,6 +60,30 @@ async def verification_node(state: AgentState) -> AgentState:
         )
         state["claims"] = []
         state["reliability_score"] = None
+
+        # A refusal caused by an operator error (missing cloud extra, bad key,
+        # unknown provider) is not an evidence shortage. Generation records it
+        # in node_errors; keep that diagnosis and stop instead of letting the
+        # recovery loop retry the same broken configuration.
+        generation_error = next(
+            (
+                entry
+                for entry in (state.get("node_errors") or [])
+                if entry.get("node") == "generation"
+            ),
+            None,
+        )
+        if generation_error or state.get("diagnosis_type") == "GENERATION_ERROR":
+            message = str(
+                (generation_error or {}).get("message")
+                or "Generation failed due to provider configuration"
+            )
+            state["diagnosis_type"] = "GENERATION_ERROR"
+            state["diagnosis_failures"] = [message]
+            state["verdict_status"] = "FAIL"
+            state["attempts"] = cfg.max_recovery_attempts
+            return state
+
         state["diagnosis_type"] = "RETRIEVAL_FAILURE"
         state["diagnosis_failures"] = (
             ["No relevant evidence segments were retrieved"]

@@ -32,6 +32,7 @@ from app.rag.generation.prompt import (
     _grounding_prompt,
     neutralize_prompt_fences,
 )
+from app.security.exceptions import ConfigurationError
 
 logger = get_logger(__name__)
 
@@ -182,6 +183,11 @@ async def generate_grounded_answer(
     except httpx.HTTPError as exc:
         logger.error("LLM HTTP error during grounded generation", error=str(exc))
         return "ABSTAIN"
+    except ConfigurationError:
+        # An operator error (missing cloud extra, bad key, unknown provider) is
+        # not an evidence shortage. Let the graph record a generation error with
+        # the actionable message instead of reporting RETRIEVAL_FAILURE.
+        raise
     except Exception as exc:
         logger.error("Unexpected error during grounded generation", error=str(exc))
         return "ABSTAIN"

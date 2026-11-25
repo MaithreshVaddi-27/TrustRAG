@@ -77,7 +77,22 @@ async def _execute_with_fallback(
     except Exception as exc:
         logger.warning(f"{node_name} node failed", error=str(exc))
         if fallback_state is not None:
-            return fallback_state
+            # Keep the actionable failure detail on the state. Without this, a
+            # missing optional dependency or a bad key is reported downstream
+            # as a generic "internal error" and misdiagnosed as an evidence
+            # shortage. Do not touch diagnosis_failures: the retrieval node's
+            # empty-KB guard compares that list exactly.
+            enriched = dict(fallback_state)
+            errors = list(fallback_state.get("node_errors") or [])
+            errors.append(
+                {
+                    "error_type": type(exc).__name__,
+                    "node": node_name,
+                    "message": str(exc),
+                }
+            )
+            enriched["node_errors"] = errors
+            return enriched
         state["verdict_status"] = "FAIL"
         error_type = type(exc).__name__
         # Detect dead credentials (401/403) as terminal outage

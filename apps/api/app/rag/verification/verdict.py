@@ -278,6 +278,9 @@ class DiagnosisType(StrEnum):
     # (q022/q024: 12 claims stored with "Verification skipped" explanations were
     # scored as unsupported evidence).
     VERIFICATION_UNAVAILABLE = "VERIFICATION_UNAVAILABLE"
+    # The configured LLM could not be constructed (missing optional extra,
+    # invalid key, unknown provider). Never reported as an evidence shortage.
+    GENERATION_ERROR = "GENERATION_ERROR"
     NONE = "NONE"
 
 
@@ -453,6 +456,19 @@ def verdict_from_state(
     total = supported + contradicted + neutral
     answer = state.get("answer")
     query = state.get("query")
+
+    # A terminal generation/configuration error is authoritative. Recomputing
+    # from an empty claim list would turn it into RETRIEVAL_FAILURE and tell the
+    # reader their evidence was at fault when the provider never started.
+    if state.get("diagnosis_type") == DiagnosisType.GENERATION_ERROR:
+        failures = state.get("diagnosis_failures") or ["Generation failed"]
+        return VerdictResult(
+            verdict_status=VerdictStatus.FAIL,
+            reliability_status=ReliabilityStatus.FAILED,
+            reliability_score=0.0,
+            diagnosis_type=DiagnosisType.GENERATION_ERROR,
+            diagnosis_failures=[str(f) for f in failures],
+        )
 
     return compute_verdict(
         supported=supported,
