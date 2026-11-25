@@ -438,7 +438,7 @@
  * the results: below that the results column still needs the wider share. */
 @media (min-width: 1280px) {
   .lx-workbench {
-    grid-template-columns: 28rem minmax(0, 1fr);
+    grid-template-columns: 30rem minmax(0, 1fr);
   }
 }
 
