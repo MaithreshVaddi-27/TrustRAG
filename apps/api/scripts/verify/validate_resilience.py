@@ -24,6 +24,7 @@ import argparse
 import asyncio
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -46,9 +47,44 @@ def _run(cmd: list[str]) -> str:
     ).stdout
 
 
+def _windows_tool(name: str) -> str:
+    """Absolute path to a Windows system tool (avoid PATH hijacking)."""
+    found = shutil.which(name)
+    if found:
+        return found
+    windir = os.environ.get("WINDIR", r"C:\Windows")
+    return str(Path(windir) / "System32" / f"{name}.exe")
+
+
 def _stop(pattern: str) -> bool:
-    """Graceful stop of a matching process (SIGTERM, never SIGKILL)."""
-    out = _run(["/usr/bin/pgrep", "-f", pattern])
+    """Graceful stop of a matching process (SIGTERM, never SIGKILL).
+
+    The old hardcoded ``/usr/bin/pgrep`` made every outage phase fail on
+    Windows (and on any POSIX system that keeps pgrep elsewhere). Resolve the
+    binary by name; on Windows match the image name from tasklist and use
+    taskkill without /F so the process still receives a graceful termination.
+    """
+    if os.name == "nt":
+        image = f"{pattern.split()[0].lower()}.exe"
+        out = _run([_windows_tool("tasklist"), "/FO", "CSV", "/NH"])
+        pids = []
+        for line in out.splitlines():
+            columns = [cell.strip().strip('"') for cell in line.split('","')]
+            if len(columns) >= 2 and columns[0].lower() == image:
+                pids.append(columns[1])
+        for pid in pids:
+            subprocess.run(  # noqa: S603 — resolved binary, numeric PID from tasklist
+                [_windows_tool("taskkill"), "/PID", pid],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        return bool(pids)
+
+    pgrep = shutil.which("pgrep")
+    if not pgrep:
+        return False
+    out = _run([pgrep, "-f", pattern])
     pids = [line.strip() for line in out.splitlines() if line.strip().isdigit()]
     for pid in pids:
         try:
@@ -59,9 +95,28 @@ def _stop(pattern: str) -> bool:
 
 
 def _repair() -> None:
-    """Bring the local services back up."""
-    subprocess.run(  # noqa: S603
-        ["/bin/bash", str(START_SCRIPT)],
+    """Bring the local services back up on any platform."""
+    if os.name == "nt":
+        powershell = shutil.which("powershell") or shutil.which("powershell.exe")
+        if not powershell:
+            return
+        command = [
+            powershell,
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(REPO / "scripts" / "serve.ps1"),
+            "serve",
+            "--detach",
+        ]
+    else:
+        bash = shutil.which("bash") or shutil.which("/bin/bash")
+        if not bash:
+            return
+        command = [bash, str(START_SCRIPT)]
+    subprocess.run(  # noqa: S603 — resolved interpreter, fixed script path
+        command,
         capture_output=True,
         text=True,
         check=False,
