@@ -420,7 +420,15 @@ async def create_analysis(
         "reliability": {"score": None, "status": "PENDING"},
         "diagnosis": {"type": None, "failures": []},
         "created_at": datetime.now(UTC),
-        "config_snapshot": cfg.as_snapshot(),
+        # as_snapshot() describes the SHIPPED defaults. A per-request provider
+        # or model (the Playground engine selector) must override those fields,
+        # or the dossier claims the run used ollama/gemma3:1b when it actually
+        # used gemini — a false provenance record in a reliability product.
+        "config_snapshot": {
+            **cfg.as_snapshot(),
+            "llm_provider": effective_llm_provider,
+            "llm_model": effective_llm_model,
+        },
         "web_search_enabled": schema.enable_web_search,
         "web_search_provider": schema.web_search_provider,
         "llm_provider": effective_llm_provider,

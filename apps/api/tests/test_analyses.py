@@ -137,6 +137,62 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeyp
             assert call_kwargs["data"]["message"] == "Analysis run initiated"
 
 
+@patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
+def test_create_analysis_snapshot_records_the_requested_engine(
+    mock_create_indexes, mock_connect, mock_kb_doc, monkeypatch
+):
+    """config_snapshot must name the engine that will actually run.
+
+    The dossier used to store cfg.as_snapshot() unchanged, so a Playground run
+    on gemini was recorded as ollama/gemma3:1b — false provenance.
+    """
+    import app.llm.local_llm as _llm_mod
+    from app.api.v1.schemas.kb import KBResponse
+
+    monkeypatch.setattr(
+        _llm_mod,
+        "get_discovered_llms",
+        lambda provider: frozenset(["gemma3:1b", "granite4.2:3b-q4_K_M"])
+        if provider == "ollama"
+        else frozenset(),
+    )
+    mock_kb = KBResponse(
+        id=str(mock_kb_doc["_id"]),
+        name=mock_kb_doc["name"],
+        description=mock_kb_doc["description"],
+        user_id=str(mock_kb_doc["user_id"]),
+        created_at="2026-08-27T10:00:00Z",
+    )
+    mock_collection = MagicMock()
+    mock_collection.insert_one = AsyncMock(
+        return_value=MagicMock(inserted_id=ObjectId("64ee39d09c6292376e191983"))
+    )
+    with (
+        patch("app.services.analysis_service.get_kb", return_value=mock_kb),
+        patch("app.services.analysis_service.get_collection", return_value=mock_collection),
+        patch("app.services.analysis_service.add_trace_event", AsyncMock()),
+        patch("app.llm.local_llm.probe_local_llm_server", AsyncMock()),
+    ):
+        response = client.post(
+            "/api/v1/analyses",
+            json={
+                "knowledge_base_id": "64ee39d09c6292376e191982",
+                "query": "Is there a 45 days policy?",
+                "llm_provider": "ollama",
+                "llm_model": "granite4.2:3b-q4_K_M",
+            },
+        )
+
+    assert response.status_code == 201
+    saved = mock_collection.insert_one.call_args.args[0]
+    snap = saved["config_snapshot"]
+    assert snap["llm_provider"] == "ollama"
+    assert snap["llm_model"] == "granite4.2:3b-q4_K_M"
+    assert snap["llm_model"] == saved["llm_model"]
+
+
 def test_create_analysis_ignores_legacy_embedding_overrides(monkeypatch):
     """Legacy per-request embedding fields are ignored (single models.yaml engine)."""
     import app.llm.local_llm as _llm_mod
