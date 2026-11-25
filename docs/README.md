@@ -39,8 +39,13 @@ docs/
 │   ├── FUTURE_IMPROVEMENTS.md         # Deferred items
 │   └── results/                       # Live eval-run JSON (gitignored, local only)
 ├── design/
-│   ├── dark-luxury/                   # The design system: foundations → tokens → components → pages
-│   └── *.svg                          # Palette, typography and layout references
+│   ├── dark-luxury/                   # Canonical design system: foundations → tokens → components → pages
+│   ├── README.md                      # Archive notice + links to the canonical system
+│   ├── UI_DEEP_AUDIT_2026-11-25.md    # Evidence-backed audit of all 11 routes
+│   ├── UI_REVISED_PLAN_2026-11-25.md  # Approved phases, implementation record, handoff
+│   ├── PALETTE_AND_BUTTON_PROPOSAL_2026-11-25.md  # Palette options and the approved direction
+│   ├── COLOR_PALETTE_NEXT_CHANGES_2026-11-25.md   # Contrast fixes, token consolidation, deferred items
+│   └── *.svg                          # Historical concept boards (archive only)
 ├── deployment/
 │   ├── DEPLOYMENT_GUIDE.md            # Cloud production runbook (Pages + GCR + Atlas)
 │   └── README.md                      # Env vars, local/Compose setup, Atlas + Qdrant Cloud setup
@@ -76,6 +81,10 @@ docs/
 - [**Production Config Guide (`architecture/PRODUCTION_CONFIG_GUIDE.md`)**](architecture/PRODUCTION_CONFIG_GUIDE.md): every `models.yaml` key, what it does, and when to change it.
 - [**Multi-Model Architecture Review (`architecture/MULTI_MODEL_ARCHITECTURE_REVIEW_2026-11-05.md`)**](architecture/MULTI_MODEL_ARCHITECTURE_REVIEW_2026-11-05.md).
 - [**Laya ROI Assessment (`architecture/LAYA_ROI_AUDIT_REPORT.md`)**](architecture/LAYA_ROI_AUDIT_REPORT.md): read-only assessment of typed-decision models for retrieval and recovery.
+- [**Design system (`design/dark-luxury/README.md`)**](design/dark-luxury/README.md): Obsidian / Chrome Silver / Laser Crimson foundations, tokens, components, patterns, accessibility and voice. The shipped implementation is [`apps/web/DESIGN.md`](../apps/web/DESIGN.md).
+- [**UI deep audit (`design/UI_DEEP_AUDIT_2026-11-25.md`)**](design/UI_DEEP_AUDIT_2026-11-25.md): measured baseline across all routes, findings and the revised plan.
+- [**UI revised plan (`design/UI_REVISED_PLAN_2026-11-25.md`)**](design/UI_REVISED_PLAN_2026-11-25.md): approved phases, what shipped, and the handoff record.
+- [**Palette proposal (`design/PALETTE_AND_BUTTON_PROPOSAL_2026-11-25.md`)**](design/PALETTE_AND_BUTTON_PROPOSAL_2026-11-25.md) and [**remaining colour changes (`design/COLOR_PALETTE_NEXT_CHANGES_2026-11-25.md`)**](design/COLOR_PALETTE_NEXT_CHANGES_2026-11-25.md): the silver-action / crimson-signal decision, measured contrast fixes and what was deliberately deferred.
 
 ### 4. Security
 

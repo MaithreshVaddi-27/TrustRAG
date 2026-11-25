@@ -121,6 +121,15 @@ apps/web/*.local
 .eslintcache
 .stylelintcache
 *.tsbuildinfo
+
+# Frontend-generated output, named explicitly so a change to a generic rule
+# above cannot start tracking build or test artefacts again.
+apps/web/dist/
+apps/web/dist-ssr/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/coverage/
+
 .yarn/cache
 .yarn/unplugged
 .yarn/build-state.yml

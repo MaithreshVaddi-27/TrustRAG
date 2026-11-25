@@ -10,3 +10,11 @@ The canonical, maintained design system is
 [`apps/web/DESIGN.md`](../../apps/web/DESIGN.md).
 
 Do not copy colours, marks or copy from the archived boards.
+
+The dated 2026-11-25 documents are the decision record for the current UI:
+[`UI_DEEP_AUDIT`](UI_DEEP_AUDIT_2026-11-25.md) (measured baseline),
+[`UI_REVISED_PLAN`](UI_REVISED_PLAN_2026-11-25.md) (approved phases and
+handoff), [`PALETTE_AND_BUTTON_PROPOSAL`](PALETTE_AND_BUTTON_PROPOSAL_2026-11-25.md)
+(the silver-action / crimson-signal decision), and
+[`COLOR_PALETTE_NEXT_CHANGES`](COLOR_PALETTE_NEXT_CHANGES_2026-11-25.md)
+(contrast fixes, token consolidation and deferred items).

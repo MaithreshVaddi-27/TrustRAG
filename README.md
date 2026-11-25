@@ -20,6 +20,7 @@ TrustRAG adds a verification layer between your LLM and your data: answers are s
 - [Overview](#overview)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
+- [Frontend Design System](#frontend-design-system)
 - [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
@@ -76,7 +77,7 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 | **Reliability** | LangGraph self-heal loop with token/latency budgets; safe abstention; conflict detection |
 | **Auth & security** | JWT (HS256, `iss`/`aud`), bcrypt, JTI revocation, login lockout, rate limits, SSRF guards |
 | **Integrations** | MCP server (JSON-RPC 2.0) for Claude Desktop / Cursor / Windsurf; SSE live-progress streaming |
-| **Workbench UI** | Cyber-dark developer workbench; decoupled React architecture; Model Context Protocol (MCP) live web search grounding switch; bottom query bar with prompt chips; NLI claim triples & SHA-256 evidence integrity viewers |
+| **Workbench UI** | Strictly dark Obsidian / Chrome Silver / Laser Crimson workbench; registration-seal signature; scroll-linked pipeline and finite state motion; real measured evidence in the landing ledger; MCP live web search switch; NLI claim triples & SHA-256 evidence viewers |
 | **Efficiency** | ONNX embedding runtime (torch-free, ~500–1000 MB RAM saved); Metal/CUDA auto-detection |
 | **Inference Acceleration** | KV cache quantization (q8_0 default), flash attention, prompt caching, context compression |
 | **Ops** | KB snapshots + rollback; Prometheus `/metrics` |
@@ -93,7 +94,21 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 | **Embeddings** | `BAAI/bge-small-en-v1.5` via ONNX Runtime (torch-free, default) |
 | **Reranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` via ONNX Runtime (int8) |
 | **Storage** | Qdrant (vectors) + MongoDB 7 (documents, async `motor`) |
-| **Quality gates** | Ruff, ESLint, pytest, Vitest, Playwright, k6 |
+| **Quality gates** | Ruff, ESLint, pytest, Vitest, Playwright, k6, token-drift check |
+
+---
+
+## Frontend Design System
+
+The shipped UI is strictly dark: **Obsidian Black** is the surface, **Chrome Silver** is the action colour, and **Laser Crimson** is a signal — a caught contradiction, the registration seal, a live state, keyboard focus, or a destructive action. One focal silver plate per view; every other action is a hairline.
+
+The signature is the **registration seal** (two opposing corner brackets and one crimson point), borrowed from printer registration targets: it appears on verified records, in the results header, on the dashboard's verdict panel, and in the auth card. The landing page shows a real evidence ledger with measured claims and SHA-256 hashes, not an illustration.
+
+Motion is finite or tied to input: one entrance, one scroll reveal, a scroll-linked six-stage pipeline, claim alignment, and short state transitions. Nothing loops for decoration, and `prefers-reduced-motion` resolves every effect to a static state.
+
+- Source of truth: [`apps/web/DESIGN.md`](apps/web/DESIGN.md) and [`docs/design/dark-luxury/`](docs/design/dark-luxury/README.md).
+- Decision record for the 2026-11-25 palette work: [`docs/design/PALETTE_AND_BUTTON_PROPOSAL_2026-11-25.md`](docs/design/PALETTE_AND_BUTTON_PROPOSAL_2026-11-25.md), [`docs/design/COLOR_PALETTE_NEXT_CHANGES_2026-11-25.md`](docs/design/COLOR_PALETTE_NEXT_CHANGES_2026-11-25.md), [`docs/design/UI_DEEP_AUDIT_2026-11-25.md`](docs/design/UI_DEEP_AUDIT_2026-11-25.md).
+- Brand mark and kit: [`brand/README.md`](brand/README.md).
 
 ---
 
@@ -605,12 +620,16 @@ cd apps\api; .\.venv\Scripts\Activate.ps1; python -m pytest -v
 ```
 
 ```bash
-# Frontend — Vitest unit tests
+# Frontend — Vitest unit tests, lint, palette drift, build
 cd apps/web && npm test
+npm run lint
+npm run check:tokens      # chart theme mirrors the colour tokens
+npm run build
 
 # End-to-end — Playwright (needs the live stack running)
 npx playwright install    # first time only
-npm run test:e2e          # headless · npm run test:e2e:ui (interactive)
+npm run test:e2e          # includes e2e/design.spec.js: one focal action per view
+npm run test:e2e:ui       # interactive
 
 # Load — k6 (repo root)
 k6 run load-test/smoke.js
