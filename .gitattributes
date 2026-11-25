@@ -15,12 +15,13 @@
 *.css       text eol=lf
 *.html      text eol=lf
 *.sh        text eol=lf
+# Windows scripts must keep CRLF so cmd.exe and PowerShell parse them reliably.
+*.ps1       text eol=crlf
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
 *.env.example text eol=lf
 Dockerfile  text eol=lf
 Makefile    text eol=lf
-
-# Declare files that will always have CRLF line endings on checkout
-# *.bat     text eol=crlf
 
 # Binary formats
 *.png       binary
