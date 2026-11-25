@@ -107,7 +107,7 @@ apps/web/src/styles/
 |---|---|---|
 | `--verdict-supported` | `--color-silver-200` | |
 | `--verdict-unsupported` | `--color-silver-400` | |
-| `--verdict-contradicted` | `--color-crimson-400` | |
+| `--verdict-contradicted` | `--signal-text` | |
 | `--verdict-unknown` | `--color-silver-500` | |
 | `--color-accent` | `--color-silver-050` | The primary action's plate |
 | `--color-accent-hover` | `--color-silver-100` | |
@@ -122,6 +122,21 @@ apps/web/src/styles/
 | `--color-alarm-text` | `--color-crimson-300` | Error text |
 | `--color-alarm-wash` | `rgba(212, 21, 20, 0.09)` | An error surface's background |
 | `--color-alarm-rule` | `rgba(212, 21, 20, 0.34)` | An error surface's hairline |
+
+### Crimson signal — named by job
+
+| Token | Resolves to | Use |
+|---|---|---|
+| `--signal-text` | `--color-crimson-400` | Text on obsidian (5.51:1) |
+| `--signal-mark` | `--color-crimson-500` | The registration seal, solid marks |
+| `--signal-on-plate` | `--color-crimson-600` | Marks and focus on silver (7.13:1) |
+| `--signal-ring` | `rgba(...,0.16)` | The live dot's outer ring |
+| `--signal-wash-quiet` / `--signal-wash` / `--signal-wash-strong` | `0.07 / 0.14 / 0.24` | Signal surfaces, three weights only |
+| `--signal-rule` / `--signal-rule-strong` | `0.42 / 0.5` | Signal hairlines |
+
+The decimal-named `--crimson-*` tokens are deprecated aliases of these jobs;
+components should use the job names. `npm run check:tokens` guards the chart
+theme against the same source of truth.
 
 ---
 
@@ -200,6 +215,14 @@ apps/web/src/styles/
 | `--surface-inset` | `--color-graphite-800` | Inset wells, code blocks |
 | `--shadow-preview` | two-layer soft black | The hero's product preview, only |
 | `--focus-ring` | `--color-crimson-400` | The one focus ring |
+| `--focus-ring-on-plate` | `--signal-on-plate` | Filled silver controls (7.13:1) |
+| `--color-disabled-surface` | `--color-graphite-600` | Disabled control fill |
+| `--color-disabled-text` | `--color-silver-300` | Disabled label (8.36:1) |
+
+The four obsidian steps are only four hex values apart on purpose: hairlines
+are the depth cue, not the step size. Elevation is declared once per surface —
+a rule *or* a shadow. Do not widen the ladder and strengthen borders at the
+same time.
 
 ---
 

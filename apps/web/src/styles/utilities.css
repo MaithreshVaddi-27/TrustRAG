@@ -144,7 +144,7 @@
  * ─────────────────────────────────────────────────────────────────────────── */
 
 .lx-signal {
-  color: var(--color-crimson-400);
+  color: var(--signal-text);
 }
 
 /* A live status dot. Only for something that is genuinely live. */
@@ -154,7 +154,7 @@
   height: 6px;
   border-radius: 50%;
   background-color: var(--color-crimson-500);
-  box-shadow: 0 0 0 3px var(--crimson-ring);
+  box-shadow: 0 0 0 3px var(--signal-ring);
   vertical-align: middle;
 }
 

@@ -66,7 +66,7 @@
    * gets colour, which is exactly what a reliability product should do. */
   --verdict-supported: var(--color-silver-200);
   --verdict-unsupported: var(--color-silver-400);
-  --verdict-contradicted: var(--color-crimson-400);
+  --verdict-contradicted: var(--signal-text);
   --verdict-unknown: var(--color-silver-500);
 
   /* ── Accent — the neutral primary action ─────────────────────────────────
@@ -119,6 +119,11 @@
   --color-alarm-wash: rgba(212, 21, 20, 0.09);
   --color-alarm-rule: rgba(212, 21, 20, 0.34);
 
+  /* Disabled controls do not use opacity: at 0.4 the label fell to 3.59:1.
+   * A solid graphite plate with silver-300 text measures 8.36:1. */
+  --color-disabled-surface: var(--color-graphite-600);
+  --color-disabled-text: var(--color-silver-300);
+
   /* ── Overlays — the alpha steps built from the three colours above ────────
    * Raw alpha values belong here and nowhere else. A component declares
    * `var(--wash-…)`; it never re-spells an rgba literal. The names carry the
@@ -148,22 +153,37 @@
   --scrim-96: rgba(8, 8, 8, 0.96);
   --scrim-98: rgba(8, 8, 8, 0.98);
 
-  --crimson-ring: rgba(212, 21, 20, 0.16);
-  --crimson-wash-045: rgba(212, 21, 20, 0.045);
-  --crimson-wash-07: rgba(212, 21, 20, 0.07);
-  --crimson-wash-08: rgba(212, 21, 20, 0.08);
-  --crimson-wash-10: rgba(212, 21, 20, 0.1);
-  --crimson-wash-12: rgba(212, 21, 20, 0.12);
-  --crimson-wash-14: rgba(212, 21, 20, 0.14);
-  --crimson-wash-24: rgba(212, 21, 20, 0.24);
-  --crimson-wash-28: rgba(212, 21, 20, 0.28);
-  --crimson-wash-32: rgba(212, 21, 20, 0.32);
-  --crimson-wash-38: rgba(212, 21, 20, 0.38);
-  --crimson-rule-40: rgba(212, 21, 20, 0.4);
-  --crimson-rule-45: rgba(212, 21, 20, 0.45);
-  --crimson-rule: rgba(212, 21, 20, 0.42);
-  --crimson-rule-strong: rgba(212, 21, 20, 0.5);
-  --crimson-rule-55: rgba(212, 21, 20, 0.55);
+  /* ── Crimson signal — one token per job ───────────────────────────────────
+   * Components use the job name. The decimal-named tokens below are
+   * deprecated aliases: they keep old call sites working, but every alias
+   * resolves to one of these values, so the palette has one source of truth.
+   */
+  --signal-text: var(--color-crimson-400); /* on obsidian · 5.51:1 */
+  --signal-mark: var(--color-crimson-500); /* seals and fills */
+  --signal-on-plate: var(--color-crimson-600); /* on silver · 7.13:1 */
+  --signal-ring: rgba(212, 21, 20, 0.16);
+  --signal-wash-quiet: rgba(212, 21, 20, 0.07);
+  --signal-wash: rgba(212, 21, 20, 0.14);
+  --signal-wash-strong: rgba(212, 21, 20, 0.24);
+  --signal-rule: rgba(212, 21, 20, 0.42);
+  --signal-rule-strong: rgba(212, 21, 20, 0.5);
+
+  --crimson-ring: var(--signal-ring);
+  --crimson-wash-045: var(--signal-wash-quiet);
+  --crimson-wash-07: var(--signal-wash-quiet);
+  --crimson-wash-08: var(--signal-wash-quiet);
+  --crimson-wash-10: var(--signal-wash-quiet);
+  --crimson-wash-12: var(--signal-wash);
+  --crimson-wash-14: var(--signal-wash);
+  --crimson-wash-24: var(--signal-wash-strong);
+  --crimson-wash-28: var(--signal-wash-strong);
+  --crimson-wash-32: var(--signal-wash-strong);
+  --crimson-wash-38: var(--signal-rule);
+  --crimson-rule-40: var(--signal-rule);
+  --crimson-rule-45: var(--signal-rule);
+  --crimson-rule: var(--signal-rule);
+  --crimson-rule-strong: var(--signal-rule-strong);
+  --crimson-rule-55: var(--signal-rule-strong);
 
   --shadow-black-90: rgba(0, 0, 0, 0.9);
   --shadow-black-72: rgba(0, 0, 0, 0.72);
@@ -174,6 +194,8 @@
   --hc-rule-faint: rgba(255, 255, 255, 0.42);
   --hc-rule: rgba(255, 255, 255, 0.6);
   --hc-rule-strong: rgba(255, 255, 255, 0.8);
+  --hc-silver-500: #8d8c8a;
+  --hc-silver-400: #b4b3b1;
 
   /* The focus ring on a crimson fill cannot be crimson (1.2:1 against the
    * button it outlines). A filled crimson button opts out of the global

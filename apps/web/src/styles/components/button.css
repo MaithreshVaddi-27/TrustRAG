@@ -35,8 +35,13 @@
   transform: scale(0.985);
 }
 
+/* A disabled control keeps its label readable: silver-300 on graphite-600
+ * measures 8.36:1, where 0.4 opacity on obsidian measured only 3.59:1. */
 .lx-btn:disabled {
-  opacity: 0.4;
+  background-color: var(--color-disabled-surface);
+  border-color: var(--color-disabled-surface);
+  color: var(--color-disabled-text);
+  box-shadow: none;
   cursor: not-allowed;
 }
 
@@ -65,8 +70,15 @@
   color: var(--color-on-attention-hover);
 }
 
-/* A crimson fill cannot carry a crimson focus ring (1.2:1), so only the
- * destructive button opts out. Silver plates keep the global crimson ring. */
+/* Two focus exceptions. A crimson fill cannot carry a crimson ring, so the
+ * destructive button uses silver. A silver plate needs the darker crimson
+ * (7.13:1) — the global crimson-400 is only 3.39:1 on silver. */
+.lx-btn--primary:focus-visible,
+.lx-btn--attention:focus-visible {
+  outline: 2px solid var(--focus-ring-on-plate);
+  outline-offset: 2px;
+}
+
 .lx-btn--alarm:focus-visible {
   outline: 2px solid var(--focus-ring-on-accent);
   outline-offset: 2px;

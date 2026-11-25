@@ -345,7 +345,7 @@
 
 .lx-seal {
   flex-shrink: 0;
-  color: var(--color-crimson-500);
+  color: var(--signal-mark);
 }
 
 .lx-seal--silver {

@@ -532,8 +532,11 @@
   outline-offset: 1px;
 }
 
+/* No opacity on text: silver-300 on the inset surface stays above 9:1. */
 .lx-control:disabled {
-  opacity: 0.45;
+  background-color: var(--surface-inset);
+  border-color: var(--rule-faint);
+  color: var(--color-disabled-text);
   cursor: not-allowed;
 }
 

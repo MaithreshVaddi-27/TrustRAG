@@ -158,7 +158,9 @@
     --rule: var(--wash-silver-40);
     --rule-strong: var(--wash-silver-60);
     --focus-ring: var(--color-crimson-300);
-    --color-silver-500: #8d8c8a;
-    --color-silver-400: #b4b3b1;
+    /* crimson-300 on silver is only 2.78:1 — the plate needs the deeper step. */
+    --focus-ring-on-plate: var(--color-crimson-600);
+    --color-silver-500: var(--hc-silver-500);
+    --color-silver-400: var(--hc-silver-400);
   }
 }

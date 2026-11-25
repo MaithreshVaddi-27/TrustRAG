@@ -1,6 +1,7 @@
 # Remaining design changes — colour palette (25 Nov 2026)
 
-**Status: proposal list only. No code changed.** Implement only after approval.
+**Status: P0 and P1 implemented on 25 Nov 2026 after review. P2 deliberately
+deferred.** The measured table below documents the problems that were fixed.
 
 ---
 
@@ -99,8 +100,28 @@ at once — depth must be declared once per the design system.
 
 ---
 
-## What I would do first
+## Implementation record
 
-Items **1 + 2** together — they are the only actual accessibility defects and
-they touch one file each. Then **4 + 5** as a single token refactor. Items 6–7
-and P2 are discretionary.
+- **1 + 2:** `.lx-btn:disabled` and `.lx-control:disabled` now use a graphite-600
+  plate with silver-300 text (8.36:1 / >9:1) instead of opacity. Filled silver
+  controls use `--focus-ring-on-plate` (`--signal-on-plate`, 7.13:1); high
+  contrast keeps the deeper step because crimson-300 on silver measured 2.78:1.
+- **4 + 5:** crimson is named by job (`--signal-text`, `--signal-mark`,
+  `--signal-on-plate`, `--signal-ring`, three washes, two rules). The 13
+  decimal-named tokens remain as deprecated aliases resolving to those jobs —
+  one source of truth for values, no component churn.
+- **6:** `scripts/checks/check_token_drift.py` + `npm run check:tokens` guard the
+  14 mirrored chart values. The stale "Recharts" comment in `chartTheme.js` was
+  corrected to "SVG charts".
+- **7:** the narrow obsidian ladder and the "hairlines are the depth cue" rule
+  are now explicit in `DESIGN.md` §3 and `docs/design/dark-luxury/02-tokens.md`.
+- Verified: lint clean, 84/84 tests, `check:tokens` passes, build with zero
+  warnings; focus ring measured 2px `#a81010` on the silver plate in both
+  normal and high-contrast modes; no console errors or overflow on five routes.
+
+**Deliberately not done (P2):** warm/cool palette variants and a success hue
+would contradict the single-accent decision; the deprecated `--attention*`
+aliases still have value as a compatibility layer and can go in a future
+cleanup; the automated one-primary-per-view test needs e2e infrastructure and
+is better added with a broader test task; Lighthouse can be re-run when a
+stable server session is available.

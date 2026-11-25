@@ -1,9 +1,9 @@
 /**
  * TrustRAG — chart theme.
  *
- * Recharts needs concrete colours, so it cannot read the CSS custom
- * properties directly. These values mirror
- * `src/styles/tokens/color.css` — keep them in step.
+ * The SVG charts need concrete colour strings, so they cannot read CSS
+ * custom properties directly. These values mirror
+ * `src/styles/tokens/color.css`; `npm run check:tokens` fails on drift.
  *
  * The rule that matters: a chart has ONE accent. The series that matters
  * gets Chrome Silver; everything else sits in quiet steps of the same

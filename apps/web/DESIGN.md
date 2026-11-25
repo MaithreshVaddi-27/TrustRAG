@@ -52,6 +52,13 @@ as an entry point.
 | `--color-alarm` | `crimson-600` | A destructive action's filled button |
 | `--color-alarm-text` | `crimson-300` | Error text on a dark surface |
 
+Crimson is named **by job**, not by step: `--signal-text` on obsidian,
+`--signal-mark` for seals and solid marks, `--signal-on-plate` for marks and
+focus on silver. Three wash weights and two rule weights cover signal
+surfaces; the old decimal-named tokens are deprecated aliases of these jobs.
+A disabled control is a graphite-600 plate with silver-300 text (8.36:1) —
+never an opacity fade, which failed at 3.59:1.
+
 ### Buttons
 
 The button colour is **Chrome Silver**. Crimson is a signal and appears on a
@@ -146,6 +153,13 @@ between them. Not everything is a pill.
 not from shadows. Elevation is declared **once**: a 1px rule *or* a shadow,
 never both. The only shadow in the system belongs to the one element that
 genuinely floats above the page — the hero's product preview.
+
+The ladder is deliberately narrow: page `#080808` → bar `#0c0c0d` → panel
+`#101012` → card `#141416`, each step four hex values apart. **Hairlines are
+the depth cue**, not the step size. Do not widen the steps and add stronger
+borders at the same time — that declares depth twice. If a surface needs to
+separate from another, add or strengthen a hairline from the ramp, not a
+shadow and not a new surface colour.
 
 ---
 
@@ -276,8 +290,8 @@ one-line change instead of a search across fifteen files.
   not declared in the token.
 - Every interactive target ≥ 44×44px on coarse pointers, 36px on fine
   pointers for dense navigation rows.
-- One visible focus ring for the whole product: 2px Laser Crimson at 3px
-  offset.
+- One visible focus ring: 2px crimson at 3px offset on dark chrome, and the
+  darker `--signal-on-plate` on filled silver controls (7.13:1).
 - Exactly one `<main>` landmark per route.
 - Icons come from one set (lucide), one size, one stroke (1.5).
 - Colour never travels alone — verdicts carry an icon shape and a word.
@@ -289,9 +303,10 @@ one-line change instead of a search across fifteen files.
 ## 9. Verification
 
 ```bash
-npm run lint     # 0 warnings
-npm run test     # 33 tests
-npm run build
+npm run lint         # 0 warnings
+npm run test         # all tests pass
+npm run check:tokens # chart theme matches the token layer
+npm run build        # 0 warnings
 ```
 
 Browser verification uses Brave DevTools MCP: DOM and computed-style
