@@ -83,6 +83,36 @@ def sanitize_url(raw_url: str | None) -> str:
 # ─── Search Functions ──────────────────────────────────────────────────────────
 
 
+def sanitize_search_results(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Turn raw provider items into traceable, SSRF-safe web results.
+
+    Kept pure so the URL allow-list and content guard can be tested without
+    the optional ``tavily`` package or a live network call.
+    """
+    results: list[dict[str, Any]] = []
+    for item in items:
+        safe_url = sanitize_url(item.get("url"))
+        if not safe_url:
+            # A result whose URL is internal, malformed or non-HTTP cannot
+            # become a traceable citation. sanitize_url is the SSRF allow-list:
+            # dropping the whole result (not just its URL) keeps its content
+            # out of the grounded answer too.
+            continue
+        content = str(item.get("content") or "").strip()
+        if not content:
+            continue
+        results.append(
+            {
+                "title": str(item.get("title") or "Untitled Web Result").strip(),
+                "url": safe_url,
+                "content": content,
+                "score": float(item.get("score", 0.8)),
+                "source": "tavily",
+            }
+        )
+    return results
+
+
 async def tavily_search(query: str, max_results: int = 5) -> list[dict[str, Any]]:
     """
     Execute AI-native web search using Tavily.
@@ -111,21 +141,7 @@ async def tavily_search(query: str, max_results: int = 5) -> list[dict[str, Any]
 
         response = await asyncio.wait_for(_call_tavily(), timeout=SEARCH_TIMEOUT_SECONDS)
 
-        results: list[dict[str, Any]] = []
-        for item in response.get("results", []):
-            safe_url = sanitize_url(item.get("url"))
-            content = str(item.get("content") or "").strip()
-            if not content:
-                continue
-            results.append(
-                {
-                    "title": str(item.get("title") or "Untitled Web Result").strip(),
-                    "url": safe_url,
-                    "content": content,
-                    "score": float(item.get("score", 0.8)),
-                    "source": "tavily",
-                }
-            )
+        results = sanitize_search_results(response.get("results", []))
 
         logger.info("Tavily search complete", query=safe_query, count=len(results))
         return results

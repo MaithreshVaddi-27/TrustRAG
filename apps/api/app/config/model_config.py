@@ -784,7 +784,9 @@ class ModelConfig:
     def kv_cache_quantization(self) -> str:
         value = self._get("optimization", "kv_cache_quantization", required=False)
         env_val = os.environ.get("KV_CACHE_QUANTIZATION")
-        return env_val if env_val is not None else str(value or "q4_0")
+        # Keep this fallback in step with models.yaml and hardware.py: a removed
+        # yaml key must not silently switch the launcher from q8_0 to q4_0.
+        return env_val if env_val is not None else str(value or "q8_0")
 
     @property
     def flash_attention(self) -> bool:

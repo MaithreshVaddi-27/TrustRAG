@@ -103,6 +103,29 @@ async def test_collection_dimension_is_read_live_per_call():
 
 
 @pytest.mark.asyncio
+async def test_collection_dimension_memo_is_bounded():
+    """A long-lived worker cannot retain one dimension entry per KB forever."""
+    import app.rag.retrieval.retriever as retriever
+
+    retriever._collection_dim_cache.clear()
+    original_max = retriever._COLLECTION_DIM_CACHE_MAX
+    vectors = SimpleNamespace(size=384)
+    col_info = SimpleNamespace(config=SimpleNamespace(params=SimpleNamespace(vectors=vectors)))
+    client = SimpleNamespace(get_collection=AsyncMock(return_value=col_info))
+    try:
+        retriever._COLLECTION_DIM_CACHE_MAX = 2
+        for i in range(3):
+            await retriever._get_collection_dimension(client, f"kb_{i}")
+        assert len(retriever._collection_dim_cache) == 2
+        # FIFO: the oldest entry was evicted, the newest is present.
+        assert "kb_0" not in retriever._collection_dim_cache
+        assert "kb_2" in retriever._collection_dim_cache
+    finally:
+        retriever._COLLECTION_DIM_CACHE_MAX = original_max
+        retriever._collection_dim_cache.clear()
+
+
+@pytest.mark.asyncio
 async def test_temporal_validity_filtering():
     results = [
         {"document_id": "64ee39d09c6292376e191981", "text": "active chunk"},

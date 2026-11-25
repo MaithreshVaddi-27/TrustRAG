@@ -40,6 +40,7 @@ Every entry is tagged:
 | **B4 — Accuracy** | ✅ COMPLETE — approved | Ground truth grown to 33 probes (27 answerable + 6 unanswerable); the thinking control makes a reasoning model 2.2× faster with identical accuracy; the default-model question is now decided on measurements (DECISION-006). See §2 UPGRADE-011, §5 REFINEMENT-005, §7 DECISION-006..009, §4.10–4.12. |
 | **B5 — Validation** | ✅ COMPLETE | Full suite 810 passed, coverage 80.39 % (gate green); API + quality benchmarks re-run; concurrency (4/4) and three failure injections (rate limit, provider down, database down) all behave. See §4.13. |
 | **B9 — Final document removals** | ✅ COMPLETE | The point-in-time audit was folded into the living log, which is now self-contained; the academic review deck and the exported project report (9.1 MB together) were moved out of the repository — byte-identical copies are in `~/Downloads/trustrag-deliverables/`. See §4.19. |
+| **B10 — Maintenance & KV-cache truth** | ✅ COMPLETE | Three coherence/robustness fixes (KV default, bounded dim memo, SSRF-safe citations), 233 generated artefacts removed, and an explicit record of where KV-cache settings actually apply. Full work map in §10. |
 | **B8 — Deep clean** | ✅ COMPLETE | Three real defects found by cleaning: the fresh-clone ONNX bake used a hardcoded stub config and could never export the reranker; the root `scripts/` package was never linted by CI. Dead shims removed, the lint rules moved to a repository-root `ruff.toml`, and the tooling is now genuinely cross-platform. See §4.18. |
 | **B7 — Documentation & cross-platform** | ✅ COMPLETE | The docs told the truth again: 6 broken links, 12 stale module paths, a coverage map of a module that no longer exists and a verification snapshot quoting 665 tests. All fixed; zero broken links. The launcher hardcoded a macOS Homebrew Python path — now discovered, so the tooling runs on Linux and Windows too. 11 superseded point-in-time reports removed. Verified on Python 3.11 and 3.12. See §4.16–4.17. |
 | **B6 — Integration & repo hygiene** | ✅ COMPLETE | The frontend's 25 API calls are now checked against the backend's routes by a script instead of by hand; the whole user flow is exercised through the frontend's own proxy. Four defects found and fixed (database outage answered 500 with a generic message; the model list named every model twice; a stale E2E assertion; the CI type-check ratchet could not pass). The repository lost 2.4 GB of unrelated files. See §2 UPGRADE-012..013, §4.14, §5 REFINEMENT-006, §6 CHANGE REQUIRED-022, §7 DECISION-010..011. |
@@ -2218,3 +2219,68 @@ egress is opt-in via the `cloud` extra.
 | BLK-6 | The host was not idle during the B4/B5 runs (load 5.5–17.0) | Short-endpoint p50 is noise-dominated across runs | The `min` column is the load-robust signal (§4.11); every conclusion in this log rests on differences far larger than the observed noise |
 | BLK-7 | 30 mypy errors remain in `app/` | The type-check job can only fail on *new* errors, not on old ones | The ratchet ceiling is corrected to 30 (DECISION-011) and this branch introduces **zero** new ones. The backlog is a separate piece of work: each error is a candidate for a ratchet-down commit. |
 | BLK-8 | The frontend↔backend contract was never checked by anything | A renamed endpoint would surface as a broken page, not a failed build | **Closed in B6** by `scripts/verify/validate_integration.py`, which extracts every frontend API call from the source and compares it against the live OpenAPI document (25 calls, 39 routes, 0 missing). |
+
+---
+
+## 10. B10 — Maintenance pass & KV-cache truth (2026-11-25)
+
+Scope: `apps/api/app/**`, `apps/api/tests/**` and generated-artefact cleanup.
+Skills used: `rag-architect` (retrieval hot path), `fastapi-patterns` (service
+layer), `performance-optimization` (measure-first; no change claimed without a
+test). No new dependency, no model download, no live LLM call.
+
+### 10.1 Is KV-cache optimisation actually used? — yes, but only on llama.cpp
+
+The question matters because `models.yaml` exposes three `optimization.*` keys
+that look global. They are **not** global: the default provider is Ollama, and
+Ollama does not read them from the backend. Each key's real path:
+
+| Setting | llama.cpp (router / `start_local_llm.sh`) | Ollama (default provider) |
+|---|---|---|
+| `kv_cache_quantization: q8_0` | ✅ used — per request as `cache_type_k`/`cache_type_v`, and at launch as `-ctk`/`-ctv q8_0` (Metal/CUDA hosts only) | ❌ not consumed; set `OLLAMA_KV_CACHE_TYPE=q8_0` in the shell **before** `ollama serve` |
+| `flash_attention: true` | ✅ used — `flash_attention` in the request and `--flash-attn on` at launch | ❌ not consumed; set `OLLAMA_FLASH_ATTENTION=1` in the shell before `ollama serve` |
+| `prompt_caching: true` | ✅ used — `cache_prompt` in the request | ⚠️ partially — mapped to `num_keep: -1`, which keeps the prefix, not the same mechanism |
+
+So: **KV-cache optimisation is genuinely wired in, but the yaml `optimization.*`
+block governs the llama.cpp path only.** On the default Ollama path the q8_0 /
+flash-attention defaults have no effect unless the operator exports the matching
+`OLLAMA_*` variables. The README, `docs/deployment/README.md` and
+`docs/PERFORMANCE-GUIDE.md` already say this correctly; no documentation claim
+needed changing.
+
+### 10.2 Fixes in this pass
+
+| Tag | Finding | Change | Verification |
+|---|---|---|---|
+| **UPGRADE-014** | `kv_cache_quantization` fell back to `q4_0` in `model_config.py` while the yaml and `hardware.py` both used `q8_0` — three layers, two defaults, and a silent switch to a different quant if the yaml key were removed | Code fallback unified to `q8_0` | Two new tests in `tests/test_config.py`: fallback value and yaml agreement |
+| **UPGRADE-015** | `tavily_search` kept results whose URL failed `sanitize_url`, emitting an empty-URL citation while still letting that content into the grounded answer — a half-applied SSRF boundary | Such results are now dropped in full; the filter is a pure `sanitize_search_results()` helper | New test in `tests/test_search_mcp.py` (metadata/loopback URLs in, public URL out) — runs without the optional `tavily` package |
+| **REFINEMENT-007** | `_collection_dim_cache` was unbounded — one entry per collection name for the life of the worker | Bounded FIFO memo (512 entries) | New test in `tests/test_retrieval.py` |
+| **Cleanup** | 233 generated artefacts (`__pycache__`, `*.pyc`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.DS_Store`) across `apps/api`, `scripts` and `docs` | Removed; `.venv` and tracked files untouched | `find` reports 0 remaining |
+
+Baseline before the changes: `ruff check app/` clean, **830 passed / 4 skipped**,
+coverage **80.31 %** (gate 78 %). After: `ruff` clean, **834 passed / 4 skipped**
+(the four new tests, no new skips), coverage **80.40 %**. No live LLM, embedding
+or database service was needed for any of it.
+
+### 10.3 Work map — what needs update / upgrade / degrade / refine / refactor
+
+Priorities are honest about measurement: **P1** = a real defect or a measured
+gap, **P2** = worthwhile but needs a benchmark or a decision, **P3** = optional.
+
+| # | Area | Verdict | Why | Risk / effort |
+|---|---|---|---|---|
+| 1 | Embedding INT8 (DECISION-009) | **UPGRADE — P1** | The only promising latency win still unmeasured: no int8 export exists locally. Needs an export + recall benchmark before adoption. | Medium / needs a model artefact |
+| 2 | Default answer quality (DECISION-006) | **UPGRADE — P2, operator decision** | `qwen3:1.7b` answers 93 % vs 37 % at 4.3× latency. Deployment choice, not a code defect. | Low code / product call |
+| 3 | mypy backlog: 30 errors (BLK-7) | **REFINE — P2** | The CI ratchet only blocks *new* errors. Ratchet down one error per commit; no behaviour change. | Low / repetitive |
+| 4 | Unbounded lists in claim retrieval | **UPGRADE — P2** | `{"$in": …}` lists are bounded, but audit the remaining `find`/`to_list` calls for the same shape as UPGRADE-010. | Low / read-only audit |
+| 5 | `apply_temporal_filtering` mutates its input dicts in place | **REFACTOR — P3** | Returns a new list but writes `filename`/`effective_*` onto the caller's rows. Make it pure or document the contract. | Low / behaviour-preserving with tests |
+| 6 | `web_search_provider` accepted but ignored | **DE-GRADE (deprecate) — P3** | Grounding is Tavily-only; the field exists solely for API compatibility. Remove in the next major version, not now. | Low / needs a version boundary |
+| 7 | Ruff `PERF` rules | **DO NOT ADOPT** | Preview found 9 `PERF401` (list-comprehension style) and **zero** `PERF203`. No measured benefit; enabling it would add lint debt, not speed. | — |
+| 8 | Reranker (DECISION-007) | **DEGRADATION — accepted** | Measured and deliberately left off; revisit only if the corpus grows past the point where reranking pays for its latency. | — |
+| 9 | q8_0 KV cache, recovery rounds, trace persistence (DEGRADATION-001…003) | **DEGRADATION — accepted** | Each cost is deliberate and already measured; do not "fix" them without a new benchmark. | — |
+| 10 | Lighthouse / browser-side checks | **OUT OF SCOPE** | Backend + RAG only; the frontend pass recorded its own state. | — |
+
+**Bottom line:** the backend/RAG core is in good shape — no S1 correctness
+defect is open. The two things actually worth spending time on next are the
+**embedding INT8 measurement** (#1) and **shrinking the mypy ratchet** (#3);
+everything else is a product decision or an accepted trade-off.

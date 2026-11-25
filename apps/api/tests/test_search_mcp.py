@@ -221,6 +221,44 @@ async def test_search_service_timeout_returns_empty():
         assert results == []
 
 
+def test_sanitize_search_results_drops_blocked_urls():
+    """A result whose URL fails the SSRF allow-list is dropped in full.
+
+    The URL allow-list is a security boundary, not cosmetic: a result pointing
+    at a metadata service or a private address must not contribute content to
+    a grounded answer as an untraceable citation. Pure function — no optional
+    tavily dependency or network needed.
+    """
+    from app.services.search_service import sanitize_search_results
+
+    results = sanitize_search_results(
+        [
+            {
+                "title": "Metadata",
+                "url": "http://169.254.169.254/latest/meta-data/",
+                "content": "internal credential blob",
+                "score": 0.99,
+            },
+            {
+                "title": "Loopback",
+                "url": "http://localhost:8080/admin",
+                "content": "internal admin page",
+            },
+            {
+                "title": "Public",
+                "url": "https://example.org/article",
+                "content": "public snippet",
+                "score": 0.9,
+            },
+            {"title": "Empty", "url": "https://example.org/empty", "content": "  "},
+        ]
+    )
+
+    assert len(results) == 1
+    assert results[0]["url"] == "https://example.org/article"
+    assert all("credential" not in r["content"] for r in results)
+
+
 @pytest.mark.asyncio
 async def test_local_llm_mcp_tools():
     from app.security.security import create_service_token

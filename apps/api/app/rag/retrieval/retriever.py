@@ -31,6 +31,10 @@ logger = get_logger(__name__)
 RETRIEVAL_BRANCH_TIMEOUT = 45.0
 RETRIEVAL_HYBRID_TIMEOUT = 60.0
 
+# Bounded: a long-lived worker may serve many short-lived knowledge bases, and
+# an unbounded memo would retain one entry per collection name forever. 512 is
+# far above any realistic live KB count; FIFO eviction keeps the hot end.
+_COLLECTION_DIM_CACHE_MAX = 512
 _collection_dim_cache: dict[str, int] = {}
 
 
@@ -86,6 +90,8 @@ async def _get_collection_dimension(
     col_info = await client.get_collection(collection_name)
     dim = getattr(col_info.config.params.vectors, "size", None)
     if dim is not None:
+        if len(_collection_dim_cache) >= _COLLECTION_DIM_CACHE_MAX:
+            _collection_dim_cache.pop(next(iter(_collection_dim_cache)))
         _collection_dim_cache[collection_name] = dim
     return dim
 

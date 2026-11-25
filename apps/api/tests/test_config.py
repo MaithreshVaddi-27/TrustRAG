@@ -152,6 +152,27 @@ class TestModelConfig:
         # Spec: prevent infinite loops — must be a small positive number
         assert 0 < cfg.max_recovery_attempts <= 10
 
+    def test_kv_cache_quantization_default_is_coherent(self, monkeypatch) -> None:
+        """The code fallback must match models.yaml and hardware.py (q8_0).
+
+        A missing yaml key used to fall back to q4_0 here while the launcher
+        and the docs both said q8_0 — three layers, two defaults. Regression
+        guard for that drift.
+        """
+        from app.config import ModelConfig
+
+        monkeypatch.delenv("KV_CACHE_QUANTIZATION", raising=False)
+        data = {"runtime": {"config_version": "test"}, "optimization": {}}
+        assert ModelConfig(data).kv_cache_quantization == "q8_0"
+
+    def test_kv_cache_quantization_matches_yaml(self, monkeypatch) -> None:
+        """The shipped config is the single source of truth for the value."""
+        monkeypatch.delenv("KV_CACHE_QUANTIZATION", raising=False)
+        cfg = self._make_config()
+        with _MODELS_YAML.open() as f:
+            expected = yaml.safe_load(f)["optimization"]["kv_cache_quantization"]
+        assert cfg.kv_cache_quantization == expected
+
     def test_mlx_model_for_prefers_yaml_default(self, monkeypatch) -> None:
         """llm_model_for('mlx') resolves the yaml model_mlx default."""
         monkeypatch.delenv("MLX_MODEL", raising=False)
