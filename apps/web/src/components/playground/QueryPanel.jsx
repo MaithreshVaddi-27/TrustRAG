@@ -69,9 +69,7 @@ export function QueryPanel({
 
       <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
         <div className="flex-1 space-y-5 overflow-y-auto">
-          <div className="lx-workbench__section">
-            <ErrorDisplay errorMsg={errorMsg} setErrorMsg={setErrorMsg} />
-          </div>
+          <ErrorDisplay errorMsg={errorMsg} setErrorMsg={setErrorMsg} />
 
           <div className="lx-workbench__section space-y-5">
             <KnowledgeBaseSelector
