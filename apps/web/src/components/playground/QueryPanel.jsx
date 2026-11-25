@@ -117,7 +117,7 @@ export function QueryPanel({
           could never move — on a phone the run button was always a scroll
           away. The button drives the run itself, so it does not need to be
           inside the form. */}
-      <div className="lx-workbench__compose shrink-0 space-y-3 border-t border-[color:var(--rule)] px-5 py-5">
+      <div className="lx-workbench__compose shrink-0 space-y-2 border-t border-[color:var(--rule)] px-5 py-4">
         <QueryInput
           query={query}
           setQuery={setQuery}

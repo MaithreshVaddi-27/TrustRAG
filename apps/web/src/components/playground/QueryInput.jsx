@@ -49,7 +49,7 @@ export function QueryInput({ query, setQuery, loading, handleSubmit, handlePrese
   const overBudget = query.length > LIMIT * 0.9
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <div className="flex items-center justify-between gap-3">
         <label className="lx-workbench__label !mb-0" htmlFor="query-input">
           Query
@@ -70,15 +70,15 @@ export function QueryInput({ query, setQuery, loading, handleSubmit, handlePrese
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Ask a question about your documents…"
-        rows={4}
+        rows={3}
         maxLength={LIMIT}
         className="lx-control"
         disabled={loading}
       />
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <span className="lx-workbench__label">Quick prompts</span>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {SAMPLE_PRESETS.map((preset) => {
             const Icon = preset.icon
             return (
