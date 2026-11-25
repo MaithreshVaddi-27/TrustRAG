@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { Download, Cpu, Globe } from 'lucide-react'
 import { ReliabilityBadge } from '@/components/workbench/ReliabilityBadge'
+import VerificationSeal from '@/components/landing/VerificationSeal'
 import { PipelineTelemetryHUD } from '@/components/workbench/PipelineTelemetryHUD'
 import { ExecutionTrace } from '@/components/workbench/ExecutionTrace'
 import { EmptyState } from '@/components/workbench/EmptyState'
@@ -121,6 +122,11 @@ export function ResultsPanel({
               <ReliabilityBadge
                 score={analysis.reliability?.score}
                 status={analysis.reliability?.status}
+              />
+              <VerificationSeal
+                key={`seal-${analysis.id}`}
+                size={14}
+                className="lx-results-seal"
               />
               <h2 className="truncate text-[var(--size-h3)] text-silver-050">
                 {analysis.query}

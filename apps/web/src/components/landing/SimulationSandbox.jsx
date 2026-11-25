@@ -57,8 +57,8 @@ export default function SimulationSandbox() {
       )}
 
       {scenario.claims.length > 0 ? (
-        <div role="list">
-          {scenario.claims.map((claim) => (
+        <div role="list" key={`claims-${scenario.id}`}>
+          {scenario.claims.map((claim, index) => (
             <div
               key={claim.id}
               role="listitem"
@@ -66,6 +66,7 @@ export default function SimulationSandbox() {
                 'lx-claim',
                 claim.status === 'contradicted' && 'lx-claim--contradicted',
               )}
+              style={{ '--claim-index': index }}
             >
               <span className="lx-claim__index">
                 {String(claim.id).padStart(2, '0')}
@@ -118,7 +119,7 @@ export default function SimulationSandbox() {
         ))}
       </dl>
 
-      <div className={clsx('lx-outcome', `lx-outcome--${scenario.outcome.kind}`)}>
+      <div key={`outcome-${scenario.id}`} className={clsx('lx-outcome', `lx-outcome--${scenario.outcome.kind}`)}>
         <div className="lx-outcome__head">
           <VerificationSeal tone={scenario.outcome.kind === 'abstained' ? 'crimson' : 'silver'} />
           <span className="lx-label">{scenario.outcome.title}</span>

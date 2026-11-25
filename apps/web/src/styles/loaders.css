@@ -34,7 +34,7 @@
     var(--color-silver-500) 45%,
     var(--color-crimson-600) 100%
   );
-  box-shadow: 0 0 0.9em rgba(205, 203, 202, 0.28);
+  box-shadow: 0 0 0.9em var(--wash-silver-28);
   opacity: 0.45;
   transform: scale(0.72);
   animation: orb-breathe 1.6s ease-in-out infinite;
@@ -54,12 +54,12 @@
   100% {
     transform: scale(0.72);
     opacity: 0.45;
-    box-shadow: 0 0 0.4em rgba(205, 203, 202, 0.18);
+    box-shadow: 0 0 0.4em var(--wash-silver-18);
   }
   50% {
     transform: scale(1.12);
     opacity: 1;
-    box-shadow: 0 0 1.1em rgba(205, 203, 202, 0.42);
+    box-shadow: 0 0 1.1em var(--wash-silver-42);
   }
 }
 

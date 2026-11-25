@@ -164,8 +164,8 @@
 }
 
 .lx-chip--alarm {
-  border-color: rgba(212, 21, 20, 0.42);
-  background-color: rgba(212, 21, 20, 0.09);
+  border-color: var(--crimson-rule);
+  background-color: var(--color-alarm-wash);
   color: var(--color-crimson-300);
 }
 
@@ -257,7 +257,7 @@
 }
 
 .lx-table tbody tr:hover {
-  background-color: rgba(205, 203, 202, 0.03);
+  background-color: var(--wash-silver-03);
 }
 
 .lx-table__num {
@@ -301,7 +301,7 @@
 }
 
 .lx-list__item:hover {
-  background-color: rgba(205, 203, 202, 0.03);
+  background-color: var(--wash-silver-03);
 }
 
 .lx-list__head {
@@ -594,8 +594,8 @@ select.lx-control {
 }
 
 .lx-switch[aria-checked='true']::before {
-  background-color: rgba(212, 21, 20, 0.28);
-  border-color: rgba(212, 21, 20, 0.55);
+  background-color: var(--crimson-wash-28);
+  border-color: var(--crimson-rule-55);
 }
 
 .lx-switch__knob {
@@ -851,7 +851,7 @@ select.lx-control {
 }
 
 .lx-trace__event:hover {
-  background-color: rgba(205, 203, 202, 0.03);
+  background-color: var(--wash-silver-03);
 }
 
 .lx-trace__icon {

@@ -22,9 +22,8 @@
   /* Stagger used by the one entrance on load and by section reveals. */
   --stagger-step: 60ms;
 
-  /* Motion springs — mirrored in lib/motion.js for Motion's JS API. */
-  --spring-critical: { type: spring, bounce: 0, duration: 0.35 };
-  --spring-momentum: { type: spring, bounce: 0.15, duration: 0.35 };
-  --spring-snappy: { type: spring, damping: 25, stiffness: 200 };
-  --spring-gentle: { type: spring, damping: 30, stiffness: 180 };
+  /* Springs live in the motion curve above, not as JS object literals in
+   * CSS — those are invalid declarations and are dropped by the build.
+   * If a spring API is ever introduced, define valid duration tokens here
+   * and keep the physics in that API. */
 }

@@ -1,89 +1,84 @@
-/* ── TrustRAG · Motion ───────────────────────────────────────────────────────
- * The only animations left in the product are the ones that carry meaning:
- * a press that responds to a finger, a skeleton that breathes while it
- * waits, and the entrance on the landing page.
+/* ── TrustRAG · Motion primitives ────────────────────────────────────────────
+ * Authored motion lives in utilities.css (entrance, reveal) and in the
+ * component sheets that own it (the pipeline sweep, the seal alignment).
+ * There are no idle keyframes here: no pulse, no beam, no scanline.
  *
  * Apple HIG §14: prefers-reduced-motion means cross-fade or static, never
- * a removed state. Functional feedback (press) survives; decoration does
- * not.
+ * a removed state. Functional feedback survives; decoration does not.
  * ─────────────────────────────────────────────────────────────────────────── */
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes haloPulse {
-  0% {
-    transform: scale(0.95);
-    opacity: 0.8;
-  }
-  50% {
-    transform: scale(1.25);
-    opacity: 0;
-  }
-  100% {
-    transform: scale(0.95);
-    opacity: 0;
-  }
-}
-
-@property --beam-angle {
-  syntax: '<angle>';
-  initial-value: 0deg;
-  inherits: false;
-}
-
-@keyframes rotateBeam {
-  from {
-    --beam-angle: 0deg;
-  }
-  to {
-    --beam-angle: 360deg;
-  }
-}
-
-@keyframes scanlineMove {
-  0%,
-  100% {
-    top: 6%;
-    opacity: 0.3;
-  }
-  50% {
-    top: 92%;
-    opacity: 1;
-  }
-}
-
 /* ── Press feedback ─────────────────────────────────────────────────────────
- * Apple: respond on pointer-down, not on release. This is the one piece of
- * motion in the product that is functional rather than decorative.
+ * Apple: respond on pointer-down, not on release. Scoped to real controls —
+ * an inline text link must not jump out of its line when pressed.
  * ─────────────────────────────────────────────────────────────────────────── */
 
 button:active:not(:disabled),
-a[href]:active,
-[role='button']:active,
+.lx-btn:active:not(:disabled),
+[role='button']:active:not(:disabled),
 input[type='button']:active,
 input[type='submit']:active,
 input[type='reset']:active,
 select:active {
-  transform: scale(0.97);
+  transform: scale(0.98);
   transition: transform var(--motion-duration-instant) ease-out;
+}
+
+/* ── Finite state transitions ───────────────────────────────────────────────
+ * These explain a change of state in the workbench: a verdict resolving, a
+ * claim entering the inspector, a pipeline event arriving, a seal stamping a
+ * verified record. Each plays once. None loops, and none moves layout.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-auth__seal {
+  display: block;
+  margin-bottom: var(--step-3);
+}
+
+.lx-results-seal {
+  flex-shrink: 0;
+}
+
+@keyframes lx-verdict-settle {
+  from { opacity: 0.55; transform: translateY(3px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes lx-claim-align-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes lx-trace-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes lx-seal-align {
+  from { opacity: 0; transform: translateY(-4px) scale(0.84); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lx-verdict-badge {
+    animation: lx-verdict-settle 320ms var(--motion-ease-out) both;
+  }
+
+  .lx-claim-row {
+    animation: lx-claim-align-in 340ms var(--motion-ease-out) both;
+    animation-delay: calc(var(--claim-index, 0) * 50ms);
+  }
+
+  .lx-trace__event {
+    animation: lx-trace-enter 260ms var(--motion-ease-out) both;
+  }
+
+  .lx-results-seal {
+    animation: lx-seal-align 460ms var(--motion-ease-out) both;
+  }
+
+  .lx-auth__seal {
+    animation: lx-seal-align 520ms var(--motion-ease-out) 120ms both;
+  }
 }
 
 /* ── Reduced motion ─────────────────────────────────────────────────────────
@@ -101,13 +96,13 @@ select:active {
   }
 
   button:active:not(:disabled),
-  a[href]:active,
-  [role='button']:active,
+  .lx-btn:active:not(:disabled),
+  [role='button']:active:not(:disabled),
   input[type='button']:active,
   input[type='submit']:active,
   input[type='reset']:active,
   select:active {
-    transform: scale(0.97) !important;
+    transform: scale(0.98) !important;
     transition: transform var(--motion-duration-instant) ease-out !important;
   }
 }

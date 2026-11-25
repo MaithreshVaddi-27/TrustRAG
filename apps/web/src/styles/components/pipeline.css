@@ -118,6 +118,19 @@
   /* Opaque, so the chain hairline reads as passing behind the node. */
   background-color: var(--surface-panel);
   color: var(--color-silver-400);
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+/* A stage lights up as the sweep reaches it — state, never decoration. */
+.lx-stage--active .lx-stage__node {
+  border-color: var(--color-silver-300);
+  color: var(--color-silver-100);
+}
+
+.lx-stage--output.lx-stage--active .lx-stage__node {
+  border-color: var(--color-crimson-500);
+  color: var(--color-crimson-400);
 }
 
 .lx-stage__node svg {
@@ -156,9 +169,29 @@
 }
 
 /* ── Sweep ──────────────────────────────────────────────────────────────────
- * A bright segment that travels the chain once, when the diagram is
- * revealed. It is not a loop: it runs once and holds its final state.
+ * A persistent progress hairline plus one bright segment that travels with
+ * the reader's scroll. Both are driven by --pipeline-progress; neither loops,
+ * and both hold their final state when the band has passed.
  * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-chain::after {
+  content: '';
+  position: absolute;
+  left: 11px;
+  right: 11px;
+  top: 35px;
+  height: 1px;
+  background-color: var(--color-silver-050);
+  transform: scaleX(var(--pipeline-progress, 0));
+  transform-origin: left center;
+  pointer-events: none;
+}
+
+@media (max-width: 899px) {
+  .lx-chain::after {
+    display: none;
+  }
+}
 
 .lx-pipeline__sweep {
   position: absolute;
@@ -185,24 +218,11 @@
   width: 18%;
   height: 100%;
   background-color: var(--color-silver-050);
-  transform: translateX(-100%);
+  transform: translateX(calc(var(--pipeline-progress, 0) * 556% - 100%));
 }
 
-.lx-pipeline[data-swept='true'] .lx-pipeline__sweep {
+.lx-pipeline[data-linked='true'] .lx-pipeline__sweep {
   opacity: 1;
-}
-
-.lx-pipeline[data-swept='true'] .lx-pipeline__sweep::after {
-  animation: lx-sweep 1400ms var(--motion-ease-out) 220ms 1 both;
-}
-
-@keyframes lx-sweep {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(556%);
-  }
 }
 
 /* ── Output row ───────────────────────────────────────────────────────────── */

@@ -33,6 +33,7 @@ export default function BenchmarksSection() {
       </div>
 
       <div
+        key={active.id}
         className="lx-bench"
         role="tabpanel"
         id={`bench-panel-${active.id}`}
@@ -44,7 +45,7 @@ export default function BenchmarksSection() {
           <p className="lx-body-sm lx-bench__desc">{active.desc}</p>
         </div>
 
-        {active.metrics.map((metric) => (
+        {active.metrics.map((metric, index) => (
           <div
             key={metric.label}
             className={`lx-bench__row${metric.lead ? ' lx-bench__row--lead' : ''}`}
@@ -55,7 +56,10 @@ export default function BenchmarksSection() {
               {metric.suffix}
             </span>
             <span className="lx-bench__track" aria-hidden="true">
-              <span className="lx-bench__fill" style={{ width: metric.width }} />
+              <span
+                className="lx-bench__fill"
+                style={{ width: metric.width, '--bar-index': index }}
+              />
             </span>
             <span className="lx-bench__note">{metric.note}</span>
           </div>

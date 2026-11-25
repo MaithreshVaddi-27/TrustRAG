@@ -29,7 +29,7 @@
   /* Chrome Silver is the interface voice. Selection uses it at low strength
    * so selection reads as machined rather than highlighted. */
   ::selection {
-    background-color: rgba(205, 203, 202, 0.18);
+    background-color: var(--wash-silver-18);
     color: var(--color-silver-050);
   }
 
@@ -143,6 +143,7 @@
  * product preview panel and mobile drawer both rely on it. Flatten them. */
 @media (prefers-reduced-transparency: reduce) {
   .lx-panel,
+  .lx-nav,
   .lx-drawer {
     background-color: var(--surface-panel) !important;
     backdrop-filter: none !important;
@@ -153,9 +154,9 @@
 /* Higher contrast: strengthen the rules and the focus ring. */
 @media (prefers-contrast: more) {
   :root {
-    --rule-faint: rgba(205, 203, 202, 0.2);
-    --rule: rgba(205, 203, 202, 0.4);
-    --rule-strong: rgba(205, 203, 202, 0.6);
+    --rule-faint: var(--wash-silver-20);
+    --rule: var(--wash-silver-40);
+    --rule-strong: var(--wash-silver-60);
     --focus-ring: var(--color-crimson-300);
     --color-silver-500: #8d8c8a;
     --color-silver-400: #b4b3b1;

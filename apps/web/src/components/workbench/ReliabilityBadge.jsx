@@ -36,7 +36,7 @@ export function ReliabilityBadge({ score, status, size = 'md' }) {
   const bandColors = {
     high: 'text-silver-200 border-[color:var(--rule)] bg-surface-inset',
     medium: 'text-silver-400 border-[color:var(--rule)] bg-surface-inset',
-    low: 'text-crimson-300 border-[color:rgba(212,21,20,0.45)] bg-[rgba(212,21,20,0.09)]',
+    low: 'text-crimson-300 border-[color:var(--crimson-rule-45)] bg-[color:var(--color-alarm-wash)]',
     unknown: 'text-silver-500 border-[color:var(--rule-faint)] bg-surface-inset',
   }
 
@@ -59,9 +59,10 @@ export function ReliabilityBadge({ score, status, size = 'md' }) {
 
   return (
     <span
+      key={`${status}-${pct}`}
       aria-live="polite"
       className={clsx(
-        'inline-flex items-center font-mono font-medium rounded-full border',
+        'lx-verdict-badge inline-flex items-center font-mono font-medium rounded-full border',
         bandColors[band],
         sizes[size],
       )}
@@ -97,10 +98,11 @@ export function VerdictBadge({ state }) {
 
   return (
     <span
+      key={norm}
       className={clsx(
-        'inline-flex items-center gap-1.5 rounded-full border bg-surface-inset px-2.5 py-0.5 text-xs font-medium',
+        'lx-verdict-badge inline-flex items-center gap-1.5 rounded-full border bg-surface-inset px-2.5 py-0.5 text-xs font-medium',
         status === 'contradicted'
-          ? 'border-[color:rgba(212,21,20,0.45)] text-crimson-300'
+          ? 'border-[color:var(--crimson-rule-45)] text-crimson-300'
           : status === 'supported'
             ? 'border-[color:var(--rule)] text-silver-200'
             : 'border-[color:var(--rule-faint)] text-silver-500',

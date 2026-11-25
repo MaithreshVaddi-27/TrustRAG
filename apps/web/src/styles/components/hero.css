@@ -31,6 +31,59 @@
   }
 }
 
+/* ── Registration field ─────────────────────────────────────────────────────
+ * One decorative plane behind the ledger. It carries no information; it
+ * gives the product preview a world to sit in. Pointer parallax is capped at
+ * 6px and writes only CSS variables — the ledger itself never moves.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-hero__visual {
+  position: relative;
+  min-width: 0;
+}
+
+.lx-hero__field {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  transform: translate3d(
+    calc(var(--field-x, 0) * 6px),
+    calc(var(--field-y, 0) * 6px),
+    0
+  );
+}
+
+.lx-hero__field-rule {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: -12px;
+  height: 1px;
+  background-color: var(--rule);
+  transform: scaleX(0);
+  transform-origin: left center;
+  animation: lx-register 720ms var(--motion-ease-out) 160ms both;
+}
+
+.lx-hero__field-seal {
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  opacity: 0;
+  animation: lx-seal-settle 560ms var(--motion-ease-out) 640ms both;
+}
+
+@keyframes lx-register {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes lx-seal-settle {
+  from { opacity: 0; transform: translateY(-6px) scale(0.86); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* ── Copy column ──────────────────────────────────────────────────────────── */
 
 /* The column is a grid child, so it needs to be allowed to shrink — without
@@ -92,6 +145,7 @@
 
 .lx-preview {
   position: relative;
+  z-index: 1;
   background-color: var(--surface-card);
   border: 1px solid var(--rule);
   border-radius: var(--radius-large);
@@ -154,7 +208,7 @@
 /* A contradicted record carries a crimson edge — the only coloured rule in
  * the system, and it is always meaningful. */
 .lx-record--contradicted {
-  border-color: rgba(212, 21, 20, 0.42);
+  border-color: var(--crimson-rule);
 }
 
 .lx-record__head {
@@ -208,7 +262,7 @@
 .lx-record__conflict {
   margin-top: var(--step-4);
   padding-left: var(--step-3);
-  border-left: 1px solid rgba(212, 21, 20, 0.5);
+  border-left: 1px solid var(--crimson-rule-strong);
   font-size: var(--size-body-sm);
   line-height: var(--leading-body-sm);
   color: var(--color-silver-400);
@@ -218,7 +272,7 @@
   margin: 0 var(--step-4) var(--step-4);
   padding: var(--step-3) var(--step-4);
   border-left: 1px solid var(--rule);
-  background-color: rgba(8, 8, 8, 0.45);
+  background-color: var(--scrim-45);
 }
 
 .lx-record__evidence-meta {
@@ -296,6 +350,32 @@
 
 .lx-seal--silver {
   color: var(--color-silver-500);
+}
+
+/* The registration stamp settles onto each verified record once, a beat
+ * after the ledger has arrived. One finite motion, never a loop. */
+.lx-record:nth-child(1) .lx-seal {
+  animation: lx-seal-settle 520ms var(--motion-ease-out) 420ms both;
+}
+
+.lx-record:nth-child(2) .lx-seal {
+  animation: lx-seal-settle 520ms var(--motion-ease-out) 480ms both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lx-hero__field {
+    transform: none;
+  }
+
+  .lx-hero__field-rule,
+  .lx-hero__field-seal,
+  /* Match the nth-child specificity above, or the base rule wins on
+   * specificity even inside this media query. */
+  .lx-record:nth-child(n) .lx-seal {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* ── Score ────────────────────────────────────────────────────────────────── */

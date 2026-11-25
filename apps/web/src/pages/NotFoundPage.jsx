@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react'
 
 export default function NotFoundPage() {
   return (
-    <div className="lx-auth">
+    <main className="lx-auth">
       <div className="text-center max-w-md">
         <p className="lx-micro">Error 404</p>
 
@@ -20,6 +20,6 @@ export default function NotFoundPage() {
           </Link>
         </div>
       </div>
-    </div>
+    </main>
   )
 }

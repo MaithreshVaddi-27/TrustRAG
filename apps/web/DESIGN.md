@@ -171,16 +171,29 @@ One easing curve, a few durations.
 - One scroll reveal per section: a 16px rise as it enters the viewport,
   once. Only elements below the fold at mount are ever hidden, so content
   can never be stranded by a failed observer.
-- One authored moment: the pipeline sweep, which travels the chain once when
-  the diagram enters view and holds its final state.
+- One authored moment: the pipeline sweep, which follows the reader's scroll
+  through the six stages, lights each stage as it is reached and holds its
+  final state.
+- Finite registration moments: the seal settles onto a verified record, a
+  claim row aligns with its evidence, a measured bar grows from its baseline.
+  Each runs once, on entry or on a tab/scenario change, with a 60ms stagger.
+- Workbench state transitions: a reliability verdict settles when it changes,
+  a claim enters the inspector with a 50ms stagger, a trace event arrives, and
+  the registration seal stamps the results header and the auth card. All are
+  opacity/transform only, finite, and keyed to the state that changed.
+- Hero depth: a decorative registration field drifts at most 6px with the
+  pointer. The ledger itself never moves and coarse pointers get no listener.
 - Hover: a colour or border change in 150ms.
-- Press: a scale to 0.985 in 80ms.
+- Press: a scale to 0.98 in 80ms, on controls only — an inline text link does
+  not jump out of its line.
 
 **What does not move**
 
-Loops with no purpose — a pulsing heading, a breathing glow, a floating card,
-a rotating beam, a cursor spotlight. The cursor spotlight that used to
-follow the pointer around the app shell is removed: chrome is chrome.
+Idle loops with no purpose — a pulsing heading, a breathing glow, a floating
+card, a rotating beam, a cursor spotlight on chrome. Every new effect is
+finite or tied to input, stays inside the palette, and is disabled or resolved
+under `prefers-reduced-motion`. Crimson's inner edge light on the comparison
+column is a 12px tone shift, not a glow around the table.
 
 `prefers-reduced-motion: reduce` collapses every duration to 1ms and turns
 the reveal into a cross-fade.

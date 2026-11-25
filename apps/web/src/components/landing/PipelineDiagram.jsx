@@ -6,41 +6,59 @@ import { PIPELINE_STAGES, PIPELINE_OUTPUT } from './data/pipeline'
  * PipelineDiagram — the signature technical visualisation.
  *
  * Six stages of the closed loop drawn as linework: a hairline runs the
- * chain, each stage is a node on it, and a single sweep travels the chain
- * once when the diagram enters the viewport. That sweep is the one authored
- * motion on the page — it explains what the pipeline does instead of
- * decorating it.
+ * chain, each stage is a node on it, and a single bright segment travels the
+ * chain with the reader's scroll. Each stage activates as the segment
+ * reaches it. The motion explains the pipeline instead of decorating it: it
+ * is finite, tied to input, and holds its final state beyond the band.
  */
 export default function PipelineDiagram() {
   const containerRef = useRef(null)
-  const [swept, setSwept] = useState(false)
+  const frameRef = useRef(0)
+  const [progress, setProgress] = useState(0)
 
   useEffect(() => {
     const node = containerRef.current
-    if (!node || swept) return undefined
-    if (typeof IntersectionObserver === 'undefined') {
-      setSwept(true)
+    if (!node) return undefined
+
+    // Reduced motion gets the finished diagram, not a moving one.
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (reduce || typeof requestAnimationFrame === 'undefined') {
+      setProgress(1)
       return undefined
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return
-        setSwept(true)
-        observer.disconnect()
-      },
-      { threshold: 0.4 },
-    )
+    const measure = () => {
+      const rect = node.getBoundingClientRect()
+      const span = window.innerHeight + rect.height
+      if (!span) return
+      const next = (window.innerHeight - rect.top) / span
+      setProgress(Math.min(1, Math.max(0, next)))
+    }
 
-    observer.observe(node)
-    return () => observer.disconnect()
-  }, [swept])
+    const onScroll = () => {
+      if (frameRef.current) return
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = 0
+        measure()
+      })
+    }
+
+    measure()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    return () => {
+      if (frameRef.current) cancelAnimationFrame(frameRef.current)
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+    }
+  }, [])
 
   return (
     <div
       className="lx-pipeline"
       ref={containerRef}
-      data-swept={swept}
+      data-linked={progress > 0}
+      style={{ '--pipeline-progress': progress }}
       aria-label="The six stages of the TrustRAG verification loop"
     >
       <div className="lx-pipeline__head">
@@ -57,7 +75,11 @@ export default function PipelineDiagram() {
             return (
               <div
                 key={stage.id}
-                className={clsx('lx-stage', isOutput && 'lx-stage--output')}
+                className={clsx(
+                  'lx-stage',
+                  isOutput && 'lx-stage--output',
+                  progress >= (index + 1) / PIPELINE_STAGES.length && 'lx-stage--active',
+                )}
               >
                 <span className="lx-stage__node">
                   <Icon strokeWidth={1.5} aria-hidden="true" />

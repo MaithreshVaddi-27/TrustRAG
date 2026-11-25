@@ -93,7 +93,20 @@
     bottom: calc(var(--step-6) * -1);
     width: 1px;
     /* Laser Crimson marks the column that differs from the baseline. */
-    background-color: rgba(212, 21, 20, 0.38);
+    background-color: var(--crimson-wash-38);
+  }
+
+  /* A narrow tone shift on the inside of that rule — the page is selected,
+   * not lit up. It never spreads past the column. */
+  .lx-matrix__ours::after {
+    content: '';
+    position: absolute;
+    left: calc(var(--step-8) / -2 + 1px);
+    top: calc(var(--step-6) * -1);
+    bottom: calc(var(--step-6) * -1);
+    width: 12px;
+    background-image: linear-gradient(90deg, var(--crimson-wash-10), transparent);
+    pointer-events: none;
   }
 }
 

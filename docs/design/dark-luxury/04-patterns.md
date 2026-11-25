@@ -74,7 +74,7 @@ speaks.
 <SectionBand
   id="pipeline"
   title="One loop, six stages, one verdict."
-  lede="Every stage below is in the path of every answer. The diagram runs once when it enters the viewport."
+  lede="Every stage below is in the path of every answer. The diagram follows your scroll through the loop."
 >
   <PipelineDiagram />
 </SectionBand>
@@ -206,8 +206,10 @@ diagram does it and it cannot drift out of alignment.
 The final stage — "Ground" — carries a crimson ring, because it is where
 the verdict is produced.
 
-One authored motion: a sweep travels the chain **once** when the diagram
-enters the viewport, then holds its final state. It is not a loop.
+One authored motion: a highlight travels the chain with the reader's
+**scroll**, lighting each stage as it is reached, then holds its final state.
+It is finite and tied to input, never a loop. Under reduced motion the diagram
+is shown complete with no movement.
 
 ---
 

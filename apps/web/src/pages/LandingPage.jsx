@@ -16,9 +16,9 @@ import useScrollReveal from '@/hooks/useScrollReveal'
 /**
  * LandingPage — the marketing surface.
  *
- * One entrance on load, one scroll reveal per section, one authored sweep
- * in the pipeline diagram. Nothing loops, nothing glows, and there is no
- * cursor spotlight.
+ * One entrance on load, one scroll reveal per section, one scroll-linked
+ * sweep in the pipeline diagram. Finite, authored motion only — nothing
+ * loops and there is no cursor spotlight.
  */
 export default function LandingPage() {
   useScrollReveal('[data-lx-reveal]')
@@ -41,7 +41,7 @@ export default function LandingPage() {
         <SectionBand
           id="pipeline"
           title="One loop, six stages, one verdict."
-          lede="Every stage below is in the path of every answer. The diagram runs once when it enters the viewport."
+          lede="Every stage below is in the path of every answer. The diagram follows your scroll through the loop."
         >
           <div data-lx-reveal>
             <PipelineDiagram />

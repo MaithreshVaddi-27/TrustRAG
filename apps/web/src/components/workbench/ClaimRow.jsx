@@ -27,10 +27,11 @@ export default function ClaimRow({ claim, index, isForceExpanded, onCopy, isCopi
 
   return (
     <article
+      style={{ '--claim-index': index }}
       className={clsx(
-        'overflow-hidden rounded-[var(--radius-card)] border bg-surface-card',
+        'lx-claim-row overflow-hidden rounded-[var(--radius-card)] border bg-surface-card',
         isContradicted
-          ? 'border-[color:rgba(212,21,20,0.4)]'
+          ? 'border-[color:var(--crimson-rule-40)]'
           : 'border-[color:var(--rule)]',
       )}
     >

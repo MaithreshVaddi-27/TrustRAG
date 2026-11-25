@@ -70,7 +70,7 @@
 
 .lx-topbar__meta {
   font-family: var(--typeface-mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.04em;
   color: var(--color-silver-500);
   white-space: nowrap;
@@ -129,7 +129,7 @@
   align-items: center;
   gap: var(--step-2);
   font-family: var(--typeface-mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.01em;
   color: var(--color-silver-500);
   white-space: nowrap;
@@ -167,7 +167,7 @@
 }
 
 .lx-telemetry__action:hover {
-  background-color: rgba(212, 21, 20, 0.12);
+  background-color: var(--crimson-wash-12);
 }
 
 @media (max-width: 1023px) {
@@ -228,7 +228,7 @@
 .lx-icon-btn:hover {
   color: var(--color-silver-050);
   border-color: var(--rule);
-  background-color: rgba(205, 203, 202, 0.05);
+  background-color: var(--wash-silver-05);
 }
 
 .lx-icon-btn:active {
@@ -262,7 +262,7 @@
   border: 1px solid var(--rule);
   background-color: var(--surface-card);
   font-family: var(--typeface-mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: var(--weight-medium);
   letter-spacing: 0.02em;
   color: var(--color-silver-300);
@@ -297,7 +297,7 @@
   border-radius: var(--radius-card);
   border: 1px solid var(--rule);
   background-color: var(--surface-panel);
-  box-shadow: 0 24px 48px -24px rgba(0, 0, 0, 0.9);
+  box-shadow: 0 24px 48px -24px var(--shadow-black-90);
 }
 
 .lx-account__identity {
@@ -334,7 +334,7 @@
 
 .lx-account__item:hover {
   color: var(--color-silver-050);
-  background-color: rgba(205, 203, 202, 0.05);
+  background-color: var(--wash-silver-05);
 }
 
 .lx-account__item:focus-visible {
@@ -344,7 +344,7 @@
 
 .lx-account__item--alarm:hover {
   color: var(--color-crimson-300);
-  background-color: rgba(212, 21, 20, 0.08);
+  background-color: var(--crimson-wash-08);
 }
 
 .lx-account__caret {
@@ -395,7 +395,7 @@
   padding-inline: var(--step-3);
   margin-bottom: var(--step-2);
   font-family: var(--typeface-mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.06em;
   color: var(--color-silver-500);
 }
@@ -417,12 +417,12 @@
 
 .lx-navlink:hover {
   color: var(--color-silver-050);
-  background-color: rgba(205, 203, 202, 0.045);
+  background-color: var(--wash-silver-045);
 }
 
 .lx-navlink--active {
   color: var(--color-silver-050);
-  background-color: rgba(205, 203, 202, 0.07);
+  background-color: var(--wash-silver-07);
 }
 
 /* Laser Crimson marks the active selection. */
@@ -461,7 +461,7 @@
 /* Counts and meta are quiet text, not glowing pills. */
 .lx-navlink__meta {
   font-family: var(--typeface-mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.02em;
   color: var(--color-silver-500);
 }
@@ -498,7 +498,7 @@
 
 .lx-sidebar__status-meta {
   font-family: var(--typeface-mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--color-silver-500);
   margin-top: 2px;
 }
@@ -506,8 +506,8 @@
 /* The engine is unreachable. This is the one place in the shell where
  * crimson means a failure rather than a live state. */
 .lx-sidebar__status--alarm {
-  border-color: rgba(212, 21, 20, 0.42);
-  background-color: rgba(212, 21, 20, 0.07);
+  border-color: var(--crimson-rule);
+  background-color: var(--crimson-wash-07);
 }
 
 .lx-sidebar__status--alarm .lx-sidebar__status-title {
@@ -531,13 +531,13 @@
 
 .lx-collapse-btn:hover {
   color: var(--color-silver-050);
-  background-color: rgba(205, 203, 202, 0.045);
+  background-color: var(--wash-silver-045);
 }
 
 /* A keyboard shortcut is a keycap. */
 .lx-kbd {
   font-family: var(--typeface-mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--color-silver-500);
   background-color: var(--surface-inset);
   border: 1px solid var(--rule);
@@ -561,8 +561,8 @@
 .lx-alarm {
   overflow: hidden;
   z-index: 30;
-  background-color: rgba(212, 21, 20, 0.1);
-  border-bottom: 1px solid rgba(212, 21, 20, 0.32);
+  background-color: var(--crimson-wash-10);
+  border-bottom: 1px solid var(--crimson-wash-32);
 }
 
 .lx-alarm__inner {
@@ -582,16 +582,16 @@
   min-height: 28px;
   padding-inline: var(--step-3);
   border-radius: var(--radius-control);
-  border: 1px solid rgba(212, 21, 20, 0.42);
-  background-color: rgba(212, 21, 20, 0.14);
+  border: 1px solid var(--crimson-rule);
+  background-color: var(--crimson-wash-14);
   color: var(--color-crimson-300);
   font-family: var(--typeface-mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
 .lx-alarm__retry:hover {
-  background-color: rgba(212, 21, 20, 0.24);
+  background-color: var(--crimson-wash-24);
   color: var(--color-crimson-300);
 }
 
@@ -626,7 +626,7 @@
   position: fixed;
   inset: 0;
   z-index: 55;
-  background-color: rgba(0, 0, 0, 0.72);
+  background-color: var(--shadow-black-72);
 }
 
 .lx-app-drawer {
@@ -636,13 +636,13 @@
   display: flex;
   flex-direction: column;
   max-width: 86vw;
-  background-color: rgba(8, 8, 8, 0.98);
+  background-color: var(--scrim-98);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-right: 1px solid var(--rule);
   padding: var(--step-4) var(--step-4) var(--step-8);
   overflow-y: auto;
-  box-shadow: 32px 0 64px -32px rgba(0, 0, 0, 0.9);
+  box-shadow: 32px 0 64px -32px var(--shadow-black-90);
 }
 
 .lx-app-drawer__head {
@@ -669,7 +669,7 @@
   margin-bottom: var(--step-2);
   padding-inline: var(--step-1);
   font-family: var(--typeface-mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.06em;
   color: var(--color-silver-500);
 }

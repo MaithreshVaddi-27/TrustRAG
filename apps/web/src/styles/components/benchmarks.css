@@ -73,6 +73,20 @@
   transform-origin: left center;
 }
 
+/* A measured bar grows from its own baseline, once, on entry and on a tab
+ * switch. The stagger reads left-to-right like the table itself. */
+@keyframes lx-bar-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lx-bench__fill {
+    animation: lx-bar-grow 520ms var(--motion-ease-out) both;
+    animation-delay: calc(var(--bar-index, 0) * 60ms);
+  }
+}
+
 /* The row that matters. One accent per chart. */
 .lx-bench__row--lead .lx-bench__label {
   color: var(--color-silver-050);

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { TrustRagEmblem } from '@/components/common/TrustRagLogo'
+import VerificationSeal from '@/components/landing/VerificationSeal'
 
 /**
  * AuthLayout — the authentication surface.
@@ -30,6 +31,7 @@ export default function AuthLayout({ children, title, subtitle }) {
         <div className="lx-auth__card">
           {title && (
             <div className="mb-6">
+              <VerificationSeal size={16} className="lx-auth__seal" />
               {/* The page's heading is its first-level heading. Every other
                   route opens with one <h1>; the auth surface opened with an
                   <h2> and had none. */}

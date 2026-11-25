@@ -5,7 +5,7 @@
 /* The fine grid behind the hero. A texture, not an illustration. */
 .bg-cyber-grid {
   background-image:
-    linear-gradient(rgba(205, 203, 202, 0.018) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(205, 203, 202, 0.018) 1px, transparent 1px);
+    linear-gradient(var(--wash-silver-01) 1px, transparent 1px),
+    linear-gradient(90deg, var(--wash-silver-01) 1px, transparent 1px);
   background-size: 60px 60px;
 }

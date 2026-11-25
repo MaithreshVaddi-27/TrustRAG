@@ -96,7 +96,7 @@
 .lx-btn--secondary:hover:not(:disabled) {
   border-color: var(--rule-strong);
   color: var(--color-silver-050);
-  background-color: rgba(205, 203, 202, 0.04);
+  background-color: var(--wash-silver-04);
 }
 
 /* Quiet — a text link that still meets the target size. */

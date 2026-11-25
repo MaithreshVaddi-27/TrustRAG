@@ -1,6 +1,9 @@
+import { useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
 import EvidenceRecord from './EvidenceRecord'
+import VerificationSeal from './VerificationSeal'
+import usePointerParallax from '@/hooks/usePointerParallax'
 import { HERO, HERO_RECORDS } from './data/hero'
 
 /**
@@ -12,6 +15,9 @@ import { HERO, HERO_RECORDS } from './data/hero'
  * object, and it earns the single shadow in the system.
  */
 export default function HeroSection() {
+  const visualRef = useRef(null)
+  usePointerParallax(visualRef)
+
   return (
     <section className="lx-hero" aria-labelledby="hero-heading">
       <div className="lx-container lx-hero__grid">
@@ -42,23 +48,32 @@ export default function HeroSection() {
           </p>
         </div>
 
-        <div className="lx-preview lx-enter" aria-label="Two claims from measured verification runs">
-          <div className="lx-preview__chrome">
-            <span className="lx-preview__title">verification ledger · measured runs</span>
-            <span className="lx-micro">
-              2 claims · <span className="lx-signal">1 contradicted</span>
-            </span>
+        <div className="lx-hero__visual" ref={visualRef}>
+          {/* Registration field — the one decorative plane. It drifts a few
+              pixels with the pointer; the ledger itself never moves. */}
+          <div className="lx-hero__field" aria-hidden="true">
+            <span className="lx-hero__field-rule" />
+            <VerificationSeal className="lx-hero__field-seal" size={22} />
           </div>
 
-          <div className="lx-preview__body">
-            {HERO_RECORDS.map((record) => (
-              <EvidenceRecord key={record.index} {...record} />
-            ))}
+          <div className="lx-preview lx-enter" aria-label="Two claims from measured verification runs">
+            <div className="lx-preview__chrome">
+              <span className="lx-preview__title">verification ledger · measured runs</span>
+              <span className="lx-micro">
+                2 claims · <span className="lx-signal">1 contradicted</span>
+              </span>
+            </div>
 
-            <p className="lx-preview__caption">
-              Two claims taken from the frozen 27-query reliability baseline. The document
-              reference and the SHA-256 root hash are the real ones, recorded at ingestion.
-            </p>
+            <div className="lx-preview__body">
+              {HERO_RECORDS.map((record) => (
+                <EvidenceRecord key={record.index} {...record} />
+              ))}
+
+              <p className="lx-preview__caption">
+                Two claims taken from the frozen 27-query reliability baseline. The document
+                reference and the SHA-256 root hash are the real ones, recorded at ingestion.
+              </p>
+            </div>
           </div>
         </div>
       </div>

@@ -316,19 +316,24 @@ loops for decoration.
 |---|---|---|
 | Entrance | Page load — the hero fades and rises with a 70ms stagger | 620ms |
 | Scroll reveal | A section enters the viewport — a 16px rise, once | 320ms |
-| The sweep | The pipeline diagram enters view — a highlight travels the chain once, then holds | 1400ms |
+| The sweep | Pipeline scroll position drives a highlight through the six stages; each stage lights as it is reached, then holds | scroll-linked |
+| Registration | A seal settles onto a verified record; a claim aligns with its evidence; a measured bar grows from its baseline — all once, with a 60ms stagger | 340–560ms |
+| Hero depth | A decorative registration field drifts up to 6px with the pointer; the ledger itself never moves. Coarse pointers get no listener | rAF |
 | Hover | A colour or border change | 150ms |
-| Press | A scale to 0.985 | 80ms |
+| Press | A scale to 0.98 on controls only | 80ms |
 
-Springs, where Motion is used, are critically damped: `bounce: 0`,
-`duration: 0.35`. Bounce is reserved for momentum-driven physical
-interaction, which this product does not have.
+There are no spring tokens in CSS: object-literal custom properties are
+invalid declarations and were removed. The house curve above carries the
+motion; anything that ever needs a spring API must define valid duration
+tokens here and keep the physics in that API.
 
 ### What does not move
 
-Loops with no purpose — a pulsing heading, a breathing glow, a floating
-card, a rotating beam, a cursor spotlight. The cursor spotlight that used
-to follow the pointer around the application shell is removed.
+Idle loops with no purpose — a pulsing heading, a breathing glow, a floating
+card, a rotating beam, a cursor spotlight on chrome. Finite, input-driven
+motion is allowed when it carries brand meaning: the registration seal, the
+scroll-linked pipeline, the claim alignment, the measured bar. Every effect
+stays inside the palette and resolves under `prefers-reduced-motion`.
 
 Loops on **live** elements are permitted, because they report something
 true: a connected provider, a running analysis, a live telemetry stream.

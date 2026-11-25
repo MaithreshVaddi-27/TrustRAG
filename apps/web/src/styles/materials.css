@@ -32,7 +32,7 @@
 /* ── Selection ─────────────────────────────────────────────────────────────── */
 
 ::selection {
-  background: rgba(212, 21, 20, 0.32);
+  background: var(--crimson-wash-32);
   color: var(--color-silver-050);
 }
 
@@ -40,8 +40,8 @@
 
 @media (prefers-contrast: more) {
   :root {
-    --rule-faint: rgba(255, 255, 255, 0.42);
-    --rule: rgba(255, 255, 255, 0.6);
-    --rule-strong: rgba(255, 255, 255, 0.8);
+    --rule-faint: var(--hc-rule-faint);
+    --rule: var(--hc-rule);
+    --rule-strong: var(--hc-rule-strong);
   }
 }

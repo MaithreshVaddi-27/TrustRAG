@@ -118,6 +118,62 @@
   --color-alarm-wash: rgba(212, 21, 20, 0.09);
   --color-alarm-rule: rgba(212, 21, 20, 0.34);
 
+  /* ── Overlays — the alpha steps built from the three colours above ────────
+   * Raw alpha values belong here and nowhere else. A component declares
+   * `var(--wash-…)`; it never re-spells an rgba literal. The names carry the
+   * decimal so a 0.07 wash is always the same 0.07 everywhere. */
+  --wash-silver-01: rgba(205, 203, 202, 0.018); /* the landing grid */
+  --wash-silver-02: rgba(205, 203, 202, 0.022);
+  --wash-silver-03: rgba(205, 203, 202, 0.03);
+  --wash-silver-04: rgba(205, 203, 202, 0.04);
+  --wash-silver-045: rgba(205, 203, 202, 0.045);
+  --wash-silver-05: rgba(205, 203, 202, 0.05);
+  --wash-silver-07: rgba(205, 203, 202, 0.07);
+  --wash-silver-16: rgba(205, 203, 202, 0.16);
+  --wash-silver-18: rgba(205, 203, 202, 0.18);
+  --wash-silver-20: rgba(205, 203, 202, 0.2);
+  --wash-silver-28: rgba(205, 203, 202, 0.28);
+  --wash-silver-40: rgba(205, 203, 202, 0.4);
+  --wash-silver-42: rgba(205, 203, 202, 0.42);
+  --wash-silver-60: rgba(205, 203, 202, 0.6);
+  --wash-silver-80: rgba(205, 203, 202, 0.8);
+  --wash-glass: rgba(16, 16, 18, 0.82);
+
+  --scrim-35: rgba(8, 8, 8, 0.35);
+  --scrim-45: rgba(8, 8, 8, 0.45);
+  --scrim-50: rgba(8, 8, 8, 0.5);
+  --scrim-72: rgba(8, 8, 8, 0.72);
+  --scrim-90: rgba(8, 8, 8, 0.9);
+  --scrim-96: rgba(8, 8, 8, 0.96);
+  --scrim-98: rgba(8, 8, 8, 0.98);
+
+  --crimson-ring: rgba(212, 21, 20, 0.16);
+  --crimson-wash-045: rgba(212, 21, 20, 0.045);
+  --crimson-wash-07: rgba(212, 21, 20, 0.07);
+  --crimson-wash-08: rgba(212, 21, 20, 0.08);
+  --crimson-wash-10: rgba(212, 21, 20, 0.1);
+  --crimson-wash-12: rgba(212, 21, 20, 0.12);
+  --crimson-wash-14: rgba(212, 21, 20, 0.14);
+  --crimson-wash-24: rgba(212, 21, 20, 0.24);
+  --crimson-wash-28: rgba(212, 21, 20, 0.28);
+  --crimson-wash-32: rgba(212, 21, 20, 0.32);
+  --crimson-wash-38: rgba(212, 21, 20, 0.38);
+  --crimson-rule-40: rgba(212, 21, 20, 0.4);
+  --crimson-rule-45: rgba(212, 21, 20, 0.45);
+  --crimson-rule: rgba(212, 21, 20, 0.42);
+  --crimson-rule-strong: rgba(212, 21, 20, 0.5);
+  --crimson-rule-55: rgba(212, 21, 20, 0.55);
+
+  --shadow-black-90: rgba(0, 0, 0, 0.9);
+  --shadow-black-72: rgba(0, 0, 0, 0.72);
+  --shadow-black-60: rgba(0, 0, 0, 0.6);
+
+  /* High-contrast overrides. White is not a palette colour here: it is the
+   * accessibility escape hatch, so it gets its own tokens. */
+  --hc-rule-faint: rgba(255, 255, 255, 0.42);
+  --hc-rule: rgba(255, 255, 255, 0.6);
+  --hc-rule-strong: rgba(255, 255, 255, 0.8);
+
   /* The focus ring on a crimson fill cannot be crimson (1.2:1 against the
    * button it outlines). A filled crimson button opts out of the global
    * crimson focus token and uses silver instead; everything else keeps

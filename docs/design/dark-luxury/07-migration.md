@@ -101,8 +101,10 @@ again.
 | Breathing glows | Loop with no meaning |
 
 What remains: one entrance on load, one scroll reveal per section, the
-pipeline sweep, hover colour changes and press feedback. Loops remain
-only on genuinely live elements, where they report something true.
+scroll-linked pipeline sweep, finite registration moments (seal, claim,
+measured bar), a 6px decorative hero drift, hover colour changes and scoped
+press feedback. Loops remain only on genuinely live elements, where they
+report something true.
 
 ### Dead code removed
 
