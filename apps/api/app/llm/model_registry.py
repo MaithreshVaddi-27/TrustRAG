@@ -169,7 +169,18 @@ def _create_llm(
             f"Supported: {', '.join(sorted(SUPPORTED_LLM_PROVIDERS))}."
         )
 
-    from langchain_google_genai import ChatGoogleGenerativeAI
+    try:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+    except ImportError as exc:
+        # The cloud extra is opt-in. Without this guard an unsupported install
+        # raises bare ModuleNotFoundError inside generation/recovery, which logs
+        # "unexpected error" and silently turns the run into an abstention
+        # instead of telling the operator how to enable the provider.
+        raise ConfigurationError(
+            "Gemini provider requires the optional cloud extra. Install it with "
+            "'pip install -e \".[cloud]\"' from apps/api, or switch to a local "
+            "provider (ollama, llama_cpp, mlx)."
+        ) from exc
 
     if not settings.gemini_api_key:
         raise ConfigurationError(

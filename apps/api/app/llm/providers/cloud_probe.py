@@ -46,7 +46,10 @@ GEMINI_API_VERSION = "v1beta"
 # A probe is a liveness check, not an inference run. Keep it short so a dead
 # provider fails fast instead of holding the request open for the full
 # generation timeout.
-CLOUD_PROBE_TIMEOUT_SECONDS = 10.0
+# The web client aborts a POST after 10 s. Keep the preflight well under that
+# so an unreachable cloud provider answers with an actionable 503 instead of
+# racing the client into a generic "Request timed out".
+CLOUD_PROBE_TIMEOUT_SECONDS = 3.0
 
 # Prompt and token budget for the probe call: one word is enough to prove the
 # endpoint works, and the ceiling keeps the probe cheap.
