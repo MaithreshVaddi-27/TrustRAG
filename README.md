@@ -631,6 +631,11 @@ npx playwright install    # first time only
 npm run test:e2e          # includes e2e/design.spec.js: one focal action per view
 npm run test:e2e:ui       # interactive
 
+# Re-running locally against a long-lived API? /auth/register is capped at
+# 3/hour per IP. Point the design guard at an existing synthetic account:
+E2E_TEST_EMAIL=someone@example.com E2E_TEST_PASSWORD='…' npm run test:e2e
+# CI starts a fresh API, so the default strict-registration path is used there.
+
 # Load — k6 (repo root)
 k6 run load-test/smoke.js
 ```

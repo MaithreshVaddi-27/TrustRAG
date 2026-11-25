@@ -15,7 +15,7 @@
 export const CHART = {
   /* The neutral ramp */
   silverBright: '#f7f7f6', // silver-050
-  silver: '#cdcbcA', // silver-300 — Chrome Silver
+  silver: '#cdcbca', // silver-300 — Chrome Silver
   silverMuted: '#a3a2a0', // silver-400
   silverDim: '#8a8987', // silver-500
   silverFaint: '#3a3a3c', // graphite-500

@@ -163,11 +163,20 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Install dependencies
         run: npm ci
 
       - name: Lint
         run: npm run lint
+
+      - name: Palette drift (chart theme mirrors the colour tokens)
+        # Pure-stdlib script; without this step the guard exists only on a
+        # developer machine and a chart colour can drift unnoticed in CI.
+        run: npm run check:tokens
 
       - name: Unit & component tests
         run: npm run test
@@ -252,6 +261,7 @@ jobs:
       - name: Frontend lint + tests + build
         run: |
           npm run lint
+          npm run check:tokens
           npm test
           npm run build
         working-directory: apps/web
