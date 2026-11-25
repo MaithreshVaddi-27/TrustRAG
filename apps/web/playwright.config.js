@@ -39,7 +39,11 @@ export default defineConfig({
   },
 
   webServer: {
-    command: `VITE_API_URL=${API_ORIGIN} npm run build && npm run preview -- --port ${PORT} --strictPort`,
+    // Node helper sets VITE_API_URL without POSIX shell syntax so the same
+    // command works in bash, PowerShell and cmd.exe. It also owns the preview
+    // process so Playwright can tear it down cleanly.
+    command: 'node scripts/e2e-preview.mjs',
+    env: { E2E_API_URL: API_ORIGIN },
     url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
