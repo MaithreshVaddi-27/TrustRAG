@@ -18,7 +18,10 @@
 
 @media (min-width: 1024px) {
   .lx-layer {
-    grid-template-columns: 3.5rem minmax(0, 1fr) minmax(0, 0.8fr);
+    /* The spec column is an annotation, not a peer of the description.
+     * Giving it 0.8fr left ~240px unused while the description wrapped into
+     * three narrow lines; auto keeps "Stage 01" compact and the prose readable. */
+    grid-template-columns: 3.5rem minmax(0, 1fr) auto;
     align-items: start;
     gap: var(--step-8);
   }
@@ -79,6 +82,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--step-2);
+  min-width: 5.75rem; /* keeps Stage / 01 aligned without stealing prose width */
 }
 
 .lx-layer__spec-row {
@@ -107,4 +111,18 @@
   font-variant-numeric: tabular-nums;
   color: var(--color-silver-300);
   text-align: right;
+}
+
+/* Below 1280 the results pane is too narrow for a third column — the
+ * description collapsed to 92px. The left index already names the stage, so
+ * drop the redundant "Stage NN" annotation instead of squeezing the prose.
+ * Kept after the base .lx-layer__spec rule so it wins on source order. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .lx-layer {
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+  }
+
+  .lx-layer__spec {
+    display: none;
+  }
 }
