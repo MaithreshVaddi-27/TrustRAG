@@ -10,9 +10,9 @@ Standard library only. Run from anywhere:
     python3 scripts/checks/check_token_drift.py
 """
 
-from pathlib import Path
 import re
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TOKENS = ROOT / "apps/web/src/styles/tokens/color.css"

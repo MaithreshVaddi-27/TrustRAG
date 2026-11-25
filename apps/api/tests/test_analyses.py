@@ -154,9 +154,11 @@ def test_create_analysis_snapshot_records_the_requested_engine(
     monkeypatch.setattr(
         _llm_mod,
         "get_discovered_llms",
-        lambda provider: frozenset(["gemma3:1b", "granite4.2:3b-q4_K_M"])
-        if provider == "ollama"
-        else frozenset(),
+        lambda provider: (
+            frozenset(["gemma3:1b", "granite4.2:3b-q4_K_M"])
+            if provider == "ollama"
+            else frozenset()
+        ),
     )
     mock_kb = KBResponse(
         id=str(mock_kb_doc["_id"]),
