@@ -230,5 +230,7 @@ zero warnings, Impeccable detector `[]`, `ruff check .` clean.
 **CI note:** the remaining red job was the compose smoke. The official Qdrant
 slim image ships no `curl` or `wget`, so its HTTP healthcheck could never pass;
 the API image has `curl` but its healthcheck called `wget`. Both are corrected
-in `docker-compose.yml`, which now validates with `docker compose config`.
+in `docker-compose.yml`, which now validates with `docker compose config`. The
+smoke job also needed a MongoDB service on `host.docker.internal:27017`; with
+that added, CI run `45796473881` is green — all 11 jobs including the CI Gate.
 
