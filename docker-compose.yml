@@ -27,14 +27,10 @@ services:
     environment:
       QDRANT__SERVICE__HTTP_PORT: 6333
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-trustrag-dev-key-change-me}
-    healthcheck:
-      # With an API key configured, Qdrant requires it on /readyz too. Without
-      # the header the probe is rejected and the container never turns healthy.
-      test: ["CMD-SHELL", "curl -fsS -H \"api-key: ${QDRANT_API_KEY:-trustrag-dev-key-change-me}\" http://localhost:6333/readyz || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
-      start_period: 10s
+    # No healthcheck: the official qdrant slim image ships neither curl nor
+    # wget, so a shell HTTP probe can never pass. Readiness is verified from
+    # the host through the API's /health/ready instead (see the compose smoke
+    # job). Adding a probe tool to the image is not worth a custom build.
     restart: unless-stopped
     mem_limit: 2g
     cpus: 2.0
@@ -91,9 +87,10 @@ services:
       MLX_BASE_URL: http://host.docker.internal:8080/v1
     depends_on:
       qdrant:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/api/v1/health/ready || exit 1"]
+      # The runtime image installs curl, not wget.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v1/health/ready || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5
