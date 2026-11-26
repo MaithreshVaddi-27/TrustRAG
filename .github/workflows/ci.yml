@@ -444,6 +444,20 @@ jobs:
     name: Docker — Compose Config + API Boot
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # The compose file reaches MongoDB through host.docker.internal. Without a
+    # service on that port the API retries the connection forever and never
+    # passes /health/ready, which made this job fail for the wrong reason.
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping:1})' --quiet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 10s
 
     steps:
       - uses: actions/checkout@v4
