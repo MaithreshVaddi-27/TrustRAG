@@ -1,5 +1,5 @@
 """
-Unit tests for Qdrant collection init + IDF sparse migration (Phase 1).
+Unit tests for Qdrant collection init + IDF sparse migration .
 
 All Qdrant I/O is mocked — no live services.
 """
@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from qdrant_client.http import models
 
-from app.core.exceptions import VectorStoreError
-from app.db import qdrant as qdrant_module
-from app.db.qdrant import init_kb_collection
+from app.persistence import qdrant as qdrant_module
+from app.persistence.qdrant import init_kb_collection
+from app.security.exceptions import VectorStoreError
 
 
 def _mock_client(

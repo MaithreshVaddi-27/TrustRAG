@@ -11,20 +11,45 @@
 ```
 1. cp .env.example .env  (+ set JWT_SECRET to 64 hex chars)
 2. backend venv:  cd apps/api && python3 -m venv .venv && pip install -e ".[dev,local-models]"
-3. python scripts/bootstrap.py        # ONNX weights + LLM discovery snapshot
-4. ./scripts/start_local_llm.sh       # llama-server router on :8080 (bash/WSL only)
-5. ./scripts/setup.sh                 # verifier: prints copy-paste fixes (bash/WSL only)
-6. backend:  cd apps/api && .venv/bin/uvicorn app.main:app --port 8000
-7. frontend: cd apps/web && npm install && npm run dev   # :5173
+3. python scripts/setup/bootstrap.py        # ONNX weights + LLM discovery snapshot
+4. ./scripts/servers/start_local_llm.sh       # llama-server router on :9931 (bash/WSL only)
+5. ./scripts/servers/start_mlx_server.sh      # MLX on :8080 (Apple Silicon only, optional)
+6. ./scripts/setup/setup.sh                 # verifier: prints copy-paste fixes (bash/WSL only)
+7. backend:  cd apps/api && .venv/bin/uvicorn app.main:app --port 8000
+8. frontend: cd apps/web && npm install && npm run dev   # :5173
 ```
 
-`bootstrap.py` delegates to `scripts/ensure_onnx_models.py`, which guarantees
+**One command instead of steps 4, 7 and 8** — `scripts/serve.py` starts
+MongoDB, Ollama, the API and Vite, then waits until each answers. It uses
+only the Python standard library and works in bash, PowerShell and cmd.exe:
+
+```bash
+python scripts/serve.py doctor
+python scripts/serve.py serve        # Ctrl+C stops every service
+python scripts/serve.py status
+python scripts/serve.py stop
+```
+
+On Windows: `powershell -ExecutionPolicy Bypass -File scripts\serve.ps1 serve`.
+All ports come from `config/ports.yaml`; the launcher discovers a Python
+3.11–3.12 interpreter itself (`$PYTHON`, then the project virtualenv in both
+POSIX and Windows layouts, then `python3`/`python` on `PATH`). Children run
+in their own session so they survive the launching shell, and their PIDs and
+logs are recorded under the OS temp directory. Re-running is safe: it starts
+only what is not already listening.
+
+`doctor` also checks the local dev-proxy configuration (see failure #28 below).
+
+`apps/api/scripts/start_local_services.sh` remains as the backend-only path
+under Git Bash or WSL on Windows.
+
+`bootstrap.py` delegates to `scripts/setup/ensure_onnx_models.py`, which guarantees
 two files in `apps/api/.model_cache/`:
 
 | File | Source | Size | Needed by |
 |---|---|---|---|
-| `bge-small-en-v1.5.onnx` | exported from `BAAI/bge-small-en-v1.5` via `scripts/export_bge_onnx.py` | ~130 MB | default `embedding.provider: onnx` |
-| `reranker-ms-marco-MiniLM-L-6-v2_int8.onnx` | exported from `cross-encoder/ms-marco-MiniLM-L-6-v2` via `app/core/onnx_reranker.py` | ~90 MB | `reranker.use_onnx: true` |
+| `bge-small-en-v1.5.onnx` | exported from `BAAI/bge-small-en-v1.5` via `scripts/setup/export_bge_onnx.py` | ~130 MB | default embedding engine (ONNX-only, no provider choice) |
+| `reranker-ms-marco-MiniLM-L-6-v2_int8.onnx` | exported from `cross-encoder/ms-marco-MiniLM-L-6-v2` via `app/rag/retrieval/onnx_reranker.py` | ~90 MB | `reranker.use_onnx: true` |
 
 Both exports need the torch stack (`pip install -e ".[local-models]"`:
 `sentence-transformers` pulls torch, plus `onnx`/`onnxscript`). The export is
@@ -33,7 +58,7 @@ needs **network once** (Hugging Face snapshot + tokenizer). The Docker runtime
 image is torch-free **by design** — export on the host, then
 `docker cp apps/api/.model_cache/. trustrag_api:/app/.model_cache/`.
 
-Verify any time without downloading: `python scripts/bootstrap.py --verify`
+Verify any time without downloading: `python scripts/setup/bootstrap.py --verify`
 (exit 0 = ready). Re-export: `--force`. Changing the embedding model in
 `apps/api/config/models.yaml` is detected automatically (old cache file stops
 matching) since 2026-09-23 — `export_bge_to_onnx()` takes the configured
@@ -43,6 +68,16 @@ model instead of a hardcoded id.
 
 ## 2. Per-OS prerequisites
 
+### OS Compatibility Matrix
+
+| Operating System | Architecture | Acceleration | Memory Telemetry & Trimming | Tested Status |
+|------------------|--------------|--------------|-----------------------------|---------------|
+| **macOS 14+** | Apple Silicon (`arm64`) | Metal (MLX & llama-server) | `getrusage` / `vm_stat` | **Validated** (Dev host) |
+| **macOS 12+** | Intel (`x86_64`) | CPU (llama-server / Ollama) | `getrusage` / `vm_stat` | **Validated** (CI/Fallback) |
+| **Linux (Ubuntu/Debian)** | `x86_64` / `aarch64` | CUDA / CPU (llama-server / Ollama) | `sysconf`, `/proc/meminfo`, `malloc_trim` | **Validated** (CI & Docker) |
+| **Windows 10/11** | `x86_64` | CUDA / CPU (Ollama / llama-server) | `GlobalMemoryStatusEx`, `EmptyWorkingSet` via `ctypes` | **Validated** (Unit/Simulated) |
+| **Windows on ARM** | `aarch64` | N/A | Untested | *Untested* |
+
 ### macOS (Apple Silicon recommended)
 
 ```bash
@@ -51,13 +86,13 @@ brew install python@3.11 node@22 mongodb-community ollama
 brew services start mongodb-community
 ```
 
-- Use Python **3.11–3.12** (`./scripts/setup.sh` enforces this). 3.13+ breaks
+- Use Python **3.11–3.12** (`./scripts/setup/setup.sh` enforces this). 3.13+ breaks
   `torch`/`onnxscript` export. `python@3.11` is keg-only — use
   `$(brew --prefix python@3.11)/bin/python3.11 -m venv`.
 - MLX is **Apple-Silicon-only** (`pipx install mlx-lm`, needs `pipx` first).
   Intel Macs: skip MLX, use Ollama/llama.cpp (CPU flags are automatic).
 - The MLX model id in the start command must match `model_mlx` in
-  `apps/api/config/models.yaml` and `MLX_BASE_URL` port `:8090`.
+  `apps/api/config/models.yaml` and `MLX_BASE_URL` port `:8080`.
 - 8 GB Macs: export the `OLLAMA_*` vars from `.env.example:164-168` before
   `ollama serve`.
 
@@ -89,7 +124,7 @@ net start MongoDB
 - Venv lives at `.venv\Scripts\python.exe` (not `.venv/bin/python`):
   `cd apps\api; python -m venv .venv; .\.venv\Scripts\Activate.ps1`.
 - `scripts/*.sh` are **bash-only** — run them under **Git Bash**
-  (`bash scripts/setup.sh`) or **WSL** (`wsl ./scripts/start_local_llm.sh`).
+  (`bash scripts/setup/setup.sh`) or **WSL** (`wsl ./scripts/servers/start_local_llm.sh`).
   Native `setup.sh` probes use `/dev/tcp`, which PowerShell/`cmd` lack.
 - `start_local_llm.sh` resolves the HF cache via `$HOME`/`HF_HUB_CACHE`;
   native Windows has neither — prefer WSL for the llama-server path.
@@ -103,29 +138,37 @@ net start MongoDB
 
 | # | Symptom | Cause | Fix |
 |---|---|---|---|
-| 1 | `ConfigurationError: ONNX embedding model not found in …` on first query / boot ERROR log names the path | Skipped `bootstrap.py` (weights are never committed: `.gitignore`) | `python scripts/bootstrap.py` (needs network once), restart backend |
+| 1 | `ConfigurationError: ONNX embedding model not found in …` on first query / boot ERROR log names the path | Skipped `bootstrap.py` (weights are never committed: `.gitignore`) | `python scripts/setup/bootstrap.py` (needs network once), restart backend |
 | 2 | `Service configuration error.` (old builds) with no detail | Pre-2026-09-23 handler redacted the message | Upgrade; the handler now returns the actionable message |
 | 3 | Backend exits: `Settings validation failed — fresh clone? …` | No `.env` (`JWT_SECRET`/`MONGODB_URI` missing) | `cp .env.example .env`, set `JWT_SECRET` to `secrets.token_hex(64)` |
 | 4 | `No module named 'sentence_transformers'` / `'torch'` during bootstrap export | Installed `.[dev]` without `local-models` | `cd apps/api && pip install -e ".[local-models]"` (CONTRIBUTING fixed 2026-09-23) |
 | 5 | Reranker export warns, backend falls back to RRF order | Reranker `.onnx` missing (non-fatal by design) | Same `local-models` install, re-run bootstrap (no `optimum` needed — warning text fixed) |
 | 6 | `tokenizers` / HF download blocked (`OfflineError`) on fresh clone | Pre-2026-09-23 boot forced `HF_HUB_OFFLINE=1` even with no bake | Upgrade; offline is now forced only when weights are cached |
 | 7 | `curl: command not found` gaps / `setup.sh` errors about missing venv python | Ran checks before creating the venv | Create venv first; `setup.sh` now skips venv-gated checks with a pointer |
-| 8 | `./scripts/setup.sh: /dev/tcp: No such file` / syntax errors | Ran under `sh`/`dash`/PowerShell instead of bash | `bash scripts/setup.sh` (or WSL on Windows) |
+| 8 | `./scripts/setup/setup.sh: /dev/tcp: No such file` / syntax errors | Ran under `sh`/`dash`/PowerShell instead of bash | `bash scripts/setup/setup.sh` (or WSL on Windows) |
 | 9 | `llama-server: command not found` | llama.cpp never installed (README had no step) | macOS: `brew install llama.cpp`; Linux: GitHub release binary; Windows: WSL |
 | 10 | `ERROR: Models directory not found: ~/.cache/huggingface/hub` (old builds) | Hard fail on first run | Upgrade; script creates the dir and prints fetch commands |
-| 11 | Backend 404s from MLX / model mismatch | Started `mlx_lm.server` with a different `--model` than `model_mlx` | Match the exact id; port must be `:8090` (`apply_ports.py` now syncs it) |
+| 11 | Backend 404s from MLX / model mismatch | Server started with a different model id than `llm.model_mlx` | `./scripts/servers/start_mlx_server.sh [id]` with the exact id; port must be `:8080` (`apply_ports.py` syncs it) |
+| 11a | `ModuleNotFoundError: No module named 'app.core.hardware'` from `start_local_llm.sh` | Script predated the `app/core/` → `app/core/system/` move | Update the import. Ruff cannot catch this: the import is inside a bash-embedded Python string, and ruff only runs on `apps/api/app` (see CONTRIBUTING). Prove it with `bash scripts/servers/start_local_llm.sh` |
+| 11b | `mlx_lm.server: command not found` when launching MLX | `mlx-lm` not installed (often only in a pipx/user env, not the API venv) | `pipx install mlx-lm` — it runs as a separate process, so it does NOT need to be in `apps/api/.venv` |
 | 12 | `ollama pull` model 404 / backend talks to a model that isn't served | Requested id not in `ollama list` / router cache | `ollama pull gemma3:1b`; llama.cpp: `hf download … --include '*Q4_K_M*'` into the hub dir |
 | 13 | MongoDB unreachable (`DatabaseError`, boot blocks ~minutes of retries) | `mongod` not running / wrong `MONGODB_URI` | Start per OS table above; boot is fail-hard by design (no degraded mode) |
 | 14 | Qdrant errors only on first KB op, never at boot | Qdrant client is lazy (good for boot, confusing in logs) | Start Qdrant (compose includes it) or use `:memory:`/path `QDRANT_URL` for dev |
-| 15 | `setup.sh` warns `:8080/:8090 already in use` while LLM checks above say healthy | False alarm: occupied LLM ports **are** the healthy state | Ignore if the LLM lines above report the servers |
-| 16 | `python3.11: command not found` on Ubuntu | Stock Ubuntu ships 3.10 | deadsnakes PPA (see Linux section) |
-| 17 | MongoDB apt 404 on Ubuntu 24.04 | README repo line hardcodes `jammy` | Use the `noble` repo path or Docker MongoDB |
-| 18 | `pip install mlx-lm` fails on Intel Mac / Linux | MLX is Apple-Silicon-only | Skip MLX; use Ollama or llama.cpp |
-| 19 | First query slow (~minutes), then fast | Cold ONNX load + hardware probe + disk cache warmup (by design, non-blocking) | Wait for `Embedding model pre-warmed` in logs |
-| 20 | `Large diff` / OOM during export on 8 GB hosts | torch export + `/tmp` spikes on top of the ~8 GB note | Close browsers/IDEs, ensure ~4 GB free beyond the README figure |
-| 21 | `Invalid QDRANT_URL` at first KB op | URL without scheme (e.g. `localhost:6333`) — rejected instead of being mkdir'd | Use `http://localhost:6333`, `local`, `:memory:`, or a path |
-| 22 | `pip install -e .` fails on Python 3.13+ | `requires-python` now caps at `<3.13` (torch/onnxscript export incompatible) | Use Python 3.11 or 3.12 |
-| 23 | `mlx_lm.server not applicable here` from `setup.sh` | Host is not Apple Silicon (check is now platform-gated) | Expected — use Ollama or llama.cpp instead |
+| 15 | `setup.sh` warns `:9931/:8080 already in use` while LLM checks above say healthy | False alarm: occupied LLM ports **are** the healthy state | Ignore if the LLM lines above report the servers |
+| 16 | Small local model abstains on questions a cloud model answers | ≤3B gets a compact prompt + the two-step verify path automatically, but it is still much weaker | Compare objectively: `./scripts/eval/eval_provider.sh llama_cpp …` vs `./scripts/eval/eval_provider.sh gemini …` |
+| 17 | A strong model behaves like a small one | `is_small_model()` matched its id (e.g. a size marker in the name) | Check `python -c "from app.llm.local_llm import is_small_model; print(is_small_model('<id>'))"`; the classifier is conservative by design |
+| 18 | `python3.11: command not found` on Ubuntu | Stock Ubuntu ships 3.10 | deadsnakes PPA (see Linux section) |
+| 19 | MongoDB apt 404 on Ubuntu 24.04 | README repo line hardcodes `jammy` | Use the `noble` repo path or Docker MongoDB |
+| 20 | `pip install mlx-lm` fails on Intel Mac / Linux | MLX is Apple-Silicon-only | Skip MLX; use Ollama or llama.cpp |
+| 21 | First query slow (~minutes), then fast | Cold ONNX load + hardware probe + disk cache warmup (by design, non-blocking) | Wait for `Embedding model pre-warmed` in logs |
+| 22 | `Large diff` / OOM during export on 8 GB hosts | torch export + `/tmp` spikes on top of the ~8 GB note | Close browsers/IDEs, ensure ~4 GB free beyond the README figure |
+| 23 | `Invalid QDRANT_URL` at first KB op | URL without scheme (e.g. `localhost:6333`) — rejected instead of being mkdir'd | Use `http://localhost:6333`, `local`, `:memory:`, or a path |
+| 24 | `pip install -e .` fails on Python 3.13+ | `requires-python` now caps at `<3.13` (torch/onnxscript export incompatible) | Use Python 3.11 or 3.12 |
+| 25 | `mlx_lm.server not applicable here` from `setup.sh` | Host is not Apple Silicon (check is now platform-gated) | Expected — use Ollama or llama.cpp instead |
+| 26 | `No Python 3.11-3.12 interpreter found` from `start_local_services.sh` | No supported interpreter on `PATH`, and no project virtualenv | Create the venv first (step 2 above), or point the script at one: `PYTHON=/path/to/python3.12 bash apps/api/scripts/start_local_services.sh` |
+| 27 | The API is up but every request answers 429 `RATE_LIMITED` | The global abuse guard is 240 requests/minute per client per path. A load test or a polling loop can exceed it | Expected behaviour, not a bug — wait for the window to roll over (`Retry-After` says how long), or raise the budget for a measured run with `RATE_LIMIT_PER_MINUTE` |
+| 28 | Dashboard says "API offline"; console shows CORS `No 'Access-Control-Allow-Origin' header` | `apps/web/.env` sets `VITE_API_URL` to a remote origin. That bypasses the Vite dev proxy, so the browser calls :8000 cross-origin | Clear `VITE_API_URL` in `apps/web/.env` and restart Vite. `python scripts/serve.py doctor` now detects this |
+| 29 | Playwright E2E registration answers 429 | `/auth/register` is capped at 3/hour per IP and the API is long-lived | Reuse an existing account: set `E2E_TEST_EMAIL` / `E2E_TEST_PASSWORD` (`$env:…` in PowerShell) before `npm run test:e2e` |
 
 ---
 
@@ -141,7 +184,7 @@ net start MongoDB
   `MALLOC_ARENA_MAX=1`, `TOKENIZERS_PARALLELISM=false` — 8 GB survival kit
   (`.env.example:139-168`).
 - `config/ports.yaml` is the port source of truth; after editing run
-  `python3 scripts/apply_ports.py` (now also syncs the MLX `:8090` consumers;
+  `python3 scripts/checks/apply_ports.py` (now also syncs the MLX `:8080` consumers;
   `--check` is the CI gate).
 
 ---
@@ -150,7 +193,7 @@ net start MongoDB
 
 Mocked tests are green, but these need a running stack + human judgment:
 
-- **Providers never live-tested:** Gemini, NVIDIA NIM, MLX (`mlx_lm.server --port 8090`).
+- **Providers never live-tested:** Gemini, MLX (`./scripts/servers/start_mlx_server.sh` on :8080).
 - **qwen3:1.7b** hallucinated unrelated claims in manual testing — retry with
   `temperature=0` before trusting it for verification.
 - **LFM2.5-1.2B** verification fixated on SHA-256 and missed NLI context —
@@ -161,9 +204,19 @@ Mocked tests are green, but these need a running stack + human judgment:
 ## 6. Sanity checklist (should all be green)
 
 ```bash
-bash scripts/setup.sh                                        # prereqs + ports
-python scripts/bootstrap.py --verify                        # ONNX bake present
+bash scripts/setup/setup.sh                                        # prereqs + ports
+python scripts/setup/bootstrap.py --verify                        # ONNX bake present
+bash apps/api/scripts/start_local_services.sh               # mongo + ollama + api
 curl localhost:8000/api/v1/health                           # {"status": ...}
 curl localhost:8000/api/v1/health/detailed                  # services + models
 cd apps/web && npm run lint && npm test                     # frontend gate
+```
+
+And the two harnesses that keep the frontend and the backend honest about
+each other (both need the stack above running):
+
+```bash
+cd apps/api
+python scripts/verify/validate_integration.py                      # routes + user flow
+python scripts/verify/validate_resilience.py                       # concurrency + outages
 ```

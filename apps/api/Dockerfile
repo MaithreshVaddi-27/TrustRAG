@@ -35,7 +35,10 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy dependency spec and lockfile, then install with uv for reproducibility
-COPY pyproject.toml uv.lock .
+# Explicit destination is required: without it Docker treats `uv.lock` as the
+# DEST and overwrites the lockfile with pyproject.toml, leaving no pyproject
+# for `uv sync` to read.
+COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --python /opt/venv/bin/python
 
 # ─── Runtime ───────────────────────────────────────────────────────────────────

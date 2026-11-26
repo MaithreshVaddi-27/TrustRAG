@@ -1,125 +1,16 @@
-/* ── External CSS imports ──────────────────────────────────────────────────── */
-@import './styles/typography.css';
-@import './styles/animations.css';
-@import './styles/materials.css';
-@import './styles/landing.css';
-@import './styles/app-layout.css';
-@import './styles/dashboard.css';
-@import './styles/playground.css';
-@import './styles/auth.css';
-@import './styles/knowledge-bases.css';
-@import './styles/evidence.css';
-@import './styles/claims.css';
-@import './styles/conflicts.css';
-@import './styles/experiments.css';
-@import './styles/settings.css';
-@import './styles/trace.css';
-@import './styles/components.css';
+/* ── TrustRAG · Stylesheet entry ─────────────────────────────────────────────
+ * The whole stylesheet lives under `src/styles/`. This file exists so the
+ * existing `import './index.css'` in `src/main.jsx` keeps working.
+ *
+ * Order inside `src/styles/index.css`:
+ *   1. Tokens — every `var(--…)` in the codebase resolves from here.
+ *   2. Legacy application stylesheets.
+ *   3. Base — element defaults and the browser surfaces nobody designed.
+ *   4. Utilities — the small shared vocabulary.
+ *   5. Components — the landing system.
+ *
+ * Tailwind's layers come last so utility classes win on a tie, which is the
+ * convention the rest of the codebase already assumes.
+ * ─────────────────────────────────────────────────────────────────────────── */
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* ── Base resets ───────────────────────────────────────────────────────────── */
-@layer base {
-  html {
-    scroll-behavior: smooth;
-    color-scheme: dark;
-    overflow-x: hidden;
-  }
-
-  body {
-    @apply bg-surface-950 text-slate-100 font-sans antialiased selection:bg-primary-500/20 selection:text-primary-300;
-    font-feature-settings: 'cv11', 'ss01';
-    font-optical-sizing: auto;
-    overflow-x: hidden;
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
-  :focus-visible {
-    @apply outline-none ring-2 ring-primary-400 ring-offset-2 ring-offset-surface-950;
-  }
-}
-
-/* ── Component utilities ─────────────────────────────────────────────────── */
-@layer components {
-  .badge-supported {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium
-           bg-emerald-950/60 text-emerald-300 border border-emerald-700/50 shadow-sm shadow-emerald-950/50;
-  }
-
-  .badge-contradicted {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium
-           bg-red-950/60 text-red-300 border border-red-700/50 shadow-sm shadow-red-950/50;
-  }
-
-  .badge-neutral {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium
-           bg-amber-950/60 text-amber-300 border border-amber-700/50 shadow-sm shadow-amber-950/50;
-  }
-
-  .badge-unknown {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium
-           bg-slate-800/80 text-slate-400 border border-slate-700/60;
-  }
-
-  .reliability-high   { @apply text-emerald-400; }
-  .reliability-medium { @apply text-amber-400; }
-  .reliability-low    { @apply text-red-400; }
-
-  .btn-primary {
-    @apply px-4 py-2 bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-500 hover:to-cyan-500 active:from-primary-700 active:to-cyan-700 text-white text-sm font-semibold
-           rounded-xl shadow-lg shadow-primary-950/60 hover:shadow-primary-900/50 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2;
-  }
-
-  .btn-secondary {
-    @apply px-4 py-2 bg-surface-800/80 hover:bg-surface-700/80 text-slate-300 hover:text-white text-sm font-medium
-           rounded-xl border border-slate-700/80 hover:border-slate-600 transition-all duration-200 flex items-center justify-center gap-2;
-  }
-
-  .btn-danger {
-    @apply px-3 py-1.5 bg-red-950/50 hover:bg-red-900/50 text-red-300 hover:text-red-100 text-xs font-medium
-           rounded-xl border border-red-800/60 hover:border-red-700 transition-all duration-200 flex items-center justify-center gap-1.5;
-  }
-
-  .code-block {
-    @apply font-mono text-sm bg-surface-950 rounded-xl p-4 overflow-x-auto
-           border border-slate-800/80 text-slate-300 shadow-inner;
-  }
-
-  .trace-event {
-    @apply flex items-start gap-3 py-2.5 px-3 rounded-xl hover:bg-surface-800/40 transition-colors;
-  }
-
-  .section-heading {
-    @apply text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2;
-  }
-}
-
-/* Visible keyboard focus — Apple HIG agency: every pointer path needs a keyboard path */
-:focus-visible {
-  outline: 2px solid rgba(56, 189, 248, 0.7);
-  outline-offset: 2px;
-  border-radius: 6px;
-}
-
-/* Global press feedback — Apple HIG: "Give people consistent feedback" */
-@media (hover: hover) and (pointer: fine) {
-  button:not(:disabled):active,
-  a:active,
-  [role="button"]:active {
-    transform: scale(0.97);
-    transition: transform 80ms ease-out;
-  }
-}
-
-@media (hover: hover) and (pointer: coarse) {
-  button:not(:disabled):active,
-  a:active,
-  [role="button"]:active {
-    transform: scale(0.98);
-    transition: transform 80ms ease-out;
-  }
-}
+@import './styles/index.css';

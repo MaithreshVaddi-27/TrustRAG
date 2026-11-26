@@ -20,18 +20,36 @@ import re
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
+from pymongo.errors import PyMongoError
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
+from app.api.rate_limiting import install_rate_limiting
 from app.api.router import api_router
-from app.core.config import get_model_config, get_settings
-from app.core.exceptions import (
+from app.config.model_config import get_model_config
+from app.config.settings import get_settings
+from app.core.system.hardware import get_cached_hardware_profile
+from app.core.system.memory import get_memory_usage_mb
+from app.llm.local_llm import (
+    close_local_llm_clients,
+    load_discovery_snapshot,
+    seed_local_model_discovery,
+)
+from app.llm.model_registry import (
+    get_embedding_model,
+    onnx_model_status,
+)
+from app.observability.logging import configure_logging, get_logger
+from app.observability.tracing import init_tracing, tracing_middleware
+from app.persistence.mongodb import connect_db, create_indexes, disconnect_db
+from app.persistence.qdrant import close_qdrant_client
+from app.security.exceptions import (
     AnalysisNotFoundError,
     AuthenticationError,
     AuthorizationError,
@@ -47,14 +65,43 @@ from app.core.exceptions import (
     UnsupportedFormatError,
     VectorStoreError,
 )
-from app.core.hardware import get_cached_hardware_profile
-from app.core.logging import configure_logging, get_logger
-from app.core.model_registry import get_embedding_model
-from app.core.rate_limiter import limiter
-from app.core.tracing import init_tracing, tracing_middleware
-from app.db.mongodb import connect_db, create_indexes, disconnect_db
 
 logger = get_logger(__name__)
+
+
+def _embedding_stack_is_cached(cfg) -> bool:
+    """Only go offline when weights and tokenizer files are both on disk.
+
+    ONNX weights live in the app cache; the tokenizer lives in the HF hub cache.
+    Forcing offline with only the weights makes AutoTokenizer's
+    local_files_only lookup fail, so the first query becomes a retrieval outage.
+    """
+    from pathlib import Path
+
+    try:
+        hub_snapshot = (
+            Path.home()
+            / ".cache"
+            / "huggingface"
+            / "hub"
+            / ("models--" + cfg.embedding_model.replace("/", "--"))
+        )
+        tokenizer_cached = any(
+            next(hub_snapshot.rglob(name), None) is not None
+            for name in ("tokenizer.json", "tokenizer_config.json", "vocab.txt")
+        )
+        if not tokenizer_cached:
+            return False
+
+        cache_dir = Path(cfg.embedding_cache_dir)
+        if not cache_dir.is_absolute():
+            cache_dir = Path(__file__).resolve().parent.parent / cache_dir
+        return cache_dir.exists() and any(
+            next(cache_dir.rglob(pattern), None) is not None
+            for pattern in ("*.safetensors", "*.bin", "*.pt", "*.onnx")
+        )
+    except Exception:
+        return False
 
 
 # ─── Lifespan ────────────────────────────────────────────────────────────────
@@ -90,36 +137,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         raise
 
     # Enforce strict offline operation for all auxiliary tools & telemetry.
-    # Offline model loading is only forced when the embedding weights are
-    # already cached — a fresh machine must be allowed to download them once.
+    # Offline loading is only forced when weights and tokenizer are both cached —
+    # a fresh machine must be allowed to download the tokenizer once.
     import os
 
     os.environ["LANGCHAIN_TRACING_V2"] = "false"
-    _model_cached = False
+    # Low-RAM / inference-speed guards (production default, all platforms):
+    # - TOKENIZERS_PARALLELISM=false prevents Rust tokenizer thread-pool
+    #   fork-bloat next to asyncio.to_thread + torch (saves ~100-300 MB RSS).
+    # - OMP_NUM_THREADS caps ONNX intra-op pools (embeddings + reranker each
+    #   cap at 4 internally; this bounds any other native lib sharing the pool).
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     try:
-        cfg_probe = get_model_config()
-        from pathlib import Path as _Path
-
-        hub_snapshot = (
-            _Path.home()
-            / ".cache"
-            / "huggingface"
-            / "hub"
-            / ("models--" + cfg_probe.embedding_model.replace("/", "--"))
-        )
-        cache_dir = _Path(cfg_probe.embedding_cache_dir)
-        # Real weight files only — a stray config.json must not count as cached.
-        # .onnx counts: the engine is always ONNX, whose weights live as
-        # <cache>/bge-small-en-v1.5.onnx (see scripts/ensure_onnx_models.py).
-        # cache_dir may be relative (".model_cache") — anchor to apps/api.
-        if not cache_dir.is_absolute():
-            cache_dir = _Path(__file__).resolve().parent.parent / cache_dir
-        has_weights = hub_snapshot.exists() or (
-            cache_dir.exists()
-            and any(cache_dir.rglob(p) for p in ("*.safetensors", "*.bin", "*.pt", "*.onnx"))
-        )
-        if has_weights:
-            _model_cached = True
+        _cpu = os.cpu_count() or 4
+        os.environ.setdefault("OMP_NUM_THREADS", str(max(1, min(4, _cpu))))
+    except Exception:
+        os.environ.setdefault("OMP_NUM_THREADS", "4")
+    try:
+        _model_cached = _embedding_stack_is_cached(get_model_config())
     except Exception:
         _model_cached = False
     if _model_cached:
@@ -149,23 +184,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Fail loudly on a missing ONNX bake: without embedding weights every
     # query 500s, and without reranker weights reranking silently degrades to
-    # RRF order. Both are deploy-time problems (run scripts/bootstrap.py and
+    # RRF order. Both are deploy-time problems (run scripts/setup/bootstrap.py and
     # bake .model_cache into the image) — never per-request surprises.
-    from app.core.model_registry import onnx_model_status
-
     onnx_status = onnx_model_status()
     if not onnx_status["embedding_onnx_present"]:
         logger.error(
             "ONNX embedding weights missing — every query will fail. "
-            "Run 'python scripts/bootstrap.py' (or "
-            "'python scripts/ensure_onnx_models.py') then bake "
+            "Run 'python scripts/setup/bootstrap.py' (or "
+            "'python scripts/setup/ensure_onnx_models.py') then bake "
             "apps/api/.model_cache into the image",
             path=onnx_status["embedding_onnx_path"],
         )
     if cfg.reranker_enabled and cfg.reranker_use_onnx and not onnx_status["reranker_onnx_present"]:
         logger.warning(
             "ONNX reranker weights missing — reranking degrades to RRF order. "
-            "Run 'python scripts/ensure_onnx_models.py' to enable it",
+            "Run 'python scripts/setup/ensure_onnx_models.py' to enable it",
             path=onnx_status["reranker_onnx_path"],
         )
 
@@ -174,17 +207,37 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await connect_db()
     await create_indexes()
 
-    # Load semantic cache from disk (lazy-loaded at import, now explicit)
-    from app.core.semantic_cache import load_cache
+    # P1-18: reap analyses orphaned by restart/--reload/OOM. In-flight runs
+    # stay "processing" forever without this; mark them failed with a message.
+    try:
+        from datetime import UTC as _UTC
+        from datetime import datetime as _dt
 
-    loaded = load_cache()
-    logger.info("Semantic cache loaded", entries=loaded)
+        from app.persistence.mongodb import Collections as _Colls
+        from app.persistence.mongodb import get_collection as _get_coll
+
+        _analyses = _get_coll(_Colls.ANALYSES)
+        _reaped = await _analyses.update_many(
+            {"status": "processing"},
+            {
+                "$set": {
+                    "status": "failed",
+                    "error_message": "Server restarted during analysis; please retry.",
+                    "updated_at": _dt.now(_UTC),
+                }
+            },
+        )
+        if getattr(_reaped, "modified_count", 0):
+            logger.warning(
+                "Reaped orphaned processing analyses",
+                count=_reaped.modified_count,
+            )
+    except Exception as _reap_exc:
+        logger.debug("Analysis reaper skipped", error=str(_reap_exc))
 
     # Seed the local-model discovery cache from the persisted snapshot so a
-    # pre-run `scripts/bootstrap.py` (or any earlier process) is
+    # pre-run `scripts/setup/bootstrap.py` (or any earlier process) is
     # honored before the server answers its first request.
-    from app.core.local_llm import load_discovery_snapshot, seed_local_model_discovery
-
     load_discovery_snapshot()
 
     logger.info("TRUSTRAG API ready")
@@ -206,18 +259,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 error=str(warm_err),
             )
 
-    async def _cleanup_caches() -> None:
-        """Run periodic cache cleanup on startup (embedding + semantic)."""
-        try:
-            from app.core.disk_cache import maybe_cleanup_cache
-            from app.core.semantic_cache import _cleanup_expired_entries
-
-            maybe_cleanup_cache()
-            _cleanup_expired_entries()
-            logger.debug("Cache TTL cleanup completed on startup")
-        except Exception as exc:
-            logger.debug("Startup cache cleanup skipped", error=str(exc))
-
     async def _warmup_hardware() -> None:
         # OPT-H9: Run the expensive hardware probe once at startup so the first
         # /models/* request never pays the subprocess cost.
@@ -232,15 +273,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # heavy startups contend on first boot; RSS around each step turns the
         # next OOM report into a breakdown instead of a guess. Discovery still
         # re-persists the snapshot so already-running processes stay in sync.
-        from app.core.memory import get_memory_usage_mb
-
         logger.info("Startup warmup: discovery", rss_mb=get_memory_usage_mb())
         await seed_local_model_discovery()
         logger.info("Startup warmup: hardware", rss_mb=get_memory_usage_mb())
         await _warmup_hardware()
         logger.info("Startup warmup: embeddings", rss_mb=get_memory_usage_mb())
         await _warmup_embeddings()
-        await _cleanup_caches()
         logger.info("Startup warmup complete", rss_mb=get_memory_usage_mb())
 
     warmup_task = asyncio.create_task(_async_warmup())
@@ -251,21 +289,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not warmup_task.done():
         warmup_task.cancel()
     logger.info("TRUSTRAG API shutting down")
-    from app.core.local_llm import close_local_llm_clients
-    from app.core.model_registry import close_all_llm_instances
-
     await close_local_llm_clients()
-    await close_all_llm_instances(seal=True)
+    await close_qdrant_client()
     await disconnect_db()
 
 
-# ─── Rate limiter ─────────────────────────────────────────────────────────────
-# Import shared limiter (defined in app.core.rate_limiter to avoid circular imports)
-
-
 # ─── Exception handlers ───────────────────────────────────────────────────────
-
-
 def _error_response(status_code: int, code: str, message: str) -> JSONResponse:
     """Produce a consistent error response. Never includes internal detail."""
     return JSONResponse(
@@ -358,6 +387,24 @@ def _register_exception_handlers(app: FastAPI) -> None:
             "Database unavailable. Please try again.",
         )
 
+    @app.exception_handler(PyMongoError)
+    async def pymongo_error_handler(request: Request, exc: PyMongoError) -> JSONResponse:
+        """A driver-level MongoDB failure is a database outage, not a bug.
+
+        Without this, an unreachable database reached the catch-all handler and
+        answered 500 "An unexpected error occurred." — which tells an operator
+        nothing and tells a client to retry a request that cannot succeed.
+        The driver raises its own exceptions (ServerSelectionTimeoutError,
+        ConnectionFailure) long before the application's DatabaseError wrapper
+        is reached, so the driver exception has to be handled here.
+        """
+        logger.error("Database driver error", path=request.url.path, error=str(exc))
+        return _error_response(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "SERVICE_UNAVAILABLE",
+            "Database unavailable. Please try again.",
+        )
+
     @app.exception_handler(VectorStoreError)
     async def vector_store_error_handler(request: Request, exc: VectorStoreError) -> JSONResponse:
         logger.error("Vector store error", error=exc.message)
@@ -374,6 +421,26 @@ def _register_exception_handlers(app: FastAPI) -> None:
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "INTERNAL_ERROR",
             "An unexpected error occurred.",
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        logger.warning("Request validation failed", path=request.url.path)
+        try:
+            msgs = []
+            for err in exc.errors():
+                msg = str(err.get("msg", "invalid"))
+                loc = ".".join(str(p) for p in err.get("loc", []) if str(p) != "body")
+                msgs.append(f"{loc}: {msg}" if loc else msg)
+            message = "; ".join(msgs[:3]) if msgs else "Request validation failed."
+        except Exception:
+            message = "Request validation failed."
+        return _error_response(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "VALIDATION_ERROR",
+            message,
         )
 
     @app.exception_handler(Exception)
@@ -414,6 +481,14 @@ def _register_exception_handlers(app: FastAPI) -> None:
 # ─── Request ID middleware ─────────────────────────────────────────────────────
 # SEC: validate/truncate client-supplied X-Request-ID to prevent log forgery/trace confusion
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9\-]{1,64}$")
+
+
+def _rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Return the API's standard error envelope for a rate-limited request."""
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={"error": {"code": "RATE_LIMITED", "message": "Too many requests. Slow down."}},
+    )
 
 
 async def request_id_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -457,15 +532,18 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json" if not settings.is_production() else None,
     )
 
-    # ── Rate limiting ──────────────────────────────────────────────────────
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-    app.add_middleware(SlowAPIMiddleware)
+    # ── Rate limiting (P1-19) ────────────────────────────────────────────
+    # The global request budget is enforced by app/api/rate_limiting.py, not
+    # by slowapi's middleware: this FastAPI version keeps the included router
+    # as one `_IncludedRouter` entry, so slowapi cannot resolve a route
+    # handler and exempts every API route from its own limit.
+    install_rate_limiting(app, per_minute=settings.rate_limit_per_minute)
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
 
     # ── CORS ───────────────────────────────────────────────────────────────
     # SEC-H-A: In production, only explicit CORS_ORIGINS allowed.
     # Wildcard platform regex (vercel.app, netlify.app, pages.dev) only for dev/staging.
-    cors_kwargs = {
+    cors_kwargs: dict[str, Any] = {
         "allow_origins": settings.cors_origins_list,
         "allow_credentials": True,
         "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -501,6 +579,11 @@ def create_app() -> FastAPI:
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; font-src 'self' data:; "
+            "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        )
         if settings.is_production():
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response

@@ -1,0 +1,786 @@
+{
+  "label": "gemma3-1b baseline",
+  "provider": "default",
+  "model": "default",
+  "kb_id": "6af8767ff7af066591109418",
+  "user": "probe1@bench.example.com",
+  "n_probes": 33,
+  "n_answerable": 27,
+  "n_unanswerable": 6,
+  "answer_accuracy": 0.3704,
+  "abstention_accuracy": 0.8333,
+  "answerable_answered": 10,
+  "unanswerable_abstained": 5,
+  "false_abstentions": [
+    "What is the reciprocal rank fusion constant?",
+    "What does the temporal filter drop?",
+    "What happens when the evidence does not support an answer?",
+    "How long are bearer tokens valid?",
+    "When does token revocation take effect?",
+    "Is multi-factor authentication required for administrator accounts?",
+    "How many failed login attempts invalidate a session?",
+    "What is the minimum password length?",
+    "How often are API keys rotated?",
+    "How long is the lockout window?",
+    "After how many days do backups expire?",
+    "What is the maximum page size?",
+    "What is the maximum document upload size?",
+    "How many concurrent analyses are allowed per account?",
+    "What does a 429 response mean?",
+    "What is the default request timeout?",
+    "Which file formats are accepted for upload?"
+  ],
+  "false_answers": [
+    "What is the maximum number of retries per analysis?"
+  ],
+  "mean_latency_ms": 5033,
+  "retrieval_quality": {
+    "n": 27,
+    "recall_at_k": 0.963,
+    "precision_at_k": 0.2407,
+    "mrr": 0.9444
+  },
+  "documents": {
+    "count": 4,
+    "filenames": [
+      "api-limits.txt",
+      "retention-policy.txt",
+      "security-policy.txt",
+      "retrieval-policy.txt"
+    ]
+  },
+  "rows": [
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "sixty",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "What is the reciprocal rank fusion constant?",
+      "latency_ms": 3410,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "answerable",
+      "correct": true,
+      "expected": "twenty",
+      "actual": "completed",
+      "answer_contains_expected": true,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "How many fused candidates are considered before reranking?",
+      "latency_ms": 5192,
+      "answer": "- Twenty fused candidates are considered for reranking.",
+      "diagnosis_type": "NONE",
+      "diagnosis_failures": [],
+      "reliability_score": 1.0,
+      "reliability_status": "TRUSTED"
+    },
+    {
+      "kind": "answerable",
+      "correct": true,
+      "expected": "BGE-small",
+      "actual": "completed",
+      "answer_contains_expected": true,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "Which embedding model does dense retrieval use?",
+      "latency_ms": 6193,
+      "answer": "- Dense retrieval uses BGE-small embeddings computed locally through ONNX Runtime.",
+      "diagnosis_type": "NONE",
+      "diagnosis_failures": [],
+      "reliability_score": 1.0,
+      "reliability_status": "TRUSTED"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "dropped",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "What does the temporal filter drop?",
+      "latency_ms": 3237,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "answerable",
+      "correct": true,
+      "expected": "MS Marco MiniLM",
+      "actual": "completed",
+      "answer_contains_expected": true,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "Which cross encoder does the reranker use?",
+      "latency_ms": 5190,
+      "answer": "- The reranker is a cross encoder based on MS Marco MiniLM.",
+      "diagnosis_type": "NONE",
+      "diagnosis_failures": [],
+      "reliability_score": 1.0,
+      "reliability_status": "TRUSTED"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "abstain",
+      "actual": "abstained",
+      "answer_contains_expected": true,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "What happens when the evidence does not support an answer?",
+      "latency_ms": 3170,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "30 minutes",
+      "actual": "completed",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "How long are bearer tokens valid?",
+      "latency_ms": 6192,
+      "answer": "- Bearer tokens remain valid for 7 days.",
+      "diagnosis_type": "NONE",
+      "diagnosis_failures": [],
+      "reliability_score": 1.0,
+      "reliability_status": "TRUSTED"
+    },
+    {
+      "kind": "answerable",
+      "correct": true,
+      "expected": "7 days",
+      "actual": "completed",
+      "answer_contains_expected": true,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "How long are refresh tokens valid?",
+      "latency_ms": 5176,
+      "answer": "- Refresh tokens remain valid for 7 days.",
+      "diagnosis_type": "NONE",
+      "diagnosis_failures": [],
+      "reliability_score": 1.0,
+      "reliability_status": "TRUSTED"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "immediately",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "When does token revocation take effect?",
+      "latency_ms": 3153,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "required",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "Is multi-factor authentication required for administrator accounts?",
+      "latency_ms": 3180,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "three",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 8,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.125,
+        "mrr": 1.0
+      },
+      "query": "How many failed login attempts invalidate a session?",
+      "latency_ms": 11204,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "LOW_COVERAGE",
+      "diagnosis_failures": [
+        "Answer is non-responsive: addresses an unrelated fact from the context rather than the question asked"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "UNCERTAIN"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "12 characters",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 2,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 0.5
+      },
+      "query": "What is the minimum password length?",
+      "latency_ms": 3174,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "90 days",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 8,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.125,
+        "mrr": 1.0
+      },
+      "query": "How often are API keys rotated?",
+      "latency_ms": 11373,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "LOW_COVERAGE",
+      "diagnosis_failures": [
+        "Answer is non-responsive: addresses an unrelated fact from the context rather than the question asked"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "UNCERTAIN"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "15 minutes",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "How long is the lockout window?",
+      "latency_ms": 4348,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "answerable",
+      "correct": true,
+      "expected": "24 months",
+      "actual": "completed",
+      "answer_contains_expected": true,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "How long are user documents retained?",
+      "latency_ms": 8377,
+      "answer": "- TrustRAG Data Retention Policy states that user documents are retained for 24 months after the last recorded activity.",
+      "diagnosis_type": "NONE",
+      "diagnosis_failures": [],
+      "reliability_score": 1.0,
+      "reliability_status": "TRUSTED"
+    },
+    {
+      "kind": "answerable",
+      "correct": true,
+      "expected": "7 years",
+      "actual": "completed",
+      "answer_contains_expected": true,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "How long are audit logs retained?",
+      "latency_ms": 7363,
+      "answer": "- Audit logs are retained for 7 years to satisfy the compliance review.",
+      "diagnosis_type": "NONE",
+      "diagnosis_failures": [],
+      "reliability_score": 1.0,
+      "reliability_status": "TRUSTED"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "35 days",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "After how many days do backups expire?",
+      "latency_ms": 3335,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "answerable",
+      "correct": true,
+      "expected": "30 days",
+      "actual": "completed",
+      "answer_contains_expected": true,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "How long does a deleted record stay in the primary store?",
+      "latency_ms": 7288,
+      "answer": "- A deleted record is purged from the primary store within 30 days.",
+      "diagnosis_type": "NONE",
+      "diagnosis_failures": [],
+      "reliability_score": 1.0,
+      "reliability_status": "TRUSTED"
+    },
+    {
+      "kind": "answerable",
+      "correct": true,
+      "expected": "13 months",
+      "actual": "completed",
+      "answer_contains_expected": true,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "What is the default retention period for analytics events?",
+      "latency_ms": 6262,
+      "answer": "- The default retention period for analytics events is 13 months.",
+      "diagnosis_type": "NONE",
+      "diagnosis_failures": [],
+      "reliability_score": 1.0,
+      "reliability_status": "TRUSTED"
+    },
+    {
+      "kind": "answerable",
+      "correct": true,
+      "expected": "180 days",
+      "actual": "completed",
+      "answer_contains_expected": true,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "How long are knowledge base snapshots kept?",
+      "latency_ms": 6190,
+      "answer": "- TrustRAG Retrieval Policy: Knowledge base snapshots are kept for 180 days unless a rollback is in progress.",
+      "diagnosis_type": "NONE",
+      "diagnosis_failures": [],
+      "reliability_score": 1.0,
+      "reliability_status": "TRUSTED"
+    },
+    {
+      "kind": "answerable",
+      "correct": true,
+      "expected": "60 requests per minute",
+      "actual": "completed",
+      "answer_contains_expected": true,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "What is the default rate limit?",
+      "latency_ms": 5167,
+      "answer": "- The default rate limit is 60 requests per minute per client.",
+      "diagnosis_type": "NONE",
+      "diagnosis_failures": [],
+      "reliability_score": 1.0,
+      "reliability_status": "TRUSTED"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "200 items",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "What is the maximum page size?",
+      "latency_ms": 3148,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "25 megabytes",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "What is the maximum document upload size?",
+      "latency_ms": 3144,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "4",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "How many concurrent analyses are allowed per account?",
+      "latency_ms": 3150,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "exceeded its quota",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": false,
+        "rank": null,
+        "recall_at_k": 0.0,
+        "precision_at_k": 0.25,
+        "mrr": 0.0
+      },
+      "query": "What does a 429 response mean?",
+      "latency_ms": 3146,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "120 seconds",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "What is the default request timeout?",
+      "latency_ms": 3139,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "answerable",
+      "correct": false,
+      "expected": "PDF",
+      "actual": "abstained",
+      "answer_contains_expected": false,
+      "retrieval": {
+        "n_evidence": 4,
+        "hit": true,
+        "rank": 1,
+        "recall_at_k": 1.0,
+        "precision_at_k": 0.25,
+        "mrr": 1.0
+      },
+      "query": "Which file formats are accepted for upload?",
+      "latency_ms": 3131,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "unanswerable",
+      "correct": false,
+      "expected": "abstain",
+      "actual": "completed",
+      "retrieval": {
+        "n_evidence": 4
+      },
+      "query": "What is the maximum number of retries per analysis?",
+      "latency_ms": 11209,
+      "answer": "- The default rate limit is 60 requests per minute per client. \n- The maximum page size is 200 items. \n- Uploading a document is limited to 25 megabytes. \n- Concurrent analyses per account are limited to 4.",
+      "diagnosis_type": "NONE",
+      "diagnosis_failures": [],
+      "reliability_score": 1.0,
+      "reliability_status": "TRUSTED"
+    },
+    {
+      "kind": "unanswerable",
+      "correct": true,
+      "expected": "abstain",
+      "actual": "abstained",
+      "retrieval": {
+        "n_evidence": 4
+      },
+      "query": "Which GPU model accelerates the embedding service?",
+      "latency_ms": 3221,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "unanswerable",
+      "correct": true,
+      "expected": "abstain",
+      "actual": "abstained",
+      "retrieval": {
+        "n_evidence": 8
+      },
+      "query": "What is the wifi password of the office network?",
+      "latency_ms": 5174,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "unanswerable",
+      "correct": true,
+      "expected": "abstain",
+      "actual": "abstained",
+      "retrieval": {
+        "n_evidence": 4
+      },
+      "query": "How many languages does the admin console support?",
+      "latency_ms": 3142,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "unanswerable",
+      "correct": true,
+      "expected": "abstain",
+      "actual": "abstained",
+      "retrieval": {
+        "n_evidence": 4
+      },
+      "query": "What is the average latency of the embedding model?",
+      "latency_ms": 3149,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    },
+    {
+      "kind": "unanswerable",
+      "correct": true,
+      "expected": "abstain",
+      "actual": "abstained",
+      "retrieval": {
+        "n_evidence": 4
+      },
+      "query": "Which database cluster stores the audit logs?",
+      "latency_ms": 3154,
+      "answer": "I couldn't verify an answer from this knowledge base: the retrieved evidence did not support a grounded response, so I am abstaining rather than guessing. Try a more specific query or add documents covering this topic.",
+      "diagnosis_type": "RETRIEVAL_FAILURE",
+      "diagnosis_failures": [
+        "Model abstained: insufficient grounded evidence"
+      ],
+      "reliability_score": 0.0,
+      "reliability_status": "ABSTAINED"
+    }
+  ]
+}

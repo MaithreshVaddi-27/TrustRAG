@@ -20,6 +20,7 @@ TrustRAG adds a verification layer between your LLM and your data: answers are s
 - [Overview](#overview)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
+- [Frontend Design System](#frontend-design-system)
 - [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
@@ -62,7 +63,7 @@ Query → Route → Retrieve (hybrid) → Generate (grounded) → Decompose
 7. **Recover** — budget-aware LangGraph loop (rewrite → re-retrieve → regenerate, ≤2 attempts).
 8. **Answer or abstain** — returns the grounded answer, or refuses to guess.
 
-The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local embeddings + embedded Qdrant + local MongoDB). No API keys required — Gemini, NVIDIA NIM, and Tavily search are optional.
+The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local embeddings + embedded Qdrant + local MongoDB). No API keys required. The two cloud clients (Gemini LLM, Tavily search) are **not installed by default** — see [Optional cloud extras](#optional-cloud-extras).
 
 ---
 
@@ -76,10 +77,10 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 | **Reliability** | LangGraph self-heal loop with token/latency budgets; safe abstention; conflict detection |
 | **Auth & security** | JWT (HS256, `iss`/`aud`), bcrypt, JTI revocation, login lockout, rate limits, SSRF guards |
 | **Integrations** | MCP server (JSON-RPC 2.0) for Claude Desktop / Cursor / Windsurf; SSE live-progress streaming |
-| **Workbench UI** | Dashboard, Playground, knowledge bases, evidence, claims, conflicts, experiments, trace viewer |
+| **Workbench UI** | Strictly dark Obsidian / Chrome Silver / Laser Crimson workbench; registration-seal signature; scroll-linked pipeline and finite state motion; real measured evidence in the landing ledger; MCP live web search switch; NLI claim triples & SHA-256 evidence viewers |
 | **Efficiency** | ONNX embedding runtime (torch-free, ~500–1000 MB RAM saved); Metal/CUDA auto-detection |
 | **Inference Acceleration** | KV cache quantization (q8_0 default), flash attention, prompt caching, context compression |
-| **Ops** | KB snapshots + rollback; Prometheus `/metrics`; A/B experiments with feature flags |
+| **Ops** | KB snapshots + rollback; Prometheus `/metrics` |
 
 ---
 
@@ -89,11 +90,25 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 |-------|------------|
 | **Frontend** | React 18, Vite 6, Tailwind CSS 3, TanStack Query 5, React Router 7 |
 | **Backend** | FastAPI 0.115, Python 3.11+, Pydantic v2, LangGraph, LangChain |
-| **LLM** | Ollama / llama.cpp / **MLX** (local, default) · Gemini / NVIDIA NIM (optional cloud) |
+| **LLM** | Ollama / llama.cpp / **MLX** (local, default) · Gemini (optional, `cloud` extra) |
 | **Embeddings** | `BAAI/bge-small-en-v1.5` via ONNX Runtime (torch-free, default) |
 | **Reranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` via ONNX Runtime (int8) |
 | **Storage** | Qdrant (vectors) + MongoDB 7 (documents, async `motor`) |
-| **Quality gates** | Ruff, ESLint, pytest, Vitest, Playwright, k6 |
+| **Quality gates** | Ruff, ESLint, pytest, Vitest, Playwright, k6, token-drift check |
+
+---
+
+## Frontend Design System
+
+The shipped UI is strictly dark: **Obsidian Black** is the surface, **Chrome Silver** is the action colour, and **Laser Crimson** is a signal — a caught contradiction, the registration seal, a live state, keyboard focus, or a destructive action. One focal silver plate per view; every other action is a hairline.
+
+The signature is the **registration seal** (two opposing corner brackets and one crimson point), borrowed from printer registration targets: it appears on verified records, in the results header, on the dashboard's verdict panel, and in the auth card. The landing page shows a real evidence ledger with measured claims and SHA-256 hashes, not an illustration.
+
+Motion is finite or tied to input: one entrance, one scroll reveal, a scroll-linked six-stage pipeline, claim alignment, and short state transitions. Nothing loops for decoration, and `prefers-reduced-motion` resolves every effect to a static state.
+
+- Source of truth: [`apps/web/DESIGN.md`](apps/web/DESIGN.md) and [`docs/design/dark-luxury/`](docs/design/dark-luxury/README.md).
+- Design history and decision records: [`docs/design/README.md`](docs/design/README.md).
+- Brand mark and kit: [`brand/README.md`](brand/README.md).
 
 ---
 
@@ -102,35 +117,55 @@ The default stack runs **entirely locally** (Ollama or llama.cpp or MLX + local 
 ```
 TrustRAG/
 ├── apps/
-│   ├── api/                    # FastAPI backend (Python 3.11+)
+│   ├── api/                    # FastAPI backend (Python 3.11-3.12)
 │   │   ├── app/
-│   │   │   ├── agent/          # LangGraph self-heal loop + query router
-│   │   │   ├── api/v1/         # REST routes (auth, KBs, analyses, claims, …)
-│   │   │   ├── core/           # config, security, LLM, embeddings, metrics
-│   │   │   ├── db/             # MongoDB + Qdrant clients
-│   │   │   ├── generation/     # grounded answer generator
-│   │   │   ├── ingestion/      # parsers, chunkers, OCR fallback
+│   │   │   ├── api/v1/         # REST routers + Pydantic v2 schemas + deps
+│   │   │   │   └── schemas/    # request/response models
+│   │   │   ├── rag/            # RAG capability
+│   │   │   │   ├── embedding/  # ONNX engine + cache wrapper  <- the implementation
+│   │   │   │   ├── retrieval/  # hybrid retrieval + reranker + Qdrant client
+│   │   │   │   ├── ingestion/  # parsers, chunkers, OCR, pipeline
+│   │   │   │   ├── verification/ # decompose -> NLI -> verdict + pipeline orchestrator
+│   │   │   │   ├── generation/ # grounded answer generator
+│   │   │   │   └── agent/      # LangGraph self-heal loop + query router
+│   │   │   ├── llm/            # LLM capability
+│   │   │   │   ├── providers/  # ollama, llama_cpp, mlx, gemini + discovery + health
+│   │   │   │   ├── model_registry.py  # model selection + ONNX singletons
+│   │   │   │   └── onnx_embeddings.py  # the one public embedding shim (patch point)
 │   │   │   ├── mcp/            # MCP tool server (JSON-RPC 2.0)
-│   │   │   ├── retrieval/      # hybrid retriever + reranker
-│   │   │   ├── services/       # analysis, KB, auth, experiment services
-│   │   │   └── verification/   # NLI verifier + SHA-256 integrity audit
-│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (v1.21)
+│   │   │   ├── config/         # settings, model_config, loader (config v1.29)
+│   │   │   ├── persistence/    # mongodb + qdrant clients
+│   │   │   ├── observability/  # logging, metrics, tracing
+│   │   │   ├── security/       # exceptions, JWT + bcrypt auth
+│   │   │   ├── core/system/    # concurrency, hardware, memory telemetry
+│   │   │   ├── services/       # analysis, KB, auth, search, claims_evidence, pipeline, sse, analytics
+│   │   │   └── main.py         # create_app() factory entry point
+│   │   ├── config/models.yaml  # model IDs, thresholds, tuning (config v1.29)
+│   │   ├── scripts/            # benchmark, accuracy, resilience and integration harnesses
 │   │   ├── tests/              # backend suite (mocked, no live services)
 │   │   └── pyproject.toml
 │   └── web/                    # React frontend (Node 22+)
 │       ├── src/{pages,components,services,lib,store,hooks,layouts,styles}/
 │       └── e2e/                # Playwright specs
 ├── config/ports.yaml           # canonical port registry
-├── scripts/                    # bootstrap.py, setup.sh, start_local_llm.sh, apply_ports.py, …
-├── docs/                       # specs, architecture, ADRs, evaluation, deployment
+├── scripts/                    # bootstrap.py, setup.sh, start_local_llm.sh, start_mlx_server.sh,
+│                               #   eval_provider.sh, apply_ports.py, ensure_onnx_models.py, ...
+├── docs/                       # specs, architecture, ADRs, evaluation, deployment, backend log
 ├── load-test/smoke.js          # k6 smoke test
+├── ruff.toml                   # the lint rules, shared by the whole repository
 ├── docker-compose.yml          # api + web + qdrant
 └── .env.example                # documented env template (copy to .env)
 ```
 
+**One import path worth knowing.** `app.llm.onnx_embeddings` is the single
+public shim over the embedding implementation — it re-exports
+`ONNXBGEEmbeddings` and the ONNX Runtime handles, and it is the only place
+ONNX Runtime can be patched. Everything else imports the implementation
+directly from `app.rag.embedding`.
+
 Model weights (`apps/api/.model_cache/*.onnx`, `*.gguf`, Hugging Face
 snapshots) are **never committed to git** — every machine fetches them once
-via `scripts/bootstrap.py` (see [Installation](#installation)).
+via `scripts/setup/bootstrap.py` (see [Installation](#installation)).
 
 ---
 
@@ -146,6 +181,16 @@ via `scripts/bootstrap.py` (see [Installation](#installation)).
 | Git | latest | Clone |
 | Disk / RAM | ~8 GB free · 8 GB RAM min (16 GB recommended) | Models: embeddings ~120 MB, LLM ~1–5 GB |
 
+### OS Compatibility Matrix
+
+| Operating System | Architecture | Acceleration | Memory Telemetry & Trimming | Tested Status |
+|------------------|--------------|--------------|-----------------------------|---------------|
+| **macOS 14+** | Apple Silicon (`arm64`) | Metal (MLX & llama-server) | `getrusage` / `vm_stat` | **Validated** (Dev host) |
+| **macOS 12+** | Intel (`x86_64`) | CPU (llama-server / Ollama) | `getrusage` / `vm_stat` | **Validated** (CI/Fallback) |
+| **Linux (Ubuntu/Debian)** | `x86_64` / `aarch64` | CUDA / CPU (llama-server / Ollama) | `sysconf`, `/proc/meminfo`, `malloc_trim` | **Validated** (CI & Docker) |
+| **Windows 10/11** | `x86_64` | CUDA / CPU (Ollama / llama-server) | `GlobalMemoryStatusEx`, `EmptyWorkingSet` via `ctypes` | **Validated** (Unit/Simulated) |
+| **Windows on ARM** | `aarch64` | N/A | Untested | *Untested* |
+
 ---
 
 ## Installation
@@ -160,6 +205,43 @@ python3 -c "import secrets; print(secrets.token_hex(64))"
 # Paste the output as JWT_SECRET=<value> in .env (min 32 chars)
 ```
 
+### 2. Fastest path — one command (macOS, Linux, Windows)
+
+`scripts/serve.py` is the single cross-platform entry point for the whole
+local stack. It reads every port from `config/ports.yaml`, starts MongoDB,
+Ollama, the API and Vite if they are not already listening, and waits until
+each answers. It uses only the Python standard library, so the same command
+works in bash, PowerShell and cmd.exe:
+
+```bash
+python scripts/serve.py doctor    # check prerequisites before starting
+python scripts/serve.py serve     # start everything; Ctrl+C stops it all
+python scripts/serve.py status    # health + recorded PIDs
+python scripts/serve.py stop      # stop everything started by the launcher
+```
+
+On Windows, the PowerShell wrapper finds Python for you:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\serve.ps1 doctor
+powershell -ExecutionPolicy Bypass -File scripts\serve.ps1 serve
+```
+
+For a detached session (logs and PIDs live under the OS temp directory):
+
+```bash
+python scripts/serve.py serve --detach
+```
+
+To start only one side: `serve --only backend` / `serve --only frontend`.
+
+`apps/api/scripts/start_local_services.sh` remains available as the
+backend-only path (Git Bash or WSL on Windows) if you already have a frontend
+terminal open. Re-running either launcher is safe: it starts only what is not
+already listening. The interpreter is discovered automatically (`$PYTHON`,
+then the project virtualenv in both its POSIX and Windows layouts, then
+`python3` / `python` on `PATH`).
+
 ### 2a. macOS
 
 ```bash
@@ -173,19 +255,22 @@ brew services start mongodb-community
 ollama serve &
 ollama pull gemma3:1b        # lightweight default (or: ollama pull llama3)
 
-# llama.cpp (local GGUF models) — hardware-aware launcher
+# llama.cpp (local GGUF models) — hardware-aware launcher, serves on :9931
 brew install llama.cpp   # provides the `llama-server` binary used below
-./scripts/start_local_llm.sh   # auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
+./scripts/servers/start_local_llm.sh   # auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
 
-# MLX (Apple Silicon only, optional) — see [MLX on Mac](docs/PERFORMANCE-GUIDE.md#4-mlx-on-mac-apple-silicon-free-fastest-toks-per-watt)
+# MLX (Apple Silicon only, optional) — serves on :8080
+# See [MLX on Mac](docs/PERFORMANCE-GUIDE.md#4-mlx-on-mac-apple-silicon-free-fastest-toks-per-watt)
 pipx install mlx-lm
-mlx_lm.server --model mlx-community/Llama-3.2-1B-Instruct-4bit --port 8090
+./scripts/servers/start_mlx_server.sh              # model + port come from config/ports.yaml
+./scripts/servers/start_mlx_server.sh --check      # scan :8080-:8084, list what is up
+./scripts/servers/start_mlx_server.sh --port 8081  # extra model on the next port (1 model/process)
 
 # Backend (terminal 1)
 cd apps/api
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,local-models]"
-python ../../scripts/bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
+python ../../scripts/setup/bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
 uvicorn app.main:app --reload --port 8000
 
 # Frontend (terminal 2)
@@ -222,13 +307,13 @@ ollama pull gemma3:1b        # or: ollama pull llama3
 # llama.cpp (local GGUF models) — hardware-aware launcher
 # Install the binary first: download a release from
 # https://github.com/ggerganov/llama.cpp/releases (needs `llama-server` on PATH)
-./scripts/start_local_llm.sh   # auto-detects CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
+./scripts/servers/start_local_llm.sh   # auto-detects CUDA, sets KV q8_0 + flash-attn, max 1 model on 8GB
 
 # Backend (terminal 1)
 cd apps/api
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,local-models]"
-python ../../scripts/bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
+python ../../scripts/setup/bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
 uvicorn app.main:app --reload --port 8000
 
 # Frontend (terminal 2)
@@ -254,7 +339,7 @@ ollama pull gemma3:1b
 ```powershell
 # llama.cpp (local GGUF models) — use the provided startup script or run llama-server directly
 # For now, use WSL2 for llama.cpp on Windows (see Linux instructions)
-# Start: wsl ./scripts/start_local_llm.sh
+# Start: wsl ./scripts/servers/start_local_llm.sh
 ```
 
 ```powershell
@@ -263,7 +348,7 @@ cd apps\api
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev,local-models]"
-python ..\..\scripts\bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
+python ..\..\scripts\setup\bootstrap.py   # one-time: fetch ONNX weights, snapshot local LLMs
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -283,7 +368,7 @@ MongoDB and the LLM stay on the host; `api` reaches them via `host.docker.intern
 ```bash
 cp .env.example .env   # set JWT_SECRET (see step 1)
 # One-time on the HOST (the api image is torch-free and cannot export itself):
-apps/api/.venv/bin/python scripts/bootstrap.py   # Windows: apps\api\.venv\Scripts\python.exe scripts\bootstrap.py
+apps/api/.venv/bin/python scripts/setup/bootstrap.py   # Windows: apps\api\.venv\Scripts\python.exe scripts\bootstrap.py
 docker compose up -d
 # One-time: copy the host-exported weights into the api container's cache volume:
 docker cp apps/api/.model_cache/. trustrag_api:/app/.model_cache/
@@ -303,9 +388,9 @@ auto-downloaded.
 
 ```bash
 # From the repo root, using the backend venv (macOS/Linux):
-apps/api/.venv/bin/python scripts/bootstrap.py
-# Check only, no downloads (also covered by ./scripts/setup.sh):
-apps/api/.venv/bin/python scripts/bootstrap.py --verify
+apps/api/.venv/bin/python scripts/setup/bootstrap.py
+# Check only, no downloads (also covered by ./scripts/setup/setup.sh):
+apps/api/.venv/bin/python scripts/setup/bootstrap.py --verify
 # Windows PowerShell:
 apps\api\.venv\Scripts\python.exe scripts\bootstrap.py
 ```
@@ -318,21 +403,29 @@ Already cached → exits in ~1 s. After `git pull`, re-run it: a changed
 `models.yaml` model ID is detected automatically and only the new weights are
 fetched (`--force` rebuilds everything).
 
+**First run after boot.** The API pre-warms the embedding stack at startup and
+enables Hugging Face offline mode only when *both* the ONNX weights and the
+tokenizer files are cached. On a fresh cache startup stays online and fetches
+the tokenizer once; later runs reuse it. `GET /api/v1/health` is the readiness
+check. If an analysis fails with `retrieval.outage` on a brand-new machine,
+re-run bootstrap with `--force`, restart the API, and retry: the API log names
+the component that failed to load.
+
 ### 4. Verify the install
 
 ```bash
-./scripts/setup.sh                          # prerequisite checker (prints fixes)
+./scripts/setup/setup.sh                          # prerequisite checker (prints fixes)
 curl http://localhost:8000/api/v1/health   # → {"status":"ok"}
 # Open http://localhost:5173 in your browser
 ```
 
 > **Run both llama.cpp and MLX simultaneously (Apple Silicon):**
 > ```bash
-> # Terminal 1: llama.cpp on :8080
-> ./scripts/start_local_llm.sh
+> # Terminal 1: llama.cpp on :9931
+> ./scripts/servers/start_local_llm.sh
 >
-> # Terminal 2: MLX on :8090 (id must match MLX_MODEL in .env / model_mlx in models.yaml)
-> mlx_lm.server --model mlx-community/Llama-3.2-3B-Instruct-4bit --port 8090
+> # Terminal 2: MLX on :8080 (id must match MLX_MODEL in .env / model_mlx in models.yaml)
+> ./scripts/servers/start_mlx_server.sh mlx-community/Llama-3.2-3B-Instruct-4bit
 >
 > # Terminal 3: Backend (auto-detects both)
 > cd apps/api && source .venv/bin/activate && uvicorn app.main:app --reload --port 8000
@@ -357,7 +450,7 @@ MONGODB_DATABASE=trustrag_db
 ### Common optional overrides (full list in [.env.example](.env.example))
 
 ```bash
-LLM_PROVIDER=llama_cpp            # ollama | llama_cpp | mlx | gemini | nvidia
+LLM_PROVIDER=llama_cpp            # ollama | llama_cpp | mlx | gemini
 LLM_MODEL=LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M
 MLX_MODEL=mlx-community/Llama-3.2-1B-Instruct-4bit   # Apple Silicon only
 # Embeddings: single ONNX engine (BAAI/bge-small-en-v1.5, 384d) from
@@ -369,7 +462,26 @@ APP_ENV=production                # production requires QDRANT_API_KEY
 CORS_ORIGINS=https://your-domain.com
 ```
 
-Default ports: API `8000` · Vite `5173` · llama-server `8080` · **MLX server `8090`** · Ollama `11434` · MongoDB `27017` · Qdrant `6335→6333`. Change ports in `config/ports.yaml`, then run `python3 scripts/apply_ports.py` (enforced in CI with `--check`).
+Default ports: API `8000` · Vite `5173` · llama-server `9931` · **MLX server `8080`** · Ollama `11434` · MongoDB `27017` · Qdrant `6335→6333`. Change ports in `config/ports.yaml`, then run `python3 scripts/checks/apply_ports.py` (enforced in CI with `--check`).
+
+### Optional cloud extras
+
+TrustRAG runs fully on-prem by default. Two features can send data off-box and
+their client libraries are therefore **not installed by default**:
+
+| Feature | Extra | Env var |
+|---|---|---|
+| Gemini LLM provider | `cloud` | `GEMINI_API_KEY` |
+| Tavily web search | `cloud` | `TAVILY_API_KEY` |
+
+```bash
+cd apps/api && uv sync --extra cloud    # or: pip install -e ".[cloud]"
+```
+
+The Docker image (`uv sync --locked --no-dev`) ships the on-prem set only, so a
+containerized deployment cannot reach either endpoint unless rebuilt with the
+extra. Distributed tracing is likewise **off unless `TRUSTRAG_TRACING=1` is set
+explicitly**, so prompts and evidence never reach a third-party SaaS by default.
 
 ---
 
@@ -427,7 +539,14 @@ On Windows PowerShell, use `Invoke-RestMethod` / `Invoke-WebRequest` against the
 
 ### Via the Playground UI
 
-Open <http://localhost:5173/playground> → pick a knowledge base → ask a question → inspect the answer side-by-side with per-claim verdicts, evidence cards, reliability badges, conflict flags, and the full LangGraph trace. Other pages: `/dashboard`, `/knowledge-bases`, `/evidence`, `/claims`, `/conflicts`, `/experiments`, `/traces/:id`, `/settings`.
+Open <http://localhost:5173/playground> to interact with the verified RAG pipeline:
+- **Engine & Knowledge Base Selection** — Choose local inference providers (`llama_cpp`, `ollama`, `mlx`) with zero-lag health detection or cloud models, paired with targeted knowledge bases.
+- **Web Search Grounding (MCP)** — Toggle live internet evidence via Model Context Protocol (Tavily AI search with autonomous fallback) vs. local-only isolated RAG.
+- **Query Input & Presets** — Ergonomic bottom-docked query panel with wrapping preset prompt chips and instant keyboard triggers.
+- **Pipeline Telemetry HUD** — Live 4-stage pipeline telemetry tracking Route, Retrieval, Generation, and NLI Verification in real time.
+- **Side-by-Side Verification** — Inspect answers alongside atomic proposition claims with Subject-Predicate-Object (SPO) triples, source citations, SHA-256 evidence integrity shields, and LangGraph execution traces.
+
+Other workbench views: `/dashboard`, `/knowledge-bases`, `/evidence`, `/claims`, `/conflicts`, `/traces/:id`, `/settings`.
 
 ---
 
@@ -437,11 +556,42 @@ TrustRAG supports multiple LLM providers interchangeably. Switch via `LLM_PROVID
 
 | Provider | Models | RAM | Notes |
 |----------|--------|-----|-------|
-| **llama_cpp** | LFM2.5-1.2B, Granite-4.2-3B, SmolLM3-3B, EXAONE-2.4B, SmolLM2-1.7B | 2–4 GB | Default. Hardware-aware `scripts/start_local_llm.sh` auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 concurrent model on 8 GB |
+| **llama_cpp** | LFM2.5-1.2B, Granite-4.2-3B, SmolLM3-3B, EXAONE-2.4B, SmolLM2-1.7B | 2–4 GB | Default. Hardware-aware `scripts/servers/start_local_llm.sh` auto-detects Metal/CUDA, sets KV q8_0 + flash-attn, max 1 concurrent model on 8 GB |
 | **ollama** | gemma3:1b, qwen3:1.7b, llama3 | 1–3 GB | `ollama serve` + `ollama pull <model>`. Set `OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1` for 8 GB RAM |
-| **mlx** | Llama-3.2-1B-4bit, Llama-3.2-3B-4bit, LFM2.5-1.2B-4bit | 1–3 GB | Apple Silicon only. `mlx_lm.server --model <id> --port 8090`. Runs alongside llama.cpp on :8080 |
+| **mlx** | Llama-3.2-1B-4bit, Llama-3.2-3B-4bit, LFM2.5-1.2B-4bit | 1–3 GB | Apple Silicon only. `./scripts/servers/start_mlx_server.sh [id]` on :8080. Runs alongside llama.cpp on :9931 |
+| **gemini** (cloud) | gemini-3.5-flash-lite, gemini-3.5-flash, gemini-2.5-flash/pro | — | Opt-in only. Sends document text off-box. Install the extra below and set `GEMINI_API_KEY` in the repo-root `.env` |
+
+Gemini is not part of the default install. Enable it explicitly:
+
+```bash
+cd apps/api
+python -m pip install -e ".[cloud]"   # use `python -m pip`, not a bare pip script
+# set GEMINI_API_KEY in the repo-root .env, then restart the API
+```
+
+A missing extra or key produces an actionable error instead of a silent abstention. Note that a virtualenv created by a different Python version can leave `pip` pointing at another interpreter: `python -m pip` always installs into the interpreter that runs the server.
+
+#### Small vs large models
+
+The pipeline adapts to model size automatically — no env var, no separate mode:
+
+| | ≤3B (LFM2.5-1.2B, Llama-3.2-1B, Qwen3-1.7B) | larger (Granite-16B, Gemini, …) |
+|---|---|---|
+| Generation prompt | compact CRAFT — 4 rules + 1 worked example (~770 chars) | full CRAFT — 6 rules, scope/loop guidance (~2350 chars) |
+| Verification | two-step decompose → NLI (compact decompose + NLI prompts) | fused decompose+verify in one call (full prompts) |
+| Claim/context caps | `lean_tier` (5 / 5) | `balanced_tier` / `cloud_tier` (8 / 8) |
+
+Detection is by model-id size marker (`is_small_model()` in `app/llm/local_llm.py`), deliberately conservative: an unrecognised id keeps the full-strength path, and cloud providers are never downgraded.
+
+Measured prompt sizes — the win is mostly *rule count*, not characters: generation 2356→773 (33%), decompose 1037→494 (48%), single-claim NLI 969→626 (65%), batch NLI 977→715 (73%). To compare providers on the frozen dataset:
+
+```bash
+./scripts/eval/eval_provider.sh llama_cpp --email you@example.com --password '…' --kb-id $ID
+./scripts/eval/eval_provider.sh gemini    --email you@example.com --password '…' --kb-id $ID
+```
+
+Each provider writes to its own `docs/evaluation/results/<provider>/` and records a separate experiment.
 | **gemini** | gemini-3.5-flash-lite | Cloud | Requires `GEMINI_API_KEY`. Fast, cheap, supports structured output natively |
-| **nvidia** | openai/gpt-oss-20b | Cloud | Requires `NVIDIA_API_KEY`. NVIDIA NIM endpoint. Verified live 2026-09-21 |
 
 ### Per-tier caps (auto-selected by provider + RAM)
 
@@ -467,9 +617,15 @@ Interactive docs: <http://localhost:8000/docs> (Swagger) · `/redoc`. Base URL `
 | **Knowledge bases** | `POST/GET /api/v1/knowledge-bases` · `GET/DELETE /api/v1/knowledge-bases/{id}` · `POST …/{id}/documents` · `POST …/{id}/documents/from-url` · `POST …/{id}/snapshots` · `POST …/{id}/rollback/{snapshot_id}` |
 | **Analyses** | `POST/GET /api/v1/analyses` · `GET /api/v1/analyses/{id}` · `…/{id}/claims` · `…/{id}/evidence` · `…/{id}/trace` · `…/{id}/detail` · `…/{id}/export` · `POST …/{id}/stream-ticket` · `GET …/{id}/stream` (SSE) |
 | **Evidence & claims** | `GET /api/v1/evidence` · `GET /api/v1/claims` · `GET /api/v1/conflicts` |
-| **Experiments** | `POST/GET /api/v1/experiments` · `GET /api/v1/experiments/{exp_id}` |
 | **Documents** | `GET/DELETE /api/v1/documents/{id}` |
 | **Ops** | `GET /api/v1/health` · `GET /api/v1/health/detailed` · `GET /api/v1/metrics` · `GET /api/v1/models/providers` · `GET /api/v1/models/hardware` · `POST /api/v1/internal/ingest/document` · `POST /api/v1/internal/ingest/url` · `POST /api/v1/internal/search` · `POST /api/v1/internal/verify/claims` (service-token auth) |
+
+**Analysis result contract.** `GET /api/v1/analyses/{id}` exposes the verdict as
+`reliability: { status, score }`, where `status` is one of `TRUSTED`,
+`UNCERTAIN`, `FAILED` or `ABSTAINED` and `score` is a float in `[0, 1]`.
+`diagnosis: { type, failures }` explains any non-trusted result. Internal
+pipeline keys such as `verdict_status` and `reliability_score` are not part of
+the public response; `GET …/{id}/detail` adds claims, evidence and trace.
 
 ---
 
@@ -484,18 +640,57 @@ cd apps\api; .\.venv\Scripts\Activate.ps1; python -m pytest -v
 ```
 
 ```bash
-# Frontend — Vitest unit tests
+# Frontend — Vitest unit tests, lint, palette drift, build
 cd apps/web && npm test
+npm run lint
+npm run check:tokens      # chart theme mirrors the colour tokens
+npm run build
 
 # End-to-end — Playwright (needs the live stack running)
 npx playwright install    # first time only
-npm run test:e2e          # headless · npm run test:e2e:ui (interactive)
+npm run test:e2e          # includes e2e/design.spec.js: one focal action per view
+npm run test:e2e:ui       # interactive
+
+# Re-running locally against a long-lived API? /auth/register is capped at
+# 3/hour per IP. Point both e2e specs at an existing synthetic account:
+E2E_TEST_EMAIL=someone@example.com E2E_TEST_PASSWORD='…' npm run test:e2e
+# Windows PowerShell equivalent:
+#   $env:E2E_TEST_EMAIL='someone@example.com'
+#   $env:E2E_TEST_PASSWORD='...'
+#   npm run test:e2e
+# The Playwright web server is started by scripts/e2e-preview.mjs (no POSIX
+# shell syntax), so the suite works unchanged on macOS, Linux and Windows.
+# CI starts a fresh API, so the default strict-registration path is used there.
+# Use the single repo-root .env (gitignored); copy .env.example if absent.
+# Local dev: leave VITE_API_URL empty in apps/web/.env so /api uses the Vite
+# proxy; a remote origin there bypasses it and produces CORS errors.
 
 # Load — k6 (repo root)
 k6 run load-test/smoke.js
 ```
 
-Lint: `cd apps/api && ruff check app/ tests/ && ruff format --check app/ tests/` · `cd apps/web && npm run lint`.
+Two harnesses keep the frontend and the backend honest about each other.
+Both need the live stack (see the fastest path above):
+
+```bash
+# Integration — every API call the frontend makes is checked against the
+# backend's routes, and the whole user flow is exercised directly and
+# through the frontend's own proxy.
+cd apps/api && python scripts/verify/validate_integration.py
+
+# Resilience — concurrency, the rate limit, a provider outage and a
+# database outage, each induced and repaired.
+cd apps/api && python scripts/verify/validate_resilience.py
+```
+
+Lint — the rules live in the repository-root `ruff.toml`, so the same standard
+applies to the root `scripts/` package and to `apps/api/`:
+
+```bash
+ruff check . && ruff format --check .     # from the repository root
+cd apps/api && ruff check app/ tests/ && ruff format --check app/ tests/
+cd apps/web && npm run lint
+```
 
 > **Toolchain notes:** backend Python 3.11–3.12 with `uv` (`uv sync`), frontend Node 22+ (`engines`-pinned — Vitest breaks on Node 20). CI runs Ubuntu jobs plus a Windows + macOS smoke matrix (`cross-platform`), all gated in `ci-gate`.
 
@@ -503,16 +698,43 @@ Lint: `cd apps/api && ruff check app/ tests/ && ruff format --check app/ tests/`
 
 ## Audit Tracker
 
-All bug/error/issue/dead-code findings live in [`docs/audit-2026-09-28-ui-redesign-full.md`](docs/audit-2026-09-28-ui-redesign-full.md) — severity, fix, and verification evidence per item, including the ingestion audit (H1–H2/M1–M5/L1–L2), ONNX-only enforcement, test hermeticity, and the CI triage (CI-1–CI-3). It supersedes the removed point-in-time reports (history preserved in git).
+The backend audit, every change made against it, and the measurements behind
+each decision live in one living log:
+**[`docs/backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`](docs/backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md)**.
+
+It carries the reproduced findings, the upgrades (with before/after numbers),
+the degradations, the refinements, the open decisions and the blockers, each
+with the change that closed it and the measurements that justified it.
+
+Two scripts keep the frontend and the backend honest about each other:
+
+| Script | What it proves |
+|---|---|
+| `apps/api/scripts/verify/validate_integration.py` | Every API call the frontend makes exists on the backend, and the whole user flow answers correctly — directly and through the frontend's own proxy |
+| `apps/api/scripts/verify/validate_resilience.py` | Concurrency, the rate limit, a provider outage and a database outage all behave as designed |
+
+Frontend architecture, the Obsidian / Chrome Silver / Laser Crimson design
+system, WCAG AA contrast and component decomposition live in
+[`docs/design/dark-luxury/`](docs/design/dark-luxury/) and
+[`apps/web/DESIGN.md`](apps/web/DESIGN.md).
+
+Service-layer contracts and acceptance criteria are specified in
+[`docs/TRUSTRAG_specs.md`](docs/TRUSTRAG_specs.md); verification results are
+tracked in the living
+[`backend changelog`](docs/backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md).
 
 ---
 
 ## Deployment
 
+The rollback drill procedure is in
+[`docs/DEPLOYMENT_RUNBOOK.md`](docs/DEPLOYMENT_RUNBOOK.md). Run it against
+staging before a public release; do not treat an unexecuted rollback as a plan.
+
 | Component | Local dev | Docker Compose | Production |
 |-----------|-----------|----------------|------------|
-| **LLM** | Ollama / llama.cpp on host | Host via `host.docker.internal` | Self-hosted Ollama, Gemini, or NVIDIA NIM |
-| **Embeddings** | ONNX BGE-small via `scripts/bootstrap.py` (~120 MB, one-time) | Host-exported ONNX via `docker cp` into the cache volume | Same as dev |
+| **LLM** | Ollama / llama.cpp on host | Host via `host.docker.internal` | Self-hosted Ollama or Gemini |
+| **Embeddings** | ONNX BGE-small via `scripts/setup/bootstrap.py` (~120 MB, one-time) | Host-exported ONNX via `docker cp` into the cache volume | Same as dev |
 | **Vectors** | Qdrant embedded (`local`) | `qdrant` container + volume | Qdrant Cloud |
 | **Database** | Host MongoDB | Host via `host.docker.internal` | MongoDB Atlas |
 | **API** | `uvicorn … --reload` | `api` container (non-root, hot-reload) | Cloud Run / Render / Railway / Fly.io |
@@ -524,7 +746,7 @@ Production checklist: `APP_ENV=production` (+ `QDRANT_API_KEY`), `CORS_ORIGINS` 
 
 ## Optimization
 
-TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.21**) with environment variable overrides.
+TrustRAG implements extensive inference acceleration and memory optimization techniques. All options are configurable via `apps/api/config/models.yaml` (config version **1.29**) with environment variable overrides.
 
 ### Inference Acceleration
 
@@ -537,6 +759,15 @@ TrustRAG implements extensive inference acceleration and memory optimization tec
 | **Batch Prompt Processing** | `n_batch` controls prompt encoding parallelism | `local_llm.num_batch` | `512` |
 | **Connection Pooling** | HTTP keep-alive (30s) with connection limits for local servers | Internal | `5 keepalive / 10 max` |
 
+### Frontend Optimization
+
+| Feature | Description | Benefit |
+|---------|-------------|---------|
+| **Route-based code splitting** | `React.lazy` + `Suspense` on all 11 pages | Initial JS bundle only includes auth/landing; each route loads on demand |
+| **Vendor chunk splitting** | Vite `manualChunks` for react, recharts, motion, tanstack-query, lucide, axios | Vendors cached separately; app changes don't invalidate vendor cache |
+| **Component memoization** | `React.memo` on `ClaimInspector`, `EvidenceViewer`, `TrustRagLogo`, `TrustRagEmblem` | List subtrees skip re-renders on parent SSE/trace ticks |
+| **Hidden sourcemaps** | `build.sourcemap = 'hidden'` | Stack traces debuggable via uploaded maps; no source shipped to visitors |
+
 ### Memory Optimization
 
 | Feature | Description | Config Key | Default |
@@ -544,11 +775,13 @@ TrustRAG implements extensive inference acceleration and memory optimization tec
 | **Dynamic Context Sizing** | Token-aware `num_ctx` per request using tiktoken | `local_llm.num_ctx` (base) | `4096` |
 | **Aggressive Model Eviction** | Registry limits instances by RAM: 1 (≤8GB) / 2 (≤16GB) / 4 (32GB+) | Internal | Dynamic |
 | **ONNX Reranker (int8)** | 3-4x CPU speedup, torch-free inference | `reranker.use_onnx` | `true` |
+| **ONNX Runtime (shared)** | One tuned session factory for embeddings + reranker: capped threads, full graph fusion, sequential exec | `onnx.intra_op_threads`, `onnx.graph_optimization`, `onnx.cpu_mem_arena` | `0` (auto ≤4), `all`, `true` |
+| **Reranker Batch/SeqLen** | Tokenize+infer micro-batches; max pair length | `reranker.batch_size`, `reranker.max_seq_length` | `16`, `512` |
+| **Retrieval Budgets** | Per-branch + hybrid timeouts; one hung branch degrades instead of pinning a worker | `retrieval.branch_timeout_seconds`, `retrieval.hybrid_timeout_seconds` | `0` (45s/60s fallback) |
+| **Qdrant Upsert Batch** | Points per upsert call (no network timeouts on big docs) | `ingestion.qdrant_upsert_batch` | `100` |
 | **ONNX Embeddings** | Single torch-free embedding engine, ~500-1000 MB RAM saved | `embedding.model` | `BAAI/bge-small-en-v1.5` |
-| **Context Compression** | Hierarchical summarization before LLM call (50% reduction target) | `optimization.context_compression_enabled`, `optimization.context_compression_target_reduction` | `true`, `0.5` |
+| **Context Compression** | Hierarchical summarization before LLM call | `optimization.context_compression_enabled` | `false` |
 | **Adaptive Top-K** | Reduces retrieval when confidence high (RRF > 0.02) | `optimization.adaptive_top_k` | `true` |
-| **Reranker Result Caching** | LRU cache for query-document scores | `reranker.cache_size` | `500` |
-| **Cache TTL + VACUUM** | Embedding & semantic caches auto-expire & reclaim disk | `EMBEDDING_CACHE_TTL_SECONDS`, `SEMANTIC_CACHE_TTL_SECONDS` | 30d, 24h |
 
 ### Environment Variable Overrides
 
@@ -560,11 +793,15 @@ All config options support env overrides:
 | Flash Attention | `FLASH_ATTENTION` |
 | Prompt Caching | `PROMPT_CACHING` |
 | Adaptive Top-K | `ADAPTIVE_TOP_K` |
-| Context Compression | `CONTEXT_COMPRESSION_ENABLED`, `CONTEXT_COMPRESSION_TARGET_REDUCTION`, `MAX_CONTEXT_TOKENS` |
+| Adaptive Threshold/Cap | `ADAPTIVE_TOP_K_THRESHOLD`, `ADAPTIVE_TOP_K_CAP` |
+| Retrieval Budgets | `RETRIEVAL_BRANCH_TIMEOUT_SECONDS`, `RETRIEVAL_HYBRID_TIMEOUT_SECONDS` |
+| Qdrant Upsert Batch | `QDRANT_UPSERT_BATCH` |
+| Context Compression | `CONTEXT_COMPRESSION_ENABLED`, `MAX_CONTEXT_TOKENS` |
 | Local LLM Params | `LOCAL_LLM_NUM_CTX`, `LOCAL_LLM_NUM_BATCH`, `LOCAL_LLM_KEEP_ALIVE`, `LOCAL_LLM_MIN_P`, `LOCAL_LLM_TOP_K`, `LOCAL_LLM_EARLY_EXIT_EOS` |
-| Reranker | `RERANKER_USE_ONNX`, `RERANKER_ONNX_MODEL_PATH`, `RERANKER_CACHE_SIZE` |
+| Reranker | `RERANKER_USE_ONNX`, `RERANKER_ONNX_MODEL_PATH`, `RERANKER_BATCH_SIZE`, `RERANKER_MAX_SEQ_LENGTH` |
+| ONNX Runtime | `ONNX_PROVIDERS`, `ONNX_INTRA_OP_THREADS`, `ONNX_INTER_OP_THREADS`, `ONNX_GRAPH_OPTIMIZATION`, `ONNX_CPU_MEM_ARENA`, `ONNX_MEM_PATTERN`, `ONNX_EMBED_MICRO_BATCH` |
 | Embedding model | `embedding.model` in `apps/api/config/models.yaml` (single engine, no env flag) |
-| Cache TTL | `EMBEDDING_CACHE_TTL_SECONDS`, `SEMANTIC_CACHE_TTL_SECONDS`, `EMBEDDING_CACHE_CLEANUP_INTERVAL` |
+| Model weights dir | `MODEL_CACHE_DIR` (ONNX embedding + reranker `.onnx` files) |
 
 ---
 
@@ -587,14 +824,14 @@ Full per-OS field guide (20-row failure table): [docs/ONBOARDING-TROUBLESHOOTING
 
 | Issue | Fix |
 |-------|-----|
-| `LLM_UNAVAILABLE` (llama.cpp) | Start `scripts/start_local_llm.sh --max 1` |
+| `LLM_UNAVAILABLE` (llama.cpp) | Start `./scripts/servers/start_local_llm.sh --max 1` (serves on :9931) |
 | `LLM_UNAVAILABLE` (ollama) | `ollama serve` + `ollama pull <model>` |
-| `LLM_UNAVAILABLE` (gemini/nvidia) | Check API key, retry, or switch provider |
-| `LLM_UNAVAILABLE` (MLX) | `mlx_lm.server --model <id> --port 8090` (Apple Silicon) |
+| `LLM_UNAVAILABLE` (gemini) | Check API key, retry, or switch provider |
+| `LLM_UNAVAILABLE` (MLX) | `./scripts/servers/start_mlx_server.sh` (Apple Silicon); `--check` to see which ports are up |
 | `Database not initialized` | Ensure MongoDB running; check `MONGODB_URI` |
 | `503 Service Unavailable` | DB not connected; check `connect_db()` in lifespan |
 | OOM on 8 GB | `export OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1 OLLAMA_MAX_LOADED_MODELS=1` |
-| ONNX weights missing / stale after `git pull` | `apps/api/.venv/bin/python scripts/bootstrap.py` (`--verify` to check, `--force` to rebuild) |
+| ONNX weights missing / stale after `git pull` | `apps/api/.venv/bin/python scripts/setup/bootstrap.py` (`--verify` to check, `--force` to rebuild) |
 | ONNX export fails (`No module named 'onnxscript'` / `torch` / `onnx`) | Reinstall export deps: `cd apps/api && .venv/bin/pip install -e ".[local-models]"`, then re-run bootstrap |
 
 ---
@@ -604,7 +841,8 @@ Full per-OS field guide (20-row failure table): [docs/ONBOARDING-TROUBLESHOOTING
 See [CONTRIBUTING.md](CONTRIBUTING.md) (workflow: `READ → PLAN → BUILD → VERIFY → FIX → DOCUMENT → NEXT`; model IDs in `apps/api/config/models.yaml`, secrets in `.env` only; conventional commits `feat:`/`fix:`/`docs:`/`test:`/`refactor:`). Security policy: [SECURITY.md](SECURITY.md).
 
 ```bash
-./scripts/setup.sh
+python scripts/serve.py doctor        # cross-platform prerequisite check
+./scripts/setup/setup.sh              # deeper POSIX-only setup check
 cd apps/api && ruff check app/ tests/ && python3 -m pytest -v
 cd apps/web && npm run lint && npm test
 ```
@@ -613,8 +851,8 @@ cd apps/web && npm run lint && npm test
 
 ## Note
 
-- For **macOS**, use the provided brew commands and remember to set environment variables for JVM/Ollama tuning on low-memory machines.
+- For **macOS**, use the provided brew commands and set Ollama tuning variables on low-memory machines.
 - For **Linux**, ensure MongoDB service is enabled and started; Ollama service can be managed via systemd if preferred.
-- For **Windows**, PowerShell execution policy may need adjustment; using WSL2 is recommended for a native Linux-like experience.
+- For **Windows**, the native PowerShell launcher is supported (`scripts\serve.ps1`); WSL2 is optional, not required.
 - Docker setup simplifies evaluation but expects MongoDB and LLM on the host; adjust `.env` for production secrets and external services.
 - MLX is Apple‑Silicon only; ensure you have the appropriate hardware and follow the [MLX on Mac guide](docs/PERFORMANCE-GUIDE.md#4-mlx-on-mac-apple-silicon-free-fastest-toks-per-watt) if you wish to use it alongside Ollama or llama.cpp.

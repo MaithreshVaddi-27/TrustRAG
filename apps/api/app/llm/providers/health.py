@@ -1,0 +1,322 @@
+"""
+TRUSTRAG — Local LLM provider: health & status checks.
+
+Probe functions for Ollama, llama.cpp, and MLX servers. Each returns a
+dict with connection status, discovered models, and a default model id.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import re
+from typing import Any
+
+import httpx
+
+from app.config import get_model_config
+from app.config.settings import (
+    _DEFAULT_LLAMACPP_BASE_URL,
+    _DEFAULT_MLX_BASE_URL,
+    _DEFAULT_OLLAMA_BASE_URL,
+)
+from app.llm.providers.base import _shared_http_client
+from app.llm.providers.capabilities import _is_embedding_model_name
+from app.llm.providers.cloud_probe import (
+    _classify_cloud_probe_error,
+    _record_probe_success,
+    _status_code_of,
+    probe_cloud_llm,
+)
+from app.llm.providers.discovery import (
+    discover_llamacpp_cache_models,
+    discover_mlx_cache_models,
+    merge_discovered_llms,
+)
+from app.observability.logging import get_logger
+from app.security.exceptions import LLMUnavailableError
+
+logger = get_logger(__name__)
+
+# Local-server probe tuning. A single 3 s sample on a busy 8 GB host is a coin
+# flip: the server can be alive yet miss one probe (cold model, full accept
+# backlog), so every probe retries once, and connection-refused (server down)
+# stays distinct from timeout (server slow).
+PROBE_TIMEOUT_SECONDS = 3.0
+PROBE_ATTEMPTS = 2
+# Connect timeout for the liveness probes. A provider that is not running
+# refuses the connection immediately; a provider that IS running but wedged
+# must not hold the request open for the full read timeout.
+PROBE_CONNECT_TIMEOUT_SECONDS = 1.5
+
+__all__ = [
+    "_classify_cloud_probe_error",
+    "_record_probe_success",
+    "_status_code_of",
+    "check_llamacpp_status",
+    "check_mlx_status",
+    "check_ollama_status",
+    "probe_cloud_llm",
+    "probe_local_llm_server",
+]
+
+
+async def _fetch_json_with_retry(
+    endpoint: str,
+    client: httpx.AsyncClient,
+    attempts: int = 2,
+) -> httpx.Response:
+    """Fetch JSON from an endpoint, retrying once on a timeout.
+
+    A **refused connection** means the server is down: retrying only delays
+    the answer, so it fails fast. A **timeout** means the server is slow or
+    still starting up, which is worth exactly one more attempt.
+
+    The caller owns the client — this function never closes it, because a
+    closed client takes the whole connection pool with it.
+    """
+    for attempt in range(max(1, attempts)):
+        try:
+            return await client.get(endpoint)
+        except httpx.TimeoutException:
+            if attempt == 0:
+                await asyncio.sleep(0.5)
+                continue
+            raise
+    raise RuntimeError("unreachable")
+
+
+async def check_ollama_status(
+    base_url: str = _DEFAULT_OLLAMA_BASE_URL,
+) -> dict[str, Any]:
+    """Probe Ollama server status and discover installed models."""
+    from app.llm.local_llm import discover_ollama_cli_models
+
+    cli_models = [m for m in await discover_ollama_cli_models() if not _is_embedding_model_name(m)]
+
+    try:
+        # The pooled client is used as a plain object on purpose: `async with`
+        # would close it and discard the keep-alive connections.
+        client = _shared_http_client(base_url, 10.0)
+        # Retry once on a transient timeout (a slow server), not on a refused
+        # connection (a server that is not running).
+        res = await _fetch_json_with_retry(f"{base_url.rstrip('/')}/api/tags", client)
+        # Use status_code check for compatibility with test mocks (which may not have is_success)
+        if getattr(res, "status_code", 500) < 400:
+            data = res.json()
+            models = [m.get("name", "") for m in data.get("models", [])]
+            api_models = [m for m in models if m]
+            if api_models:
+                cli_models.extend(m for m in api_models if not _is_embedding_model_name(m))
+            # The CLI listing and the server listing report the same models, so
+            # merging them verbatim lists every model twice. The model dropdown
+            # renders this array as one <option> per entry: duplicates show as
+            # repeated choices and as repeated React keys.
+            cli_models = list(dict.fromkeys(cli_models))
+            merge_discovered_llms("ollama", cli_models, replace=True)
+            return {
+                "connected": True,
+                "provider": "ollama",
+                "base_url": base_url,
+                "models": cli_models,
+                "default_model": cli_models[0] if cli_models else "",
+            }
+    except Exception as exc:
+        logger.debug("Ollama status check failed", error=str(exc))
+
+    if cli_models:
+        merge_discovered_llms("ollama", cli_models, replace=True)
+        return {
+            "connected": True,
+            "provider": "ollama",
+            "base_url": base_url,
+            "models": cli_models,
+            "default_model": cli_models[0] if cli_models else "",
+        }
+
+    return {
+        "connected": False,
+        "provider": "ollama",
+        "base_url": base_url,
+        "models": [],
+        "default_model": "",
+    }
+
+
+async def check_llamacpp_status(
+    base_url: str = _DEFAULT_LLAMACPP_BASE_URL,
+) -> dict[str, Any]:
+    """Probe llama.cpp server status and discover cached models."""
+    cache_models = await discover_llamacpp_cache_models()
+    try:
+        api_models: list[str] = []
+        connected = False
+        try:
+            # Pooled client, used as a plain object: `async with` would close it.
+            client = _shared_http_client(base_url, 10.0)
+            res = await client.get(f"{base_url.rstrip('/')}/v1/models")
+            if res.status_code == 200:
+                connected = True
+                data = res.json()
+                api_models = [m.get("id") for m in data.get("data", []) if m.get("id")]
+        except (httpx.ConnectError, httpx.TimeoutException):
+            pass
+
+        api_llms = [m for m in api_models if m]
+        if connected and api_llms:
+            combined = list(dict.fromkeys(api_llms))
+        else:
+            quantified_bases = {m.split(":")[0] for m in api_models + cache_models if ":" in m}
+            hf_llms = [m for m in cache_models if (":" in m or m not in quantified_bases)]
+            combined = list(dict.fromkeys(api_llms + hf_llms))
+
+        try:
+            _preferred = get_model_config().llm_model_for("llama_cpp")
+        except Exception:
+            _preferred = "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
+        default_model = _preferred if _preferred in combined else (combined[0] if combined else "")
+
+        merge_discovered_llms("llama_cpp", combined, replace=True)
+
+        return {
+            "connected": connected,
+            "provider": "llama_cpp",
+            "base_url": base_url,
+            "models": combined,
+            "cache_models": cache_models,
+            "default_model": default_model,
+        }
+    except Exception:
+        logger.debug("llama.cpp status check failed", exc_info=True)
+        return {
+            "connected": False,
+            "provider": "llama_cpp",
+            "base_url": base_url,
+            "models": [],
+            "cache_models": cache_models,
+            "default_model": "",
+        }
+
+
+async def check_mlx_status(
+    base_url: str = _DEFAULT_MLX_BASE_URL, max_ports: int = 5
+) -> dict[str, Any]:
+    """Discover MLX status and generative models by checking multiple server ports.
+
+    The candidate ports are probed **concurrently** over one pooled client.
+    Probing them in sequence cost ~2.6 s for a provider that is not running
+    (five ports x a pointless 0.5 s sleep between retries); concurrently it
+    costs one connect timeout.
+    """
+    cache_models = discover_mlx_cache_models()
+    all_api_models: list[str] = []
+    any_connected = False
+
+    base_port_match = re.search(r":(\d+)", base_url)
+    start_port = int(base_port_match.group(1)) if base_port_match else 8080
+
+    endpoints = [f"http://127.0.0.1:{start_port + offset}/v1/models" for offset in range(max_ports)]
+
+    # One pooled client for the whole host: httpx keeps a separate connection
+    # pool per origin, so the different ports do not share connections but
+    # they do share the client and its limits.
+    client = _shared_http_client(
+        base_url,
+        PROBE_TIMEOUT_SECONDS,
+        connect_timeout=PROBE_CONNECT_TIMEOUT_SECONDS,
+    )
+
+    async def _probe(endpoint: str) -> list[str]:
+        try:
+            res = await _fetch_json_with_retry(endpoint, client)
+        except (httpx.ConnectError, httpx.TimeoutException):
+            return []
+        if res.status_code != 200:
+            return []
+        try:
+            data = res.json()
+        except Exception:
+            return []
+        return [m.get("id") for m in data.get("data", []) if m.get("id")]
+
+    for models in await asyncio.gather(*(_probe(e) for e in endpoints)):
+        if models:
+            any_connected = True
+            all_api_models.extend(models)
+
+    api_llms = [m for m in all_api_models if m]
+    if any_connected and api_llms:
+        combined = list(dict.fromkeys(api_llms))
+    else:
+        combined = list(dict.fromkeys(api_llms + cache_models))
+
+    try:
+        _preferred_mlx = get_model_config().llm_model_for("mlx")
+    except Exception:
+        _preferred_mlx = "mlx-community/Llama-3.2-1B-Instruct-4bit"
+    default_model = (
+        _preferred_mlx if _preferred_mlx in combined else (combined[0] if combined else "")
+    )
+
+    merge_discovered_llms("mlx", combined, replace=True)
+
+    return {
+        "connected": any_connected,
+        "provider": "mlx",
+        "base_url": base_url,
+        "models": combined,
+        "cache_models": cache_models,
+        "default_model": default_model,
+    }
+
+
+async def probe_local_llm_server(provider: str, base_url: str, timeout: float = 3.0) -> None:
+    """Fail fast when a local inference server is not running.
+
+    Raises LLMUnavailableError with copy-paste start instructions instead of
+    letting an analysis burn minutes of timeouts before abstaining. Only the
+    configured base URL is echoed (no secrets); transport details stay in logs.
+    Connection-refused means down (start it); timeout means slow/overloaded
+    (wait and retry) — conflating them sent users restarting a live server.
+    """
+    norm = (provider or "").strip().lower()
+    base = (base_url or "").rstrip("/")
+    if norm == "ollama":
+        probe_url = f"{base}/api/tags"
+        start_hint = "Start it with 'ollama serve' (then 'ollama pull <model>' if needed)."
+    elif norm == "mlx":
+        probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
+        start_hint = (
+            "Start it with './scripts/servers/start_mlx_server.sh' or "
+            "'mlx_lm.server --model <mlx-community/...-4bit> --port 8080' "
+            "(Apple Silicon only; pip install mlx-lm)."
+        )
+    else:
+        probe_url = f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
+        start_hint = "Start it with './scripts/servers/start_local_llm.sh' (llama-server on :9931)."
+    last_exc: Exception | None = None
+    for _ in range(max(1, PROBE_ATTEMPTS)):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                res = await client.get(probe_url)
+            break
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            last_exc = exc
+            logger.debug("Local-server HTTP attempt failed, retrying", url=probe_url)
+    else:
+        assert last_exc is not None
+        if isinstance(last_exc, httpx.ConnectError):
+            logger.warning("Local LLM server probe failed", provider=norm, base_url=base)
+            raise LLMUnavailableError(
+                f"Local LLM server '{norm}' is not reachable at {base}. {start_hint}"
+            ) from last_exc
+        logger.warning("Local LLM server probe timed out", provider=norm, base_url=base)
+        raise LLMUnavailableError(
+            f"Local LLM server '{norm}' at {base} is not answering "
+            f"(timed out after {PROBE_ATTEMPTS} attempts). It may be starting "
+            f"up or overloaded — wait a few seconds and retry. {start_hint}"
+        ) from last_exc
+
+    if res.status_code >= 500:
+        raise LLMUnavailableError(
+            f"Local LLM server '{norm}' at {base} returned HTTP {res.status_code}. {start_hint}"
+        )

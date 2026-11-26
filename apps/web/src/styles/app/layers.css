@@ -1,0 +1,128 @@
+/* ── TrustRAG · Layer stack ─────────────────────────────────────────────────
+ * Ordered plates separated by hairlines, each with its own specification on
+ * the right. This replaces a grid of equal cards: it reads like a document
+ * rather than a template.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-layers {
+  border-top: 1px solid var(--rule);
+}
+
+.lx-layer {
+  display: grid;
+  gap: var(--step-3) var(--step-8);
+  padding-block: var(--step-5);
+  border-bottom: 1px solid var(--rule-faint);
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+@media (min-width: 1024px) {
+  .lx-layer {
+    /* The spec column is an annotation, not a peer of the description.
+     * Giving it 0.8fr left ~240px unused while the description wrapped into
+     * three narrow lines; auto keeps "Stage 01" compact and the prose readable. */
+    grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--step-8);
+  }
+}
+
+.lx-layer:hover {
+  background-color: var(--wash-silver-02);
+}
+
+.lx-layer__index {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-silver-500);
+  padding-top: 0.35rem;
+}
+
+.lx-layer__title {
+  display: flex;
+  align-items: center;
+  gap: var(--step-3);
+  font-family: var(--typeface-display);
+  font-size: 1.3125rem;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: var(--color-silver-050);
+}
+
+.lx-layer__icon {
+  flex-shrink: 0;
+  color: var(--color-silver-400);
+}
+
+.lx-layer__desc {
+  margin-top: var(--step-2);
+  max-width: 58ch;
+  font-size: var(--size-body);
+  line-height: var(--leading-body);
+  color: var(--color-silver-400);
+}
+
+.lx-layer__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--step-2) var(--step-4);
+  margin-top: var(--step-3);
+}
+
+.lx-layer__tag {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+}
+
+.lx-layer__spec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-2);
+  min-width: 5.75rem; /* keeps Stage / 01 aligned without stealing prose width */
+}
+
+.lx-layer__spec-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--step-4);
+  padding-bottom: var(--step-2);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.lx-layer__spec-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.lx-layer__spec-key {
+  font-size: var(--size-body-sm);
+  color: var(--color-silver-500);
+}
+
+.lx-layer__spec-val {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-silver-300);
+  text-align: right;
+}
+
+/* Below 1280 the results pane is too narrow for a third column — the
+ * description collapsed to 92px. The left index already names the stage, so
+ * drop the redundant "Stage NN" annotation instead of squeezing the prose.
+ * Kept after the base .lx-layer__spec rule so it wins on source order. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .lx-layer {
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+  }
+
+  .lx-layer__spec {
+    display: none;
+  }
+}

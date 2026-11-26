@@ -4,6 +4,7 @@ Unit tests for Analysis runs and execution trace routes.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_user
 from app.main import app
+from app.rag.verification.verdict import DiagnosisType, ReliabilityStatus
 
 client = TestClient(app)
 
@@ -32,8 +34,8 @@ def mock_user_doc():
 def mock_kb_doc():
     return {
         "_id": ObjectId("64ee39d09c6292376e191982"),
-        "name": "Refund Policies",
-        "description": "Standard refund schedules",
+        "name": "API Limits",
+        "description": "API limit schedules",
         "user_id": ObjectId("64ee39d09c6292376e191981"),
         "created_at": "2026-08-27T10:00:00Z",
     }
@@ -63,14 +65,14 @@ def setup_dependency_override(mock_user_doc):
 
 
 @patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeypatch):
     # Mock kb ownership check inside analysis_service (real get_kb returns KBResponse)
     # Patch discovered models so the default model is allowed.
     # monkeypatch (not manual assignment) so a mid-test failure cannot leak
     # the stub into later tests (global-state pollution).
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
 
     monkeypatch.setattr(
@@ -105,7 +107,7 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeyp
             patch("app.services.analysis_service.add_trace_event", AsyncMock()) as mock_add_trace,
             # Local-LLM preflight probe (no inference server in CI)
             patch(
-                "app.core.local_llm.probe_local_llm_server",
+                "app.llm.local_llm.probe_local_llm_server",
                 AsyncMock(return_value=None),
             ),
         ):
@@ -120,18 +122,82 @@ def test_create_analysis(mock_create_indexes, mock_connect, mock_kb_doc, monkeyp
             assert data["query"] == "Is there a 45 days policy?"
             assert data["status"] == "pending"
             assert data["reliability"]["status"] == "PENDING"
-            # Provenance: doc records the effective engine, never blanks.
-            assert data["llm_provider"] == "llama_cpp"
-            assert data["llm_model"] == "LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M"
+            # Provenance: doc records the effective engine, never blanks. The
+            # expected engine is whatever this deployment defaults to — do not
+            # hard-code a provider (v1.28 defaulted to llama_cpp, v1.29 to
+            # ollama), or the test fails on a config-only change.
+            from app.config import get_model_config
+
+            expected_provider = get_model_config().llm_provider
+            assert data["llm_provider"] == expected_provider
+            assert data["llm_model"]
             call_kwargs = mock_add_trace.call_args.kwargs
             assert call_kwargs["analysis_id_str"] == "64ee39d09c6292376e191983"
             assert call_kwargs["event"] == "analysis.started"
             assert call_kwargs["data"]["message"] == "Analysis run initiated"
 
 
+@patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
+def test_create_analysis_snapshot_records_the_requested_engine(
+    mock_create_indexes, mock_connect, mock_kb_doc, monkeypatch
+):
+    """config_snapshot must name the engine that will actually run.
+
+    The dossier used to store cfg.as_snapshot() unchanged, so a Playground run
+    on gemini was recorded as ollama/gemma3:1b — false provenance.
+    """
+    import app.llm.local_llm as _llm_mod
+    from app.api.v1.schemas.kb import KBResponse
+
+    monkeypatch.setattr(
+        _llm_mod,
+        "get_discovered_llms",
+        lambda provider: (
+            frozenset(["gemma3:1b", "granite4.2:3b-q4_K_M"])
+            if provider == "ollama"
+            else frozenset()
+        ),
+    )
+    mock_kb = KBResponse(
+        id=str(mock_kb_doc["_id"]),
+        name=mock_kb_doc["name"],
+        description=mock_kb_doc["description"],
+        user_id=str(mock_kb_doc["user_id"]),
+        created_at="2026-08-27T10:00:00Z",
+    )
+    mock_collection = MagicMock()
+    mock_collection.insert_one = AsyncMock(
+        return_value=MagicMock(inserted_id=ObjectId("64ee39d09c6292376e191983"))
+    )
+    with (
+        patch("app.services.analysis_service.get_kb", return_value=mock_kb),
+        patch("app.services.analysis_service.get_collection", return_value=mock_collection),
+        patch("app.services.analysis_service.add_trace_event", AsyncMock()),
+        patch("app.llm.local_llm.probe_local_llm_server", AsyncMock()),
+    ):
+        response = client.post(
+            "/api/v1/analyses",
+            json={
+                "knowledge_base_id": "64ee39d09c6292376e191982",
+                "query": "Is there a 45 days policy?",
+                "llm_provider": "ollama",
+                "llm_model": "granite4.2:3b-q4_K_M",
+            },
+        )
+
+    assert response.status_code == 201
+    saved = mock_collection.insert_one.call_args.args[0]
+    snap = saved["config_snapshot"]
+    assert snap["llm_provider"] == "ollama"
+    assert snap["llm_model"] == "granite4.2:3b-q4_K_M"
+    assert snap["llm_model"] == saved["llm_model"]
+
+
 def test_create_analysis_ignores_legacy_embedding_overrides(monkeypatch):
     """Legacy per-request embedding fields are ignored (single models.yaml engine)."""
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
     from app.api.v1.schemas.analysis import AnalysisCreate
 
     monkeypatch.setattr(
@@ -170,15 +236,15 @@ def test_create_analysis_ignores_legacy_embedding_overrides(monkeypatch):
 
 
 @patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_create_analysis_fails_fast_when_local_llm_down(
     mock_create_indexes, mock_connect, mock_kb_doc, monkeypatch
 ):
     """Stopped ollama/llama-server → synchronous 503 alert, not a silent burn."""
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
-    from app.core.exceptions import LLMUnavailableError
+    from app.security.exceptions import LLMUnavailableError
 
     monkeypatch.setattr(
         _llm_mod,
@@ -200,12 +266,12 @@ def test_create_analysis_fails_fast_when_local_llm_down(
     with (
         patch("app.services.analysis_service.get_kb", return_value=mock_kb),
         patch(
-            "app.core.local_llm.probe_local_llm_server",
+            "app.llm.local_llm.probe_local_llm_server",
             AsyncMock(
                 side_effect=LLMUnavailableError(
                     "Local LLM server 'llama_cpp' is not reachable at "
                     "http://127.0.0.1:8080/v1. Start it with "
-                    "'./scripts/start_local_llm.sh' (llama-server on :8080)."
+                    "'./scripts/servers/start_local_llm.sh' (llama-server on :8080)."
                 )
             ),
         ),
@@ -223,13 +289,13 @@ def test_create_analysis_fails_fast_when_local_llm_down(
 
 
 @patch("app.services.analysis_service.run_analysis_pipeline", AsyncMock())
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_create_analysis_rejects_embedding_mismatch(
     mock_create_indexes, mock_connect, mock_kb_doc, mock_user_doc, monkeypatch
 ):
     """A KB pinned to one embedding space must reject analyses after a model change."""
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
     from app.api.v1.schemas.kb import KBResponse
 
     monkeypatch.setattr(
@@ -257,20 +323,31 @@ def test_create_analysis_rejects_embedding_mismatch(
         embedding_model="BAAI/bge-small-en-v1.5",
         embedding_dim=384,
     )
-    with patch("app.services.analysis_service.get_kb", return_value=mock_kb):
+    mock_collection = MagicMock()
+    mock_collection.insert_one = AsyncMock(
+        return_value=MagicMock(inserted_id=ObjectId("64ee39d09c6292376e191983"))
+    )
+    with (
+        patch("app.services.analysis_service.get_kb", return_value=mock_kb),
+        patch("app.services.analysis_service.get_collection", return_value=mock_collection),
+        patch("app.services.analysis_service.add_trace_event", AsyncMock()),
+        patch("app.llm.local_llm.probe_local_llm_server", AsyncMock(return_value=None)),
+    ):
         payload = {
             "knowledge_base_id": "64ee39d09c6292376e191982",
             "query": "Is there a 45 days policy?",
         }
         # Simulate a post-deploy models.yaml model change: server now serves
         # MiniLM while the KB is pinned to BGE → guard must 422.
-        from app.core.config import ModelConfig
+        from app.config.model_config import ModelConfig, clear_model_config_cache
 
         monkeypatch.setattr(
             ModelConfig,
             "embedding_model",
             property(lambda self: "sentence-transformers/all-MiniLM-L6-v2"),
         )
+        # Clear cache so get_model_config() returns a fresh instance with the patched property
+        clear_model_config_cache()
         response = client.post("/api/v1/analyses", json=payload)
 
         assert response.status_code == 422
@@ -301,8 +378,8 @@ def _ticket_collection():
     return coll
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_stream_trace_endpoint(mock_create_indexes, mock_connect):
     # Mock sse_event_generator
     async def mock_generator(analysis_id, user_id_str):
@@ -336,8 +413,8 @@ def test_stream_trace_endpoint(mock_create_indexes, mock_connect):
             assert "analysis.completed" in lines[1]
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_stream_trace_rejects_invalid_and_reused_ticket(mock_create_indexes, mock_connect):
     analysis_id = "64ee39d09c6292376e191983"
     fake_tickets = _ticket_collection()
@@ -381,11 +458,11 @@ def test_stream_trace_rejects_invalid_and_reused_ticket(mock_create_indexes, moc
             assert client.get(stream_url).status_code == 401
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_stream_ticket_requires_ownership(mock_create_indexes, mock_connect):
     """Ticket issuance for a foreign/missing analysis must not succeed (IDOR guard)."""
-    from app.core.exceptions import NotFoundError
+    from app.security.exceptions import NotFoundError
 
     fake_tickets = _ticket_collection()
     with (
@@ -399,8 +476,8 @@ def test_stream_ticket_requires_ownership(mock_create_indexes, mock_connect):
         assert resp.status_code == 404
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_export_analysis_endpoint_jsonld(mock_create_indexes, mock_connect, mock_analysis_doc):
     mock_coll = MagicMock()
     mock_coll.find_one = AsyncMock(return_value=mock_analysis_doc)
@@ -419,8 +496,8 @@ def test_export_analysis_endpoint_jsonld(mock_create_indexes, mock_connect, mock
         assert data["name"] == "TRUSTRAG Verification Audit — 64ee39d09c6292376e191983"
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_list_analyses_with_pagination(mock_create_indexes, mock_connect, mock_analysis_doc):
     mock_coll = MagicMock()
 
@@ -446,13 +523,13 @@ def test_list_analyses_with_pagination(mock_create_indexes, mock_connect, mock_a
         mock_cursor.limit.assert_called_once_with(10)
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_create_analysis_guides_new_user_without_models(
     mock_create_indexes, mock_connect, monkeypatch
 ):
     """Empty discovery → 422 with install instructions, not a bare rejection."""
-    import app.core.local_llm as _llm_mod
+    import app.llm.local_llm as _llm_mod
 
     monkeypatch.setattr(_llm_mod, "get_discovered_llms", lambda provider: frozenset())
     payload = {
@@ -471,10 +548,7 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
     Regression: markers are load-bearing during verification (claim->evidence
     linking) so they are stripped ONLY at finalize, after verification ran.
     """
-    from types import SimpleNamespace
-
     from app.services import analysis_service as svc
-    from app.verification.verdict import DiagnosisType, ReliabilityStatus
 
     raw_answer = (
         "### Contents of the Knowledge Base\n"
@@ -491,7 +565,7 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
             "reliability_score": 0.9,
         }
 
-    monkeypatch.setattr("app.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
     coll = MagicMock()
     coll.update_one = AsyncMock()
 
@@ -502,11 +576,11 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
         async def __aexit__(self, *_exc):
             return False
 
-    async def _get_sem():
+    def _get_sem():
         return _Sem()
 
     monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
-    monkeypatch.setattr(svc, "_get_concurrency_semaphore", _get_sem, raising=False)
+    # P1-2: pipeline semaphore removed; per-call LLM permit is the only gate.
     monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
     monkeypatch.setattr(
         svc,
@@ -518,7 +592,10 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
             diagnosis_failures=[],
         ),
     )
-    monkeypatch.setattr("app.core.metrics.record_analysis_completed", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "app.observability.metrics.record_analysis_completed",
+        lambda *_a, **_k: None,
+    )
 
     await svc.run_analysis_pipeline(
         analysis_id_str="507f1f77bcf86cd799439011",
@@ -535,3 +612,312 @@ async def test_finalize_strips_segment_markers_from_stored_answer(monkeypatch):
     # otherwise citation_correctness silently reports nothing.
     assert "[Segment 2]" in set_arg["answer_cited"]
     assert "[Segment 6]" in set_arg["answer_cited"]
+
+
+# ─── GROUNDING GATE (audit G-1) ───────────────────────────────────────────────
+# The verdict engine decides how much of a generated answer the evidence
+# supports. Before the gate, only ABSTAINED was filtered, so FAILED/UNCERTAIN
+# answers were stored verbatim with status "completed" — the pipeline detected
+# the ungrounded content and then showed it to the user anyway.
+
+_HALLUCINATED_ANSWER = (
+    "### Retention Policy\n"
+    "Records are retained for 90 days [Segment 1]. "
+    "Enterprise plans include unlimited seats [Segment 2]."
+)
+
+
+@pytest.mark.parametrize(
+    ("reliability_status", "score"),
+    [
+        (ReliabilityStatus.FAILED, 0.20),
+        (ReliabilityStatus.UNCERTAIN, 0.62),
+    ],
+)
+async def test_finalize_withholds_unverified_answer_from_user(
+    monkeypatch, reliability_status, score
+):
+    """FAILED and UNCERTAIN must never surface the model's own prose."""
+    from app.services import analysis_service as svc
+
+    async def _fake_flow(**_kwargs):
+        return {
+            "answer": _HALLUCINATED_ANSWER,
+            "claims": [{"state": "CONTRADICTED"}, {"state": "NEUTRAL"}],
+            "diagnosis_type": "LOW_COVERAGE",
+            "diagnosis_failures": ["Only 1/2 claims supported by evidence"],
+            "reliability_score": score,
+        }
+
+    coll = MagicMock()
+    coll.update_one = AsyncMock()
+
+    class _Sem:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
+
+    def _get_sem():
+        return _Sem()
+
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
+    # P1-2: pipeline semaphore removed; per-call LLM permit is the only gate.
+    monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
+    monkeypatch.setattr(
+        svc,
+        "verdict_from_state",
+        lambda _state, _thresholds: SimpleNamespace(
+            reliability_status=reliability_status,
+            reliability_score=score,
+            diagnosis_type=DiagnosisType.LOW_COVERAGE,
+            diagnosis_failures=["Only 1/2 claims supported by evidence"],
+        ),
+    )
+    monkeypatch.setattr(
+        "app.observability.metrics.record_analysis_completed",
+        lambda *_a, **_k: None,
+    )
+
+    await svc.run_analysis_pipeline(
+        analysis_id_str="507f1f77bcf86cd799439011",
+        kb_id_str="507f1f77bcf86cd799439012",
+        query="What is the retention policy?",
+    )
+
+    set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]
+    # The ungrounded specifics must not be present in any user-visible field.
+    assert "90 days" not in set_arg["answer"]
+    assert "unlimited seats" not in set_arg["answer"]
+    assert set_arg["answer"] == svc._UNVERIFIED_ANSWER
+    # It is an abstention, not a completed synthesis.
+    assert set_arg["status"] == "abstained"
+    # Score and diagnosis survive so the UI can still explain what happened.
+    assert set_arg["reliability"]["status"] == reliability_status.value
+    assert set_arg["reliability"]["score"] == score
+
+
+async def test_finalize_keeps_trusted_answer(monkeypatch):
+    """The gate must not swallow genuinely supported answers."""
+    from app.services import analysis_service as svc
+
+    async def _fake_flow(**_kwargs):
+        return {
+            "answer": "Records are retained for 30 days [Segment 1].",
+            "claims": [{"state": "SUPPORTED"}],
+            "diagnosis_type": None,
+            "diagnosis_failures": [],
+            "reliability_score": 0.95,
+        }
+
+    coll = MagicMock()
+    coll.update_one = AsyncMock()
+
+    class _Sem:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
+
+    def _get_sem():
+        return _Sem()
+
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr(svc, "get_collection", lambda _name: coll, raising=False)
+    # P1-2: pipeline semaphore removed; per-call LLM permit is the only gate.
+    monkeypatch.setattr(svc, "add_trace_event", AsyncMock(return_value=None), raising=False)
+    monkeypatch.setattr(
+        svc,
+        "verdict_from_state",
+        lambda _state, _thresholds: SimpleNamespace(
+            reliability_status=ReliabilityStatus.TRUSTED,
+            reliability_score=0.95,
+            diagnosis_type=DiagnosisType.NONE,
+            diagnosis_failures=[],
+        ),
+    )
+    monkeypatch.setattr(
+        "app.observability.metrics.record_analysis_completed",
+        lambda *_a, **_k: None,
+    )
+
+    await svc.run_analysis_pipeline(
+        analysis_id_str="507f1f77bcf86cd799439011",
+        kb_id_str="507f1f77bcf86cd799439012",
+        query="What is the retention policy?",
+    )
+
+    set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]
+    assert set_arg["status"] == "completed"
+    assert "30 days" in set_arg["answer"]
+    assert "[Segment" not in set_arg["answer"]
+    assert "[Segment 1]" in set_arg["answer_cited"]
+
+
+@pytest.mark.parametrize(
+    ("failure", "provider", "model", "expected"),
+    [
+        (
+            "connection refused: internal topology detail",
+            "llama_cpp",
+            "test.gguf",
+            "Inference server connection error. Ensure llama_cpp server is running and accessible.",
+        ),
+        (
+            "model not found: internal registry detail",
+            "ollama",
+            "missing-model",
+            (
+                "Model 'missing-model' not found on ollama server. "
+                "Please ensure the model is pulled or loaded."
+            ),
+        ),
+        (
+            "request timed out after internal retry detail",
+            "mlx",
+            "test-model",
+            (
+                "Inference timed out. The local model may still be loading "
+                "or system is under heavy load."
+            ),
+        ),
+        (
+            "credential=secret-internal-detail",
+            None,
+            None,
+            "Pipeline execution error (RuntimeError). Check server logs.",
+        ),
+    ],
+)
+async def test_pipeline_failure_persists_safe_message(
+    monkeypatch, failure, provider, model, expected
+):
+    """Pipeline failures expose a stable operator-safe message, never exception text."""
+    from app.services import analysis_service as svc
+
+    async def _failing_flow(**_kwargs):
+        raise RuntimeError(failure)
+
+    coll = MagicMock()
+    coll.update_one = AsyncMock()
+    trace = AsyncMock()
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _failing_flow)
+    monkeypatch.setattr(svc, "get_collection", lambda _name: coll)
+    monkeypatch.setattr(svc, "add_trace_event", trace)
+    monkeypatch.setattr(svc.memory_mod, "trim_memory", lambda: None)
+    monkeypatch.setattr(
+        "app.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
+    )
+
+    await svc.run_analysis_pipeline(
+        analysis_id_str="507f1f77bcf86cd799439011",
+        kb_id_str="507f1f77bcf86cd799439012",
+        query="What is the retention policy?",
+        llm_provider=provider,
+        llm_model=model,
+    )
+
+    set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]
+    assert set_arg["status"] == "failed"
+    assert set_arg["error_message"] == expected
+    assert failure not in set_arg["error_message"]
+    assert trace.await_args_list[-1].args[1] == "analysis.failed"
+    assert trace.await_args_list[-1].args[2]["message"] == expected
+
+
+async def test_finalize_abstained_replaces_bare_token(monkeypatch):
+    """A bare abstention token is never persisted as user-facing prose."""
+    from app.services import analysis_service as svc
+
+    async def _fake_flow(**_kwargs):
+        return {
+            "answer": "ABSTAIN",
+            "claims": [],
+            "diagnosis_type": "LOW_COVERAGE",
+            "diagnosis_failures": ["Insufficient evidence"],
+            "reliability_score": 0.2,
+        }
+
+    coll = MagicMock()
+    coll.update_one = AsyncMock()
+    trace = AsyncMock()
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr(svc, "get_collection", lambda _name: coll)
+    monkeypatch.setattr(svc, "add_trace_event", trace)
+    monkeypatch.setattr(svc, "memory_mod", SimpleNamespace(trim_memory=lambda: None))
+    monkeypatch.setattr(
+        svc,
+        "verdict_from_state",
+        lambda _state, _thresholds: SimpleNamespace(
+            reliability_status=ReliabilityStatus.ABSTAINED,
+            reliability_score=0.2,
+            diagnosis_type=DiagnosisType.LOW_COVERAGE,
+            diagnosis_failures=["Insufficient evidence"],
+        ),
+    )
+    monkeypatch.setattr(
+        "app.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
+    )
+
+    await svc.run_analysis_pipeline(
+        analysis_id_str="507f1f77bcf86cd799439011",
+        kb_id_str="507f1f77bcf86cd799439012",
+        query="What is the retention policy?",
+    )
+
+    set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]
+    assert set_arg["status"] == "abstained"
+    assert set_arg["answer"] == svc._UNVERIFIED_ANSWER
+    assert set_arg["reliability"] == {"score": 0.2, "status": "ABSTAINED"}
+    assert trace.await_args_list[-1].args[1] == "analysis.abstained"
+    assert trace.await_args_list[-1].args[2] == {
+        "message": "Agent reasoning resulted in abstention"
+    }
+
+
+async def test_finalize_retrieval_outage_marks_analysis_failed(monkeypatch):
+    """A retrieval outage is distinct from an evidence-based abstention."""
+    from app.services import analysis_service as svc
+
+    async def _fake_flow(**_kwargs):
+        return {
+            "answer": "",
+            "diagnosis_type": "RETRIEVAL_OUTAGE",
+            "diagnosis_failures": ["Qdrant connection unavailable"],
+        }
+
+    coll = MagicMock()
+    coll.update_one = AsyncMock()
+    trace = AsyncMock()
+    monkeypatch.setattr("app.rag.agent.graph.execute_agentic_rag_flow", _fake_flow)
+    monkeypatch.setattr(svc, "get_collection", lambda _name: coll)
+    monkeypatch.setattr(svc, "add_trace_event", trace)
+    monkeypatch.setattr(svc, "memory_mod", SimpleNamespace(trim_memory=lambda: None))
+    monkeypatch.setattr(
+        "app.observability.metrics.record_analysis_completed", lambda *_a, **_k: None
+    )
+
+    await svc.run_analysis_pipeline(
+        analysis_id_str="507f1f77bcf86cd799439011",
+        kb_id_str="507f1f77bcf86cd799439012",
+        query="What is the retention policy?",
+    )
+
+    set_arg = coll.update_one.call_args_list[-1].args[1]["$set"]
+    assert set_arg["status"] == "failed"
+    assert set_arg["answer"] == (
+        "The knowledge base search service is temporarily unavailable, "
+        "so I could not search for evidence. Please wait a few minutes "
+        "and try again — this is not a finding of 'no evidence'."
+    )
+    assert set_arg["error_message"] == "Qdrant connection unavailable"
+    assert set_arg["reliability"] == {"score": 0.0, "status": "FAILED"}
+    assert set_arg["diagnosis"] == {
+        "type": "RETRIEVAL_OUTAGE",
+        "failures": ["Qdrant connection unavailable"],
+    }
+    assert trace.await_args_list[-1].args[1] == "analysis.outage"
+    assert trace.await_args_list[-1].args[2] == {"message": "Qdrant connection unavailable"}

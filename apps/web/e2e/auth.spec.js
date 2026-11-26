@@ -17,12 +17,22 @@ import { test, expect } from '@playwright/test'
 const API_ORIGIN = process.env.E2E_API_URL || 'http://localhost:8000'
 const API = `${API_ORIGIN}/api/v1`
 
-function uniqueUser() {
+function testUser() {
+  // /auth/register is deliberately capped at 3/hour per IP. Re-running the
+  // suite against a long-lived local API exhausts it; set these two vars to
+  // reuse an existing synthetic account and skip only the registration step.
+  // CI starts a fresh API, so the default path keeps the strict 201 assertion.
+  const email = process.env.E2E_TEST_EMAIL
+  const password = process.env.E2E_TEST_PASSWORD
+  if (email && password) {
+    return { email, password, full_name: 'E2E Tester', existing: true }
+  }
   const ts = `${Date.now()}${Math.random().toString(36).slice(2, 8)}`
   return {
     email: `e2e-${ts}@example.com`,
     password: 'TrustRagE2E!2026',
     full_name: 'E2E Tester',
+    existing: false,
   }
 }
 
@@ -37,21 +47,24 @@ test.describe('auth smoke', () => {
     page,
     request,
   }) => {
-    const user = uniqueUser()
+    const user = testUser()
 
     // 1. Health endpoint is live so failures here are E2E failures, not flakes.
     const health = await request.get(`${API}/health`)
     expect(health.ok()).toBeTruthy()
 
-    // 2. Register via the public API (returns 201, no auto-login).
-    const reg = await request.post(`${API}/auth/register`, {
-      data: {
-        email: user.email,
-        password: user.password,
-        full_name: user.full_name,
-      },
-    })
-    expect(reg.status()).toBe(201)
+    // 2. Register via the public API (returns 201, no auto-login). Skipped only
+    //    when an existing account is supplied for repeated local runs.
+    if (!user.existing) {
+      const reg = await request.post(`${API}/auth/register`, {
+        data: {
+          email: user.email,
+          password: user.password,
+          full_name: user.full_name,
+        },
+      })
+      expect(reg.status()).toBe(201)
+    }
 
     // 3. Login through the real UI.
     await page.goto('/login')
@@ -61,8 +74,11 @@ test.describe('auth smoke', () => {
 
     // 4. Session established → redirected to the dashboard.
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 })
+    // The dashboard's own heading. It used to be "AI Reliability"; the page
+    // was redesigned to "Overview", and this assertion was never updated —
+    // so the spec was failing on a dashboard that had rendered correctly.
     await expect(
-      page.getByRole('heading', { name: /AI Reliability/i }),
+      page.getByRole('heading', { name: /^Overview$/ }),
     ).toBeVisible()
 
     // 5. Fetch the JWT from the session and prove logout revokes it.

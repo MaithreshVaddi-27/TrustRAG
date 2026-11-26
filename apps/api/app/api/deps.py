@@ -5,15 +5,15 @@ TRUSTRAG API — dependency injection helpers.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from bson import ObjectId
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
-from app.core.exceptions import AuthenticationError
-from app.core.security import decode_access_token, decode_service_token, jti_key
-from app.db.mongodb import Collections, get_collection
+from app.persistence.mongodb import Collections, get_collection
+from app.security.exceptions import AuthenticationError
+from app.security.security import decode_access_token, decode_service_token, jti_key
 
 # Login endpoint URL (under the API prefix)
 oauth2_scheme = OAuth2PasswordBearer(
@@ -54,7 +54,8 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> Mappin
     try:
         user_id = ObjectId(user_id_str)
     except Exception as exc:
-        raise AuthenticationError("Invalid user identity format", detail=str(exc)) from exc
+        # Static detail: bson's message echoes the malformed input back.
+        raise AuthenticationError("Invalid user identity format", detail="malformed id") from exc
 
     user = await get_collection(Collections.USERS).find_one({"_id": user_id})
     if not user:
@@ -63,7 +64,7 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> Mappin
     if not user.get("is_active", True):
         raise AuthenticationError("Inactive account", detail="Your account has been deactivated")
 
-    return user
+    return cast(Mapping[str, Any], user)
 
 
 # ─── Service-to-Service Authentication ────────────────────────────────────────
@@ -138,3 +139,27 @@ def require_service_permission(permission: str):
         return service_payload
 
     return permission_checker
+
+
+def enforce_service_tenant(
+    service_payload: Mapping[str, Any], kb_id: str, user_id: str | None = None
+) -> None:
+    """M-2 tenant guard (single implementation for all service routes).
+
+    Unbound (service-level) tokens keep full access; bound tokens are confined
+    to their bound KB and, when user_id is given, their bound user. Raises 403
+    on mismatch so bound callers can't probe existence.
+    """
+    bound_kb = service_payload.get("bound_kb_id")
+    if bound_kb and str(bound_kb) != str(kb_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Service token not authorized for this knowledge base",
+        )
+    if user_id is not None:
+        bound_user = service_payload.get("bound_user_id")
+        if bound_user and str(bound_user) != str(user_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Service token not authorized for this user",
+            )

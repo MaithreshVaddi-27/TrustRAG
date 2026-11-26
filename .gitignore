@@ -1,7 +1,14 @@
 # ─── Secrets & environment ────────────────────────────────────────────────────
+# NOTE: `.env.*` also matches nested templates, so EVERY `.env.example` is
+# explicitly re-included below — otherwise a new app's template would be
+# silently untrackable.
 .env
 .env.*
 !.env.example
+!**/.env.example
+# Test env is committed on purpose: synthetic dummies only, so the suite is
+# hermetic and never reads a developer's real .env.
+!**/.env.test
 *.pem
 *.key
 *.p12
@@ -105,8 +112,6 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-apps/web/dist/
-apps/web/dist-ssr/
 apps/web/*.local
 .vite/
 .vitest/
@@ -114,6 +119,15 @@ apps/web/*.local
 .eslintcache
 .stylelintcache
 *.tsbuildinfo
+
+# Frontend-generated output, named explicitly so a change to a generic rule
+# above cannot start tracking build or test artefacts again.
+apps/web/dist/
+apps/web/dist-ssr/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/coverage/
+
 .yarn/cache
 .yarn/unplugged
 .yarn/build-state.yml
@@ -148,6 +162,8 @@ apps/web/*.local
 ._*
 .Spotlight-V100
 .Trashes
+.fseventsd
+*.stackdump
 ehthumbs.db
 Thumbs.db
 desktop.ini
@@ -167,12 +183,21 @@ docker-compose.override.yml
 docker-compose.override.yaml
 
 # ─── Runtime data (Qdrant collections, caches, model snapshots) ────────────────
-data/
+# Only the repository-root `data/` directory is ignored — never a `data/` folder
+# nested inside source code. The landing page's content lives at
+# `apps/web/src/components/landing/data/` and MUST be tracked: ignoring it
+# silently shipped a landing page with no content.
+/data/
 apps/api/data/
+qdrant_storage/
+# Local runtime state generated at startup: model-discovery snapshot and
+# embedded Qdrant metadata. Never commit machine-specific state.
+apps/api/app/data/discovered_models.json
+apps/api/app/data/qdrant/
 
 # ─── ML / Model cache (sentence-transformers, HuggingFace Hub, GGUF) ──────────
 # Model weights are NEVER committed — every machine fetches them once via
-# scripts/bootstrap.py into apps/api/.model_cache/ (override: MODEL_CACHE_DIR).
+# scripts/setup/bootstrap.py into apps/api/.model_cache/ (override: MODEL_CACHE_DIR).
 .cache/
 .cache/huggingface/
 .model_cache/
@@ -189,6 +214,14 @@ models/
 llama-server.log
 .huggingface/
 
+# Local-LLM launcher output (scripts/servers/start_local_llm.sh, start_mlx_server.sh)
+*.mlx.server.log
+mlx-server.log
+mlx_lm.server.log
+# Legacy SQLite cache dir — the embedding/answer cache was removed; kept so a
+# stale dev DB on someone's machine is never committed.
+apps/api/data/cache/
+
 # ─── Security scan output ─────────────────────────────────────────────────────
 bandit-report.json
 safety-report.json
@@ -196,6 +229,8 @@ trivy-report.json
 trivy-results.sarif
 semgrep-report.json
 pip-audit-report.json
+# pip-audit's DEFAULT output format is report.html (security.yml runs it unflagged).
+report.html
 
 # ─── Package manager lockfiles ────────────────────────────────────────────────
 # apps/web uses npm (package-lock.json is committed)
@@ -229,9 +264,26 @@ uv.lock
 test.txt
 test_*.txt
 .superpowers/
+# Root scratch / audit inspection output (DevTools MCP screenshots; apps/web/public/ is tracked)
+/public/
+audit-*.png
+*.screenshot.png
 
 # ─── Agent memory & machine-local dirs ────────────────────────────────────────
 .remember/
+.codegraph/
+.playwright-mcp/
+
+# ─── A nested checkout of an unrelated project ─────────────────────────────────
+# `.kev` was a full clone of a different project (a fine-tuning/eval
+# framework, 2.1 GB) sitting inside this repository, tracked as a submodule
+# gitlink with no `.gitmodules` entry — so a fresh clone got an empty `.kev/`
+# with no way to populate it, and the working tree carried two gigabytes of
+# unrelated code. It was moved out of the repository; the ignore rule keeps a
+# local copy from being re-added by accident.
+.kev/
+# Project-id/credential scratch dirs written by external CLIs into the repo root.
+.freebuff/
 
 # ─── Env-tool locals ─────────────────────────────────────────────────────────
 .envrc
@@ -239,12 +291,21 @@ test_*.txt
 # ─── SQLite runtime caches (embedding disk cache, etc.) ───────────────────────
 *.sqlite
 *.sqlite3
+*.sqlite3-journal
 *.db
 *.db-wal
 *.db-shm
+*.rdb
 
 # ─── Evaluation run artifacts (runner JSON output; methodology stays tracked) ──
 docs/evaluation/results/
+# NOTE: docs/backend/*_results.json ARE tracked on purpose. The living backend
+# log cites them as frozen evidence snapshots; do not add a rule here.
+
+# ─── Cross-platform launcher scratch state ─────────────────────────────────────
+# serve.py keeps PIDs and logs in the OS temp dir, but honour an explicit
+# in-repo override used by local debugging.
+.trustrag-serve/
 
 # ─── k6 / load-test raw output ────────────────────────────────────────────────
 load-test/*.har

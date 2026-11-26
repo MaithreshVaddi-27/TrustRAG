@@ -1,92 +1,140 @@
-import { motion } from 'motion/react'
-import { Zap, ShieldCheck, Sparkles, Globe, ArrowRight, FileCheck } from 'lucide-react'
-import { SPRING_GENTLE } from '@/lib/motionConfig'
+import { Database, Cpu, Brain, ShieldCheck, Sparkles, Globe, Terminal, CornerDownLeft } from 'lucide-react'
 
-const staggerItem = {
-  hidden: { opacity: 0, y: 16 },
-  visible: i => ({
-    opacity: 1,
-    y: 0,
-    transition: { ...SPRING_GENTLE, delay: i * 0.08 }
-  })
-}
+/**
+ * EmptyState — what the playground does before you ask it anything.
+ *
+ * The five pipeline stages are ordered, and the order is the information, so
+ * they read as plates in a stack rather than five equal cards. A row of
+ * equal cards makes the reader hunt for the stage that matters; a stack
+ * says "this is the sequence, and it runs in this order".
+ */
+const PIPELINE_PREVIEW = [
+  {
+    step: '01',
+    title: 'Hybrid retrieval',
+    tag: 'Dense + BM25',
+    desc: 'Dense ONNX 384d vector similarity fused with sparse BM25 keyword rankings.',
+    icon: Database,
+  },
+  {
+    step: '02',
+    title: 'Evidence synthesis',
+    tag: 'Strict grounding',
+    desc: 'Zero-temperature local generation conditioned strictly on the retrieved chunks.',
+    icon: Cpu,
+  },
+  {
+    step: '03',
+    title: 'Claim extraction',
+    tag: 'Subject-predicate-object',
+    desc: 'Decomposes the generated answer into atomic, falsifiable factual claims.',
+    icon: Brain,
+  },
+  {
+    step: '04',
+    title: 'NLI entailment',
+    tag: 'Fact verification',
+    desc: 'Checks every claim against its citations: supported, contradicted, or neutral.',
+    icon: ShieldCheck,
+  },
+  {
+    step: '05',
+    title: 'Closed-loop healing',
+    tag: 'LangGraph StateGraph',
+    desc: 'Triggers a query rewrite or context expansion when a run fails the evidence-coverage and contradiction gate.',
+    icon: Sparkles,
+  },
+]
 
-export function EmptyState({ onLoadSample }) {
+export function EmptyState({ enableWebSearch = false }) {
   return (
-    <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-6 sm:p-10 space-y-6 overflow-y-auto">
-      <motion.div
-        custom={0}
-        variants={staggerItem}
-        initial="hidden"
-        animate="visible"
-        className="relative"
-      >
-        <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-primary-600/20 via-cyan-500/10 to-transparent border border-primary-500/30 flex items-center justify-center shadow-glow-cyan animate-float">
-          <Zap size={34} className="text-cyan-400" />
-        </div>
-        <div className="absolute -inset-2.5 rounded-3xl border border-cyan-500/20 animate-pulse-slow pointer-events-none" />
-      </motion.div>
-
-      <motion.div
-        custom={1}
-        variants={staggerItem}
-        initial="hidden"
-        animate="visible"
-        className="max-w-md text-center space-y-2"
-      >
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-950/70 border border-cyan-700/50 text-cyan-300 text-[11px] font-mono mb-1">
-          <ShieldCheck size={12} className="text-cyan-400" />
-          <span>Interactive Verification Workbench</span>
-        </div>
-        <h3 className="text-lg font-bold text-slate-100 tracking-tight">
-          Awaiting Pipeline Query
-        </h3>
-        <p className="text-slate-400 text-xs leading-relaxed">
-          Select a knowledge base, configure your AI engine, and execute your prompt to observe closed-loop NLI claim verification in real-time.
-        </p>
-      </motion.div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl w-full text-left">
-        {[
-          { icon: FileCheck, iconColor: 'text-emerald-400', title: 'Closed-Loop NLI', desc: 'Decomposes generated answers into atomic claims and cross-verifies every proposition against citations.' },
-          { icon: Sparkles, iconColor: 'text-cyan-400', title: 'Self-Healing Loop', desc: 'LangGraph state machine automatically triggers targeted query rewrites and context expansions when uncertainty occurs.' },
-          { icon: Globe, iconColor: 'text-primary-400', title: 'Zero-Key MCP Web', desc: 'Dynamic Model Context Protocol tool execution pulls fresh web facts via DuckDuckGo with 0 API keys.' },
-        ].map((card, i) => (
-          <motion.div
-            key={card.title}
-            custom={i + 2}
-            variants={staggerItem}
-            initial="hidden"
-            animate="visible"
-            className="p-3.5 rounded-xl border border-slate-800/90 bg-surface-900/60 backdrop-blur-sm space-y-1.5"
-          >
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
-              <card.icon size={14} className={card.iconColor} />
-              <span>{card.title}</span>
-            </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              {card.desc}
+    // This pane scrolls, and it holds no focusable children of its own —
+    // so without a tab stop a keyboard user cannot scroll it. WCAG 2.1.1.
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+      role="region"
+      aria-label="Verification workbench"
+      tabIndex={0}
+    >
+      <div className="px-5 py-8 sm:px-8 sm:py-10">
+        <div className="mx-auto w-full max-w-3xl space-y-8">
+          <div>
+            <p className="lx-micro flex items-center gap-2">
+              <span className="lx-dot lx-dot--live" aria-hidden="true" />
+              Interactive verification workbench
             </p>
-          </motion.div>
-        ))}
-      </div>
 
-      <motion.div
-        custom={5}
-        variants={staggerItem}
-        initial="hidden"
-        animate="visible"
-        className="pt-2 flex items-center gap-3"
-      >
-        <button
-          type="button"
-          onClick={onLoadSample}
-          className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-surface-800 border border-slate-700/80 hover:border-cyan-500/50 flex items-center gap-1.5 transition-all shadow-sm"
-        >
-          <span>Load Sample Query</span>
-          <ArrowRight size={12} className="text-cyan-400" />
-        </button>
-      </motion.div>
+            <h2 className="lx-h2 mt-3">Awaiting a query</h2>
+
+            <p className="lx-body mt-3 max-w-[62ch]">
+              Ask a question against an indexed knowledge base and the pipeline
+              will retrieve, synthesise, decompose and verify it — reporting
+              every step as it happens.
+            </p>
+          </div>
+
+          <div>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="lx-workbench__label !mb-0 flex items-center gap-2">
+                Reliability pipeline stages
+              </h3>
+              <span className="lx-micro">Autonomous orchestration</span>
+            </div>
+
+            <div className="lx-layers">
+              {PIPELINE_PREVIEW.map((phase) => {
+                const Icon = phase.icon
+                return (
+                  <article key={phase.step} className="lx-layer">
+                    <span className="lx-layer__index">{phase.step}</span>
+
+                    <div>
+                      <h4 className="lx-layer__title">
+                        <Icon
+                          size={16}
+                          strokeWidth={1.5}
+                          className="lx-layer__icon"
+                          aria-hidden="true"
+                        />
+                        {phase.title}
+                      </h4>
+                      <p className="lx-layer__desc">{phase.desc}</p>
+                      <div className="lx-layer__tags">
+                        <span className="lx-layer__tag">{phase.tag}</span>
+                      </div>
+                    </div>
+
+                    <div className="lx-layer__spec">
+                      <div className="lx-layer__spec-row">
+                        <span className="lx-layer__spec-key">Stage</span>
+                        <span className="lx-layer__spec-val">{phase.step}</span>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--rule-faint)] pt-5">
+            <p className="lx-micro flex items-center gap-2">
+              <Terminal size={13} strokeWidth={1.75} aria-hidden="true" />
+              Ready to verify. Press{' '}
+              <kbd className="inline-flex items-center gap-0.5 rounded border border-[color:var(--rule)] bg-surface-inset px-1.5 py-0.5 font-mono text-[var(--size-micro)] text-silver-300">
+                <CornerDownLeft size={10} aria-hidden="true" /> ⌘↵
+              </kbd>{' '}
+              to run.
+            </p>
+
+            {enableWebSearch && (
+              <span className="lx-chip">
+                <Globe size={11} strokeWidth={1.75} aria-hidden="true" />
+                MCP web grounding enabled
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

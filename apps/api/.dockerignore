@@ -1,0 +1,12 @@
+# TrustRAG API build context — keep ~2MB, not ~1.8GB (N-101)
+.venv/
+.model_cache/
+data/
+tests/
+__pycache__/
+*.egg-info/
+.env*
+.git/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/

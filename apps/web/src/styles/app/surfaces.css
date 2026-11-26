@@ -1,0 +1,1164 @@
+/* ── TrustRAG · Application surfaces ────────────────────────────────────────
+ * The vocabulary the product screens are built from. The landing page has its
+ * own stylesheets under `styles/components/`; these are the equivalents for
+ * the application surfaces.
+ *
+ * Same rules as the landing system: hairline rules instead of shadows, one
+ * accent (Chrome Silver), crimson only for an alarm, a live status or the
+ * active selection.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/* ── Page frame ───────────────────────────────────────────────────────────── */
+
+.lx-page {
+  width: 100%;
+  max-width: 90rem;
+  margin-inline: auto;
+  padding: var(--step-6) var(--step-4) var(--step-12);
+}
+
+@media (min-width: 640px) {
+  .lx-page {
+    padding: var(--step-8) var(--step-6) var(--step-16);
+  }
+}
+
+@media (min-width: 1024px) {
+  .lx-page {
+    padding: var(--step-8) var(--step-8) var(--step-16);
+  }
+}
+
+/* Vertical rhythm between the blocks of a page. */
+.lx-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-8);
+}
+
+@media (min-width: 1024px) {
+  .lx-stack {
+    gap: var(--step-10);
+  }
+}
+
+/* ── Toolbar ────────────────────────────────────────────────────────────────
+ * The row that holds a section's controls: filters, ranges, refresh.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-3) var(--step-5);
+  padding: var(--step-3) var(--step-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  background-color: var(--surface-card);
+}
+
+.lx-toolbar__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--step-2) var(--step-4);
+}
+
+/* ── Stat strip ─────────────────────────────────────────────────────────────
+ * Figures, not cards. A row of numbers separated by hairlines. There is no
+ * hero metric here: every figure has the same weight, because they are
+ * peers.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-statstrip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  background-color: var(--surface-card);
+  overflow: hidden;
+}
+
+@media (min-width: 768px) {
+  .lx-statstrip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.lx-stat {
+  padding: var(--step-4) var(--step-5);
+  border-right: 1px solid var(--rule-faint);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+@media (min-width: 768px) {
+  .lx-stat {
+    border-bottom: 0;
+  }
+
+  .lx-stat:last-child {
+    border-right: 0;
+  }
+}
+
+@media (max-width: 767px) {
+  .lx-stat:nth-child(2n) {
+    border-right: 0;
+  }
+}
+
+.lx-stat__label {
+  display: block;
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-500);
+}
+
+/* The figure is data, so it uses the interface face and tabular figures.
+ * Didot sets old-style numerals, which read as wrong in a statistic. */
+.lx-stat__value {
+  display: block;
+  margin-top: var(--step-1);
+  font-family: var(--typeface-sans);
+  font-size: 2rem;
+  font-weight: var(--weight-regular);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-silver-050);
+}
+
+.lx-stat__meta {
+  display: block;
+  margin-top: var(--step-1);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+}
+
+/* A figure that is the alarm. */
+.lx-stat__value--alarm {
+  color: var(--color-crimson-300);
+}
+
+/* ── Chip ───────────────────────────────────────────────────────────────────
+ * Counts and meta are quiet text. A chip is a small surface with a hairline
+ * — never a coloured pill.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-2);
+  padding: 2px var(--step-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  background-color: var(--surface-inset);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-400);
+  white-space: nowrap;
+}
+
+/* Chips used as controls keep the quiet surface, but grow to a real touch
+ * target on coarse pointers. Counts stay small. */
+@media (pointer: coarse) {
+  .lx-chip--control {
+    min-height: 44px;
+    padding-inline: var(--step-3);
+  }
+}
+
+.lx-chip--alarm {
+  border-color: var(--crimson-rule);
+  background-color: var(--color-alarm-wash);
+  color: var(--color-crimson-300);
+}
+
+.lx-chip--quiet {
+  border-color: var(--rule-faint);
+  background-color: transparent;
+  color: var(--color-silver-500);
+}
+
+/* ── Panel ──────────────────────────────────────────────────────────────────
+ * A titled surface. The title sits on a hairline that separates it from
+ * the body, like a document header.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-panel-block {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  background-color: var(--surface-card);
+  overflow: hidden;
+}
+
+.lx-panel-block__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--step-2) var(--step-4);
+  padding: var(--step-4) var(--step-5);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+/* The verdict panel's registration seal stamps once, like the result header.
+ * No other panel head carries a seal. */
+@media (prefers-reduced-motion: no-preference) {
+  .lx-panel-block__head > .lx-seal,
+  .lx-panel-block__head > div > .lx-seal {
+    animation: lx-seal-align 460ms var(--motion-ease-out) both;
+  }
+}
+
+.lx-panel-block__title {
+  /* A panel heading is chrome, not editorial. The display face is reserved
+   * for the screen's own title. */
+  font-family: var(--typeface-sans);
+  font-size: var(--size-h3);
+  line-height: var(--leading-h3);
+  letter-spacing: var(--tracking-h3);
+  font-weight: var(--weight-medium);
+  color: var(--color-silver-100);
+}
+
+.lx-panel-block__body {
+  padding: var(--step-5);
+}
+
+.lx-panel-block__foot {
+  padding: var(--step-3) var(--step-5);
+  border-top: 1px solid var(--rule-faint);
+  background-color: var(--surface-raised);
+}
+
+/* ── Table ──────────────────────────────────────────────────────────────────
+ * A specification table. Hairline rules, mono for identifiers, tabular
+ * figures, and a header that reads as a document header.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--size-body-sm);
+}
+
+.lx-table th {
+  padding: var(--step-3) var(--step-4);
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-micro);
+  text-align: left;
+  color: var(--color-silver-500);
+  white-space: nowrap;
+}
+
+.lx-table td {
+  padding: var(--step-3) var(--step-4);
+  border-bottom: 1px solid var(--rule-faint);
+  color: var(--color-silver-300);
+  vertical-align: top;
+}
+
+.lx-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.lx-table tbody tr {
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-table tbody tr:hover {
+  background-color: var(--wash-silver-03);
+}
+
+.lx-table__num {
+  font-family: var(--typeface-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-silver-200);
+  text-align: right;
+}
+
+/* The expanded body of a ledger row. It spans every column and carries no
+ * cell padding or rule of its own — the panel's edge is the boundary, and
+ * the panel's own surface continues behind it. */
+.lx-table__expanded {
+  padding: 0 !important;
+  border-bottom: 0 !important;
+  background-color: transparent;
+}
+
+.lx-table__id {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  color: var(--color-silver-500);
+}
+
+/* ── Record list ────────────────────────────────────────────────────────────
+ * A list of records, each a row with a rule between. Used by the evidence
+ * vault, the claim inspector and the analysis feed.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-list {
+  border-top: 1px solid var(--rule-faint);
+}
+
+.lx-list__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--step-4) var(--step-5);
+  border-bottom: 1px solid var(--rule-faint);
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-list__item:hover {
+  background-color: var(--wash-silver-03);
+}
+
+.lx-list__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-2) var(--step-4);
+}
+
+.lx-list__title {
+  font-size: var(--size-body);
+  color: var(--color-silver-100);
+  line-height: 1.4;
+}
+
+.lx-list__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--step-2) var(--step-4);
+  margin-top: var(--step-2);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+}
+
+/* ── Empty state ────────────────────────────────────────────────────────────
+ * A heading, one sentence, and the action that fills it. No illustration.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--step-3);
+  padding: var(--step-12) var(--step-5);
+}
+
+.lx-empty__icon {
+  color: var(--color-silver-700);
+}
+
+.lx-empty__title {
+  font-size: var(--size-h3);
+  line-height: var(--leading-h3);
+  font-weight: var(--weight-medium);
+  color: var(--color-silver-200);
+}
+
+.lx-empty__body {
+  max-width: 44ch;
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-500);
+}
+
+/* ── Alert ──────────────────────────────────────────────────────────────────
+ * The one pattern for a message. An error is the alarm; everything else is
+ * a neutral well.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-message {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--step-3);
+  padding: var(--step-4) var(--step-5);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  background-color: var(--surface-inset);
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-300);
+}
+
+.lx-message--alarm {
+  border-color: var(--color-alarm-rule);
+  background-color: var(--color-alarm-wash);
+  color: var(--color-alarm-text);
+}
+
+.lx-message__icon {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  color: var(--color-silver-500);
+}
+
+.lx-message--alarm .lx-message__icon {
+  color: var(--color-crimson-400);
+}
+
+.lx-message__title {
+  display: block;
+  font-weight: var(--weight-medium);
+  color: inherit;
+}
+
+.lx-message__body {
+  display: block;
+  margin-top: 2px;
+  opacity: 0.85;
+}
+
+/* ── Two-pane workbench ─────────────────────────────────────────────────────
+ * The playground and the analysis pages: a fixed query pane and a fluid
+ * result pane.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-workbench {
+  display: grid;
+  grid-template-columns: 1fr;
+  flex: 1;
+  min-height: 0;
+}
+
+@media (min-width: 1024px) {
+  .lx-workbench {
+    grid-template-columns: 26rem minmax(0, 1fr);
+  }
+}
+
+/* Past 1280 there is room to give the query pane 32px more without squeezing
+ * the results: below that the results column still needs the wider share. */
+@media (min-width: 1280px) {
+  .lx-workbench {
+    grid-template-columns: 30rem minmax(0, 1fr);
+  }
+}
+
+.lx-workbench__pane {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--rule);
+  background-color: var(--surface-raised);
+}
+
+/* Beside the results, the query pane is a column with a fixed query and
+ * run control at its foot. The pane has to be a flex column for that
+ * anchoring to work — as a plain block the form grew to its content and
+ * the run button fell below the fold. */
+@media (min-width: 1024px) {
+  .lx-workbench__pane {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+}
+
+.lx-workbench__pane--flush {
+  background-color: transparent;
+  border-right: 0;
+}
+
+/* Stacked, the two panes are the page. They were being squeezed into the
+ * viewport height — the configuration was clipped away and the query
+ * control ended up covering the results. The page scrolls instead, and the
+ * pane stops being a scroll container so the compose bar can stick to the
+ * bottom of the window while the reader moves through the configuration. */
+@media (max-width: 1023px) {
+  .lx-workbench {
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+
+  .lx-workbench__pane {
+    overflow: visible;
+  }
+}
+
+.lx-workbench__section {
+  padding: var(--step-5);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+/* The compose bar is a solid surface. It used to ask Tailwind for
+ * `bg-surface-raised`, a colour the theme does not define — so the bar was
+ * transparent and the configuration scrolled through it. */
+.lx-workbench__compose {
+  background-color: var(--surface-raised);
+}
+
+/* Stacked under the breakpoint, the query and the run control sit at the
+ * end of a long column. They follow the reader down instead of waiting at
+ * the bottom of it. */
+@media (max-width: 1023px) {
+  .lx-workbench__compose {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+  }
+}
+
+.lx-workbench__label {
+  display: block;
+  margin-bottom: var(--step-3);
+  font-size: var(--size-label);
+  font-weight: var(--weight-medium);
+  color: var(--color-silver-400);
+}
+
+/* ── Form controls ──────────────────────────────────────────────────────────
+ * The shared control vocabulary: inputs, selects, textareas.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-control {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--step-2) var(--step-3);
+  font-size: 16px; /* 16px stops iOS zooming on focus */
+  color: var(--color-silver-100);
+  background-color: var(--surface-inset);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-control::placeholder {
+  color: var(--color-silver-500);
+}
+
+.lx-control:hover {
+  border-color: var(--rule-strong);
+}
+
+.lx-control:focus {
+  outline: none;
+  border-color: var(--color-silver-400);
+}
+
+.lx-control:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* No opacity on text: silver-300 on the inset surface stays above 9:1. */
+.lx-control:disabled {
+  background-color: var(--surface-inset);
+  border-color: var(--rule-faint);
+  color: var(--color-disabled-text);
+  cursor: not-allowed;
+}
+
+textarea.lx-control {
+  min-height: 6rem;
+  line-height: var(--leading-body);
+  resize: vertical;
+}
+
+select.lx-control {
+  appearance: none;
+  padding-right: var(--step-8);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 18px) calc(50% + 2px),
+    calc(100% - 13px) calc(50% + 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+/* A switch. The track and the knob are surfaces, not colours.
+ * The visible track is 40×22; the button itself is a 44×44 target so the
+ * control meets the minimum pointer-target size without looking like it. */
+.lx-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.lx-switch::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--rule);
+  background-color: var(--surface-inset);
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-switch:hover::before {
+  border-color: var(--rule-strong);
+}
+
+.lx-switch:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+.lx-switch[aria-checked='true']::before {
+  background-color: var(--crimson-wash-28);
+  border-color: var(--crimson-rule-55);
+}
+
+.lx-switch__knob {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  margin-top: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: var(--color-silver-400);
+  pointer-events: none;
+  transition: transform var(--motion-duration-fast) var(--motion-ease-out),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-switch[aria-checked='true'] .lx-switch__knob {
+  transform: translateX(20px);
+  background-color: var(--color-crimson-300);
+}
+
+/* ── Skeleton ───────────────────────────────────────────────────────────────
+ * A skeleton in the surface's own shape. No shimmer — a shimmer is a loop
+ * with no meaning, and on a dark theme it reads as noise.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-skeleton {
+  display: block;
+  background-color: var(--surface-inset);
+  border-radius: var(--radius-control);
+  /* The one-shot fade-in lives in animations.css. Nothing breathes here. */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lx-skeleton {
+    animation: none;
+  }
+}
+
+/* ── Definition list ────────────────────────────────────────────────────────
+ * A key/value pair, used for settings and specifications.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-deflist {
+  display: grid;
+  /* The column may not grow past the panel. An auto track would size to
+   * the widest row's content, and a long hash would then push its own row
+   * into a second line. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.lx-deflist__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--step-2) var(--step-4);
+  padding-block: var(--step-3);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.lx-deflist__row:last-child {
+  border-bottom: 0;
+}
+
+.lx-deflist__key {
+  font-size: var(--size-body-sm);
+  color: var(--color-silver-500);
+}
+
+.lx-deflist__value {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-body-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-silver-200);
+  text-align: right;
+}
+
+/* ── Figure strip ─────────────────────────────────────────────────────────
+ * A run of measurements under a subject: the label above, the figure
+ * below. Used where a vertical list of key/value pairs would outweigh
+ * the thing being measured.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--step-2) var(--step-5);
+}
+
+.lx-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lx-figure__label {
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+  white-space: nowrap;
+}
+
+.lx-figure__value {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-body-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-silver-200);
+  white-space: nowrap;
+}
+
+/* A definition list of measurements. Every value in it is a single
+ * measured line — a size, a date, an identifier — so the rows never
+ * change height as their values arrive. The rows align at the top
+ * rather than on a baseline: a value that scrolls has no baseline of its
+ * own, and a baseline-aligned row would grow when it arrived. */
+.lx-deflist--measured .lx-deflist__row {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+/* The key is a fixed label. It must never shrink into a second line: the
+ * row would then change height when the value beside it arrived. */
+.lx-deflist--measured .lx-deflist__key {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.lx-deflist--measured .lx-deflist__value {
+  min-width: 0;
+}
+
+/* ── Single-line measured value ───────────────────────────────────────────
+ * A long identifier — a hash, an id, a model path — is not prose. It does
+ * not wrap; it scrolls sideways inside its own box, so the row it sits in
+ * is always one line tall and the panels below it never move.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-value-line {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+  /* The scrollbar is hidden on purpose. A visible one takes height from
+   * the box, and the box has to be the same height whether the value has
+   * arrived or not — otherwise the row grows and the page shifts. The
+   * value is still fully selectable, and the copy button is the
+   * affordance that matters. */
+  scrollbar-width: none;
+}
+
+.lx-value-line::-webkit-scrollbar {
+  display: none;
+}
+
+/* A value that may be wider than the row must be allowed to shrink. Its
+ * default minimum width is its content's, so a long hash would push the
+ * row into a second line — and the row would change height when the value
+ * arrived. Clipping the box is what makes it shrinkable: a box that can
+ * scroll has no minimum content width of its own. */
+.lx-deflist__value--grow {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── Document record header ───────────────────────────────────────────────
+ * The document page renders its frame before the document arrives. The
+ * heading and the description keep their boxes whether the record is
+ * loaded or not, so the panels below them do not move when it lands.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-doc-header .lx-h1 {
+  min-height: calc(var(--size-h1) * var(--leading-h1));
+  overflow-wrap: anywhere;
+}
+
+.lx-doc-header .lx-body {
+  min-height: calc(2 * var(--size-body) * var(--leading-body));
+}
+
+/* ── Section label ─────────────────────────────────────────────────────────
+ * A label that sits above a group of controls. Quiet, tracked, never
+ * shouting.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-section-label {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  margin-bottom: var(--step-3);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+}
+
+/* ── Trace ─────────────────────────────────────────────────────────────────
+ * The event feed. A monospace log with hairline rules between entries.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-trace {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: 0.01em;
+}
+
+.lx-trace__event {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--step-3);
+  padding-block: var(--step-2);
+  border-bottom: 1px solid var(--rule-faint);
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-trace__event:last-of-type {
+  border-bottom: 0;
+}
+
+.lx-trace__event:hover {
+  background-color: var(--wash-silver-03);
+}
+
+.lx-trace__icon {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  color: var(--color-silver-500);
+}
+
+.lx-trace__body {
+  min-width: 0;
+  flex: 1;
+}
+
+.lx-trace__label {
+  font-weight: var(--weight-medium);
+  color: var(--color-silver-200);
+}
+
+.lx-trace__message {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--typeface-sans);
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-400);
+  overflow-wrap: break-word;
+}
+
+.lx-trace__detail {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-silver-500);
+  overflow-wrap: break-word;
+}
+
+.lx-trace__time {
+  flex-shrink: 0;
+  margin-left: var(--step-2);
+  color: var(--color-silver-500);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Steps ─────────────────────────────────────────────────────────────────
+ * A pipeline shown as a sequence. Each step is a column on a shared rule
+ * with a state marker, so the reader can see where the run is without a
+ * progress bar pretending to know more than it does.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--rule-faint);
+}
+
+@media (min-width: 768px) {
+  .lx-steps {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.lx-step {
+  position: relative;
+  padding: var(--step-4) var(--step-4) var(--step-4) var(--step-5);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+@media (min-width: 768px) {
+  .lx-step {
+    border-bottom: 0;
+    border-right: 1px solid var(--rule-faint);
+  }
+
+  .lx-step:last-child {
+    border-right: 0;
+  }
+}
+
+/* The active step is the one that carries the crimson marker. */
+.lx-step::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background-color: transparent;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-step--active::before {
+  background-color: var(--color-crimson-500);
+}
+
+.lx-step__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-3);
+}
+
+.lx-step__label {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+}
+
+.lx-step__title {
+  margin-top: var(--step-2);
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-silver-300);
+}
+
+.lx-step--done .lx-step__title {
+  color: var(--color-silver-100);
+}
+
+.lx-step--active .lx-step__title {
+  color: var(--color-silver-050);
+}
+
+.lx-step__meta {
+  margin-top: var(--step-1);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Inline action ─────────────────────────────────────────────────────────
+ * A text link inside a row of meta. It reads as text, so it keeps the
+ * sentence's rhythm, but it still meets the minimum target size.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-inline-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-1);
+  min-height: 24px;
+  color: var(--color-silver-400);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-inline-action:hover {
+  color: var(--color-silver-100);
+}
+
+.lx-inline-action:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Responsive table ──────────────────────────────────────────────────────
+ * Below the table's breakpoint the columns stop being columns. Each cell
+ * becomes a labelled row, and the cell that carries the name sits above
+ * the measurements rather than beside them. One DOM, two arrangements.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .lx-table--stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .lx-table--stack tbody tr {
+    display: block;
+    padding: var(--step-4) var(--step-4) var(--step-4) 0;
+    border-bottom: 1px solid var(--rule-faint);
+  }
+
+  .lx-table--stack tbody td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--step-4);
+    padding: var(--step-1) 0;
+    border: 0;
+    text-align: left;
+  }
+
+  .lx-table--stack tbody td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-family: var(--typeface-mono);
+    font-size: var(--size-micro);
+    letter-spacing: var(--tracking-micro);
+    color: var(--color-silver-500);
+  }
+
+  /* The name cell is the subject of the row, not one of its measurements. */
+  .lx-table--stack tbody td:first-child {
+    display: block;
+    padding-bottom: var(--step-3);
+  }
+
+  .lx-table--stack tbody td:first-child::before {
+    content: none;
+  }
+
+  .lx-table--stack tbody td.lx-table__num {
+    text-align: left;
+    justify-content: space-between;
+  }
+
+  /* The expanded body spans the row rather than the columns. */
+  .lx-table--stack tbody td.lx-table__expanded {
+    display: block;
+    padding: 0 !important;
+  }
+
+  /* The row's own action sits at the end of the row, not on its own line. */
+  .lx-table--stack tbody td.lx-table__num[data-label=''] {
+    justify-content: flex-end;
+    padding-top: var(--step-2);
+  }
+
+  /* The disclosure button lines up with the name, not the description. */
+  .lx-table--stack tbody td:first-child > .flex {
+    align-items: flex-start;
+  }
+
+  .lx-table--stack tbody td:first-child > .flex > .lx-icon-btn {
+    margin-top: -4px;
+  }
+}
+
+/* ── Document row ──────────────────────────────────────────────────────────
+ * A record with several measured columns: a name and then figures that
+ * line up in columns. The columns collapse to a stacked list on narrow
+ * screens, where the name carries the row.
+ *
+ * The vocabulary is prefixed, not shared. `.lx-record` was already the
+ * landing page's record card, and a shared name meant this grid silently
+ * overwrote it — the hero's claim column collapsed to one word per line.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-docrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--step-1) var(--step-4);
+  align-items: center;
+}
+
+@media (min-width: 768px) {
+  .lx-docrow {
+    grid-template-columns:
+      minmax(0, 2fr) 5rem 8rem 8rem 7rem 3rem;
+  }
+}
+
+.lx-docrow__name {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  min-width: 0;
+}
+
+.lx-docrow__value {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-silver-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lx-docrow__value--end {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ── Grid helpers ─────────────────────────────────────────────────────────── */
+
+.lx-grid-2 {
+  display: grid;
+  gap: var(--step-5);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 1024px) {
+  .lx-grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--step-6);
+  }
+}
+
+/* A wide panel beside a narrow list — the dashboard's chart rhythm. */
+.lx-grid-wide-narrow {
+  display: grid;
+  gap: var(--step-5);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 1024px) {
+  .lx-grid-wide-narrow {
+    grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
+    gap: var(--step-6);
+  }
+}

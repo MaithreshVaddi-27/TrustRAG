@@ -8,7 +8,7 @@ TRUSTRAG is an AI reliability workbench that implements a closed-loop reliabilit
 Query → Route (simple / temporal / comparison / complex, deterministic, no LLM)
       → Retrieve (Dense + BM25-TF/IDF + MCP Live Web) → RRF fusion (fusion_top_k enforced)
       → Rerank (cross-encoder, OFF by default, depth-capped)
-      → Grounded Generation, each sentence pinned to a source segment (Local llama.cpp / Ollama / Gemini / NVIDIA — per request)
+      → Grounded Generation, each sentence pinned to a source segment (Local llama.cpp / Ollama / MLX — per request; Gemini optional via the `cloud` extra)
       → Propositional Claim Decomposition → NLI Claim Verification (+ targeted NEUTRAL-only re-retrieval) 
       → Evidence Integrity & Provenance Audit → Threshold Reliability Diagnosis 
       → Adaptive Recovery Loop (LangGraph StateGraph) 
@@ -28,50 +28,49 @@ React 18 + Vite (Port 5173)
     ▼
 FastAPI (Python 3.11+, Default Port 8000)
     │
-    ├─── app/core/         Settings, ModelRegistry, Logging, Security, Exceptions
-    │       └── local_llm.py → ChatOllamaClient, ChatLlamaCppClient (LLM-only),
-    │                          CLI introspection (ollama list, llama-server --cache-list)
-    ├─── app/db/           MongoDB Community / Atlas client, Qdrant client
-    ├─── app/ingestion/    Document parsing (+ per-page RapidOCR-ONNX fallback for
+    ├─── app/config/       Settings, model policy (models.yaml), loader
+    ├─── app/llm/          Model registry, local LLM clients (Ollama/llama.cpp/MLX),
+    │                      CLI introspection, the ONNX embedding shim
+    ├─── app/observability/ Logging, metrics, tracing
+    ├─── app/security/     Exceptions, JWT + bcrypt auth
+    ├─── app/core/system/  Concurrency, hardware + memory telemetry
+    ├─── app/persistence/  MongoDB (`persistence/mongodb/`) + Qdrant
+    │                      (`persistence/qdrant/`) clients
+    ├─── app/rag/ingestion/ Document parsing (+ per-page RapidOCR-ONNX fallback for
     │                      <50-native-char pages), selectable chunking strategies,
     │                      newline-preserving normalization, cryptographic hashing
-    ├─── app/retrieval/    Dense (384d BGE) + sparse (client BM25-TF saturation +
+    ├─── app/rag/retrieval/ Dense (384d BGE) + sparse (client BM25-TF saturation +
     │                      server-side Qdrant Modifier.IDF) + Reciprocal Rank Fusion
     │                      (RRF, fusion_top_k enforced); recreate-on-mismatch for
-    │                      pre-IDF collections; cross-encoder reranker (off by
-    │                      default, top_k=20 depth cap)
+    │                      pre-IDF collections; ONNX cross-encoder reranker
+    │                      (batched, early termination, result cache, RRF fallback)
 ├─── app/mcp/          Model Context Protocol (MCP) Server & Dispatcher
 │       ├── trustrag_search     → Search a knowledge base (primary KB tool)
 │       ├── trustrag_verify_claim → Verify a claim against evidence
 │       ├── trustrag_list_kbs   → List available knowledge bases
 │       ├── local_llm_chat      → Prompt local LLM (Ollama / llama.cpp) over MCP
 │       ├── local_llm_status    → Query local model health & discovery via MCP
-│       ├── tavily_search       → AI-curated RAG search with clean parsed snippets
-│       ├── duckduckgo_search   → Zero-config, 100% free web search fallback
-│       └── hybrid_web_search   → Parallel execution with URL deduplication
+│       └── tavily_search       → AI-curated RAG search with clean parsed snippets
     ├─── app/services/     Search Service (SSRF sanitization, private IP guards);
     │                      KB lifecycle (snapshots, rollback with vector-less guard)
-    ├─── app/generation/   Grounded answer generation (Local LLMs or Cloud) with
+    ├─── app/rag/generation/ Grounded answer generation (Local LLMs or Cloud) with
     │                      per-sentence [Segment N] provenance + invalid-ref strip, markers stripped from the answer at finalize
-├─── app/verification/ Propositional claim decomposition + NLI entailment +
+├─── app/rag/verification/ Propositional claim decomposition + NLI entailment +
 │                      targeted NEUTRAL-only claim retrieval (≤3/analysis);
 │                      brackets-exempt scaffold-echo filter; SHA-256
 │                      provenance & temporal audit (`integrity.py`)
-├─── app/agent/        LangGraph stateful self-healing workflow (deterministic
+├─── app/rag/agent/    LangGraph stateful self-healing workflow (deterministic
 │                      query router + bounded fan-out inside retrieval_node)
-└─── experiments/      Experiment runner (`app/services/experiment_service.py`)
-                       + eval harness & frozen dataset (`apps/api/tests/eval/`)
+└─── experiments/      Eval harness & frozen dataset (`apps/api/tests/eval/`)
          │
 ├─── Local Engines:
             │       Ollama (Port 11434, LLM-only; default `gemma3:1b`)
             │       llama.cpp (Port 8080, LLM-only; default
             │             `LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M`)
-            │       HuggingFace: BAAI/bge-small-en-v1.5 (384d local embeddings,
-            │             torch `huggingface` provider or torch-free `onnx`)
+            │       BAAI/bge-small-en-v1.5 (384d local embeddings, ONNX Runtime — torch-free, sole embedding engine)
          │
-         ├─── Cloud Engines, LLM-only (Optional):
+         ├─── Cloud Engine, LLM-only (Optional, `cloud` extra):
           │       Google Gemini: gemini-2.5-flash family (embeddings: local BGE)
-         │       NVIDIA NIM: meta/llama-3.3-70b-instruct (embeddings: local BGE)
          │
           ├─── Qdrant (Vector & Payload Store)
           │       Dense vector indexing (384d only — 768d retired) + sparse-text
@@ -197,4 +196,4 @@ TRUSTRAG adopts the open **Model Context Protocol (MCP)** specification to decou
 | `revoked_tokens` | JTI blocklist for logged-out JWTs                       |
 | `stream_tickets` | One-time SSE stream tickets (TTL)                       |
 
-Source of truth: `Collections` in `apps/api/app/db/mongodb.py`.
+Source of truth: `Collections` in `apps/api/app/persistence/mongodb/`.

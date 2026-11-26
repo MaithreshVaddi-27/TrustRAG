@@ -1,0 +1,44 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# TRUSTRAG — Ruff configuration (repository-wide)
+#
+# This file is the single source of truth for the lint rules, so that
+# `ruff check .` behaves identically whether it is run from the repository
+# root or from `apps/api/`. It used to live only in `apps/api/pyproject.toml`,
+# which meant the repository-root scripts (`scripts/*.py`) were linted with
+# ruff's *default* rule set locally and were not linted by CI at all —
+# a place where style drift and real defects could hide.
+#
+# `apps/api/pyproject.toml` extends this file and adds the API package's
+# own per-file ignores.
+# ─────────────────────────────────────────────────────────────────────────────
+
+target-version = "py311"
+line-length = 100
+
+# Markdown is excluded on purpose. Ruff 0.16 formats Python code blocks inside
+# `.md` files, and the documentation's snippets are illustrative pseudo-code —
+# reformatting them adds noise without making anything more correct. The
+# documents are prose; the code is linted where it actually runs.
+extend-exclude = ["*.md"]
+
+[lint]
+select = ["E", "W", "F", "I", "N", "UP", "S", "B", "A", "C4", "RUF"]
+ignore = [
+    "S101",   # Use of assert (allowed in tests)
+    "S104",   # Binding to 0.0.0.0 (needed for Docker)
+]
+
+[lint.flake8-bugbear]
+# FastAPI dependency injection uses function calls in parameter defaults
+# (Depends/Query/File/...) — this is intentional and bytes-stable, so treat
+# them as immutable like FastAPI's own lint config does.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.Body",
+    "fastapi.File",
+    "fastapi.Form",
+]

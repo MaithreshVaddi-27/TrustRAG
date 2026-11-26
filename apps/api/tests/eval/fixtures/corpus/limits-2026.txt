@@ -1,0 +1,8 @@
+API Limits 2026 (CURRENT)
+
+Effective from: 2026-01-01
+
+Maximum payload size: 10 megabytes.
+Default request rate limit: 100 requests per second per tenant.
+Default token lifetime: 30 days.
+Strict endpoints limit callers to 20 requests per second.

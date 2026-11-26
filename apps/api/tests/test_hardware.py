@@ -8,18 +8,14 @@ import sys
 
 import pytest
 
-from app.core.hardware import (
+from app.core.system.hardware import (
     detect_accelerator,
     detect_hardware_profile,
     get_llamacpp_launch_args,
     get_optimal_torch_device,
     get_system_memory_info,
 )
-from app.core.memory import (
-    check_and_enforce_memory_guard,
-    get_memory_usage_mb,
-    trim_memory,
-)
+from app.core.system.memory import get_memory_usage_mb, trim_memory
 
 
 def test_get_optimal_torch_device():
@@ -34,6 +30,11 @@ def test_get_optimal_torch_device():
     # about the host. cuda/mps may legitimately differ (torch may fail to load
     # where the accelerator is merely absent), but on a host where torch sees
     # nothing accelerated, neither should the profile claim acceleration.
+    # Torch-free runtimes (no torch installed) cannot probe; skip agreement.
+    import importlib.util as _ilu
+
+    if _ilu.find_spec("torch") is None:
+        return
     profile = detect_hardware_profile()
     if dev == "cpu":
         # Nothing accelerated for torch; the profile should not be claiming
@@ -110,7 +111,7 @@ def _install_torch_trap(monkeypatch):
 
     monkeypatch.setattr(builtins, "__import__", _trapped)
     # Drop any cached profile so detection actually re-runs under the trap.
-    monkeypatch.setattr("app.core.hardware._hardware_profile_cache", None, raising=False)
+    monkeypatch.setattr("app.core.system.hardware._hardware_profile_cache", None, raising=False)
 
 
 def test_detect_hardware_profile_does_not_import_torch(monkeypatch):
@@ -131,7 +132,7 @@ def test_ingest_batch_size_path_is_torch_free(monkeypatch):
     The old assertion was `> 0`, which a hardcoded `return 1` would satisfy.
     It is now tied to the detected tier's configured size.
     """
-    from app.core.hardware import _INGEST_EMBED_BATCH_BY_TIER, get_ingest_embed_batch_size
+    from app.core.system.hardware import _INGEST_EMBED_BATCH_BY_TIER, get_ingest_embed_batch_size
 
     _install_torch_trap(monkeypatch)
     size = get_ingest_embed_batch_size()
@@ -150,14 +151,14 @@ def test_ingest_batch_size_path_is_torch_free(monkeypatch):
 def test_ingest_batch_size_follows_the_tier(monkeypatch, tier, expected):
     """Pins the tier -> batch-size mapping. Previously nothing tied the two
     together, so a retune that made every tier return the same size passed."""
-    from app.core import hardware
+    from app.core.system import hardware
 
     monkeypatch.setattr(hardware, "get_cached_hardware_profile", lambda: {"tier": tier})
     assert hardware.get_ingest_embed_batch_size() == expected
 
 
 def test_unknown_tier_falls_back_to_the_documented_default(monkeypatch):
-    from app.core import hardware
+    from app.core.system import hardware
 
     monkeypatch.setattr(hardware, "get_cached_hardware_profile", lambda: {"tier": "something_new"})
     assert hardware.get_ingest_embed_batch_size() == 64
@@ -169,7 +170,7 @@ def test_torch_trap_actually_has_teeth(monkeypatch):
     Without this, a broad `except Exception` anywhere on the path would silently
     neutralise the trap and the two tests above would pass vacuously.
     """
-    from app.core import hardware
+    from app.core.system import hardware
 
     _install_torch_trap(monkeypatch)
     with pytest.raises(_TorchImportTrap):
@@ -204,7 +205,7 @@ def test_llamacpp_launch_args_fit_host():
 
 def test_llamacpp_cpu_path_has_no_kv_quant_flags(monkeypatch):
     """CPU-only hosts get no GPU flags (quantized KV needs flash-attn)."""
-    import app.core.hardware as hw
+    import app.core.system.hardware as hw
 
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
@@ -242,17 +243,12 @@ def test_memory_utilities():
     # Ensure trim_memory executes without raising exceptions
     trim_memory()
 
-    # Test guard check
-    guard = check_and_enforce_memory_guard(max_rss_mb=100000.0)
-    assert "rss_mb" in guard
-    assert guard["status"] == "healthy"
-
 
 def test_ingest_embed_batch_size_follows_tier():
     """Audit MEDIUM backend-3: lean 32 / standard 64 / high 128, safe default."""
     from unittest.mock import patch
 
-    from app.core.hardware import get_ingest_embed_batch_size
+    from app.core.system.hardware import get_ingest_embed_batch_size
 
     for tier, expected in [
         ("lean_cpu", 32),
@@ -263,13 +259,13 @@ def test_ingest_embed_batch_size_follows_tier():
         ("unknown-tier", 64),
     ]:
         with patch(
-            "app.core.hardware.get_cached_hardware_profile",
+            "app.core.system.hardware.get_cached_hardware_profile",
             return_value={"tier": tier},
         ):
             assert get_ingest_embed_batch_size() == expected
 
     with patch(
-        "app.core.hardware.get_cached_hardware_profile",
+        "app.core.system.hardware.get_cached_hardware_profile",
         side_effect=RuntimeError("probe failed"),
     ):
         assert get_ingest_embed_batch_size() == 64
@@ -281,7 +277,7 @@ def test_tiers_recommend_different_llm_weights(monkeypatch):
     Has teeth: reverting hardware.py to one model for all tiers fails this.
     All IDs must exist in the configured local lists in config/models.yaml.
     """
-    import app.core.hardware as hardware
+    import app.core.system.hardware as hardware
 
     def profile_for(total_gb):
         monkeypatch.setattr(
@@ -298,3 +294,24 @@ def test_tiers_recommend_different_llm_weights(monkeypatch):
     assert lean != standard, f"8GB tier recommends same weights as 16GB: {lean}"
     assert "1b" in lean.lower(), f"8GB tier should recommend 1B-class weights, got: {lean}"
     assert standard == high == "ibm-granite/granite-4.2-3b-GGUF:Q4_K_M"
+
+
+def test_windows_memory_telemetry(monkeypatch):
+    """Verify Windows ctypes memory branch works seamlessly without psutil."""
+    import app.core.system.hardware as hw
+    import app.core.system.memory as mem
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(mem, "_PSUTIL_AVAILABLE", False)
+
+    # Test trim_memory doesn't raise
+    mem.trim_memory()
+
+    # Test get_memory_usage_mb fallback
+    rss = mem.get_memory_usage_mb()
+    assert isinstance(rss, float)
+
+    # Test get_system_memory_info under win32
+    info = hw.get_system_memory_info()
+    assert "total_gb" in info
+    assert info["total_gb"] > 0

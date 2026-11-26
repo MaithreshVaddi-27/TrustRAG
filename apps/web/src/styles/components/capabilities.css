@@ -1,0 +1,136 @@
+/* ── TrustRAG · Capabilities explorer ───────────────────────────────────────
+ * A specification, not a carousel. The list on the left names the
+ * capability; the panel on the right says what it does and shows the code
+ * that does it.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-capabilities {
+  display: grid;
+  gap: var(--step-8);
+}
+
+@media (min-width: 1024px) {
+  .lx-capabilities {
+    grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
+    gap: var(--step-16);
+    align-items: start;
+  }
+}
+
+/* ── The list ─────────────────────────────────────────────────────────────── */
+
+.lx-capabilities__nav {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--rule);
+}
+
+.lx-capability {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--step-3);
+  padding: var(--step-4) var(--step-1);
+  border-bottom: 1px solid var(--rule-faint);
+  text-align: left;
+  color: var(--color-silver-500);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-capability:hover {
+  color: var(--color-silver-200);
+}
+
+.lx-capability[aria-selected='true'] {
+  color: var(--color-silver-050);
+}
+
+.lx-capability__icon {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  color: currentColor;
+  opacity: 0.7;
+}
+
+/* Laser Crimson marks the active capability. */
+.lx-capability[aria-selected='true'] .lx-capability__icon {
+  color: var(--color-crimson-400);
+  opacity: 1;
+}
+
+.lx-capability__label {
+  font-size: var(--size-label);
+  line-height: var(--leading-label);
+  font-weight: var(--weight-medium);
+}
+
+/* ── The panel ────────────────────────────────────────────────────────────── */
+
+.lx-capabilities__panel {
+  min-width: 0;
+  padding: var(--step-6);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  background-color: var(--surface-panel);
+}
+
+.lx-capabilities__panel:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+.lx-capability__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--step-3);
+  color: var(--color-silver-300);
+}
+
+.lx-capability__tagline {
+  margin-top: var(--step-1);
+}
+
+.lx-capability__desc {
+  margin-top: var(--step-4);
+  max-width: 60ch;
+}
+
+.lx-capability__highlights {
+  list-style: none;
+  margin: var(--step-5) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--step-2) var(--step-5);
+}
+
+.lx-capability__highlight {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-2);
+  font-size: var(--size-body-sm);
+  color: var(--color-silver-400);
+}
+
+.lx-capability__highlight svg {
+  color: var(--color-silver-500);
+}
+
+/* ── Code ─────────────────────────────────────────────────────────────────── */
+
+.lx-code {
+  margin: var(--step-6) 0 0;
+  padding: var(--step-4) var(--step-5);
+  overflow-x: auto;
+  border: 1px solid var(--rule-faint);
+  border-radius: var(--radius-card);
+  background-color: var(--surface-inset);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-body-sm);
+  line-height: 1.6;
+  color: var(--color-silver-400);
+  tab-size: 2;
+}
+
+.lx-code code {
+  font: inherit;
+}

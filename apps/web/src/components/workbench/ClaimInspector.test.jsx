@@ -41,20 +41,20 @@ describe('ClaimInspector', () => {
 
     expect(screen.getByText('Alpha claim about RAG.')).toBeInTheDocument()
     expect(screen.getByText('Beta claim about agents.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Supported (1)' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Contradicted (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Supported\s*1/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Contradicted\s*1/ })).toBeInTheDocument()
   })
 
   it('renders the empty state when there are no claims', () => {
     render(<ClaimInspector claims={[]} />)
 
-    expect(screen.getByText('No Atomic Claims Extracted')).toBeInTheDocument()
+    expect(screen.getByText('No atomic claims extracted')).toBeInTheDocument()
   })
 
   it('filters to a single state when a filter tab is selected', () => {
     render(<ClaimInspector claims={claims} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /Contradicted \(1\)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Contradicted\s*1/ }))
 
     expect(screen.queryByText('Alpha claim about RAG.')).not.toBeInTheDocument()
     expect(screen.getByText('Beta claim about agents.')).toBeInTheDocument()
@@ -64,7 +64,7 @@ describe('ClaimInspector', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     render(<ClaimInspector claims={claims} />)
 
-    fireEvent.click(screen.getAllByTitle('Copy claim assertion')[0])
+    fireEvent.click(screen.getAllByTitle('Copy the claim')[0])
 
     await waitFor(() => expect(copyToClipboard).toHaveBeenCalledWith('Alpha claim about RAG.'))
     await waitFor(() => expect(document.querySelector('.lucide-check')).toBeInTheDocument())

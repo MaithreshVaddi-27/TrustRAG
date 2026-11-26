@@ -1,99 +1,92 @@
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
+import { ArrowRight, FileSearch, Database, Hash, GitMerge } from 'lucide-react'
 import AppLayout from '@/layouts/AppLayout'
+import PageHeader from '@/components/common/PageHeader'
+import AsyncState from '@/components/app/AsyncState'
+import ExplainerList from '@/components/app/ExplainerList'
 import { EvidenceViewer } from '@/components/workbench/EvidenceViewer'
 import { evidenceService } from '@/services/api'
-import { FileSearch, Loader2, Search, Filter } from 'lucide-react'
+
+const RETRIEVAL_STREAMS = [
+  {
+    icon: Database,
+    title: 'Dense ONNX vectors',
+    body: 'Embeddings generated locally with 384-dimensional vectors, matched by cosine distance for semantic concept recall.',
+  },
+  {
+    icon: Hash,
+    title: 'Sparse BM25 index',
+    body: 'Porter-stemmed exact keyword matching with inverse document frequency, for precise entity and code recall.',
+  },
+  {
+    icon: GitMerge,
+    title: 'Reciprocal rank fusion',
+    body: 'The two result lists are merged into one calibrated ranking with k = 60, and every chunk keeps its source hash.',
+  },
+]
 
 export default function EvidencePage() {
-  const [search, setSearch] = useState('')
-  const [filterMethod, setFilterMethod] = useState('all')
-
-  const { data: evidence = [], isLoading, error } = useQuery({
+  const {
+    data: evidence = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['all-evidence'],
     queryFn: evidenceService.list,
   })
 
-  const filteredEvidence = evidence.filter((item) => {
-    const matchesSearch =
-      !search.trim() ||
-      item.text?.toLowerCase().includes(search.toLowerCase()) ||
-      item.filename?.toLowerCase().includes(search.toLowerCase())
-    const matchesMethod =
-      filterMethod === 'all' || item.method?.toLowerCase() === filterMethod.toLowerCase()
-    return matchesSearch && matchesMethod
-  })
+  const status =
+    isLoading ? 'loading' : isError ? 'error' : evidence.length === 0 ? 'empty' : 'ready'
 
   return (
     <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6 animate-fade-in stagger-children">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-white tracking-tight">Evidence</h1>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary-950/80 text-primary-400 border border-primary-800/60">
-                {evidence.length} {evidence.length === 1 ? 'Record' : 'Records'}
-              </span>
-            </div>
-            <p className="text-slate-400 text-sm mt-1">
-              Retrieved evidence chunks across all analyses, with provenance, score breakdown, and integrity audits.
-            </p>
-          </div>
-        </div>
+      <div className="lx-page lx-stack">
+        <PageHeader
+          title="Evidence"
+          accent="vault"
+          countLabel={
+            isError
+              ? 'unavailable'
+              : isLoading
+                ? null
+                : `${evidence.length} ${evidence.length === 1 ? 'record' : 'records'}`
+          }
+          description="Retrieved evidence chunks across every analysis, with provenance, score breakdown and integrity audit."
+          actions={
+            <Link to="/playground" className="lx-btn lx-btn--primary">
+              Run new query
+              <ArrowRight size={13} strokeWidth={1.5} aria-hidden="true" />
+            </Link>
+          }
+        />
 
-        {/* Filter bar */}
-        <div className="glass-card p-3.5 flex flex-col sm:flex-row gap-3 items-center justify-between">
-          <div className="relative w-full sm:w-80">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by snippet or source filename..."
-              className="w-full bg-surface-800/80 border border-slate-700/80 rounded-lg pl-9 pr-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40 transition-colors"
-            />
-          </div>
+        <AsyncState
+          status={status}
+          loadingLabel="Loading retrieved evidence records…"
+          errorTitle="Failed to load evidence"
+          errorMessage={error?.message}
+          onRetry={refetch}
+          emptyIcon={FileSearch}
+          emptyTitle="No evidence segments retrieved yet"
+          emptyBody="Run an analysis in the playground to ingest, score and persist evidence chunks into the audit vault with verified token spans."
+          emptyAction={
+            <Link to="/playground" className="lx-btn lx-btn--secondary">
+              Launch a playground analysis
+              <ArrowRight size={13} strokeWidth={1.5} aria-hidden="true" />
+            </Link>
+          }
+        />
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Filter size={14} className="text-slate-500 shrink-0" />
-            <select
-              value={filterMethod}
-              onChange={(e) => setFilterMethod(e.target.value)}
-              className="bg-surface-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
-            >
-              <option value="all">All Methods</option>
-              <option value="hybrid">Hybrid (Dense + Sparse)</option>
-              <option value="dense">Dense Only</option>
-              <option value="sparse">Sparse Only</option>
-            </select>
-          </div>
-        </div>
+        {status === 'ready' && <EvidenceViewer chunks={evidence} />}
 
-        {/* Body */}
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center p-16 space-y-3">
-            <Loader2 size={24} className="animate-spin text-primary-400" />
-            <span className="text-sm text-slate-400">Loading retrieved evidence records...</span>
-          </div>
-        ) : error ? (
-          <div className="glass-card p-6 text-center text-red-400 border border-red-800/40">
-            Failed to load evidence: {error.message || 'An unexpected error occurred'}
-          </div>
-        ) : filteredEvidence.length === 0 ? (
-          <div className="glass-card p-12 text-center text-slate-500 space-y-2">
-            <FileSearch size={32} className="mx-auto text-slate-600 mb-2" />
-            <p className="font-medium text-slate-300">No evidence matching filters</p>
-            <p className="text-xs text-slate-500">
-              {evidence.length === 0
-                ? 'Run an analysis in the Playground to retrieve and persist evidence chunks.'
-                : 'Try adjusting your search query or method filter.'}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <EvidenceViewer chunks={filteredEvidence} />
-          </div>
+        {status === 'empty' && (
+          <ExplainerList
+            title="Dual-stream retrieval and provenance"
+            items={RETRIEVAL_STREAMS}
+          />
         )}
       </div>
     </AppLayout>

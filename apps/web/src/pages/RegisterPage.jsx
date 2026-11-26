@@ -1,48 +1,35 @@
-import { useEffect, useState } from 'react'
+import { useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Loader2, Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, AlertTriangle } from 'lucide-react'
 import AuthLayout from '@/layouts/AuthLayout'
+import { PasswordRules } from '@/components/auth/PasswordRules'
+import { passwordRuleFailures } from '@/lib/passwordRules'
 import { authService } from '@/services/auth'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [loadingTime, setLoadingTime] = useState(0)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    let interval
-    if (loading) {
-      setLoadingTime(0)
-      interval = setInterval(() => {
-        setLoadingTime((prev) => prev + 1)
-      }, 1000)
-    } else {
-      setLoadingTime(0)
-    }
-    return () => clearInterval(interval)
-  }, [loading])
+  const passwordRef = useRef(null)
+  const confirmRef = useRef(null)
 
   async function handleSubmit(e) {
     e.preventDefault()
-    const pwError =
-      password.length < 12
-        ? 'Password must be at least 12 characters.'
-        : !/[A-Z]/.test(password)
-          ? 'Password must contain at least one uppercase letter.'
-          : !/[a-z]/.test(password)
-            ? 'Password must contain at least one lowercase letter.'
-            : !/\d/.test(password)
-              ? 'Password must contain at least one digit.'
-              : !/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)
-                ? 'Password must contain at least one special character.'
-                : null
-    if (pwError) {
-      setError(pwError)
+    const failures = passwordRuleFailures(password)
+    if (failures.length > 0) {
+      setError(`The password still needs: ${failures.map((f) => f.label.toLowerCase()).join(', ')}.`)
+      passwordRef.current?.focus()
+      return
+    }
+    if (confirmPassword !== password) {
+      setError('The two passwords do not match.')
+      confirmRef.current?.focus()
       return
     }
     setError('')
@@ -50,10 +37,19 @@ export default function RegisterPage() {
     try {
       await authService.register(email, password, fullName)
       // Auto-login after registration
-      await authService.login(email, password)
-      navigate('/dashboard')
+      try {
+        await authService.login(email, password)
+        navigate('/dashboard')
+      } catch {
+        navigate('/login?registered=1')
+      }
     } catch (err) {
-      setError(err.message || 'Registration failed.')
+      const msg = err.message || 'Registration failed.'
+      setError(
+        /already registered|already exists|conflict/i.test(msg)
+          ? 'This email is already registered. Sign in to continue.'
+          : msg,
+      )
     } finally {
       setLoading(false)
     }
@@ -63,77 +59,116 @@ export default function RegisterPage() {
     <AuthLayout title="Create account" subtitle="Get started with TrustRAG">
       <form onSubmit={handleSubmit} className="space-y-4" id="register-form">
         {error && (
-          <div className="rounded-lg border border-red-800/50 bg-red-950/40 px-3 py-2 text-sm text-red-400">
-            {error}
+          <div className="lx-alert lx-alert--error" role="alert">
+            <AlertTriangle size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span>{error}</span>
           </div>
         )}
 
-        {loading && loadingTime >= 5 && (
-          <div className="rounded-lg border border-cyan-800/50 bg-cyan-950/30 px-3 py-2.5 text-xs text-cyan-300 animate-pulse space-y-1">
-            <p className="font-semibold flex items-center gap-1.5">
-              ⚡ Creating TrustRAG Account ({loadingTime}s elapsed)
-            </p>
-            <p className="text-slate-400 text-[11px] leading-relaxed">
-              Setting up your isolated workspace. This usually takes less than a minute.
-            </p>
+        {loading && (
+          <div className="lx-alert lx-alert--info" role="status">
+            <ThinkingOrbs size="sm" />
+            <span>Creating account…</span>
           </div>
         )}
 
-        <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-slate-400" htmlFor="reg-name">
+        <div className="lx-field">
+          <label className="lx-field__label" htmlFor="reg-name">
             Full name
           </label>
           <input
             id="reg-name"
+            name="fullName"
             type="text"
             autoComplete="name"
             required
             value={fullName}
-            onChange={e => setFullName(e.target.value)}
+            onChange={(e) => setFullName(e.target.value)}
             placeholder="Your name"
-            className="w-full bg-surface-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-600 transition-colors"
+            className="lx-field__input"
           />
         </div>
 
-        <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-slate-400" htmlFor="reg-email">
+        <div className="lx-field">
+          <label className="lx-field__label" htmlFor="reg-email">
             Email
           </label>
           <input
             id="reg-email"
+            name="email"
             type="email"
             autoComplete="email"
             required
             value={email}
-            onChange={e => setEmail(e.target.value)}
+            onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            className="w-full bg-surface-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-600 transition-colors"
+            className="lx-field__input"
           />
         </div>
 
-        <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-slate-400" htmlFor="reg-password">
+        <div className="lx-field">
+          <label className="lx-field__label" htmlFor="reg-password">
             Password
-            <span className="text-slate-600 font-normal ml-1">(min. 12 chars, mixed case, digit &amp; symbol)</span>
           </label>
-          <div className="relative">
+          <div className="lx-field__wrap">
             <input
               id="reg-password"
+              name="password"
+              ref={passwordRef}
               type={showPw ? 'text' : 'password'}
               autoComplete="new-password"
               required
               value={password}
-              onChange={e => setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full bg-surface-800 border border-slate-700 rounded-lg px-3 py-2 pr-10 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-600 transition-colors"
+              className="lx-field__input lx-field__input--with-affix"
             />
             <button
               type="button"
-              onClick={() => setShowPw(v => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+              onClick={() => setShowPw((v) => !v)}
+              className="lx-field__affix"
               aria-label={showPw ? 'Hide password' : 'Show password'}
+              aria-pressed={showPw}
             >
-              {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+              {showPw ? (
+                <EyeOff size={15} strokeWidth={1.5} aria-hidden="true" />
+              ) : (
+                <Eye size={15} strokeWidth={1.5} aria-hidden="true" />
+              )}
+            </button>
+          </div>
+          <PasswordRules value={password} />
+        </div>
+
+        <div className="lx-field">
+          <label className="lx-field__label" htmlFor="reg-confirm">
+            Confirm password
+          </label>
+          <div className="lx-field__wrap">
+            <input
+              id="reg-confirm"
+              name="confirmPassword"
+              ref={confirmRef}
+              type={showPw ? 'text' : 'password'}
+              autoComplete="new-password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="••••••••"
+              className="lx-field__input lx-field__input--with-affix"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw((v) => !v)}
+              className="lx-field__affix"
+              aria-label={showPw ? 'Hide password' : 'Show password'}
+              aria-pressed={showPw}
+            >
+              {showPw ? (
+                <EyeOff size={15} strokeWidth={1.5} aria-hidden="true" />
+              ) : (
+                <Eye size={15} strokeWidth={1.5} aria-hidden="true" />
+              )}
             </button>
           </div>
         </div>
@@ -142,18 +177,14 @@ export default function RegisterPage() {
           type="submit"
           disabled={loading}
           id="register-submit"
-          className="btn-primary w-full flex items-center justify-center gap-2 mt-2"
+          className="lx-btn lx-btn--primary lx-btn--block lx-btn--large"
         >
-          {loading && <Loader2 size={14} className="animate-spin" />}
           {loading ? 'Creating account…' : 'Create account'}
         </button>
       </form>
 
-      <p className="mt-4 text-center text-xs text-slate-500">
-        Already have an account?{' '}
-        <Link to="/login" className="text-primary-400 hover:text-primary-300 transition-colors">
-          Sign in
-        </Link>
+      <p className="lx-auth__foot">
+        Already have an account? <Link to="/login">Sign in</Link>
       </p>
     </AuthLayout>
   )

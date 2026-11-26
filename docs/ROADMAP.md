@@ -13,14 +13,14 @@
 | **1** | Monorepo, Config, Docker, CI/CD | Docker Compose, non-root containers, GitHub Actions CI/CD workflows (`.github/workflows/`) | ✅ COMPLETE |
 | **2** | React 18 Workbench Frontend | Glassmorphism design system, 11 interactive pages, Lucide icons (`apps/web/src/`) | ✅ COMPLETE |
 | **3** | FastAPI CRUD Routes & Data Layer | MongoDB storage, asynchronous endpoints, analysis lifecycle (`apps/api/app/api/`) | ✅ COMPLETE |
-| **4** | Auth & Multi-Tenant Security | JWT authentication, bcrypt passwords, anti-IDOR checks, rate limiting (`apps/api/app/core/security.py`) | ✅ COMPLETE |
-| **5** | Document Ingestion (8 Formats) | Native parsers for PDF, DOCX (defusedxml), CSV, JSON, HTML, HTM, TXT, MD (`apps/api/app/ingestion/`) | ✅ COMPLETE |
-| **6** | Hybrid Retrieval & Reciprocal Rank Fusion | BGE-small-en-v1.5 (384d, local) + client BM25-TF saturation + server-side Qdrant IDF + RRF ($k=60$) with enforced `fusion_top_k`; deterministic query router (simple/temporal/comparison/complex) + bounded fan-out (`apps/api/app/retrieval/`, `apps/api/app/agent/router.py`) | ✅ COMPLETE |
-| **7** | Atomic Claim Decomposition & NLI Verifier | Structured extraction, Open Knowledge triples `(S, P, O)`, Gemini NLI verdict (`apps/api/app/verification/`) | ✅ COMPLETE |
-| **8** | Evidence Integrity & Provenance | Cryptographic SHA-256 hash auditing, temporal validity filters (`apps/api/app/verification/integrity.py`) | ✅ COMPLETE |
-| **9** | LangGraph Adaptive Self-Healing Loop | StateGraph recovery loop, dynamic rewrites, context expansions (`apps/api/app/agent/graph.py`) | ✅ COMPLETE |
+| **4** | Auth & Multi-Tenant Security | JWT authentication, bcrypt passwords, anti-IDOR checks, rate limiting (`apps/api/app/security/security.py`) | ✅ COMPLETE |
+| **5** | Document Ingestion (8 Formats) | Native parsers for PDF, DOCX (defusedxml), CSV, JSON, HTML, HTM, TXT, MD (`apps/api/app/rag/ingestion/`) | ✅ COMPLETE |
+| **6** | Hybrid Retrieval & Reciprocal Rank Fusion | BGE-small-en-v1.5 (384d, local) + client BM25-TF saturation + server-side Qdrant IDF + RRF ($k=60$) with enforced `fusion_top_k`; deterministic query router (simple/temporal/comparison/complex) + bounded fan-out (`apps/api/app/rag/retrieval/`, `apps/api/app/rag/agent/router.py`) | ✅ COMPLETE |
+| **7** | Atomic Claim Decomposition & NLI Verifier | Structured extraction, Open Knowledge triples `(S, P, O)`, Gemini NLI verdict (`apps/api/app/rag/verification/`) | ✅ COMPLETE |
+| **8** | Evidence Integrity & Provenance | Cryptographic SHA-256 hash auditing, temporal validity filters (`apps/api/app/rag/verification/integrity.py`) | ✅ COMPLETE |
+| **9** | LangGraph Adaptive Self-Healing Loop | StateGraph recovery loop, dynamic rewrites, context expansions (`apps/api/app/rag/agent/graph/`) | ✅ COMPLETE |
 | **10** | Live Execution Trace Streaming | Server-Sent Events (SSE) trace streaming, MongoDB persistence (`apps/api/app/services/analysis_service.py`) | ✅ COMPLETE |
-| **11** | Evaluation & Experimentation | Custom reliability metrics, benchmark dataset, ablation engine (`apps/api/app/evaluation/`) | ✅ COMPLETE |
+| **11** | Evaluation & Experimentation | Custom reliability metrics, benchmark dataset, ablation engine (`apps/api/tests/eval/`) | ✅ COMPLETE |
 | **12** | Production Hardening & Security SAST | Bandit SAST 0 issues, memory streaming upload guards, defensive HTTP headers (`apps/api/app/main.py`) | ✅ COMPLETE |
 | **P-L** | **Multi-Tenant User Data Isolation** | Scoped `user_id` on all records, compound indexes (`claim_user_time`, `evidence_user_time`), cascade deletions | ✅ COMPLETE |
 | **P-L** | **Open Knowledge & JSON-LD Export** | `(Subject, Predicate, Object)` claim triples, schema.org JSON-LD compliance export (`GET /analyses/{id}/export`) | ✅ COMPLETE |
@@ -29,12 +29,13 @@
 | **13** | **SOTA UI Overhaul & Low-RAM Architecture** | Ultra-premium landing page, 75% Qdrant RAM compression (INT8 on-disk), 0 MB GPU RAM via Gemini 384d MRL, LRU embedding cache, and universal Model Context Protocol (MCP) server | ✅ COMPLETE |
 | **14** | **Master SOTA Multi-Role Production Audit** | Deep Systems, Security, AI/ML, and QA audit suite (79/79 pytest, 0 lint warnings; report removed during cleanup, history in git) | ✅ COMPLETE |
 | **15** | **Ultra-Low RAM + Security Hardening (2026-09-11)** | psutil RSS guard, batched SQLite writes, bounded LLM registry (4 max), X-Request-ID validation, production CORS lock, split health endpoints, magic-bytes + zip-bomb upload defense, `MALLOC_ARENA_MAX`, Apple-design reduced-motion | ✅ COMPLETE |
-| **16** | **ONNX BGE Runtime — Torch-Free Embeddings (2026-09-11)** | `scripts/export_bge_onnx.py` + ONNX Runtime wrapper, numerical parity verified, ~500–1000 MB RSS savings. Since 2026-09-27 the sole embedding engine (torch/HF branch removed); reranker fails closed to RRF when `use_onnx=true` | ✅ COMPLETE |
+| **16** | **ONNX BGE Runtime — Torch-Free Embeddings (2026-09-11)** | `scripts/setup/export_bge_onnx.py` + ONNX Runtime wrapper, numerical parity verified, ~500–1000 MB RSS savings. Since 2026-09-27 the sole embedding engine (torch/HF branch removed); reranker fails closed to RRF when `use_onnx=true` | ✅ COMPLETE |
 | **17** | **Claims Verification Hardening (2026-09-12)** | Tolerant NLI parsing (VERIFIED→SUPPORTED aliasing, segment coercion, batch bare-int drop) fixing 0/x-supported on good answers; 6 new regression tests; 38-error lint sweep | ✅ COMPLETE |
 | **18** | **Fused Decompose+Verify + CI Repairs (2026-09-12)** | Single-call fused NLI path with two-step fallback (live-evaled 2.0s vs 3.4s); fixed frontend-build (missing install), Docker context + empty-venv boot bug, stale k6 health contract; onnxruntime shipped in image; Bandit B615 revision pin; Trivy SARIF advisory | ✅ COMPLETE |
 | **19** | **Offline-Warning + Probe Hardening (2026-09-12)** | `/models/providers` degrades instead of 500ing; UI warns on failed providers query too; probe retries once and splits refused (down) vs timeout (slow); concurrent provider checks; hermetic verification suite | ✅ COMPLETE |
-| **20** | **RAG Quality Phases 0–8 (2026-09-16)** | Frozen 25-query baseline + metrics harness + live runner (`tests/eval/`, `scripts/run_baseline_eval.py`); BM25-TF + server IDF with collection migration; reranker depth cap, stays default-off; RapidOCR-ONNX per-page fallback with provenance; newline-preserving normalization + wired chunking strategies; inline `[Segment N]` citations + strip post-check; NEUTRAL-only targeted claim retrieval; deterministic router + fan-out; snapshot/rollback routes + empty-snapshot guard — 322 backend tests | ✅ COMPLETE |
+| **20** | **RAG Quality Phases 0–8 (2026-09-16)** | Frozen 25-query baseline + metrics harness + live runner (`tests/eval/`, `scripts/eval/run_baseline_eval.py`); BM25-TF + server IDF with collection migration; reranker depth cap, stays default-off; RapidOCR-ONNX per-page fallback with provenance; newline-preserving normalization + wired chunking strategies; inline `[Segment N]` citations + strip post-check; NEUTRAL-only targeted claim retrieval; deterministic router + fan-out; snapshot/rollback routes + empty-snapshot guard — 322 backend tests | ✅ COMPLETE |
 | **21** | **Adaptive Recovery + Security + Observability (2026-09-19)** | Diagnose-then-act recovery (≤2 attempts, token/latency budgets, abstain on exhaustion); JWT `iss`/`aud` + service-token KB/user binding + login lockout + upload AV + 24-test red-team suite; dependency-free `/metrics` exposition + pre-request budget enforcement + per-analysis accounting + k6 read-path coverage; full phase-by-phase re-verification audit (removed during cleanup, history in git) — **381 backend tests** | ✅ COMPLETE |
+| **22** | **Frontend Architecture, Component Decomposition & UI/UX (2026-11-04)** | Decomposed god components into focused subcomponents; cyber-dark design system (Obsidian surfaces, Electric Cyber Azure, Cyber Cyan, Semantic Emerald/Crimson/Amber); Model Context Protocol (MCP) live web search grounding toggle; bottom-anchored query input with pill presets; deduplicated workbench views; Brave DevTools visual verification — **33 Vitest tests, 0 ESLint warnings** | ✅ COMPLETE |
 
 ---
 
@@ -62,7 +63,7 @@
 ### Testing & Verification Expansion
 - [x] **End-to-End Browser Automation** — Playwright suite in `apps/web/e2e/auth.spec.js`: route guard, register, UI login, dashboard, **JWT revocation after logout**; CI job with live Mongo + API + Chromium
 - [x] **Live Integration Tests** — E2E suite runs against live MongoDB and the real FastAPI app (no mocks); k6 smoke also hits live Mongo/Qdrant reads
-- [x] **Rate Limiter Threshold Tests** — `apps/api/tests/test_rate_limit.py` asserts 429 when the per-minute auth ceiling is exceeded
+- [x] **Rate Limiter Threshold Tests** — `apps/api/tests/test_rate_limiting.py` asserts 429 when the per-minute auth ceiling is exceeded
 - [x] **Load Testing in CI** — k6 smoke (`load-test/smoke.js`) runs in the `e2e` CI job: health + authenticated reads, ~3.3k requests/35s, p95<300ms gate
 
 ---
@@ -92,7 +93,7 @@
 ## 🟢 LOW PRIORITY (Future Innovation)
 
 ### RAG Quality & Advanced AI
-- [ ] **Live baseline + ablations** — run `scripts/run_baseline_eval.py` against a live stack; fill `docs/evaluation/methodology.md` snapshot table (no fabricated rows); calibrate reranker thresholds from Hybrid-vs-Hybrid+Rerank.
+- [ ] **Live baseline + ablations** — run `scripts/eval/run_baseline_eval.py` against a live stack; fill `docs/evaluation/methodology.md` snapshot table (no fabricated rows); calibrate reranker thresholds from Hybrid-vs-Hybrid+Rerank.
 - [ ] **KB re-upload window** — pre-IDF collections recreate on next init; newline change needs re-index; combine into one operator re-upload.
 - [ ] **Query Expansion** — Implement Hypothetical Document Embeddings (HyDE) or multi-query expansion prior to retrieval.
 - [ ] **Dense Embedding Upgrades** — BGE-small-en-v1.5 is the current default (MiniLM legacy/retired); benchmark larger models only with a measured recall gap.

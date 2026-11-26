@@ -1,0 +1,153 @@
+/* ── TrustRAG · Benchmarks ───────────────────────────────────────────────────
+ * A ranked table with thin bars, not a chart with a rainbow. One accent
+ * leads — TrustRAG's row in Chrome Silver — and every other row sits in a
+ * quiet step of the neutral ramp. Each table carries a caption that says
+ * where the numbers came from.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-bench {
+  border-top: 1px solid var(--rule);
+}
+
+/* The heading of the active table, and the sentence that says what the
+ * numbers are before any of them are read. */
+.lx-bench__head {
+  display: grid;
+  gap: var(--step-3);
+  padding-block: var(--step-5) var(--step-3);
+}
+
+.lx-bench__desc {
+  max-width: 78ch;
+  color: var(--color-silver-500);
+}
+
+.lx-bench__row {
+  display: grid;
+  gap: var(--step-2) var(--step-6);
+  padding-block: var(--step-4);
+  border-bottom: 1px solid var(--rule-faint);
+  align-items: baseline;
+}
+
+@media (min-width: 900px) {
+  .lx-bench__row {
+    grid-template-columns: minmax(0, 1fr) 6rem minmax(0, 1fr) 5rem;
+    align-items: center;
+  }
+}
+
+.lx-bench__label {
+  font-size: var(--size-body);
+  color: var(--color-silver-300);
+}
+
+.lx-bench__value {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-body);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-400);
+}
+
+@media (min-width: 900px) {
+  .lx-bench__value {
+    text-align: right;
+  }
+}
+
+.lx-bench__track {
+  position: relative;
+  height: 6px;
+  background-color: var(--color-graphite-800);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.lx-bench__fill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  background-color: var(--color-silver-700);
+  border-radius: var(--radius-pill);
+  transform-origin: left center;
+}
+
+/* A measured bar grows from its own baseline, once, on entry and on a tab
+ * switch. The stagger reads left-to-right like the table itself. */
+@keyframes lx-bar-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lx-bench__fill {
+    animation: lx-bar-grow 520ms var(--motion-ease-out) both;
+    animation-delay: calc(var(--bar-index, 0) * 60ms);
+  }
+}
+
+/* The row that matters. One accent per chart. */
+.lx-bench__row--lead .lx-bench__label {
+  color: var(--color-silver-050);
+}
+
+.lx-bench__row--lead .lx-bench__value {
+  color: var(--color-silver-050);
+}
+
+.lx-bench__row--lead .lx-bench__fill {
+  background-color: var(--color-silver-050);
+}
+
+/* The first set is the one that leads the band: a stronger top rule, a taller
+ * measure and slightly larger figures. The other sets stay quiet tables. */
+.lx-bench[data-lead='true'] {
+  border-top-color: var(--rule-strong);
+}
+
+.lx-bench[data-lead='true'] .lx-bench__row--lead {
+  padding-block: var(--step-6);
+}
+
+.lx-bench[data-lead='true'] .lx-bench__row--lead .lx-bench__label,
+.lx-bench[data-lead='true'] .lx-bench__row--lead .lx-bench__value {
+  font-size: var(--size-lede);
+}
+
+.lx-bench[data-lead='true'] .lx-bench__row--lead .lx-bench__track {
+  height: 10px;
+}
+
+.lx-bench__note {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+  text-align: right;
+}
+
+@media (max-width: 899px) {
+  .lx-bench__note {
+    text-align: left;
+  }
+}
+
+.lx-bench__caption {
+  margin-top: var(--step-4);
+  font-size: var(--size-body-sm);
+  line-height: 1.55;
+  color: var(--color-silver-500);
+  max-width: 78ch;
+}
+
+.lx-bench__caption a {
+  color: var(--color-silver-400);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 0.25em;
+}
+
+.lx-bench__caption a:hover {
+  color: var(--color-silver-100);
+}

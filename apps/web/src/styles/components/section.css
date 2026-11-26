@@ -1,0 +1,79 @@
+/* ── TrustRAG · Section frame ────────────────────────────────────────────────
+ * Every landing section shares one rhythm: a rule at the top, a heading that
+ * carries its own weight, a lede, then the content. No eyebrow label above
+ * the heading — the heading speaks for itself.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-band {
+  border-top: 1px solid var(--rule);
+  padding-top: var(--step-10);
+}
+
+/* A band owns its own vertical rhythm, so the shared section padding would
+ * only push the rule further away from the content it belongs to. */
+.lx-section.lx-band {
+  padding-top: 0;
+  padding-bottom: var(--section-space);
+}
+
+.lx-band__head {
+  display: grid;
+  gap: var(--step-4);
+  margin-bottom: var(--step-10);
+}
+
+@media (min-width: 1024px) {
+  .lx-band__head {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--step-16);
+    align-items: end;
+  }
+}
+
+.lx-band__lede {
+  max-width: 52ch;
+}
+
+@media (min-width: 1024px) {
+  .lx-band__lede {
+    margin-bottom: var(--step-1);
+  }
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────────────────
+ * A segmented control: a surface step plus a hairline, never a glow.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--step-1);
+  padding: var(--step-1);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  background-color: var(--surface-panel);
+}
+
+.lx-tab {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: var(--step-4);
+  border-radius: var(--radius-control);
+  font-size: var(--size-label);
+  color: var(--color-silver-500);
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-tab:hover {
+  color: var(--color-silver-200);
+}
+
+.lx-tab[aria-selected='true'],
+.lx-tab[aria-pressed='true'] {
+  background-color: var(--wash-silver-07);
+  color: var(--color-silver-050);
+  /* Laser Crimson marks the active selection. */
+  box-shadow: inset 0 -2px 0 var(--color-crimson-500);
+}

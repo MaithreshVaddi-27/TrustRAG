@@ -18,7 +18,7 @@ describe('FormattedAnswer rendering', () => {
   it('renders GFM tables (the reason remark-gfm is wired in)', () => {
     render(
       <FormattedAnswer
-        content={['| Claim | Verdict |', '| --- | --- |', '| Refunds allowed | SUPPORTED |'].join('\n')}
+        content={['| Claim | Verdict |', '| --- | --- |', '| Revocation is fast | SUPPORTED |'].join('\n')}
       />
     )
     expect(screen.getByRole('table')).toBeTruthy()
@@ -42,7 +42,7 @@ describe('FormattedAnswer rendering', () => {
     // The backend strips markers from `answer` but keeps them in
     // `answer_cited` for audit/eval. If a view renders the cited variant, the
     // markers must survive so an auditor can trace a claim to its segment.
-    render(<FormattedAnswer content={'Refunds are allowed [Segment 3] within 30 days [Segment 7].'} />)
+    render(<FormattedAnswer content={'Revocation takes effect [Segment 3] within 60 seconds [Segment 7].'} />)
     expect(screen.getByText(/\[Segment 3\]/)).toBeTruthy()
     expect(screen.getByText(/\[Segment 7\]/)).toBeTruthy()
   })
@@ -70,15 +70,27 @@ describe('FormattedAnswer rendering', () => {
         content={'# Title\n\n- one\n- two\n\n> quoted finding'}
       />
     )
-    expect(container.querySelector('h1')?.textContent).toContain('Title')
+    // Model headings are demoted: the route owns the only <h1> on the page.
+    expect(container.querySelector('h2')?.textContent).toContain('Title')
+    expect(container.querySelector('h1')).toBeNull()
     expect(container.querySelectorAll('li')).toHaveLength(2)
     expect(container.querySelector('blockquote')?.textContent).toContain('quoted finding')
+  })
+
+  it('keeps a model answer from injecting a second h1 into the route', () => {
+    const { container } = render(
+      <FormattedAnswer content={'# First\n\n## Second\n\n### Third'} />
+    )
+    expect(container.querySelectorAll('h1')).toHaveLength(0)
+    expect(container.querySelectorAll('h2')).toHaveLength(1)
+    expect(container.querySelectorAll('h3')).toHaveLength(1)
+    expect(container.querySelectorAll('h4')).toHaveLength(1)
   })
 
   it('applies the caller className alongside the base classes', () => {
     const { container } = render(<FormattedAnswer content="hi" className="max-h-40" />)
     const root = container.firstChild
-    expect(root.className).toContain('formatted-answer')
+    expect(root.className).toContain('lx-prose')
     expect(root.className).toContain('max-h-40')
   })
 })

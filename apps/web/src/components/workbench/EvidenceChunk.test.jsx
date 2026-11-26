@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { EvidenceChunk } from './EvidenceViewer'
+import EvidenceChunk from './EvidenceChunk'
 
 vi.mock('@/lib/clipboard', () => ({
   copyToClipboard: vi.fn().mockResolvedValue(true),

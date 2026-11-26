@@ -17,6 +17,12 @@ const API_BASE_URL = (
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
+  // No request may hang forever. A read that never returns would otherwise
+  // leave the interface waiting on a response that is never coming — the
+  // analysis stream waited on an evidence endpoint that took minutes to
+  // fail, and the run stayed on "Pipeline running…" the whole time.
+  // Ten seconds is a thousand times the latency of a healthy local read.
+  timeout: 10_000,
 })
 
 // Attach the JWT (if present) to every outgoing request.
@@ -83,7 +89,7 @@ export default api
  * @returns {Promise<EventSource|null>}
  */
 export async function openAnalysisStream(analysisId, { onEvent, onError, onComplete } = {}) {
-  const TERMINAL_EVENTS = new Set(['analysis.completed', 'analysis.abstained', 'analysis.failed'])
+  const TERMINAL_EVENTS = new Set(['analysis.completed', 'analysis.abstained', 'analysis.failed', 'analysis.outage'])
 
   // Mint a short-lived ticket — keeps the JWT out of the URL entirely.
   let streamUrl

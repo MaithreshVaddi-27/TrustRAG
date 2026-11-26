@@ -23,7 +23,6 @@ export function providerShortLabel(provider) {
   if (p === 'llama_cpp' || p === 'llamacpp') return 'llama.cpp'
   if (p === 'mlx') return 'MLX'
   if (p === 'gemini' || p === 'google_genai') return 'Gemini'
-  if (p === 'nvidia' || p === 'nim') return 'NVIDIA'
   if (p === 'huggingface') return 'Local BGE'
   return provider || 'Local'
 }

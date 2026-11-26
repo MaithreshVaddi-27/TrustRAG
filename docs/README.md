@@ -1,74 +1,155 @@
 # TRUSTRAG Documentation Index
 
-Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench. This directory is organized by domain: product specification, architecture, security, evaluation methodology, and deployment.
+Welcome to the technical documentation for the TRUSTRAG AI Reliability Workbench.
+This directory holds only canonical, maintained documents: the product
+specification, architecture and decision records, security controls, evaluation
+method, the living backend log, and the design system. Point-in-time audits,
+superseded plans, archived concept boards and review reports have been removed;
+their history remains in git.
 
-> **Note:** Point-in-time audit reports (`docs/audits/`, `PHASE_AUDIT_*.md`, `TRUSTRAG_AUDIT_2026-09-21.md`, `SESSION_SUMMARY_2026-09-21.md`, `TRUSTRAG_OPTIMIZATION_PLAN.md`) and the stale agent work-plan (`docs/superpowers/`) were removed during cleanup. Their history remains in git (e.g. `git log -- docs/TRUSTRAG_AUDIT_2026-09-21.md`).
+> The backend audit and every change made against it live in one **living log**:
+> [`backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md`](backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md).
+> The JSON files under `backend/` are **frozen evidence snapshots** cited by that
+> log, not disposable output. Regenerate them deliberately with the scripts in
+> `apps/api/scripts/`; new local runs should stay out of the tracked tree.
 
 ---
 
-## 📁 Documentation Structure
+## Running locally (all platforms)
+
+```bash
+python scripts/serve.py doctor   # prerequisites + health
+python scripts/serve.py serve    # MongoDB, Ollama, API and Vite; Ctrl+C stops all
+python scripts/serve.py status
+python scripts/serve.py stop
+```
+
+Windows: `powershell -ExecutionPolicy Bypass -File scripts\serve.ps1 serve`.
+The launcher is documented in [`scripts/README.md`](../scripts/README.md) and
+the per-OS troubleshooting table in
+[`ONBOARDING-TROUBLESHOOTING.md`](ONBOARDING-TROUBLESHOOTING.md).
+
+---
+
+## Documentation structure
 
 ```
 docs/
-├── README.md                        # Master index (this file)
-├── TRUSTRAG_specs.md                # Full product specification (source of truth)
-├── audit-2026-09-28-ui-redesign-full.md  # LIVE audit tracker (all findings fixed; supersedes removed point-in-time reports)
-├── ONBOARDING-TROUBLESHOOTING.md    # Per-OS setup guide + failure table + live verification backlog
-├── ROADMAP.md                       # Product vision, milestones, phase tracking
-├── PERFORMANCE-GUIDE.md             # Free speed/RAM tuning + MLX on Mac
+├── README.md                          # Master index (this file)
+├── TRUSTRAG_specs.md                  # Full product specification (source of truth)
+├── TRUSTRAG_PROJECT_GUIDE.md          # Code-first walkthrough of the whole product
+├── TRUSTRAG_RAG_DEEP_DIVE.md          # Beginner-to-mentor guide to the RAG subsystem
+├── ROADMAP.md                         # Product vision, milestones, phase tracking
+├── PERFORMANCE-GUIDE.md               # Free speed/RAM tuning + MLX on Mac
+├── ONBOARDING-TROUBLESHOOTING.md      # Per-OS setup guide + failure table
+├── backend/
+│   ├── BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md  # Living engineering log
+│   └── *.json                         # Frozen benchmark / quality / accuracy snapshots
 ├── architecture/
-│   ├── architecture.md              # End-to-end system design, MCP tools, LangGraph loop, data flow
-│   ├── RAG_ARCHITECTURE.md          # RAG pipeline technical reference
-│   └── decision-log.md              # ADRs D-01 through D-33
+│   ├── architecture.md                # End-to-end system design, MCP tools, LangGraph loop
+│   ├── RAG_ARCHITECTURE.md            # RAG pipeline technical reference
+│   ├── decision-log.md                # ADRs D-01 onward
+│   └── PRODUCTION_CONFIG_GUIDE.md     # Every models.yaml key, what it does
 ├── security/
-│   ├── security-controls.md         # Auth, anti-IDOR, SSRF, rate limits, headers
-│   └── threat-model.md              # STRIDE threat model and mitigations
+│   ├── security-controls.md           # Auth, anti-IDOR, SSRF, rate limits, headers
+│   └── threat-model.md                # STRIDE threat model and mitigations
 ├── evaluation/
-│   ├── methodology.md               # Benchmark dataset, metrics, measured snapshot
-│   └── results/                     # Live eval-run JSON (gitignored, local only)
-├── deployment/
-│   ├── DEPLOYMENT_GUIDE.md          # Cloud production runbook (Pages + GCR + Atlas)
-│   └── README.md                    # Env vars, local/Compose setup, pre-prod checklist
+│   ├── methodology.md                 # Dataset, metrics, ablation plan, run procedure
+│   └── results/                       # Live eval-run JSON (gitignored, local only)
+├── design/
+│   ├── README.md                      # Current design decision record
+│   ├── dark-luxury/                   # Canonical design system
+│   ├── UI_RE_DEEP_AUDIT_2026-11-25.md # Verification of the shipped UI
+│   └── UI_RE_DEEP_PLAN_2026-11-25.md  # Executed cleanup plan and verification
+└── deployment/
+    ├── DEPLOYMENT_GUIDE.md            # Cloud production runbook
+    └── README.md                      # Env vars, local/Compose setup
 ```
 
 ---
 
-## 📑 Core Sections
+## Core sections
 
-### 1. Product & Planning
+### Product & planning
 
-- [**Specification (`TRUSTRAG_specs.md`)**](TRUSTRAG_specs.md): product definition, engineering principles, stack, architecture, config, ingestion → recovery pipeline, API, testing, acceptance criteria. Read this first before contributing.
-- [**Roadmap (`ROADMAP.md`)**](ROADMAP.md): completed phases, pre-deployment checklist, and prioritized upcoming work.
-- [**Performance Guide (`PERFORMANCE-GUIDE.md`)**](PERFORMANCE-GUIDE.md): free efficiency changes (config-only speed/RAM wins) plus MLX local inference on Apple Silicon.
-- [**Onboarding & Troubleshooting (`ONBOARDING-TROUBLESHOOTING.md`)**](ONBOARDING-TROUBLESHOOTING.md): per-OS setup guide, failure table, live verification backlog.
-- [**Live Audit Tracker (`audit-2026-09-28-ui-redesign-full.md`)**](audit-2026-09-28-ui-redesign-full.md): every bug/error/issue/dead-code finding with severity, fix, and verification evidence. Supersedes the removed point-in-time reports (history in git).
+- [**Specification**](TRUSTRAG_specs.md) — product definition, architecture,
+  configuration, ingestion → recovery pipeline, API, testing and acceptance
+  criteria. Read this first before contributing.
+- [**Roadmap**](ROADMAP.md) — completed phases and prioritized upcoming work.
+- [**Performance Guide**](PERFORMANCE-GUIDE.md) — config-only speed/RAM wins and
+  MLX local inference on Apple Silicon.
+- [**Onboarding & Troubleshooting**](ONBOARDING-TROUBLESHOOTING.md) — per-OS setup,
+  failure table and live verification backlog.
+- [**Project Guide**](TRUSTRAG_PROJECT_GUIDE.md) — code-first walkthrough for
+  someone who did not build the system.
+- [**RAG Deep Dive**](TRUSTRAG_RAG_DEEP_DIVE.md) — beginner-to-mentor guide to
+  ingestion, retrieval, generation, verification and recovery.
 
-### 2. Architecture & Design
+### Backend engineering
 
-- [**System Architecture (`architecture/architecture.md`)**](architecture/architecture.md): LangGraph agent loop, MCP tools, hybrid retrieval (dense + sparse RRF), claim decomposition → NLI verification → verdict pipeline.
-- [**RAG Reference (`architecture/RAG_ARCHITECTURE.md`)**](architecture/RAG_ARCHITECTURE.md): pipeline flow, LangGraph state, ingestion/retrieval/generation/verification internals, data stores, frontend architecture.
-- [**Decision Log (`architecture/decision-log.md`)**](architecture/decision-log.md): ADRs covering providers, storage, ports, embeddings (local-only BGE, ONNX), NLI parsing, BM25+IDF, reranker cap, RapidOCR, chunking, citations, claim retrieval, router, lifecycle, recovery, security, observability.
+- [**Backend Changelog & Recommendations**](backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md)
+  — the living engineering log: findings, measured before/after, accepted
+  degradations, refinements and open decisions.
+- **Benchmark artifacts** (`backend/*.json`) — frozen API latency, retrieval
+  quality, RAG accuracy, resilience and integration snapshots cited by the log.
 
-### 3. Security
+### Architecture
 
-- [**Security Controls (`security/security-controls.md`)**](security/security-controls.md): JWT, bcrypt, JTI revocation, service-token KB/user binding, login lockout (5/900s), EICAR + best-effort clamd upload AV, 24-test red-team suite.
-- [**Threat Model (`security/threat-model.md`)**](security/threat-model.md): assets, STRIDE threats T-01…T-11, mitigations, residual risks, out-of-scope items.
+- [**System Architecture**](architecture/architecture.md) — LangGraph agent loop,
+  MCP tools, hybrid retrieval, claim decomposition → NLI → verdict.
+- [**RAG Reference**](architecture/RAG_ARCHITECTURE.md) — pipeline flow, state,
+  ingestion/retrieval/generation/verification internals and data stores.
+- [**Decision Log**](architecture/decision-log.md) — ADRs covering providers,
+  storage, ports, embeddings, NLI, reranking, chunking, recovery and security.
+- [**Production Config Guide**](architecture/PRODUCTION_CONFIG_GUIDE.md) — every
+  `models.yaml` key, what it does, and when to change it.
 
-### 4. Evaluation
+### Security
 
-- [**Methodology (`evaluation/methodology.md`)**](evaluation/methodology.md): experiment configs, metrics, ablation plan, frozen `baseline_v1` dataset, live run procedure, measured snapshot table.
+- [**Security Controls**](security/security-controls.md) — auth, anti-IDOR, SSRF,
+  rate limits, headers and upload scanning.
+- [**Threat Model**](security/threat-model.md) — assets, STRIDE threats,
+  mitigations and residual risks.
 
-### 5. Deployment
+### Evaluation
 
-- [**Production Runbook (`deployment/DEPLOYMENT_GUIDE.md`)**](deployment/DEPLOYMENT_GUIDE.md): deploy order (data plane → API → frontend), Render/Railway/Koyeb/Cloud Run, Cloudflare Pages, CORS, smoke test, production gotchas.
-- [**Deploy Reference (`deployment/README.md`)**](deployment/README.md): environment variables, local/Compose setup, Atlas + Qdrant Cloud setup, health checks, re-indexing, pre-production checklist, troubleshooting.
+- [**Methodology**](evaluation/methodology.md) — experiment configs, metrics,
+  ablation plan, frozen `baseline_v1` dataset and live run procedure.
+
+### Design
+
+- [**Design system**](design/dark-luxury/README.md) — Obsidian / Chrome Silver /
+  Laser Crimson foundations, tokens, components, patterns, accessibility, voice,
+  verification and pages. The shipped implementation is
+  [`apps/web/DESIGN.md`](../apps/web/DESIGN.md).
+- [**UI re-deep audit**](design/UI_RE_DEEP_AUDIT_2026-11-25.md) — verification of
+  the shipped UI, top findings and the full evidence register.
+- [**UI re-deep plan**](design/UI_RE_DEEP_PLAN_2026-11-25.md) — the executed
+  cleanup plan, implementation log and final verification.
+
+### Deployment
+
+- [**Production Runbook**](deployment/DEPLOYMENT_GUIDE.md) — deploy order,
+  providers, CORS, smoke test and production gotchas.
+- [**Deploy Reference**](deployment/README.md) — environment variables, local and
+  Compose setup, health checks, re-indexing and pre-production checklist.
 
 ---
 
-### 6. Current Verification Snapshot (2026-09-28, `ui-redesign`)
+## Verification snapshot
 
-- **Tests**: backend 665 pytest green, frontend 33 Vitest green; `ruff check` + `ruff format --check` clean (CI pins `ruff==0.16.9`); ESLint clean; `vite build` green.
-- **CI**: Ubuntu jobs + `cross-platform` smoke (Windows + macOS: backend import/config smoke, frontend lint/test/build), all gated in `ci-gate`.
-- **Runtimes**: models run ONNX-only (`onnxruntime` + `transformers` tokenizer; reranker fails closed to RRF when `use_onnx=true`); torch lives in the `local-models` extra for one-time export only.
-- **Stack**: Python 3.11–3.12 (`requires-python >=3.11,<3.13`), Node 22+ (`engines`), per-OS setup in `ONBOARDING-TROUBLESHOOTING.md`.
-- **Pending operator runs**: pre-IDF KBs need document re-upload; chunking/normalization change needs re-index; OCR models not pre-warmed; live-model verification (Gemini/NVIDIA/MLX) + k6 + Playwright e2e — see `ONBOARDING-TROUBLESHOOTING.md §5`.
+Measured on `feature/trustrag-refined`; full numbers and method are in the
+[backend living log](backend/BACKEND_CHANGELOG_AND_RECOMMENDATIONS.md).
+
+- **Backend tests**: 870 passed. Coverage 80.66 % (gate 78 %).
+- **Frontend**: 85 Vitest tests across 18 files, ESLint clean, Vite build green.
+- **UI**: Lighthouse desktop and mobile 100 / 100 / 100 / 100 on the landing
+  page; no console errors, no overflow, no idle animations; reduced motion
+  resolves to static states.
+- **CI**: Ubuntu jobs plus a Windows/macOS smoke matrix, Playwright E2E and a k6
+  load smoke.
+- **Integration**: every frontend API call matches a backend route — 0 missing —
+  verified by `apps/api/scripts/verify/validate_integration.py`.
+- **Resilience**: concurrency, rate limit, provider outage and database outage
+  all behave — verified by `apps/api/scripts/verify/validate_resilience.py`.
+- **Stack**: Python 3.11–3.12, Node 22+, ONNX-only local model runtime.

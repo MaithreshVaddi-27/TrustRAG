@@ -106,6 +106,19 @@ describe('openAnalysisStream — recovery on failure (TEST-M4)', () => {
     expect(onEvent).toHaveBeenCalledOnce()
   })
 
+  it('treats outage events as terminal and closes the stream', async () => {
+    mocks.post.mockResolvedValue({ data: { ticket: 't' } })
+
+    const onComplete = vi.fn()
+    await openAnalysisStream('analysis-123', { onComplete })
+
+    const source = instances[0]
+    source.onmessage({ data: JSON.stringify({ event: 'analysis.outage' }) })
+
+    expect(source.close).toHaveBeenCalledOnce()
+    expect(onComplete).toHaveBeenCalledOnce()
+  })
+
   it('ignores server keep-alive ping heartbeats', async () => {
     mocks.post.mockResolvedValue({ data: { ticket: 't' } })
 

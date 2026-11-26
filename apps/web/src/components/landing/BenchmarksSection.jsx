@@ -1,80 +1,80 @@
 import { useState } from 'react'
-import { BarChart3 } from 'lucide-react'
-import { BENCHMARKS } from './landingData'
+import { BENCHMARKS, BENCHMARK_TABS } from './data/benchmarks'
 
+/**
+ * BenchmarksSection — a ranked table with thin bars.
+ *
+ * One accent leads: the row that matters is Chrome Silver, and every other
+ * row sits in a quiet step of the neutral ramp. Each table carries a
+ * caption naming where the numbers came from.
+ */
 export default function BenchmarksSection() {
-  const [activeBenchmarkKey, setActiveBenchmarkKey] = useState('accuracy')
-  const currentBenchmark = BENCHMARKS[activeBenchmarkKey]
+  const [activeId, setActiveId] = useState(BENCHMARK_TABS[0].id)
+  const active = BENCHMARKS[activeId]
 
   return (
-    <section id="benchmarks" className="scroll-mt-24 relative z-20 py-20 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="text-center mb-12">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-cyan-950/60 border border-cyan-800/60 text-xs font-mono text-cyan-400 mb-3 shadow-md shadow-cyan-950/50">
-          <BarChart3 size={13} />
-          <span>EMPIRICAL BENCHMARKS & EVALUATION</span>
+    <>
+      <div className="lx-tabs" role="tablist" aria-label="Benchmark sets">
+        {BENCHMARK_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            id={`bench-tab-${tab.id}`}
+            aria-selected={tab.id === active.id}
+            aria-controls={`bench-panel-${tab.id}`}
+            tabIndex={tab.id === active.id ? 0 : -1}
+            className="lx-tab"
+            onClick={() => setActiveId(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div
+        key={active.id}
+        className="lx-bench"
+        data-lead={active.id === BENCHMARK_TABS[0].id ? 'true' : undefined}
+        role="tabpanel"
+        id={`bench-panel-${active.id}`}
+        aria-labelledby={`bench-tab-${active.id}`}
+        tabIndex={0}
+      >
+        <div className="lx-bench__head">
+          <h3 className="lx-h3">{active.title}</h3>
+          <p className="lx-body-sm lx-bench__desc">{active.desc}</p>
         </div>
-        <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
-          Proven Performance In Production
-        </h2>
-        <p className="text-slate-400 text-sm sm:text-base max-w-2xl mx-auto mt-3">
-          Toggle between benchmark dimensions to examine quantitative accuracy, latency SLA, and vector storage memory savings.
+
+        {active.metrics.map((metric, index) => (
+          <div
+            key={metric.label}
+            className={`lx-bench__row${metric.lead ? ' lx-bench__row--lead' : ''}`}
+          >
+            <span className="lx-bench__label">{metric.label}</span>
+            <span className="lx-bench__value">
+              {metric.value}
+              {metric.suffix}
+            </span>
+            <span className="lx-bench__track" aria-hidden="true">
+              <span
+                className="lx-bench__fill"
+                style={{ width: metric.width, '--bar-index': index }}
+              />
+            </span>
+            <span className="lx-bench__note">{metric.note}</span>
+          </div>
+        ))}
+
+        <p className="lx-bench__caption">
+          {active.note}{' '}
+          {active.link && (
+            <a href={active.link.href} target="_blank" rel="noreferrer noopener">
+              {active.link.linkText}
+            </a>
+          )}
         </p>
-
-        <div className="flex flex-wrap items-center justify-center gap-3 mt-8">
-          {Object.keys(BENCHMARKS).map((key) => {
-            const b = BENCHMARKS[key]
-            const Icon = b.icon
-            const isSelected = activeBenchmarkKey === key
-            return (
-              <button
-                key={key}
-                onClick={() => setActiveBenchmarkKey(key)}
-                className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 border ${
-                  isSelected
-                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400 shadow-lg shadow-cyan-950/50 scale-105'
-                    : 'bg-surface-900 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700 hover:scale-102'
-                }`}
-              >
-                <Icon size={14} className={isSelected ? 'text-cyan-400 animate-pulse' : 'text-slate-500'} />
-                <span>{b.label}</span>
-              </button>
-            )
-          })}
-        </div>
       </div>
-
-      <div className="rounded-3xl border border-slate-800/90 bg-surface-900/80 p-6 sm:p-10 backdrop-blur-xl shadow-2xl relative overflow-hidden transition-all duration-300 hover:border-cyan-500/40">
-        <div className="mb-6">
-          <h3 className="text-xl font-bold text-white">{currentBenchmark.title}</h3>
-          <p className="text-slate-400 text-xs mt-1">{currentBenchmark.description}</p>
-        </div>
-
-        <div className="space-y-5">
-          {currentBenchmark.metrics.map((m, i) => (
-            <div key={i} className="space-y-1.5 group cursor-default">
-              <div className="flex items-center justify-between text-xs font-mono">
-                <span className={`font-semibold ${m.highlight ? 'text-cyan-300' : 'text-slate-300'}`}>
-                  {m.label}
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-surface-850 border border-slate-800 text-slate-400">
-                    {m.badge}
-                  </span>
-                  <span className={`font-bold ${m.highlight ? 'text-cyan-400 text-sm' : 'text-slate-300'}`}>
-                    {m.value} {m.suffix}
-                  </span>
-                </div>
-              </div>
-              <div className="h-3 rounded-full bg-surface-950 border border-slate-800/80 overflow-hidden p-0.5">
-                <div
-                  className={`h-full rounded-full bg-gradient-to-r ${m.color} transition-all duration-700 shadow-sm`}
-                  style={{ width: m.width }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
+    </>
   )
 }

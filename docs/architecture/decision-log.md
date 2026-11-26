@@ -150,7 +150,9 @@ Docker Compose connects to host MongoDB; Atlas remains supported via
 
 **Decision:** The configured model ID is `gemini-2.5-flash` (or `gemini-3.5-flash-lite`). The user requested "Gemini 3.5 Flash" which does not exist as a published model ID. `gemini-2.5-flash` is the current free-tier Flash generation model.
 
-**Amendment 2026-09-16:** the LLM is now multi-provider and selectable per request (llama.cpp default, Ollama, Gemini, NVIDIA). The Gemini IDs above apply only when the Gemini provider is selected.
+**Amendment 2026-09-16:** the LLM became multi-provider and selectable per request (llama.cpp default, Ollama, Gemini, NVIDIA).
+
+**Amendment 2026-10-03:** NVIDIA NIM was removed entirely (provider, settings, dependency). `SUPPORTED_LLM_PROVIDERS` is now `ollama | llama_cpp | mlx | gemini`; CUDA remains only as a llama.cpp launch flag. Gemini requires the optional `cloud` extra. The Gemini IDs above apply only when the Gemini provider is selected.
 
 **Action required:** Verify the exact model ID at [Google AI Studio](https://aistudio.google.com/app/apikey) before deployment and update `models.yaml` if needed.
 
@@ -257,14 +259,14 @@ Docker Compose connects to host MongoDB; Atlas remains supported via
 
 **Rationale:**
 - llama.cpp's local OpenAI-compatible server is thin and conventionally sits on :8080. Conflicts with the backend broke dev setup ("`Address already in use`" for the model server).
-- `config/ports.yaml` (`config/ports.yaml`) is now the canonical registry — backend `8000`, frontend `5173`, ollama `11434`, llamacpp `8080` — and `scripts/apply_ports.py` distributes changes to all consumers.
+- `config/ports.yaml` (`config/ports.yaml`) is now the canonical registry — backend `8000`, frontend `5173`, ollama `11434`, llamacpp `8080` — and `scripts/checks/apply_ports.py` distributes changes to all consumers.
 - macOS AirPlay conflicts on :8000 are handled by using `--host 127.0.0.1` during dev (no system clash) and honoring `PORT` on Render/GCR.
 
 **Files layered on top of D-14:**
 - `config/ports.yaml` (new canonical registry)
-- `scripts/apply_ports.py` (propagator)
-- `apps/api/app/core/config.py` (Settings defaults read ports.yaml)
-- `apps/api/app/core/local_llm.py` (`INSTALLED_*` provider lists)
+- `scripts/checks/apply_ports.py` (propagator)
+- `apps/api/app/config/` (Settings defaults read ports.yaml)
+- `apps/api/app/llm/local_llm.py` (`INSTALLED_*` provider lists)
 
 
 
@@ -290,11 +292,11 @@ project. Embeddings are local-only (`huggingface`: `BAAI/bge-small-en-v1.5`,
 normalization change requires a re-index — combine all three into one re-upload window.
 
 **Files:**
-- `apps/api/app/core/model_registry.py` (branches removed, retired-provider guard)
-- `apps/api/app/core/config.py`, `apps/api/app/api/v1/schemas/analysis.py` (allowlists)
+- `apps/api/app/llm/model_registry.py` (branches removed, retired-provider guard)
+- `apps/api/app/config/`, `apps/api/app/api/v1/schemas/analysis.py` (allowlists)
 - `apps/api/app/api/v1/models.py`, `apps/web/.../QueryPanel.jsx`, `apps/web/.../SettingsPage.jsx` (UI)
-- `apps/api/app/ingestion/pipeline.py` (Gemini rate-limit pacing removed)
-- `apps/api/config/models.yaml`, `.env.example`, `scripts/setup.sh` (new), docs
+- `apps/api/app/rag/ingestion/pipeline.py` (Gemini rate-limit pacing removed)
+- `apps/api/config/models.yaml`, `.env.example`, `scripts/setup/setup.sh` (new), docs
 
 ---
 
@@ -308,7 +310,7 @@ normalization change requires a re-index — combine all three into one re-uploa
 module and remove all dead code accumulated across rounds of rapid iteration.
 
 **Changes:**
-1. **New `apps/api/app/core/llm_utils.py`** — three shared functions:
+1. **New `apps/api/app/llm/llm_utils.py`** — three shared functions:
    - `normalize_llm_content()` — normalizes `response.content` from any LLM provider
      (str, bytes, list-of-dicts, list-of-objects) to a plain string.
    - `extract_json_substring()` — safely extracts valid JSON from LLM output that may
@@ -317,12 +319,12 @@ module and remove all dead code accumulated across rounds of rapid iteration.
      structured JSON and parses into a Pydantic model. Used by both `ChatOllamaClient`
      and `ChatLlamaCppClient` which differ only in their JSON-mode kwargs.
 
-2. **`apps/api/app/core/local_llm.py`**:
+2. **`apps/api/app/llm/local_llm.py`**:
    - Removed duplicate `_extract_json_substring()` (now imports from `llm_utils`).
    - Both `with_structured_output()` implementations (Ollama `format="json"` and
      llama.cpp `response_format`) now delegate to `build_structured_output_runnable()`.
 
-3. **`apps/api/app/agent/graph.py`** and **`apps/api/app/generation/generator.py`**:
+3. **`apps/api/app/rag/agent/graph/`** and **`apps/api/app/rag/generation/runtime.py`**:
    - Replaced inline 12-line LLM content normalization blocks with
      `normalize_llm_content()` calls.
 
@@ -363,7 +365,7 @@ output across all local LLM providers.
 
 **Decision:** Add an `onnx` embedding provider (`EMBEDDING_PROVIDER=onnx`) that runs
 `BAAI/bge-small-en-v1.5` via ONNX Runtime instead of PyTorch/sentence-transformers.
-The model is exported once (`scripts/export_bge_onnx.py`: transformer + CLS pooling +
+The model is exported once (`scripts/setup/export_bge_onnx.py`: transformer + CLS pooling +
 L2 norm [correction 2026-09-22: CLS, not mean — BGE uses `pooling_mode="cls"`],
 dynamic batch/sequence axes, single 128 MB file) and served from
 `apps/api/.model_cache/bge-small-en-v1.5.onnx` with the same two-tier cache
@@ -379,8 +381,8 @@ dynamic batch/sequence axes, single 128 MB file) and served from
   so no new cross-space risk.
 
 **Files:**
-- `scripts/export_bge_onnx.py` (new), `apps/api/app/core/onnx_embeddings.py` (new)
-- `apps/api/app/core/model_registry.py` (`onnx` provider branch), `config.py`
+- `scripts/setup/export_bge_onnx.py` (new), `apps/api/app/rag/embedding/engine.py` (new)
+- `apps/api/app/llm/model_registry.py` (`onnx` provider branch), `config.py`
   (`embedding_max_seq_length`), `config/models.yaml` (`max_seq_length: 512`)
 
 **Consequences:** Backend 193 tests pass. `EMBEDDING_PROVIDER=onnx` verified live
@@ -413,7 +415,7 @@ JSON example.
   bare ints are dropped (never poisoned as NEUTRAL, so fallback still runs).
 
 **Files:**
-- `apps/api/app/verification/verifier.py` (normalizers + validators + prompts)
+- `apps/api/app/rag/verification/verifier.py` (normalizers + validators + prompts)
 - `apps/api/tests/test_verification.py` (6 new regression tests)
 
 **Consequences:** Backend 199 tests pass. Previously-NEUTRAL-but-correct

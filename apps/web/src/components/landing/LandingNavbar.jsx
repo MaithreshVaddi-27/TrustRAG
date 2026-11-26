@@ -1,117 +1,164 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  Swords, ArrowRight, ChevronRight,
-  Sparkles, Cpu, RefreshCw, BarChart3, ShieldCheck,
-  Menu, X
-} from 'lucide-react'
-import { useAuthStore } from '@/store/authStore'
+import { Menu, X } from 'lucide-react'
+import { TrustRagEmblem } from '@/components/common/TrustRagLogo'
+import { NAV_LINKS } from './data/nav'
 
+/**
+ * LandingNavbar — quiet chrome.
+ *
+ * A logo, the section links, one button. "Sign in" is a text link, not a
+ * second button. The hairline under the bar appears only once the page has
+ * scrolled past it.
+ */
 export default function LandingNavbar() {
-  const { isAuthenticated } = useAuthStore()
-  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const toggleRef = useRef(null)
+  const drawerRef = useRef(null)
+  const restoreFocusRef = useRef(null)
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  // Escape closes the drawer; Tab stays inside it; focus returns to the
+  // control that opened it. The page behind the drawer must not scroll.
+  useEffect(() => {
+    if (!drawerOpen) return undefined
+    restoreFocusRef.current = document.activeElement
+    const focusables = () => {
+      const drawer = drawerRef.current
+      if (!drawer) return []
+      return [
+        ...drawer.querySelectorAll(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ]
+    }
+    const frame = requestAnimationFrame(() => focusables()[0]?.focus())
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setDrawerOpen(false)
+        return
+      }
+      if (event.key !== 'Tab') return
+      const items = focusables()
+      if (!items.length) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      cancelAnimationFrame(frame)
+      document.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = previousOverflow
+      restoreFocusRef.current?.focus?.()
+    }
+  }, [drawerOpen])
+
+  const closeDrawer = useCallback(() => setDrawerOpen(false), [])
 
   return (
-    <header className="sticky top-0 z-50 backdrop-blur-2xl bg-surface-950/80 border-b border-slate-800/80">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2.5 group">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-primary-950/80 border border-cyan-400/30 group-hover:scale-105 transition-transform">
-            <Swords size={18} className="text-white" />
-          </div>
-          <div className="flex flex-col">
-            <span className="font-extrabold text-base tracking-tight text-white flex items-center gap-1">
-              TRUST<span className="text-primary-400">RAG</span>
-            </span>
-            <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest hidden sm:inline">
-              Reliability Workbench
-            </span>
-          </div>
-        </Link>
+    <>
+      <header className="lx-nav" data-scrolled={scrolled}>
+        <div className="lx-container lx-nav__inner">
+          <Link to="/" className="lx-nav__brand" aria-label="TrustRAG home">
+            <TrustRagEmblem size={30} framed />
+            <span className="lx-nav__wordmark">TRUSTRAG</span>
+          </Link>
 
-        <nav className="hidden md:flex items-center gap-7 text-xs font-medium text-slate-400">
-          <a href="#simulation" className="hover:text-cyan-400 transition-colors flex items-center gap-1">
-            <Sparkles size={13} className="text-cyan-400" />
-            <span>Sandbox</span>
-          </a>
-          <a href="#features" className="hover:text-cyan-400 transition-colors">Capabilities</a>
-          <a href="#bento" className="hover:text-cyan-400 transition-colors">Architecture</a>
-          <a href="#benchmarks" className="hover:text-cyan-400 transition-colors">Benchmarks</a>
-          <a href="#compare" className="hover:text-cyan-400 transition-colors">Comparison</a>
-        </nav>
+          <nav className="lx-nav__links" aria-label="Sections">
+            {NAV_LINKS.map((link) => (
+              <a key={link.id} href={`#${link.id}`} className="lx-nav__link">
+                {link.label}
+              </a>
+            ))}
+          </nav>
 
-        <div className="flex items-center gap-2.5">
-          {isAuthenticated ? (
-            <Link
-              to="/dashboard"
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-lg shadow-cyan-950/50 border border-cyan-400/30 transition-all hover:scale-[1.02]"
-            >
-              <span>Dashboard</span>
-              <ChevronRight size={14} />
+          <div className="lx-nav__actions">
+            <Link to="/login" className="lx-nav__signin">
+              Sign in
             </Link>
-          ) : (
-            <div className="hidden sm:flex items-center gap-3">
-              <Link
-                to="/login"
-                className="px-3.5 py-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-surface-800/80 text-xs font-semibold transition-colors"
-              >
-                Sign In
-              </Link>
-              <Link
-                to="/register"
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-lg shadow-cyan-950/50 border border-cyan-400/30 transition-all hover:scale-[1.02]"
-              >
-                <span>Get Started</span>
-                <ArrowRight size={13} />
-              </Link>
-            </div>
-          )}
-
-          <button
-            onClick={() => setIsMobileNavOpen(prev => !prev)}
-            className="md:hidden flex items-center justify-center w-9 h-9 rounded-xl border border-slate-800 text-slate-400 hover:text-white hover:bg-surface-800 transition-colors"
-            aria-label="Toggle mobile menu"
-          >
-            {isMobileNavOpen ? <X size={18} /> : <Menu size={18} />}
-          </button>
-        </div>
-      </div>
-
-      {isMobileNavOpen && (
-        <div className="md:hidden bg-surface-950/95 border-b border-slate-800 backdrop-blur-2xl px-4 pt-3 pb-5 space-y-3 animate-fade-in">
-          <div className="flex flex-col space-y-1.5 text-xs font-medium text-slate-300">
-            <a href="#simulation" onClick={() => setIsMobileNavOpen(false)} className="px-3 py-2 rounded-lg hover:bg-surface-850 hover:text-cyan-400 transition-colors flex items-center gap-2">
-              <Sparkles size={14} className="text-cyan-400" />
-              <span>Interactive Sandbox</span>
-            </a>
-            <a href="#features" onClick={() => setIsMobileNavOpen(false)} className="px-3 py-2 rounded-lg hover:bg-surface-850 hover:text-cyan-400 transition-colors flex items-center gap-2">
-              <Cpu size={14} className="text-cyan-400" />
-              <span>Capabilities Explorer</span>
-            </a>
-            <a href="#bento" onClick={() => setIsMobileNavOpen(false)} className="px-3 py-2 rounded-lg hover:bg-surface-850 hover:text-cyan-400 transition-colors flex items-center gap-2">
-              <RefreshCw size={14} className="text-cyan-400" />
-              <span>Architecture</span>
-            </a>
-            <a href="#benchmarks" onClick={() => setIsMobileNavOpen(false)} className="px-3 py-2 rounded-lg hover:bg-surface-850 hover:text-cyan-400 transition-colors flex items-center gap-2">
-              <BarChart3 size={14} className="text-cyan-400" />
-              <span>Benchmarks</span>
-            </a>
-            <a href="#compare" onClick={() => setIsMobileNavOpen(false)} className="px-3 py-2 rounded-lg hover:bg-surface-850 hover:text-cyan-400 transition-colors flex items-center gap-2">
-              <ShieldCheck size={14} className="text-cyan-400" />
-              <span>Why TrustRAG</span>
-            </a>
+            <Link to="/register" className="lx-btn lx-btn--secondary">
+              Get started
+            </Link>
+            <button
+              type="button"
+              ref={toggleRef}
+              className="lx-nav__toggle"
+              aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={drawerOpen}
+              onClick={() => setDrawerOpen((open) => !open)}
+            >
+              {drawerOpen ? (
+                <X size={18} strokeWidth={1.5} aria-hidden="true" />
+              ) : (
+                <Menu size={18} strokeWidth={1.5} aria-hidden="true" />
+              )}
+            </button>
           </div>
-          {!isAuthenticated && (
-            <div className="pt-3 border-t border-slate-800/80 flex items-center gap-2.5">
-              <Link to="/login" onClick={() => setIsMobileNavOpen(false)} className="flex-1 py-2.5 rounded-xl text-center text-xs font-semibold text-slate-300 bg-surface-900 border border-slate-800">
-                Sign In
-              </Link>
-              <Link to="/register" onClick={() => setIsMobileNavOpen(false)} className="flex-1 py-2.5 rounded-xl text-center text-xs font-semibold text-white bg-gradient-to-r from-primary-600 to-cyan-600 shadow-md">
-                Get Started
-              </Link>
-            </div>
-          )}
+        </div>
+      </header>
+
+      {drawerOpen && (
+        <div
+          ref={drawerRef}
+          className="lx-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menu"
+        >
+          <div className="lx-drawer__top">
+            <span className="lx-nav__wordmark">TRUSTRAG</span>
+            <button
+              type="button"
+              className="lx-nav__toggle"
+              aria-label="Close menu"
+              onClick={closeDrawer}
+            >
+              <X size={18} strokeWidth={1.5} aria-hidden="true" />
+            </button>
+          </div>
+
+          <nav className="lx-drawer__nav" aria-label="Sections">
+            {NAV_LINKS.map((link, index) => (
+              <a
+                key={link.id}
+                href={`#${link.id}`}
+                className="lx-drawer__link"
+                onClick={closeDrawer}
+              >
+                <span>{link.label}</span>
+                <span className="lx-drawer__index">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+              </a>
+            ))}
+          </nav>
+
+          <div className="lx-drawer__actions">
+            <Link to="/register" className="lx-btn lx-btn--primary lx-btn--block" onClick={closeDrawer}>
+              Get started
+            </Link>
+            <Link to="/login" className="lx-btn lx-btn--secondary lx-btn--block" onClick={closeDrawer}>
+              Sign in
+            </Link>
+          </div>
         </div>
       )}
-    </header>
+    </>
   )
 }

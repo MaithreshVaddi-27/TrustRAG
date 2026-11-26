@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, ui-redesign]
+    # The feature branch is listed so its pushes are validated by the same
+    # matrix — including the Windows + macOS cross-platform smoke — instead of
+    # waiting for a pull request.
+    branches: [main, develop, ui-redesign, feature/trustrag-refined]
   pull_request:
     branches: [main, develop, ui-redesign]
   workflow_dispatch:
@@ -13,13 +16,13 @@ concurrency:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
   # ── Backend ───────────────────────────────────────────────────────────────
   backend-lint:
     name: Backend — Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: apps/api
@@ -32,23 +35,38 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install ruff
+      - name: Install ruff and mypy
         # Pinned: unpinned `ruff` broke CI when 0.16.9 added E402 coverage
         # (conftest import order). Bump deliberately with a lint pass.
-        run: pip install "ruff==0.16.9"
+        run: pip install "ruff==0.16.9" mypy
 
       - name: Lint
-        run: ruff check app/ tests/
+        run: ruff check app/ tests/ scripts/
 
       - name: Format check
-        run: ruff format --check app/ tests/
+        run: ruff format --check app/ tests/ scripts/
+
+      - name: Lint the repository-root scripts
+        # The root `scripts/` package (setup, servers, checks, eval) was
+        # never linted: the job's working directory is `apps/api`, so it only
+        # ever saw `app/` and `tests/`. The shared rules now live in the
+        # repository-root `ruff.toml`, so the same standard applies to both.
+        working-directory: ./
+        run: ruff check scripts/ && ruff format --check scripts/
+
+      - name: Type check (mypy ratchet)
+        # N-94: mypy was configured but never run, so its 48-error backlog was
+        # invisible. Fails only on NEW errors (ceiling ratchets down over time).
+        working-directory: ./
+        run: ./scripts/checks/typecheck_ratchet.sh
 
       - name: Port registry drift check
-        run: python3 ../../scripts/apply_ports.py --check
+        run: python3 ../../scripts/checks/apply_ports.py --check
 
   backend-test:
     name: Backend — Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/api
@@ -68,8 +86,8 @@ jobs:
         # Ensures models.yaml is valid YAML and has required sections
         run: |
           python -c "
-          from app.core.config import _load_models_yaml, ModelConfig
-          data = _load_models_yaml()
+          from app.config import ModelConfig, load_models_yaml
+          data = load_models_yaml()
           cfg = ModelConfig(data)
           print('config_version:', cfg.config_version)
           print('llm_model:', cfg.llm_model)
@@ -90,6 +108,7 @@ jobs:
   backend-config-validate:
     name: Backend — Config Validation
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: apps/api
@@ -130,6 +149,7 @@ jobs:
   frontend-lint:
     name: Frontend — Lint & Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/web
@@ -143,11 +163,20 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Install dependencies
         run: npm ci
 
       - name: Lint
         run: npm run lint
+
+      - name: Palette drift (chart theme mirrors the colour tokens)
+        # Pure-stdlib script; without this step the guard exists only on a
+        # developer machine and a chart colour can drift unnoticed in CI.
+        run: npm run check:tokens
 
       - name: Unit & component tests
         run: npm run test
@@ -155,6 +184,7 @@ jobs:
   frontend-build:
     name: Frontend — Build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/web
@@ -193,6 +223,7 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
@@ -213,8 +244,10 @@ jobs:
 
       - name: Backend import + config smoke
         run: |
-          python -c "import app.ingestion.parser, app.ingestion.chunker, app.ingestion.chunking_strategies, app.ingestion.pipeline, app.core.config, app.core.model_registry, app.core.hardware, app.core.memory; print('imports OK')"
-          python scripts/apply_ports.py --check
+          python -c "import app.rag.ingestion.parser, app.rag.ingestion.chunker, app.rag.ingestion.chunking_strategies, app.rag.ingestion.pipeline, app.llm.model_registry, app.core.system.hardware, app.core.system.memory; print('imports OK')"
+          # No defaults.working-directory on this job, so these commands run at
+          # the repo root. ../../ would resolve above the checkout on Windows.
+          python scripts/checks/apply_ports.py --check
         env:
           JWT_SECRET: test-secret-minimum-32-chars-long-padding
           GEMINI_API_KEY: test-key
@@ -228,6 +261,7 @@ jobs:
       - name: Frontend lint + tests + build
         run: |
           npm run lint
+          npm run check:tokens
           npm test
           npm run build
         working-directory: apps/web
@@ -236,6 +270,7 @@ jobs:
   e2e:
     name: E2E + Load — Playwright & k6
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     services:
       mongodb:
@@ -278,6 +313,12 @@ jobs:
           CORS_ORIGINS: http://localhost:5173
           AI_PROVIDER: ollama
           OLLAMA_BASE_URL: http://127.0.0.1:11434
+          # The global abuse guard is 240 requests/minute per client. The k6
+          # smoke below drives ~200 requests/second on purpose, so the guard
+          # would answer 429 to most of it and the load gate would measure the
+          # limiter instead of the API. The limit is raised for the load test
+          # only; it stays enforced everywhere else.
+          RATE_LIMIT_PER_MINUTE: "100000"
         run: |
           nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/api.log 2>&1 &
           for i in $(seq 1 60); do
@@ -301,15 +342,29 @@ jobs:
           E2E_API_URL: http://localhost:8000
         run: npm run test:e2e
 
+      - name: Download k6 (checksum-verified)
+        # N-97: curl|tar with no checksum is an unauthenticated supply-chain
+        # hop. Verify SHA256 against the release checksum file before extracting.
+        id: k6
+        working-directory: load-test
+        run: |
+          set -euo pipefail
+          VER=v2.2.0
+          BASE=https://github.com/grafana/k6/releases/download/${VER}
+          ARCHIVE="k6-${VER}-linux-amd64.tar.gz"
+          curl -sSfL -o "${ARCHIVE}" "${BASE}/${ARCHIVE}"
+          curl -sSfL -o checksums.txt "${BASE}/k6-${VER}-checksums.txt"
+          grep "${ARCHIVE}" checksums.txt | sha256sum --check --strict -
+          # -f is required: without it GNU tar reads the archive from stdin.
+          tar -xzf "${ARCHIVE}" --strip-components=1
+          ./k6 version
+
       - name: Run k6 API load smoke
         # TEST-M2: reuse the already-running backend from the E2E job.
-        # Pinned k6 release binary — full 35s ramp, ~3.3k requests.
         working-directory: load-test
         env:
           API_BASE_URL: http://localhost:8000
-        run: |
-          curl -sL https://github.com/grafana/k6/releases/download/v2.2.0/k6-v2.2.0-linux-amd64.tar.gz | tar xz --strip-components=1
-          ./k6 run smoke.js
+        run: ./k6 run smoke.js
 
       - name: Upload Playwright report on failure
         if: failure()
@@ -325,6 +380,7 @@ jobs:
   docker-build:
     name: Docker — Build API Image
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # security-events:write is required by the SARIF upload step below.
     permissions:
       contents: read
@@ -379,9 +435,81 @@ jobs:
           path: apps/api/trivy-results.sarif
           retention-days: 30
 
+  # ── Docker Compose Smoke ──────────────────────────────────────────────────
+  # N-103: compose is the only deployable artifact and nothing exercised it,
+  # so P1-16 (model cache shadow), N-64 (unreachable MLX) and N-100 (--reload
+  # killing in-flight analyses) all shipped undetected. This renders the file
+  # and boots the api service against the same config operators run.
+  compose-smoke:
+    name: Docker — Compose Config + API Boot
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # The compose file reaches MongoDB through host.docker.internal. Without a
+    # service on that port the API retries the connection forever and never
+    # passes /health/ready, which made this job fail for the wrong reason.
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping:1})' --quiet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 10s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create test env file
+        # compose declares `env_file: .env`; the checkout never contains it
+        # (secrets are local only), so CI must provide a throwaway one.
+        run: |
+          cat > .env <<'EOF'
+          JWT_SECRET=test-secret-minimum-32-chars-long-padding
+          MONGODB_URI=mongodb://host.docker.internal:27017
+          MONGODB_DATABASE=trustrag_compose_smoke
+          QDRANT_URL=http://qdrant:6333
+          QDRANT_API_KEY=trustrag-dev-key-change-me
+          APP_ENV=development
+          EOF
+
+      - name: Validate compose file
+        run: docker compose config --quiet
+
+      - name: Build API image
+        run: docker compose build api
+
+      - name: Boot api + qdrant and probe readiness
+        run: |
+          set -euo pipefail
+          mkdir -p apps/api/.model_cache
+          if ! docker compose up -d qdrant api; then
+            echo "compose failed to start; qdrant state and logs:"
+            docker compose ps -a
+            docker compose logs --tail=120 qdrant
+            docker compose down
+            exit 1
+          fi
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:8000/api/v1/health/ready > /dev/null 2>&1; then
+              echo "api ready after ${i}s"
+              docker compose logs --tail=60 api
+              docker compose down
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs --tail=120 api
+          docker compose down
+          echo "api never became ready"
+          exit 1
+
   # ── Gate ──────────────────────────────────────────────────────────────────
   ci-gate:
     name: CI Gate
+    timeout-minutes: 5
     needs:
       - backend-lint
       - backend-test
@@ -391,6 +519,7 @@ jobs:
       - cross-platform
       - e2e
       - docker-build
+      - compose-smoke
     runs-on: ubuntu-latest
     if: always()
     steps:

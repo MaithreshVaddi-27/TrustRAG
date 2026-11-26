@@ -1,0 +1,317 @@
+/* ── TrustRAG · Verification ledger ──────────────────────────────────────────
+ * The interactive sandbox, restyled as a case file. A mono header carries
+ * the document identity; each claim is a row in a ruled table; the recovery
+ * band closes the record.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-ledger {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  background-color: var(--surface-panel);
+  overflow: hidden;
+}
+
+.lx-ledger__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-2) var(--step-4);
+  padding: var(--step-4) var(--step-5);
+  border-bottom: 1px solid var(--rule);
+  background-color: var(--surface-raised);
+}
+
+.lx-ledger__doc {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-400);
+}
+
+.lx-ledger__query {
+  padding: var(--step-5);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.lx-ledger__query-text {
+  font-family: var(--typeface-display);
+  font-size: 1.125rem;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--color-silver-100);
+  max-width: 60ch;
+}
+
+/* ── The answer as the system emitted it ────────────────────────────────────
+ * Verbatim, including the segment markers the model wrote. Mono, because it
+ * is a transcript rather than prose.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-ledger__answer {
+  padding: var(--step-5);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.lx-ledger__answer-label {
+  color: var(--color-silver-500);
+  margin-bottom: var(--step-3);
+}
+
+.lx-ledger__answer-body {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: var(--typeface-mono);
+  font-size: var(--size-body-sm);
+  line-height: 1.65;
+  color: var(--color-silver-200);
+  max-width: 88ch;
+}
+
+/* ── Claim rows ───────────────────────────────────────────────────────────── */
+
+.lx-claim {
+  display: grid;
+  gap: var(--step-2) var(--step-5);
+  padding: var(--step-5);
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+/* Each verified claim settles into registration with its evidence, once,
+ * with a 60ms stagger. Re-keyed by scenario, so a switch replays it. */
+@keyframes lx-claim-align {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lx-claim {
+    animation: lx-claim-align 340ms var(--motion-ease-out) both;
+    animation-delay: calc(var(--claim-index, 0) * 60ms);
+  }
+}
+
+@media (min-width: 900px) {
+  .lx-claim {
+    grid-template-columns: 2rem minmax(0, 1fr) minmax(0, 12rem);
+    align-items: start;
+  }
+}
+
+.lx-claim--contradicted {
+  background-color: var(--crimson-wash-045);
+}
+
+.lx-claim__index {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-silver-500);
+  padding-top: 0.25rem;
+}
+
+.lx-claim__text {
+  font-size: var(--size-body);
+  line-height: var(--leading-body);
+  color: var(--color-silver-200);
+}
+
+.lx-claim__citation {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  margin-top: var(--step-2);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+}
+
+/* The verifier's own reasoning, kept with the claim it belongs to. It is the
+ * reason the verdict can be re-read instead of taken on trust. */
+.lx-claim__explanation {
+  margin-top: var(--step-3);
+  padding-left: var(--step-3);
+  border-left: 1px solid var(--rule);
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-400);
+  max-width: 84ch;
+}
+
+.lx-claim--contradicted .lx-claim__explanation {
+  border-left-color: var(--crimson-rule-strong);
+}
+
+/* The contradiction is the resolving beat of the simulation band: the verdict
+ * settles into registration with its evidence, once, after the row arrives. */
+@media (prefers-reduced-motion: no-preference) {
+  .lx-claim--contradicted .lx-verdict {
+    animation: lx-verdict-settle 320ms var(--motion-ease-out) 180ms both;
+  }
+}
+
+/* A run that abstained asserted nothing, so there is nothing to audit. */
+.lx-claim--empty {
+  background-color: var(--scrim-35);
+}
+
+.lx-claim__aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--step-2);
+}
+
+@media (min-width: 900px) {
+  .lx-claim__aside {
+    align-items: flex-end;
+    text-align: right;
+  }
+}
+
+/* ── Measured run figures ───────────────────────────────────────────────────
+ * The numbers the harness recorded for this run. A definition list, because
+ * a term and its value are two different things.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: var(--step-4) var(--step-5);
+  margin: 0;
+  padding: var(--step-5);
+  border-top: 1px solid var(--rule-faint);
+  background-color: var(--surface-raised);
+}
+
+.lx-metric {
+  display: grid;
+  gap: var(--step-1);
+  min-width: 0;
+}
+
+.lx-metric__value {
+  margin: 0;
+  font-family: var(--typeface-mono);
+  font-size: var(--size-body-sm);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-100);
+}
+
+/* ── Outcome band ───────────────────────────────────────────────────────────
+ * What the run finally did. The seal is crimson when something was withheld
+ * and silver when the answer was grounded.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-outcome {
+  position: relative;
+  overflow: hidden;
+  padding: var(--step-5);
+  background-color: var(--scrim-50);
+  border-top: 1px solid var(--rule);
+}
+
+@keyframes lx-outcome-rule {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes lx-seal-stamp {
+  from { opacity: 0; transform: scale(0.82); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The outcome band's registration line draws, then the seal stamps it.
+   * Both are finite and explain what the run decided. */
+  .lx-outcome::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 1px;
+    background-color: var(--color-crimson-500);
+    transform-origin: left center;
+    animation: lx-outcome-rule 520ms var(--motion-ease-out) both;
+  }
+
+  .lx-outcome .lx-seal {
+    animation: lx-seal-stamp 420ms var(--motion-ease-out) 180ms both;
+  }
+}
+
+.lx-outcome__head {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  margin-bottom: var(--step-3);
+}
+
+.lx-outcome__body {
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-400);
+  max-width: 82ch;
+}
+
+.lx-outcome__audit {
+  margin-top: var(--step-4);
+  padding-top: var(--step-3);
+  border-top: 1px solid var(--rule-faint);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  line-height: 1.6;
+  color: var(--color-silver-500);
+  max-width: 96ch;
+}
+
+/* ── Provenance ─────────────────────────────────────────────────────────────
+ * Which run this is. Mono, quiet, and last — it is the footnote to
+ * everything above it.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-ledger__provenance {
+  margin: 0;
+  padding: var(--step-3) var(--step-5);
+  border-top: 1px solid var(--rule);
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+}
+
+/* ── Scenario switcher ────────────────────────────────────────────────────── */
+
+.lx-scenarios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--step-1);
+}
+
+.lx-scenario {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: var(--step-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  font-size: var(--size-label);
+  color: var(--color-silver-500);
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-scenario:hover {
+  border-color: var(--rule-strong);
+  color: var(--color-silver-200);
+}
+
+.lx-scenario[aria-pressed='true'] {
+  border-color: var(--color-crimson-500);
+  background-color: var(--crimson-wash-07);
+  color: var(--color-silver-050);
+}

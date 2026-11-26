@@ -3,120 +3,68 @@ import remarkGfm from 'remark-gfm'
 import { clsx } from 'clsx'
 
 /**
- * FormattedAnswer — Renders LLM output into an ultra-premium, classy executive layout.
- * Replaces raw markdown symbols (**bold**, ### headers, | tables |) with beautiful typography,
- * refined list markers, elegant data tables via remark-gfm, and smooth contrast.
+ * FormattedAnswer — renders the model's Markdown output as a document.
+ *
+ * The markdown arrives from a model, so the renderer owns the typography
+ * entirely: the prose rules live in `styles/app/markdown.css` rather than
+ * in utility classes repeated here. That keeps one reading measure for
+ * every answer the product produces.
  */
 export function FormattedAnswer({ content, className = '' }) {
   if (!content) return null
 
   return (
-    <div className={clsx('formatted-answer space-y-4 text-slate-200 text-sm leading-relaxed', className)}>
+    <div className={clsx('lx-prose', className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          h1: ({ children }) => (
-            <h1 className="text-lg font-bold text-white tracking-tight pb-2 border-b border-slate-800/80 mt-6 mb-3 flex items-center gap-2">
-              <span className="w-1.5 h-4 rounded-full bg-gradient-to-b from-primary-400 to-cyan-400" />
-              <span>{children}</span>
-            </h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className="text-base font-bold text-slate-100 tracking-tight mt-5 mb-2.5 flex items-center gap-2">
-              <span className="w-1 h-3.5 rounded-full bg-cyan-400/80" />
-              <span className="text-cyan-200">{children}</span>
-            </h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="text-sm font-semibold text-sky-200 tracking-tight mt-4 mb-2">
+          // Model-generated headings are demoted one level so an answer can
+          // never inject a second <h1> into a route that already owns one.
+          // The deepest level clamps at h4, the last level styled in markdown.css.
+          h1: ({ children }) => <h2>{children}</h2>,
+          h2: ({ children }) => <h3>{children}</h3>,
+          h3: ({ children }) => <h4>{children}</h4>,
+          h4: ({ children }) => <h4>{children}</h4>,
+          p: ({ children }) => <p>{children}</p>,
+          strong: ({ children }) => <strong>{children}</strong>,
+          em: ({ children }) => <em>{children}</em>,
+          ul: ({ children }) => <ul>{children}</ul>,
+          ol: ({ children }) => <ol>{children}</ol>,
+          li: ({ children }) => <li>{children}</li>,
+          blockquote: ({ children }) => <blockquote>{children}</blockquote>,
+          hr: () => <hr />,
+          a: ({ children, ...props }) => (
+            <a {...props} rel="noopener noreferrer" target="_blank">
               {children}
-            </h3>
+            </a>
           ),
-          p: ({ children }) => (
-            <p className="text-slate-200 text-sm leading-relaxed mb-3 last:mb-0">
-              {children}
-            </p>
-          ),
-          strong: ({ children }) => (
-            <strong className="font-semibold text-white bg-surface-800/60 px-1 py-0.5 rounded border border-slate-700/40 text-[13.5px]">
-              {children}
-            </strong>
-          ),
-          em: ({ children }) => (
-            <em className="italic text-slate-300">
-              {children}
-            </em>
-          ),
-          ul: ({ children }) => (
-            <ul className="space-y-2 my-3 pl-5 list-disc marker:text-cyan-400 text-slate-200 text-sm leading-relaxed">
-              {children}
-            </ul>
-          ),
-          ol: ({ children }) => (
-            <ol className="space-y-2 my-3 pl-5 list-decimal marker:text-cyan-400 marker:font-mono marker:font-bold text-slate-200 text-sm leading-relaxed">
-              {children}
-            </ol>
-          ),
-          li: ({ children }) => (
-            <li className="pl-1 text-slate-200 text-sm leading-relaxed">
-              {children}
-            </li>
-          ),
-          blockquote: ({ children }) => (
-            <blockquote className="border-l-2 border-cyan-500/70 pl-4 py-1 my-3 bg-cyan-950/20 rounded-r-lg text-slate-300 italic">
-              {children}
-            </blockquote>
-          ),
-          code: ({ className, children, ...props }) => {
-            const isBlock = className?.includes('language-')
+          code: ({ className: codeClass, children, ...props }) => {
+            const isBlock = codeClass?.includes('language-')
             if (!isBlock) {
               return (
-                <code className="font-mono text-xs text-cyan-300 bg-surface-900/80 border border-slate-800 px-1.5 py-0.5 rounded" {...props}>
+                <code className={codeClass} {...props}>
                   {children}
                 </code>
               )
             }
             return (
-              <pre className="font-mono text-xs text-slate-300 bg-surface-900/90 border border-slate-800 p-3 rounded-xl overflow-x-auto my-3">
-                <code className={className} {...props}>{children}</code>
+              <pre>
+                <code className={codeClass} {...props}>
+                  {children}
+                </code>
               </pre>
             )
           },
           table: ({ children }) => (
-            <div className="overflow-x-auto my-5 rounded-xl border border-slate-700/80 bg-surface-900/60 shadow-lg shadow-black/30 backdrop-blur-sm">
-              <table className="w-full text-left text-xs border-collapse">
-                {children}
-              </table>
+            <div className="lx-prose__table-wrap">
+              <table>{children}</table>
             </div>
           ),
-          thead: ({ children }) => (
-            <thead className="bg-surface-950/90 text-cyan-300 uppercase tracking-wider font-mono text-[11px] border-b border-slate-700/80">
-              {children}
-            </thead>
-          ),
-          tbody: ({ children }) => (
-            <tbody className="divide-y divide-slate-800/80 bg-surface-900/40">
-              {children}
-            </tbody>
-          ),
-          th: ({ children }) => (
-            <th className="px-4 py-3 font-semibold text-slate-200 tracking-wider">
-              {children}
-            </th>
-          ),
-          td: ({ children }) => (
-            <td className="px-4 py-3 text-slate-300 leading-relaxed font-normal">
-              {children}
-            </td>
-          ),
-          tr: ({ children }) => (
-            <tr className="hover:bg-cyan-950/20 transition-colors">
-              {children}
-            </tr>
-          ),
-          hr: () => (
-            <hr className="border-slate-800/80 my-4" />
-          ),
+          thead: ({ children }) => <thead>{children}</thead>,
+          tbody: ({ children }) => <tbody>{children}</tbody>,
+          tr: ({ children }) => <tr>{children}</tr>,
+          th: ({ children }) => <th>{children}</th>,
+          td: ({ children }) => <td>{children}</td>,
         }}
       >
         {content}

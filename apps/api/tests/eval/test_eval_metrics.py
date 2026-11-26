@@ -44,7 +44,7 @@ def test_ndcg_at_k_hand_computed():
 
 
 def test_resolve_snippets_case_insensitive():
-    texts = ["FULL REFUND within 30 days of delivery", "Shipping is free"]
+    texts = ["Bearer tokens are valid for 30 days", "Request rate limit is 100 per second"]
     resolved = metrics.resolve_snippets(texts, ["30 Days", "missing phrase"])
     assert resolved[0] == {"snippet": "30 Days", "found": True, "first_rank": 0}
     assert resolved[1] == {"snippet": "missing phrase", "found": False, "first_rank": None}
@@ -115,7 +115,7 @@ def test_score_query_keys_and_values():
         query_class="factual",
         retrieved_ids=["e1", "e2"],
         gold_ids={"e1", "e9"},
-        evidence_texts=["full refund within 30 days"],
+        evidence_texts=["bearer tokens are valid for 30 days"],
         gold_snippets=["30 days"],
         claim_states=["SUPPORTED", "NEUTRAL"],
         citation_supporting=[True],
@@ -136,7 +136,7 @@ def test_score_query_keys_and_values():
             query_class="factual",
             retrieved_ids=["e1", "e2"],
             gold_ids={"e1", "e9"},
-            evidence_texts=["full refund within 30 days"],
+            evidence_texts=["bearer tokens are valid for 30 days"],
             gold_snippets=["30 days"],
             claim_states=["SUPPORTED", "NEUTRAL"],
             citation_supporting=[True],
@@ -182,3 +182,102 @@ def test_aggregate_scores_skips_missing_citations():
     assert agg["claim_support_rate"] == 1.0  # 1 supported of 1 total claim
     assert agg["latency"]["count"] == 2
     assert metrics.aggregate_scores([])["n_queries"] == 0
+
+
+def test_score_query_abstained_ignores_discarded_draft_claims():
+    # If a query abstained (e.g. via grounding gate), any discarded candidate
+    # draft claims must not be evaluated as delivered answer claims.
+    result = metrics.score_query(
+        query_id="q022",
+        query_class="adversarial",
+        retrieved_ids=["e1"],
+        gold_ids={"e1"},
+        evidence_texts=["some text"],
+        gold_snippets=["text"],
+        claim_states=["NEUTRAL", "NEUTRAL", "NEUTRAL"],
+        citation_supporting=[],
+        status="abstained",
+        latency_ms=100.0,
+    )
+    assert result["abstained"] is True
+    assert result["claim_total"] == 0
+    assert result["claim_supported"] == 0
+    assert result["claim_neutral"] == 0
+    assert result["claim_contradicted"] == 0
+
+
+def test_metrics_count_unchecked_separately_from_neutral():
+    """A verifier outage must not lower the claim-support rate as if the
+    evidence were insufficient (the Phase-1 metric artifact)."""
+
+    healthy = metrics.claim_summary(["SUPPORTED", "SUPPORTED", "NEUTRAL"])
+    assert healthy["unchecked"] == 0
+    assert healthy["total"] == 3
+    assert healthy["coverage"] == 2 / 3
+
+    outage = metrics.claim_summary(["SUPPORTED", "SUPPORTED", "UNCHECKED", "UNCHECKED"])
+    assert outage["unchecked"] == 2
+    # Coverage is over verified claims only: the unknowns are excluded, and the
+    # two that were checked are both supported.
+    assert outage["total"] == 2
+    assert outage["coverage"] == 1.0
+    assert outage["neutral"] == 0
+
+
+def test_score_query_abstained_ignores_discarded_draft_claims_and_unchecked():
+    """The prior-session fix plus the new state: an abstained outcome scores no
+    claims, and an unchecked claim never counts as support."""
+
+    delivered = metrics.score_query(
+        query_id="q024",
+        query_class="factual",
+        retrieved_ids=["gold:0"],
+        gold_ids={"gold:0"},
+        evidence_texts=["Deletion requests are completed within 5 business days."],
+        gold_snippets=["Deletion requests are completed within 5 business days"],
+        claim_states=["UNCHECKED"],
+        citation_supporting=[],
+        status="abstained",
+        latency_ms=100.0,
+    )
+    assert delivered["abstained"] is True
+    assert delivered["claim_total"] == 0
+
+    scored = metrics.score_query(
+        query_id="q024",
+        query_class="factual",
+        retrieved_ids=["gold:0"],
+        gold_ids={"gold:0"},
+        evidence_texts=["Deletion requests are completed within 5 business days."],
+        gold_snippets=["Deletion requests are completed within 5 business days"],
+        claim_states=["UNCHECKED", "UNCHECKED"],
+        citation_supporting=[True],
+        status="completed",
+        latency_ms=100.0,
+    )
+    assert scored["claim_unchecked"] == 2
+    assert scored["claim_supported"] == 0
+    assert scored["claim_neutral"] == 0
+    assert scored["claim_total"] == 0
+    # Neither checked nor unchecked claims inflate the support numerator.
+    assert scored["claim_support_denominator_total"] == 2
+
+
+def test_aggregate_scores_exposes_verification_availability():
+
+    q = metrics.score_query(
+        query_id="q1",
+        query_class="factual",
+        retrieved_ids=[],
+        gold_ids=set(),
+        evidence_texts=[],
+        gold_snippets=[],
+        claim_states=["SUPPORTED", "UNCHECKED"],
+        citation_supporting=[],
+        status="completed",
+        latency_ms=10.0,
+    )
+    agg = metrics.aggregate_scores([q])
+    assert agg["claim_unchecked_total"] == 1
+    # 1 verified of 2 attempted → availability 0.5, not 1.0
+    assert agg["claim_verification_availability"] == 0.5

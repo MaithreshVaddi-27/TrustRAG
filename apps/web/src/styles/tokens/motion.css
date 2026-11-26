@@ -1,0 +1,29 @@
+/* ── TrustRAG · Motion ───────────────────────────────────────────────────────
+ * One easing curve, a few durations. Motion here explains something — a
+ * verdict resolving, a sweep travelling the pipeline, a section arriving —
+ * and never loops for decoration.
+ *
+ * Apple: springs are critically damped by default (damping 1.0, response
+ * 0.3–0.4). Bounce is reserved for momentum-driven physical interaction,
+ * which this product does not have.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --motion-duration-instant: 80ms; /* press feedback */
+  --motion-duration-fast: 150ms; /* hover, colour changes */
+  --motion-duration-base: 220ms; /* enters, state changes */
+  --motion-duration-slow: 320ms; /* larger transitions */
+
+  /* Exponential ease-out — the house curve. */
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Standard curve for two-way state changes. */
+  --motion-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Stagger used by the one entrance on load and by section reveals. */
+  --stagger-step: 60ms;
+
+  /* Springs live in the motion curve above, not as JS object literals in
+   * CSS — those are invalid declarations and are dropped by the build.
+   * If a spring API is ever introduced, define valid duration tokens here
+   * and keep the physics in that API. */
+}

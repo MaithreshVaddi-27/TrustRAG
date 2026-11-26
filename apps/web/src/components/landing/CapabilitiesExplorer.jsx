@@ -1,86 +1,86 @@
 import { useState } from 'react'
-import {
-  Cpu, Activity, Check
-} from 'lucide-react'
-import { CAPABILITIES } from './landingData'
+import { Check } from 'lucide-react'
+import { CAPABILITIES } from './data/capabilities'
 
+/**
+ * CapabilitiesExplorer — four capabilities, one visible at a time.
+ *
+ * A vertical list on the left selects the capability; the right column shows
+ * what it does and the code that does it. No tab panel chrome, no gradient
+ * header — the section reads as a specification.
+ *
+ * The code block scrolls sideways on a narrow screen and holds nothing
+ * focusable, so it takes its own tab stop: without one, a keyboard user
+ * cannot reach the lines that run past the edge.
+ */
 export default function CapabilitiesExplorer() {
-  const [activeCapKey, setActiveCapKey] = useState('langgraph')
-  const currentCapability = CAPABILITIES[activeCapKey]
+  const [activeId, setActiveId] = useState(CAPABILITIES[0].id)
+  const active = CAPABILITIES.find((cap) => cap.id === activeId) ?? CAPABILITIES[0]
+  const ActiveIcon = active.icon
 
   return (
-    <section id="features" className="scroll-mt-24 relative z-20 py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="text-center mb-12">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-cyan-950/60 border border-cyan-800/60 text-xs font-mono text-cyan-400 mb-3 shadow-md shadow-cyan-950/50">
-          <Cpu size={13} />
-          <span>DEEP CAPABILITIES EXPLORER</span>
-        </div>
-        <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
-          Interactive System Capabilities
-        </h2>
-        <p className="text-slate-400 text-sm sm:text-base max-w-2xl mx-auto mt-3">
-          Click across the core verification subsystems below to explore code implementations, architectural invariants, and safety guarantees.
-        </p>
+    <div className="lx-capabilities">
+      <div className="lx-capabilities__nav" role="tablist" aria-label="Capabilities">
+        {CAPABILITIES.map((cap) => {
+          const Icon = cap.icon
+          const selected = cap.id === active.id
 
-        <div className="flex flex-wrap items-center justify-center gap-3 mt-8">
-          {Object.keys(CAPABILITIES).map((key) => {
-            const cap = CAPABILITIES[key]
-            const Icon = cap.icon
-            const isSelected = activeCapKey === key
-            return (
-              <button
-                key={key}
-                onClick={() => setActiveCapKey(key)}
-                className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 border ${
-                  isSelected
-                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400 shadow-lg shadow-cyan-950/50 scale-105'
-                    : 'bg-surface-900 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700 hover:scale-102'
-                }`}
-              >
-                <Icon size={14} className={isSelected ? 'text-cyan-400 animate-spin-slow' : 'text-slate-500'} />
-                <span>{cap.title.split(' ')[0]} {cap.title.split(' ')[1]}</span>
-              </button>
-            )
-          })}
-        </div>
+          return (
+            <button
+              key={cap.id}
+              type="button"
+              role="tab"
+              id={`cap-tab-${cap.id}`}
+              aria-selected={selected}
+              aria-controls={`cap-panel-${cap.id}`}
+              tabIndex={selected ? 0 : -1}
+              className="lx-capability"
+              onClick={() => setActiveId(cap.id)}
+            >
+              <span className="lx-capability__icon">
+                <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
+              </span>
+              <span className="lx-capability__label">{cap.title}</span>
+            </button>
+          )
+        })}
       </div>
 
-      <div className="rounded-3xl border border-slate-800/90 bg-surface-900/80 p-6 sm:p-10 backdrop-blur-xl shadow-2xl relative overflow-hidden transition-all duration-300 hover:border-cyan-500/40">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+      <div
+        className="lx-capabilities__panel"
+        role="tabpanel"
+        id={`cap-panel-${active.id}`}
+        aria-labelledby={`cap-tab-${active.id}`}
+        tabIndex={0}
+      >
+        <div className="lx-capability__head">
+          <ActiveIcon size={18} strokeWidth={1.5} aria-hidden="true" />
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-700/50 text-[11px] font-mono text-cyan-300 mb-4">
-              <Activity size={12} />
-              <span>{currentCapability.tagline}</span>
-            </div>
-            <h3 className="text-2xl sm:text-3xl font-extrabold text-white mb-4">
-              {currentCapability.title}
-            </h3>
-            <p className="text-slate-300 text-sm leading-relaxed mb-6 font-normal">
-              {currentCapability.desc}
-            </p>
-            <div className="space-y-2.5">
-              {currentCapability.highlights.map((h, i) => (
-                <div key={i} className="flex items-center gap-2.5 text-xs text-slate-300 font-mono">
-                  <div className="w-5 h-5 rounded-full bg-emerald-950 border border-emerald-600/60 flex items-center justify-center text-emerald-400 shrink-0">
-                    <Check size={11} />
-                  </div>
-                  <span>{h}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-surface-950 border border-slate-800 p-5 font-mono text-xs text-slate-300 shadow-inner overflow-x-auto relative group">
-            <div className="flex items-center justify-between text-[11px] text-slate-500 pb-3 mb-3 border-b border-slate-800/80">
-              <span>implementation_preview.py</span>
-              <span className="text-cyan-400 text-[10px]">Python 3.12 Verified</span>
-            </div>
-            <pre className="text-slate-300 text-xs leading-relaxed overflow-x-auto whitespace-pre-wrap font-mono">
-              {currentCapability.code}
-            </pre>
+            <h3 className="lx-h3">{active.title}</h3>
+            <p className="lx-micro lx-capability__tagline">{active.tagline}</p>
           </div>
         </div>
+
+        <p className="lx-body lx-capability__desc">{active.desc}</p>
+
+        <ul className="lx-capability__highlights">
+          {active.highlights.map((highlight) => (
+            <li key={highlight} className="lx-capability__highlight">
+              <Check size={13} strokeWidth={2} aria-hidden="true" />
+              <span>{highlight}</span>
+            </li>
+          ))}
+        </ul>
+
+        <pre
+          className="lx-code"
+          role="region"
+          tabIndex={0}
+          aria-label={`${active.title} example configuration`}
+        >
+          <code>{active.code}</code>
+        </pre>
       </div>
-    </section>
+    </div>
   )
 }

@@ -1,0 +1,118 @@
+/* ── TrustRAG · Buttons ──────────────────────────────────────────────────────
+ * One button, three live registers. Silver is the action colour; crimson is
+ * a signal and appears on a control only for destruction.
+ *
+ *   --primary          the focal silver plate. One per view.
+ *   --secondary        hairline outline. Every other action.
+ *   --alarm            deep crimson. This destroys something.
+ *
+ * Every interactive target is at least 44×44.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--step-2);
+  min-height: 44px;
+  padding-inline: var(--step-5);
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  font-size: var(--size-label);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-instant) var(--motion-ease-out);
+  touch-action: manipulation;
+}
+
+.lx-btn:active {
+  transform: scale(0.985);
+}
+
+/* A disabled control keeps its label readable: silver-300 on graphite-600
+ * measures 8.36:1, where 0.4 opacity on obsidian measured only 3.59:1. */
+.lx-btn:disabled {
+  background-color: var(--color-disabled-surface);
+  border-color: var(--color-disabled-surface);
+  color: var(--color-disabled-text);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* Primary — the focal silver plate. A bottom registration hairline is its
+ * only ornament; hierarchy comes from size and placement, never hue. */
+.lx-btn--primary {
+  background-color: var(--color-accent);
+  color: var(--color-on-accent);
+  box-shadow: inset 0 -1px 0 var(--button-inset-rule);
+}
+
+.lx-btn--primary:hover:not(:disabled) {
+  background-color: var(--color-accent-hover);
+  color: var(--color-on-accent-hover);
+}
+
+/* Two focus exceptions. A crimson fill cannot carry a crimson ring, so the
+ * destructive button uses silver. A silver plate needs the darker crimson
+ * (7.13:1) — the global crimson-400 is only 3.39:1 on silver. */
+.lx-btn--primary:focus-visible {
+  outline: 2px solid var(--focus-ring-on-plate);
+  outline-offset: 2px;
+}
+
+.lx-btn--alarm:focus-visible {
+  outline: 2px solid var(--focus-ring-on-accent);
+  outline-offset: 2px;
+}
+
+/* Secondary — hairline outline, silver text. */
+.lx-btn--secondary {
+  border-color: var(--rule);
+  color: var(--color-silver-200);
+}
+
+.lx-btn--secondary:hover:not(:disabled) {
+  border-color: var(--rule-strong);
+  color: var(--color-silver-050);
+  background-color: var(--wash-silver-04);
+}
+
+/* Quiet — a text link that still meets the target size. */
+.lx-btn--quiet {
+  color: var(--color-silver-400);
+  padding-inline: var(--step-3);
+}
+
+.lx-btn--quiet:hover:not(:disabled) {
+  color: var(--color-silver-050);
+}
+
+/* Alarm — a destructive action. Deeper than a signal mark on purpose: it
+ * warns the eye away instead of drawing it in. */
+.lx-btn--alarm {
+  background-color: var(--color-alarm);
+  color: var(--color-on-alarm);
+}
+
+.lx-btn--alarm:hover:not(:disabled) {
+  background-color: var(--color-alarm-hover);
+}
+
+.lx-btn--large {
+  min-height: 52px;
+  padding-inline: var(--step-6);
+  font-size: var(--size-body);
+}
+
+.lx-btn--block {
+  width: 100%;
+}
+
+.lx-btn__icon {
+  flex-shrink: 0;
+  color: currentColor;
+  opacity: 0.85;
+}

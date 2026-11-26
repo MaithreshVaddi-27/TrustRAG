@@ -6,9 +6,8 @@
  * `recheck()` function so callers can force an immediate probe
  * (e.g. after retrying a failed request).
  *
- * On mount it does NOT immediately ping — the first health check is
- * deferred to the next interval tick.  This avoids a cascade of
- * requests when the user has many tabs open.
+ * The first probe fires on mount, so the header does not sit on
+ * "Checking…" for a full interval while the backend is plainly up.
  *
  * All requests are short-circuit aborted after 5 s so a slow backend
  * never blocks the UI.
@@ -34,23 +33,24 @@ export default function useBackendHealth(intervalMs = POLL_MS) {
     abortRef.current = controller
 
     setIsChecking(true)
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
     try {
-      const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
       await api.get('/api/v1/health', { signal: controller.signal })
-      clearTimeout(timeoutId)
       setIsOnline(true)
     } catch (err) {
       if (err.name !== 'CanceledError' && err.code !== 'ERR_CANCELED') {
         setIsOnline(false)
       }
     } finally {
+      clearTimeout(timeoutId)
       setIsChecking(false)
       setLastChecked(Date.now())
     }
   }, [])
 
-  // Start polling after the first render — skip the initial tick
+  // Probe immediately on mount, then poll periodically
   useEffect(() => {
+    probe()
     timerRef.current = setInterval(probe, intervalMs)
     return () => {
       clearInterval(timerRef.current)

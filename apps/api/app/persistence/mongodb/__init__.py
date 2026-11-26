@@ -1,0 +1,520 @@
+"""
+TRUSTRAG — MongoDB Atlas client and collection registry.
+
+Single source of all database access. No other module should
+import pymongo or motor directly — always use this module.
+
+Connection is established once at startup and reused.
+All collection names are defined as constants — never scattered strings.
+
+Authorization enforcement is the responsibility of service layers,
+not the database layer.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+from typing import TYPE_CHECKING, Any
+
+import certifi
+import pymongo
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo.errors import PyMongoError
+
+from app.config.settings import get_settings
+from app.observability.logging import get_logger
+from app.security.exceptions import DatabaseError
+
+if TYPE_CHECKING:
+    from motor.motor_asyncio import AsyncIOMotorCollection
+
+logger = get_logger(__name__)
+
+# Retry policy for the initial connection. Atlas M0 (free tier) clusters
+# auto-pause when idle and take 30-90s to resume on the first request —
+# while resuming, in-flight TLS handshakes get reset/aborted, which is
+# indistinguishable on the wire from a network problem. A single 5s
+# attempt (the old behavior) can never survive that; retrying with
+# backoff for a couple of minutes does, with no user action needed.
+_CONNECT_MAX_ATTEMPTS = 12
+_CONNECT_INITIAL_BACKOFF_SECONDS = 3.0
+_CONNECT_MAX_BACKOFF_SECONDS = 20.0
+
+
+def _validate_mongodb_uri(uri: str) -> None:
+    """Reject a permanently unusable MONGODB_URI before entering the retry loop.
+
+    Two distinct failures live here, and neither is worth retrying:
+
+    * `pymongo` raises ``InvalidURI`` (a PyMongoError) straight from the client
+      constructor for a syntactically broken address.
+    * An out-of-range port raises a plain ``ValueError`` — notably NOT a
+      PyMongoError, so without this check it escapes the retry handler entirely
+      and bypasses the DatabaseError translation.
+
+    Both surface as a config typo, so the error says so and names the variable.
+    """
+    from pymongo.uri_parser import parse_uri
+
+    try:
+        parse_uri(uri)
+    except ValueError as exc:
+        raise DatabaseError(
+            f"MONGODB_URI is not a valid MongoDB connection string: {exc}",
+            detail="Fix the MONGODB_URI value in .env (for example mongodb://localhost:27017).",
+        ) from exc
+    except Exception as exc:  # InvalidURI and friends
+        raise DatabaseError(
+            f"MONGODB_URI is not a valid MongoDB connection string: {exc}",
+            detail="Fix the MONGODB_URI value in .env (for example mongodb://localhost:27017).",
+        ) from exc
+
+
+# ─── Collection name constants ────────────────────────────────────────────────
+# These names must never be scattered as string literals through the codebase.
+
+
+class Collections:
+    USERS = "users"
+    KNOWLEDGE_BASES = "knowledge_bases"
+    DOCUMENTS = "documents"
+    DOCUMENT_CHUNKS = "document_chunks"
+    ANALYSES = "analyses"
+    CLAIMS = "claims"
+    EVIDENCE = "evidence"
+    RECOVERY_RUNS = "recovery_runs"
+    TRACE_EVENTS = "trace_events"
+    REVOKED_TOKENS = "revoked_tokens"
+    STREAM_TICKETS = "stream_tickets"
+    FAILED_LOGINS = "failed_logins"
+
+
+# ─── Client singleton ─────────────────────────────────────────────────────────
+
+_client: AsyncIOMotorClient | None = None
+_database: AsyncIOMotorDatabase | None = None
+
+
+async def connect_db() -> None:
+    """
+    Establish MongoDB connection.
+    Called once during FastAPI lifespan startup.
+
+    Retries with exponential backoff instead of failing on the first
+    attempt — Atlas M0 clusters resuming from auto-pause, or a flaky
+    first handshake, both look like a hard failure to a single attempt
+    but succeed within a few retries.
+    """
+    global _client, _database
+    settings = get_settings()
+
+    logger.info(
+        "Connecting to MongoDB",
+        database=settings.mongodb_database,
+    )
+
+    backoff = _CONNECT_INITIAL_BACKOFF_SECONDS
+    last_exc: Exception | None = None
+
+    # Fail fast on a permanently invalid URI. A malformed address is not a
+    # transient outage: retrying it 12 times with exponential backoff just delays
+    # the same fatal error by minutes and buries it under retry warnings. Doing
+    # this before the loop also means the actionable message below names the
+    # actual problem (a typo in MONGODB_URI) rather than "check your config".
+    _validate_mongodb_uri(settings.mongodb_uri)
+
+    for attempt in range(1, _CONNECT_MAX_ATTEMPTS + 1):
+        # Bound before the try: AsyncIOMotorClient itself can raise (a malformed
+        # but syntactically parseable URI raises InvalidURI from the constructor),
+        # in which case the except handler must not reference an unbound name.
+        candidate_client: AsyncIOMotorClient | None = None
+        try:
+            uri_lower = settings.mongodb_uri.lower()
+            is_local = (
+                "localhost" in uri_lower or "127.0.0.1" in uri_lower
+            ) and "replicaset=" not in uri_lower
+
+            client_kwargs: dict[str, Any] = {
+                "serverSelectionTimeoutMS": 3000 if is_local else 10000,
+                "connectTimeoutMS": 5000 if is_local else 10000,
+                "socketTimeoutMS": 30000,
+                "maxPoolSize": 50,
+                "minPoolSize": 2,
+                "maxIdleTimeMS": 45000,
+                "tz_aware": True,
+            }
+            if not is_local:
+                client_kwargs["retryWrites"] = True
+                client_kwargs["w"] = "majority"
+
+            if "mongodb+srv" in uri_lower or "tls=true" in uri_lower or "ssl=true" in uri_lower:
+                client_kwargs["tlsCAFile"] = certifi.where()
+
+            candidate_client = AsyncIOMotorClient(
+                settings.mongodb_uri,
+                **client_kwargs,
+            )
+            candidate_db = candidate_client[settings.mongodb_database]
+            # Ping to verify connection before startup completes
+            await candidate_db.command("ping")
+
+            _client = candidate_client
+            _database = candidate_db
+            logger.info(
+                "MongoDB connection established",
+                database=settings.mongodb_database,
+                attempt=attempt,
+            )
+            return
+        except (PyMongoError, ValueError) as exc:
+            # ValueError is included deliberately: pymongo raises it for an
+            # out-of-range port ("Port must be an integer between 0 and 65535")
+            # and that is NOT a PyMongoError, so without it a typo'd URI escapes
+            # this handler entirely — skipping the retry/backoff policy and the
+            # DatabaseError translation below.
+            last_exc = exc
+            if candidate_client is not None:
+                try:
+                    candidate_client.close()
+                except Exception as close_exc:  # pragma: no cover - best effort
+                    logger.debug("MongoDB client close failed", error=str(close_exc))
+            if attempt == _CONNECT_MAX_ATTEMPTS:
+                break
+            logger.warning(
+                "MongoDB connection attempt failed, retrying",
+                attempt=attempt,
+                max_attempts=_CONNECT_MAX_ATTEMPTS,
+                retry_in_seconds=backoff,
+                error=str(exc),
+            )
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 1.5, _CONNECT_MAX_BACKOFF_SECONDS)
+
+    from urllib.parse import urlsplit
+
+    try:
+        _uri = settings.mongodb_uri
+        _host_hint = urlsplit(_uri).hostname or _uri.split("@")[-1].split("/")[0][:60]
+    except Exception:
+        _host_hint = "unknown host"
+    logger.error(
+        "MongoDB connection failed after all retries",
+        attempts=_CONNECT_MAX_ATTEMPTS,
+        error=str(last_exc),
+    )
+    raise DatabaseError(
+        f"Failed to connect to MongoDB at {_host_hint} after repeated retries. "
+        "Check MONGODB_URI and ensure mongod is running "
+        "(macOS: brew services start mongodb-community; "
+        "Linux: sudo systemctl enable --now mongod; Windows: net start MongoDB).",
+        detail=str(last_exc),
+    ) from last_exc
+
+
+async def disconnect_db() -> None:
+    """Close MongoDB connection. Called during FastAPI lifespan shutdown."""
+    global _client, _database
+    if _client is not None:
+        logger.info("Closing MongoDB connection")
+        _client.close()
+        _client = None
+        _database = None
+
+
+def get_database() -> AsyncIOMotorDatabase:
+    """Return the active database instance."""
+    if _database is None:
+        raise DatabaseError(
+            "Database not initialized. Did startup fail?",
+            detail="Call connect_db() during application lifespan.",
+        )
+    return _database
+
+
+def get_collection(name: str) -> AsyncIOMotorCollection:
+    """Return a named collection from the active database."""
+    return get_database()[name]
+
+
+# ─── Index creation ───────────────────────────────────────────────────────────
+
+
+async def create_indexes() -> None:
+    """
+    Ensure all required indexes exist.
+
+    Idempotent — safe to call on every startup.
+    Creates indexes for:
+      - Ownership (user_id foreign key on all user-owned collections)
+      - Knowledge base membership (knowledge_base_id)
+      - Status fields for filtering
+      - Time-based queries (created_at descending)
+      - Unique constraints
+    """
+    db = get_database()
+
+    # Collect all index creation coroutines and run them in parallel for faster startup
+    index_tasks = []
+
+    # ── users ──────────────────────────────────────────────────────────────
+    index_tasks.append(
+        db[Collections.USERS].create_index(
+            [("email", pymongo.ASCENDING)], unique=True, name="email_unique"
+        )
+    )
+
+    # ── knowledge_bases ────────────────────────────────────────────────────
+    index_tasks.append(
+        db[Collections.KNOWLEDGE_BASES].create_index(
+            [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="kb_owner_time",
+        )
+    )
+
+    # ── documents ──────────────────────────────────────────────────────────
+    index_tasks.append(
+        db[Collections.DOCUMENTS].create_index(
+            [("knowledge_base_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="doc_kb_time",
+        )
+    )
+    index_tasks.append(
+        db[Collections.DOCUMENTS].create_index(
+            [("knowledge_base_id", pymongo.ASCENDING), ("content_hash", pymongo.ASCENDING)],
+            unique=True,
+            name="doc_kb_content_hash_unique",
+        )
+    )
+    index_tasks.append(
+        db[Collections.DOCUMENTS].create_index(
+            [("content_hash", pymongo.ASCENDING)], name="doc_content_hash"
+        )
+    )
+    index_tasks.append(
+        db[Collections.DOCUMENTS].create_index([("user_id", pymongo.ASCENDING)], name="doc_user")
+    )
+    index_tasks.append(
+        db[Collections.DOCUMENTS].create_index(
+            [("ingestion_status", pymongo.ASCENDING)], name="doc_ingestion_status"
+        )
+    )
+
+    # ── document_chunks ────────────────────────────────────────────────────
+    index_tasks.append(
+        db[Collections.DOCUMENT_CHUNKS].create_index(
+            [("document_id", pymongo.ASCENDING), ("chunk_index", pymongo.ASCENDING)],
+            name="chunk_doc_index",
+            unique=True,
+        )
+    )
+    index_tasks.append(
+        db[Collections.DOCUMENT_CHUNKS].create_index(
+            [("knowledge_base_id", pymongo.ASCENDING)], name="chunk_kb_id"
+        )
+    )
+    index_tasks.append(
+        db[Collections.DOCUMENT_CHUNKS].create_index(
+            [("user_id", pymongo.ASCENDING)], name="chunk_user"
+        )
+    )
+    index_tasks.append(
+        db[Collections.DOCUMENT_CHUNKS].create_index(
+            [("text_hash", pymongo.ASCENDING)], name="chunk_text_hash"
+        )
+    )
+    # Self-heal re-index sorts a KB's chunks by chunk_index — compound index
+    # avoids an in-memory sort over up to 10k docs.
+    index_tasks.append(
+        db[Collections.DOCUMENT_CHUNKS].create_index(
+            [("knowledge_base_id", pymongo.ASCENDING), ("chunk_index", pymongo.ASCENDING)],
+            name="chunk_kb_order",
+        )
+    )
+    # N-46: citation-click page-image lookup filters by document + page.
+    index_tasks.append(
+        db[Collections.DOCUMENT_CHUNKS].create_index(
+            [("document_id", pymongo.ASCENDING), ("page", pymongo.ASCENDING)],
+            name="chunk_doc_page",
+        )
+    )
+
+    # ── analyses ───────────────────────────────────────────────────────────
+    index_tasks.append(
+        db[Collections.ANALYSES].create_index(
+            [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="analysis_owner_time",
+        )
+    )
+    index_tasks.append(
+        db[Collections.ANALYSES].create_index(
+            [("knowledge_base_id", pymongo.ASCENDING)], name="analysis_kb"
+        )
+    )
+    index_tasks.append(
+        db[Collections.ANALYSES].create_index(
+            [("status", pymongo.ASCENDING)], name="analysis_status"
+        )
+    )
+    # Compound index for user-scoped status queries (e.g. list running analyses per user)
+    index_tasks.append(
+        db[Collections.ANALYSES].create_index(
+            [("user_id", pymongo.ASCENDING), ("status", pymongo.ASCENDING)],
+            name="analysis_user_status",
+        )
+    )
+
+    # ── claims ─────────────────────────────────────────────────────────────
+    index_tasks.append(
+        db[Collections.CLAIMS].create_index(
+            [("analysis_id", pymongo.ASCENDING)], name="claim_analysis"
+        )
+    )
+    index_tasks.append(
+        db[Collections.CLAIMS].create_index(
+            [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="claim_user_time",
+        )
+    )
+    # Claim documents store verdict under "state" (SUPPORTED/CONTRADICTED/NEUTRAL),
+    # never "status" — index must match the actual field name to be useful.
+    index_tasks.append(
+        db[Collections.CLAIMS].create_index([("state", pymongo.ASCENDING)], name="claim_state")
+    )
+    # Conflict scan filters one user's analyses by CONTRADICTED state.
+    index_tasks.append(
+        db[Collections.CLAIMS].create_index(
+            [("analysis_id", pymongo.ASCENDING), ("state", pymongo.ASCENDING)],
+            name="claim_analysis_state",
+        )
+    )
+    # N-46: hottest claims read sorts by recency per analysis.
+    index_tasks.append(
+        db[Collections.CLAIMS].create_index(
+            [("analysis_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="claim_analysis_time",
+        )
+    )
+
+    # ── evidence ───────────────────────────────────────────────────────────
+    index_tasks.append(
+        db[Collections.EVIDENCE].create_index(
+            [("analysis_id", pymongo.ASCENDING)], name="evidence_analysis"
+        )
+    )
+    index_tasks.append(
+        db[Collections.EVIDENCE].create_index(
+            [("user_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="evidence_user_time",
+        )
+    )
+    index_tasks.append(
+        db[Collections.EVIDENCE].create_index(
+            [("document_id", pymongo.ASCENDING)], name="evidence_document"
+        )
+    )
+    # N-46: hottest evidence read sorts by recency per analysis.
+    index_tasks.append(
+        db[Collections.EVIDENCE].create_index(
+            [("analysis_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)],
+            name="evidence_analysis_time",
+        )
+    )
+
+    # ── recovery_runs ──────────────────────────────────────────────────────
+    index_tasks.append(
+        db[Collections.RECOVERY_RUNS].create_index(
+            [("analysis_id", pymongo.ASCENDING), ("attempt", pymongo.ASCENDING)],
+            name="recovery_analysis_attempt",
+        )
+    )
+
+    # ── trace_events ───────────────────────────────────────────────────────
+    index_tasks.append(
+        db[Collections.TRACE_EVENTS].create_index(
+            [("analysis_id", pymongo.ASCENDING), ("timestamp", pymongo.ASCENDING)],
+            name="trace_analysis_time",
+        )
+    )
+    # TTL index: automatically delete trace events older than 30 days to prevent
+    # unbounded collection growth in production environments.
+    # NOTE: trace docs carry `timestamp` (see add_trace_event) — an earlier
+    # revision indexed `created_at`, which no trace doc has, so expiry never
+    # fired. Index the real field and drop the dead one (absent on fresh DBs).
+    with contextlib.suppress(Exception):
+        await db[Collections.TRACE_EVENTS].drop_index("trace_ttl_expiry")
+    index_tasks.append(
+        db[Collections.TRACE_EVENTS].create_index(
+            [("timestamp", pymongo.ASCENDING)],
+            name="trace_timestamp_ttl",
+            expireAfterSeconds=2_592_000,  # 30 days
+        )
+    )
+
+    # ── revoked_tokens ─────────────────────────────────────────────────────
+    # SEC-H1: logout denylist. Documents are self-cleaning via TTL — the
+    # document expires exactly when the token's own exp claim arrives.
+    index_tasks.append(
+        db[Collections.REVOKED_TOKENS].create_index(
+            [("expires_at", pymongo.ASCENDING)],
+            name="revoked_token_ttl",
+            expireAfterSeconds=0,
+        )
+    )
+
+    # ── stream_tickets ───────────────────────────────────────────────────
+    # SSE stream tickets: single-use, 60s validity. Server enforces expiry at
+    # consume time; TTL is the janitor for abandoned (never-consumed) tickets.
+    # Mongo-backed (not in-memory) so tickets survive multi-worker routing.
+    index_tasks.append(
+        db[Collections.STREAM_TICKETS].create_index(
+            [("expires_at", pymongo.ASCENDING)],
+            name="stream_ticket_ttl",
+            expireAfterSeconds=0,
+        )
+    )
+
+    # ── failed_logins ──────────────────────────────────────────────────
+    # Login-lockout counters. Server double-checks window_expires at read
+    # time; TTL is the janitor for abandoned docs. Created here (once at
+    # startup) instead of per-request inside auth_service.
+    index_tasks.append(
+        db[Collections.FAILED_LOGINS].create_index(
+            [("window_expires", pymongo.ASCENDING)],
+            name="ttl_window_expires",
+            expireAfterSeconds=0,
+        )
+    )
+
+    # Execute index creations in small sequential batches (not all-parallel).
+    # 30 parallel create_index calls throttle M0 free-tier; batches of 5 keep
+    # startup fast without hammering the cluster. Failures are logged, never
+    # silent — a failed unique index (e.g. duplicate legacy rows) would
+    # otherwise leave the DB under-indexed with a success message.
+    results: list = []
+    for _i in range(0, len(index_tasks), 5):
+        batch = index_tasks[_i : _i + 5]
+        batch_results = await asyncio.gather(*batch, return_exceptions=True)
+        results.extend(batch_results)
+    failures = [r for r in results if isinstance(r, Exception)]
+    if failures:
+        logger.warning(
+            "Some MongoDB indexes failed to create",
+            failed=len(failures),
+            total=len(results),
+            errors=[str(e)[:200] for e in failures],
+        )
+    else:
+        logger.info("MongoDB indexes created/verified")
+
+
+async def health_check() -> bool:
+    """
+    Ping MongoDB and return True if healthy.
+    Used by the /health endpoint.
+    """
+    try:
+        await get_database().command("ping")
+        return True
+    except Exception:
+        return False

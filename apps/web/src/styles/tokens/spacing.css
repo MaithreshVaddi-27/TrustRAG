@@ -1,0 +1,48 @@
+/* ── TrustRAG · Spacing ──────────────────────────────────────────────────────
+ * A 4px grid. Same things get the same size: a row of cards shares one
+ * padding, a stack of links shares one gap. Values are rem so they scale
+ * with the user's text size.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --step-0: 0;
+  --step-1: 0.25rem; /* 4px  */
+  --step-2: 0.5rem; /* 8px  */
+  --step-3: 0.75rem; /* 12px */
+  --step-4: 1rem; /* 16px */
+  --step-5: 1.25rem; /* 20px */
+  --step-6: 1.5rem; /* 24px */
+  --step-7: 1.75rem; /* 28px */
+  --step-8: 2rem; /* 32px */
+  --step-10: 2.5rem; /* 40px */
+  --step-12: 3rem; /* 48px */
+  --step-16: 4rem; /* 64px */
+  --step-20: 5rem; /* 80px */
+  --step-24: 6rem; /* 96px */
+  --step-32: 8rem; /* 128px */
+
+  /* Vertical rhythm between major blocks. More room above a heading than
+   * below it, so each section reads as its own unit. */
+  --section-space: 6rem;
+  --chapter-space: 8rem;
+
+  /* Horizontal page gutters. */
+  --gutter: 1.5rem;
+  --measure-page: 82.5rem; /* 1320px content cap */
+}
+
+@media (max-width: 768px) {
+  :root {
+    --section-space: 4rem;
+    --chapter-space: 5rem;
+    --gutter: 1.25rem;
+  }
+}
+
+@media (max-width: 400px) {
+  :root {
+    --section-space: 3.25rem;
+    --chapter-space: 4rem;
+    --gutter: 1rem;
+  }
+}

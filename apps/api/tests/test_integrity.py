@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from app.verification.integrity import audit_evidence_integrity
+from app.rag.verification.integrity import audit_evidence_integrity
 
 
 @pytest.mark.asyncio
@@ -52,7 +52,7 @@ async def test_audit_evidence_integrity_success():
     mock_collection = MagicMock()
     mock_collection.find = MagicMock(return_value=mock_cursor)
 
-    with patch("app.verification.integrity.get_collection", return_value=mock_collection):
+    with patch("app.rag.verification.integrity.get_collection", return_value=mock_collection):
         audited = await audit_evidence_integrity(chunks)
 
         assert len(audited) == 3

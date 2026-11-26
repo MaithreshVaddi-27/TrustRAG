@@ -1,0 +1,268 @@
+/* ── TrustRAG · Utilities ────────────────────────────────────────────────────
+ * A deliberately small set of shared utilities. Anything used by more than one
+ * component belongs here; anything used once belongs in that component's
+ * stylesheet.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/* ── Layout ───────────────────────────────────────────────────────────────── */
+
+.lx-container {
+  width: 100%;
+  max-width: var(--measure-page);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.lx-section {
+  padding-block: var(--section-space);
+}
+
+/* Prose is capped so a line never runs past a comfortable measure. */
+.lx-measure {
+  max-width: var(--measure-prose);
+}
+
+.lx-measure--narrow {
+  max-width: var(--measure-narrow);
+}
+
+/* ── Typography ───────────────────────────────────────────────────────────── */
+
+.lx-display {
+  font-family: var(--typeface-display);
+  font-size: var(--size-display);
+  line-height: var(--leading-display);
+  letter-spacing: var(--tracking-display);
+  font-weight: var(--weight-regular);
+  color: var(--color-silver-050);
+}
+
+.lx-display-sm {
+  font-family: var(--typeface-display);
+  font-size: var(--size-display-sm);
+  line-height: var(--leading-display-sm);
+  letter-spacing: var(--tracking-display-sm);
+  font-weight: var(--weight-regular);
+  color: var(--color-silver-050);
+}
+
+.lx-h1 {
+  font-family: var(--typeface-display);
+  font-size: var(--size-h1);
+  line-height: var(--leading-h1);
+  letter-spacing: var(--tracking-h1);
+  font-weight: var(--weight-regular);
+  color: var(--color-silver-050);
+}
+
+.lx-h2 {
+  font-family: var(--typeface-display);
+  font-size: var(--size-h2);
+  line-height: var(--leading-h2);
+  letter-spacing: var(--tracking-h2);
+  font-weight: var(--weight-regular);
+  color: var(--color-silver-050);
+}
+
+.lx-h3 {
+  font-family: var(--typeface-sans);
+  font-size: var(--size-h3);
+  line-height: var(--leading-h3);
+  letter-spacing: var(--tracking-h3);
+  font-weight: var(--weight-medium);
+  color: var(--color-silver-100);
+}
+
+.lx-lede {
+  font-size: var(--size-lede);
+  line-height: var(--leading-lede);
+  color: var(--color-silver-400);
+}
+
+.lx-body {
+  font-size: var(--size-body);
+  line-height: var(--leading-body);
+  color: var(--color-silver-400);
+}
+
+.lx-body-sm {
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-400);
+}
+
+.lx-label {
+  font-size: var(--size-label);
+  line-height: var(--leading-label);
+  letter-spacing: 0.005em;
+  font-weight: var(--weight-medium);
+  color: var(--color-silver-300);
+}
+
+/* Mono is for measured data — hashes, timings, counts, identifiers — never
+ * as a costume for "technical". */
+.lx-micro {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  line-height: var(--leading-micro);
+  letter-spacing: var(--tracking-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-silver-500);
+}
+
+/* ── Surfaces ─────────────────────────────────────────────────────────────── */
+
+/* The one translucent surface in the system. Used where content genuinely
+ * overlaps other content, and nowhere else. */
+.lx-panel {
+  background-color: var(--wash-glass);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+}
+
+.lx-surface {
+  background-color: var(--surface-card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+}
+
+/* ── The crimson signal ─────────────────────────────────────────────────────
+ * Laser Crimson is TrustRAG's signal colour. It marks four things and
+ * nothing else: a caught contradiction, the active selection, a live
+ * status, and keyboard focus. Used anywhere else it stops meaning
+ * anything.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-signal {
+  color: var(--signal-text);
+}
+
+/* ── Rules ────────────────────────────────────────────────────────────────── */
+
+.lx-rule {
+  height: 1px;
+  background-color: var(--rule);
+  border: 0;
+}
+
+.lx-rule--faint {
+  background-color: var(--rule-faint);
+}
+
+.lx-rule--strong {
+  background-color: var(--rule-strong);
+}
+
+/* ── Accessibility helpers ────────────────────────────────────────────────── */
+
+.lx-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip link — visible only when focused. */
+.lx-skip-link {
+  position: absolute;
+  left: var(--step-4);
+  top: var(--step-4);
+  z-index: 100;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: var(--step-2) var(--step-4);
+  background-color: var(--color-silver-050);
+  color: var(--color-on-accent);
+  border-radius: var(--radius-control);
+  font-size: var(--size-label);
+  font-weight: var(--weight-medium);
+  transform: translateY(calc(-100% - var(--step-6)));
+  transition: transform var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.lx-skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* ── Reveal on scroll ───────────────────────────────────────────────────────
+ * One authored entrance. Elements marked `data-lx-reveal` start dimmed and
+ * are lifted by the observer script rather than hidden by CSS, so content is
+ * never trapped when JavaScript is unavailable or the observer never fires.
+ * The `lx-js` class on <html> is what enables the hidden state.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+html.lx-js [data-lx-reveal].lx-reveal--pending {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity var(--motion-duration-slow) var(--motion-ease-out),
+    transform var(--motion-duration-slow) var(--motion-ease-out);
+  will-change: opacity, transform;
+}
+
+html.lx-js [data-lx-reveal].lx-reveal--in {
+  opacity: 1;
+  transform: translateY(0);
+  will-change: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.lx-js [data-lx-reveal].lx-reveal--pending {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Printing must never lose content. */
+@media print {
+  html.lx-js [data-lx-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* ── Entrance on load ───────────────────────────────────────────────────────
+ * The single entrance. A short fade and rise, with a small stagger across
+ * the hero's own children. Nothing else on the page animates on load.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-enter {
+  animation: lx-enter 620ms var(--motion-ease-out) both;
+}
+
+.lx-enter:nth-child(2) {
+  animation-delay: 70ms;
+}
+
+.lx-enter:nth-child(3) {
+  animation-delay: 140ms;
+}
+
+.lx-enter:nth-child(4) {
+  animation-delay: 210ms;
+}
+
+@keyframes lx-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lx-enter {
+    animation: none;
+  }
+}

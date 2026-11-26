@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" role="img" aria-label="TrustRAG — Overlap"><title>TrustRAG</title>
+  <!-- TrustRAG · Overlap — master symbol.
+       The claim is a solid Chrome Silver disc; the corpus is a Chrome Silver ring.
+       Exactly half the claim is grounded inside the evidence. The single Laser
+       Crimson point sits at the centre of the supported half. Flat linework. -->
+
+  <circle cx="177" cy="128" r="54" fill="#000000"/>
+  <circle cx="101" cy="128" r="76" stroke="#000000" stroke-width="18"/>
+  <circle cx="154" cy="128" r="11" fill="#000000"/>
+</svg>

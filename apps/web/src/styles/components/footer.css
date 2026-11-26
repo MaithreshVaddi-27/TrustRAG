@@ -1,0 +1,148 @@
+/* ── TrustRAG · Footer ───────────────────────────────────────────────────────
+ * A ruled index, not a promotional block. Links grouped by area, separated
+ * by hairlines, with the build identity in mono at the bottom.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-footer {
+  border-top: 1px solid var(--rule);
+  margin-top: var(--step-16);
+  padding-block: var(--step-12) var(--step-8);
+}
+
+.lx-footer__grid {
+  display: grid;
+  gap: var(--step-10) var(--step-8);
+}
+
+@media (min-width: 768px) {
+  .lx-footer__grid {
+    grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
+  }
+}
+
+.lx-footer__brand {
+  max-width: 34ch;
+}
+
+.lx-footer__tagline {
+  margin-top: var(--step-3);
+  font-size: var(--size-body-sm);
+  line-height: var(--leading-body-sm);
+  color: var(--color-silver-500);
+}
+
+.lx-footer__col-title {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+  margin-bottom: var(--step-3);
+}
+
+.lx-footer__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lx-footer__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: var(--size-body-sm);
+  color: var(--color-silver-400);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-footer__link:hover {
+  color: var(--color-silver-050);
+}
+
+.lx-footer__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-3) var(--step-6);
+  margin-top: var(--step-10);
+  padding-top: var(--step-5);
+  border-top: 1px solid var(--rule);
+}
+
+/* ── Closing CTA ──────────────────────────────────────────────────────────── */
+
+.lx-cta {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-large);
+  background-color: var(--surface-panel);
+  padding: var(--step-12) var(--step-6);
+}
+
+/* The closing gesture is the product's own, not the centred SaaS card. */
+.lx-cta::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--step-6);
+  right: var(--step-6);
+  height: 1px;
+  background-color: var(--rule-strong);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+@media (min-width: 1024px) {
+  .lx-cta {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: var(--step-12);
+    padding: var(--step-16) var(--step-12);
+  }
+
+  .lx-cta::before {
+    left: var(--step-12);
+    right: var(--step-12);
+  }
+}
+
+.lx-cta__headline {
+  max-width: 20ch;
+}
+
+.lx-cta__lede {
+  max-width: 48ch;
+  margin-top: var(--step-5);
+}
+
+.lx-cta__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--step-3);
+  margin-top: var(--step-8);
+}
+
+@media (min-width: 1024px) {
+  .lx-cta__actions {
+    margin-top: 0;
+    justify-content: flex-end;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lx-cta::before {
+    animation: lx-register 680ms var(--motion-ease-out) 180ms both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lx-cta::before {
+    animation: none;
+    transform: none;
+  }
+}

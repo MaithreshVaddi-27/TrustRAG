@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from app.ingestion import chunking_strategies as strategies
-from app.ingestion.chunker import chunk_text
-from app.ingestion.preprocessor import detect_chunk_zone, lexical_analyze, normalize_text
+from app.rag.ingestion import chunking_strategies as strategies
+from app.rag.ingestion.chunker import chunk_text
+from app.rag.ingestion.preprocessor import detect_chunk_zone, lexical_analyze, normalize_text
 
 # ── Normalization ────────────────────────────────────────────────────────────
 
@@ -21,19 +21,21 @@ from app.ingestion.preprocessor import detect_chunk_zone, lexical_analyze, norma
 def test_normalize_preserves_paragraph_breaks():
     assert (
         normalize_text("Title here\n\nBody text  with   spaces")
-        == "title here\n\nbody text with spaces"
+        == "Title here\n\nBody text with spaces"
     )
     assert normalize_text("a\n\n\n\nb") == "a\n\nb"
 
 
 def test_lexer_output_identical_for_newline_vs_space():
-    assert lexical_analyze("refund\nwindow", stem=True) == lexical_analyze(
-        "refund window", stem=True
+    # Both sides must stem to the same tokens; a newline is whitespace, not a
+    # word boundary that changes tokenization.
+    assert lexical_analyze("token\nlifetime", stem=True) == lexical_analyze(
+        "token lifetime", stem=True
     )
 
 
 def test_header_zone_detects_markdown_heading_on_normalized_text():
-    assert detect_chunk_zone("## refund policy\nsome body text here") == "header"
+    assert detect_chunk_zone("## retention policy\nsome body text here") == "header"
 
 
 # ── Strategy selection ───────────────────────────────────────────────────────
@@ -59,10 +61,10 @@ def test_unknown_strategy_name_falls_back_to_sliding():
 
 def test_semantic_splits_markdown_sections_with_true_offsets():
     text = (
-        "# Refunds\n\nFull refund within 30 days of delivery. "
+        "# Records\n\nFull record within 30 days of delivery. "
         + ("Details follow here. " * 40)
-        + "\n\n# Shipping\n\nOrders ship within 5 days. "
-        + ("More shipping notes. " * 40)
+        + "\n\n# Uploads\n\nOrders ship within 5 days. "
+        + ("More uploads notes. " * 40)
     )
     pages = [{"page": 1, "text": text}]
     chunks = strategies.SemanticChunkingStrategy().chunk(pages, chunk_size=200, chunk_overlap=20)
@@ -76,7 +78,7 @@ def test_semantic_splits_markdown_sections_with_true_offsets():
     assert all(c["page"] == 1 for c in chunks)
     # Both sections are represented in the output.
     joined = " ".join(c["text"] for c in chunks)
-    assert "refund within 30 days" in joined
+    assert "record within 30 days" in joined
     assert "ship within 5 days" in joined
 
 
@@ -134,11 +136,12 @@ def test_layout_groups_table_rows_and_preserves_order():
     table_chunks = [c for c in chunks if c["zone"] == "table"]
     assert len(table_chunks) == 1  # consecutive rows chunked ONCE, not row-by-row
     table_text = table_chunks[0]["text"]
-    assert "pro" in table_text and "team" in table_text and "25 dollars" in table_text
+    lowered = table_text.lower()
+    assert "pro" in lowered and "team" in lowered and "25 dollars" in lowered
     # Page order preserved: intro → table → closing.
-    positions = {c["text"][:12]: i for i, c in enumerate(chunks)}
-    assert positions["intro line o"] < positions[table_chunks[0]["text"][:12]]
-    assert positions[table_chunks[0]["text"][:12]] < positions["closing rema"]
+    positions = {c["text"][:12].lower(): i for i, c in enumerate(chunks)}
+    assert positions["intro line o"] < positions[table_chunks[0]["text"][:12].lower()]
+    assert positions[table_chunks[0]["text"][:12].lower()] < positions["closing rema"]
     assert [c["chunk_index"] for c in chunks] == list(range(len(chunks)))
 
 

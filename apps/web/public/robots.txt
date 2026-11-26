@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+
+# The workbench routes require a session and are not useful in an index.
+Disallow: /dashboard
+Disallow: /playground
+Disallow: /knowledge-bases
+Disallow: /evidence
+Disallow: /claims
+Disallow: /conflicts
+Disallow: /settings
+Disallow: /traces/
+Disallow: /login
+Disallow: /register

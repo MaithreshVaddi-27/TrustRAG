@@ -1,0 +1,260 @@
+/* ── TrustRAG · Authentication surfaces ─────────────────────────────────────
+ * A centred column on obsidian. One card, one hairline, no ambient colour
+ * wash. The emblem carries the brand; the crimson is reserved for errors.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-auth {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--step-8) var(--gutter);
+  background-color: var(--surface-page);
+  overflow: hidden;
+}
+
+@supports (min-height: 100dvh) {
+  .lx-auth {
+    min-height: 100dvh;
+  }
+}
+
+.lx-auth__column {
+  width: 100%;
+  max-width: 24rem;
+}
+
+.lx-auth__back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-2);
+  min-height: 44px;
+  font-size: var(--size-body-sm);
+  color: var(--color-silver-500);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-auth__back:hover {
+  color: var(--color-silver-050);
+}
+
+.lx-auth__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--step-3);
+  margin-block: var(--step-6) var(--step-8);
+  text-align: center;
+}
+
+.lx-auth__wordmark {
+  font-family: var(--typeface-display);
+  font-size: 1.5rem;
+  letter-spacing: 0.08em;
+  color: var(--color-silver-050);
+  line-height: 1;
+}
+
+.lx-auth__tagline {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  color: var(--color-silver-500);
+}
+
+.lx-auth__card {
+  padding: var(--step-6);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  background-color: var(--surface-card);
+  overflow: hidden;
+}
+
+/* The ledger's chrome, reused: a mono header strip on a raised surface,
+ * separated from the record body by a hairline. */
+.lx-auth__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--step-3);
+  margin: calc(var(--step-6) * -1) calc(var(--step-6) * -1) var(--step-6);
+  padding: var(--step-3) var(--step-6);
+  border-bottom: 1px solid var(--rule);
+  background-color: var(--surface-raised);
+}
+
+.lx-auth__card-ref {
+  font-family: var(--typeface-mono);
+  font-size: var(--size-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--color-silver-500);
+}
+
+.lx-auth__title-block {
+  margin-bottom: var(--step-6);
+}
+
+.lx-auth__title {
+  font-family: var(--typeface-display);
+  font-size: 1.375rem;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  color: var(--color-silver-050);
+}
+
+.lx-auth__subtitle {
+  margin-top: var(--step-2);
+  font-size: var(--size-body-sm);
+  color: var(--color-silver-500);
+}
+
+/* ── Form fields ──────────────────────────────────────────────────────────── */
+
+.lx-field {
+  display: block;
+}
+
+.lx-field__label {
+  display: block;
+  margin-bottom: var(--step-2);
+  font-size: var(--size-label);
+  font-weight: var(--weight-medium);
+  color: var(--color-silver-300);
+}
+
+.lx-field__input {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--step-2) var(--step-3);
+  font-size: 16px; /* 16px stops iOS zooming on focus */
+  color: var(--color-silver-100);
+  background-color: var(--surface-inset);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-control);
+  transition: border-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-field__input::placeholder {
+  color: var(--color-silver-500);
+}
+
+.lx-field__input:focus {
+  outline: none;
+  border-color: var(--color-silver-400);
+}
+
+.lx-field__input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.lx-field__wrap {
+  position: relative;
+}
+
+.lx-field__input--with-affix {
+  padding-right: 44px;
+}
+
+/* The password toggle keeps a 44px hit area. */
+.lx-field__affix {
+  position: absolute;
+  right: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--color-silver-500);
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-field__affix:hover {
+  color: var(--color-silver-200);
+}
+
+/* ── Requirement list ──────────────────────────────────────────────────────
+ * The password's rules, reported one by one. An unmet rule is a
+ * requirement, not an alarm, so it is written in the same quiet silver as
+ * the rest of the screen; only a met rule is marked.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+.lx-rules {
+  display: grid;
+  gap: var(--step-1);
+  margin-top: var(--step-3);
+}
+
+.lx-rules__item {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  font-size: var(--size-micro);
+  line-height: 1.4;
+  color: var(--color-silver-500);
+}
+
+.lx-rules__item svg {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+}
+
+.lx-rules__item--met {
+  color: var(--color-silver-300);
+}
+
+/* ── Messages ─────────────────────────────────────────────────────────────── */
+
+.lx-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--step-2);
+  padding: var(--step-3);
+  border-radius: var(--radius-control);
+  font-size: var(--size-body-sm);
+  line-height: 1.5;
+}
+
+/* An error is the one thing on this page that earns crimson. */
+.lx-alert--error {
+  background-color: var(--color-alarm-wash);
+  border: 1px solid var(--color-alarm-rule);
+  color: var(--color-alarm-text);
+}
+
+.lx-alert--info {
+  background-color: var(--surface-inset);
+  border: 1px solid var(--rule);
+  color: var(--color-silver-400);
+}
+
+.lx-alert svg {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
+/* ── Footer line ──────────────────────────────────────────────────────────── */
+
+.lx-auth__foot {
+  margin-top: var(--step-5);
+  padding-top: var(--step-4);
+  border-top: 1px solid var(--rule-faint);
+  text-align: center;
+  font-size: var(--size-body-sm);
+  color: var(--color-silver-500);
+}
+
+.lx-auth__foot a {
+  color: var(--color-silver-200);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 0.25em;
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.lx-auth__foot a:hover {
+  color: var(--color-silver-050);
+}

@@ -27,16 +27,17 @@ export default defineConfig({
 
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // Hidden sourcemaps: stack traces stay debuggable via uploaded maps,
+    // but dist/ no longer ships source content to every visitor.
+    sourcemap: 'hidden',
     rollupOptions: {
       output: {
         // Split vendor chunks for better caching
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'query-vendor': ['@tanstack/react-query'],
-          'chart-vendor': ['recharts'],
-          'motion-vendor': ['motion/react'],
-          'ui-vendor': ['lucide-react', 'clsx', 'date-fns', 'axios'],
+          'ui-vendor': ['lucide-react', 'clsx', 'date-fns'],
+          'http-vendor': ['axios'],
         },
       },
     },

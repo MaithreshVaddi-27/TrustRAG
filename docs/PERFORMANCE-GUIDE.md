@@ -4,7 +4,7 @@ How to make TrustRAG faster and leaner **without spending anything**: no paid AP
 
 > Rule: measure before and after. Every change below is verifiable with
 > `GET /api/v1/metrics`, `k6 run load-test/smoke.js`, and
-> `python scripts/run_baseline_eval.py` (see [Measure first](#1-measure-first-free)).
+> `python scripts/eval/run_baseline_eval.py` (see [Measure first](#1-measure-first-free)).
 
 ---
 
@@ -37,7 +37,7 @@ curl -s http://localhost:8000/api/v1/metrics | grep trustrag_
 API_BASE_URL=http://localhost:8000 k6 run load-test/smoke.js
 
 # C. Quality gate (proves speed didn't break answers): frozen 25-query set
-python scripts/run_baseline_eval.py --email ... --password ... \
+python scripts/eval/run_baseline_eval.py --email ... --password ... \
   --kb-id <KB_ID> --post-experiment
 ```
 
@@ -55,17 +55,15 @@ The torch process RSS floor dominates small hosts. The ONNX path is numerically 
 
 ```bash
 # One-time fetch/export (needs the backend venv + network, once)
-apps/api/.venv/bin/python scripts/bootstrap.py
+apps/api/.venv/bin/python scripts/setup/bootstrap.py
 ```
 
-Files: `scripts/bootstrap.py` (+ `ensure_onnx_models.py`), `apps/api/app/core/onnx_embeddings.py`, `apps/api/app/core/model_registry.py`. The single ONNX embedding engine is the default (no env flag) — in Docker this is mandatory anyway (the image ships `onnxruntime` but no torch — export on the host, then `docker cp` into the container).
+Files: `scripts/setup/bootstrap.py` (+ `ensure_onnx_models.py`), `apps/api/app/llm/onnx_embeddings.py`, `apps/api/app/llm/model_registry.py`. The single ONNX embedding engine is the default (no env flag) — in Docker this is mandatory anyway (the image ships `onnxruntime` but no torch — export on the host, then `docker cp` into the container).
 
 ### 2.2 Keep both caches ON (they already are — don't turn them off)
 
 | Cache | Where | Effect |
 |---|---|---|
-| SQLite embedding disk cache | `apps/api/app/core/disk_cache.py` (`CACHE_DIR`, default `apps/api/data/cache`) | Repeat/revision embeddings cost zero compute across restarts |
-| Semantic answer cache | `apps/api/app/core/semantic_cache.py`, threshold `0.94`, flag `enable_response_caching` | Repeat questions skip the LLM **100%** and still re-verify |
 
 Warm them once by ingesting your docs and asking your top questions — every repeat after that is nearly free.
 
@@ -78,7 +76,7 @@ One structured call instead of decompose → batch. Default on; falls back to tw
 FUSED_DECOMPOSE_VERIFY=1
 ```
 
-File: `apps/api/app/verification/verifier.py`, kill-switch in `apps/api/config/models.yaml` (`verification.fused_decompose_verify`).
+File: `apps/api/app/rag/verification/verifier.py`, kill-switch in `apps/api/config/models.yaml` (`verification.fused_decompose_verify`).
 
 ### 2.4 Use the smallest model that still verifies (free tok/s)
 
@@ -99,22 +97,22 @@ LOG_LEVEL=WARNING
 
 | Host | Fastest free option | Why |
 |---|---|---|
-| Mac (Apple Silicon) | **MLX** (`mlx_lm.server`) | Native Metal, 4-bit weights, best tok/s per watt — see §4 |
-| Mac (Intel) / fallback | llama.cpp (`./scripts/start_local_llm.sh`) or Ollama | llama-server vendors Metal/CUDA, no torch needed |
-| Linux + NVIDIA | llama.cpp with CUDA offload, or Ollama | Same; CUDA auto-detected by `app/core/hardware.py` |
+| Mac (Apple Silicon) | **MLX** (`./scripts/servers/start_mlx_server.sh`) | Native Metal, 4-bit weights, best tok/s per watt — see §4 |
+| Mac (Intel) / fallback | llama.cpp (`./scripts/servers/start_local_llm.sh`) or Ollama | llama-server vendors Metal/CUDA, no torch needed |
+| Linux + NVIDIA | llama.cpp with CUDA offload, or Ollama | Same; CUDA auto-detected by `app/core/system/hardware.py` |
 | Linux CPU-only | Ollama with a ≤3B Q4 model | Simplest ops; keep expectations modest |
 | Windows + NVIDIA | Ollama app, or llama.cpp | CUDA auto-detected |
 
 Rules that apply to **every** server:
 
-- **Separate ports for local servers:** `llama-server` on **:8080**, `mlx_lm.server` on **:8090** — they can run simultaneously. Ollama on :11434 coexists with both.
+- **Separate ports for local servers:** `llama-server` on **:9931**, MLX on **:8080** — they can run simultaneously. Ollama on :11434 coexists with both. Ports live in `config/ports.yaml`; both launchers read them, so `python3 scripts/checks/apply_ports.py` keeps everything in sync.
 - **Keep `LOCAL_LLM_MAX_CONCURRENCY=1`.** Local servers are serial (llama-server `-np 2`, Ollama queue, MLX single model). The backend serializes generations with a semaphore (`app/core/local_llm.py`); raising this without a parallel-capable server buys timeout cascades, not throughput.
 - **Ollama on ≤8 GB** (shell env, before `ollama serve`):
   ```bash
   export OLLAMA_KV_CACHE_TYPE=q8_0 OLLAMA_FLASH_ATTENTION=1
   export OLLAMA_MAX_LOADED_MODELS=1 OLLAMA_NUM_PARALLEL=1 OLLAMA_KEEP_ALIVE=5m
   ```
-- **llama-server flags are auto-tuned** by `app/core/hardware.py` (full GPU offload, q8_0 KV cache, context/concurrency by RAM tier) via `./scripts/start_local_llm.sh` — prefer the script over hand-rolled flags.
+- **llama-server flags are auto-tuned** by `app/core/system/hardware.py` (full GPU offload, q8_0 KV cache, context/concurrency by RAM tier) via `./scripts/servers/start_local_llm.sh` — prefer the script over hand-rolled flags.
 
 ---
 
@@ -148,34 +146,47 @@ uvx --python 3.12 --isolated --from mlx-lm mlx_lm.server --help
 
 Any `mlx-community/*-Instruct-4bit` model works — instruct-tuned and 4-bit are the two properties that matter for this pipeline (verification needs instruction-following; 4-bit keeps it resident).
 
-### 4.4 Serve it (on :8090, alongside llama-server on :8080)
+### 4.4 Serve it (on :8080, alongside llama-server on :9931)
+
+Use the launcher — it resolves the model and the port from `config/ports.yaml`
+and `config/models.yaml`, so it cannot drift from the backend's expectations:
 
 ```bash
 # Terminal 1 — start the OpenAI-compatible server (model downloads once, then cached)
-mlx_lm.server \
-  --model mlx-community/Llama-3.2-3B-Instruct-4bit \
-  --host 127.0.0.1 --port 8090 \
-  --max-tokens 1024
+./scripts/servers/start_mlx_server.sh                              # default model from models.yaml, :8080
+./scripts/servers/start_mlx_server.sh mlx-community/Llama-3.2-3B-Instruct-4bit   # explicit model
 
-# Verify (any non-empty model routing key works; the name must match --model)
-curl http://127.0.0.1:8090/health
-curl http://127.0.0.1:8090/v1/chat/completions \
+# MLX serves ONE model per process. Add more on consecutive ports:
+./scripts/servers/start_mlx_server.sh --port 8081 --model mlx-community/Qwen3-4B-Instruct-4bit
+
+# Scan the range and see what is actually serving
+./scripts/servers/start_mlx_server.sh --check
+
+# Verify (the model name must match what the server was started with)
+curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"mlx-community/Llama-3.2-3B-Instruct-4bit","max_tokens":50,
        "messages":[{"role":"user","content":"Say: MLX online."}]}'
 ```
 
-> Server default `--max-tokens` is 512 — the backend always sends its own `max_tokens` (up to 1024), but set the flag anyway so ad-hoc clients get sane lengths.
+> First request pays a one-time weight download/load — if the fetch dies mid-stream
+> (e.g. `BrokenPipeError`), no weights are cached and the server still lists the
+> model on `/v1/models` while completions hang. Re-run `./scripts/servers/start_mlx_server.sh`;
+> retry until the download completes.
+>
+> Server default `--max-tokens` is 512 — the backend always sends its own `max_tokens`
+> (up to 1024), so the launcher does not set it.
 
 ### 4.5 Wire TrustRAG to it — Option A: zero code (recommended)
 
-Because the MLX server is protocol-compatible, reuse the `llama_cpp` provider slot on its dedicated port. Task-sized output caps, the serial semaphore, and all budgets then apply automatically (`LOCAL_LLM_PROVIDERS` in `app/core/local_llm.py`).
+Because the MLX server is protocol-compatible, reuse the `llama_cpp` provider slot on its dedicated port. Task-sized output caps, the serial semaphore, and all budgets then apply automatically (`LOCAL_LLM_PROVIDERS` in `app/llm/local_llm.py`).
 
 ```bash
-# .env — MLX runs on :8090, llama-server on :8080; both can run simultaneously
-LLM_PROVIDER=llama_cpp
-LLAMACPP_BASE_URL=http://127.0.0.1:8090/v1
-LLAMACPP_MODEL=mlx-community/Llama-3.2-3B-Instruct-4bit   # EXACT id from --model
+# .env — MLX runs on :8080, llama-server on :9931; both can run simultaneously
+LLM_PROVIDER=mlx
+MLX_BASE_URL=http://127.0.0.1:8080/v1
+MLX_MODEL=mlx-community/Llama-3.2-3B-Instruct-4bit   # EXACT id from --model
 ```
 
 ```bash
@@ -199,12 +210,12 @@ Do this if you want MLX and llama-server side by side (e.g. MLX for generation, 
 
 | # | File | Change |
 |---|---|---|
-| 1 | `apps/api/app/core/model_registry.py` | Add `"mlx"` to `LOCAL_LLM_PROVIDERS`; add `mlx` branches in `get_llm()` / `get_verification_model()` constructing the existing `ChatLlamaCppClient` with `base_url=settings.mlx_base_url` (protocol-compatible — no new client class) |
-| 2 | `apps/api/app/core/config.py` | Add `MLX_BASE_URL` (default `http://127.0.0.1:8080/v1`), `MLX_MODEL` settings + `llm_model_for("mlx")` / `verification_model_for("mlx")` wiring |
+| 1 | `apps/api/app/llm/model_registry.py` | Add `"mlx"` to `LOCAL_LLM_PROVIDERS`; add `mlx` branches in `get_llm()` / `get_verification_model()` constructing the existing `ChatLlamaCppClient` with `base_url=settings.mlx_base_url` (protocol-compatible — no new client class) |
+| 2 | `apps/api/app/config/settings.py` | Add `MLX_BASE_URL` (default `http://127.0.0.1:8080/v1`), `MLX_MODEL` settings + `llm_model_for("mlx")` / `verification_model_for("mlx")` wiring |
 | 3 | `apps/api/config/models.yaml` | Add `model_mlx` defaults under `llm:` and `verification:` (mirroring `model_llamacpp`) |
-| 4 | `.env.example` | Document `MLX_BASE_URL` / `MLX_MODEL` + the :8080 conflict note |
+| 4 | `.env.example` | Document `MLX_BASE_URL` / `MLX_MODEL` + dedicated port 8080 note |
 | 5 | `apps/api/tests/test_config.py`, `test_local_llm.py` | Cover the new provider key, URL default, and cap application |
-| 6 | `scripts/setup.sh` | Probe `:8080/health` shape for MLX vs llama-server in the services check (optional nicety) |
+| 6 | `scripts/setup/setup.sh` | Probe `:8080/health` shape for MLX and `:9931` for llama-server in the services check |
 
 Estimated: ~60 lines + tests. No new dependencies (`httpx` path is reused).
 
@@ -231,6 +242,7 @@ All live in `apps/api/config/models.yaml` (`retrieval:`, `verification:`, `relia
 | `query_router.enabled` | `true` | keep `true` | The router is regex (zero LLM cost) and *saves* calls on simple queries |
 | `max_sub_queries` | `3` | lower (e.g. 2) | Cheaper fan-out, weaker comparison/complex coverage |
 | `max_recovery_attempts` | `2` | `1` | Bounded worst-case latency; more abstentions on hard queries |
+| `cost_controls.max_analysis_seconds` | `120` | lower (e.g. 60) | Hard wall-clock ceiling for the whole run. Once spent, no new recovery round starts and the run abstains. This is the guard against multi-minute answers — the recovery budgets below only count time *inside* the recovery node, so they cannot bound a 3-round run. `0` disables the bound. |
 | `claim_retrieval` budget | `≤3` | lower | Fewer NEUTRAL→SUPPORTED flips |
 | `chunk_size` / `chunk_overlap` | `512` / `64` | larger chunks, smaller overlap | Fewer vectors to search, coarser evidence spans |
 
@@ -243,7 +255,7 @@ Ingest cost is offline — spend it wisely once instead of per query forever:
 - **Chunking strategy matters once:** `sliding_window` (default) is cheapest and byte-stable. `semantic`/`layout_aware` cost more at ingest for better spans — pick per corpus, then **re-index once** and stop switching (every switch = full re-upload).
 - **OCR:** RapidOCR fires only on pages with <50 native chars and fails open. If your corpus has no scans, disable it (`ingestion.ocr.enabled: false` in `models.yaml`) to skip the `~/.onnx` first-use download stall. If it has scans, **pre-warm**: ingest one scanned PDF right after deploy.
 - **Upload size cap** (`max_file_size_mb: 20`, `max_total_tokens_per_doc: 200000`) is a free DoS guard — leave it.
-- **Embedding cache warming:** the first ingest embeds everything; every later ingest of the same bytes hits `disk_cache` and costs ~zero. Don't wipe `apps/api/data/cache` between runs.
+- **Embedding cost:** embeddings are computed fresh every ingest. There is no persistent embedding or answer cache; only a bounded in-process LRU avoids recompute within a single run.
 
 ---
 
@@ -274,7 +286,7 @@ Already correct in code — these are "verify, don't change" items:
 ## 9. Storage & infra (free)
 
 - **Qdrant:** `local` (embedded, in-process) for dev = zero ops, zero latency hop. Docker Compose server + volume for team demos. Cloud only when you need off-host persistence.
-- **MongoDB indexes** are created idempotently on startup (`ensure_indexes` in `app/db/mongodb.py`) — nothing to do, don't hand-create.
+- **MongoDB indexes** are created idempotently on startup (`ensure_indexes` in `app/persistence/mongodb/`) — nothing to do, don't hand-create.
 - **Frontend:** `npm run build` + static CDN (Cloudflare Pages free tier) instead of running Vite dev in production.
 - **Docker image** is torch-free by design — keep it that way (don't `pip install sentence-transformers` into the image; use the ONNX path).
 
@@ -282,7 +294,7 @@ Already correct in code — these are "verify, don't change" items:
 
 ## 10. What NOT to do (costs money or hurts)
 
-- ❌ Bigger cloud LLM for "speed" — per-token cost on a ~9-call pipeline, and Gemini/NVIDIA add network latency per call. Local small models win on both.
+- ❌ Bigger cloud LLM for "speed" — per-token cost on a ~9-call pipeline, and Gemini adds network latency per call. Local small models win on both.
 - ❌ Enabling the reranker without the `local-models` extra — silent no-op in Docker that still costs code-path complexity; calibrate first.
 - ❌ Raising `LOCAL_LLM_MAX_CONCURRENCY` on Ollama/llama-server/MLX — serial servers + parallel clients = timeout cascades.
 - ❌ Cloud embeddings — removed for a reason (D-19): per-token cost inside the hot path plus cross-space contamination risk.
@@ -303,16 +315,18 @@ LOG_LEVEL=WARNING
 TOKENIZERS_PARALLELISM=false
 LOCAL_LLM_MAX_CONCURRENCY=1
 
-# 2. Mac only: MLX instead of llama-server (see §4)
-mlx_lm.server --model mlx-community/Llama-3.2-3B-Instruct-4bit \
-  --host 127.0.0.1 --port 8080 --max-tokens 1024
-# .env: LLM_PROVIDER=llama_cpp, LLAMACPP_BASE_URL=http://127.0.0.1:8080/v1,
-#       LLAMACPP_MODEL=<exact --model id>
+# 2. Mac only: MLX instead of llama-server (see §4).
+#    MLX is :8080 — llama.cpp is :9931. Both can run simultaneously.
+./scripts/servers/start_mlx_server.sh mlx-community/Llama-3.2-3B-Instruct-4bit
+# .env: LLM_PROVIDER=mlx, MLX_BASE_URL=http://127.0.0.1:8080/v1,
+#       MLX_MODEL=<exact id passed above>
+#    (Or keep LLM_PROVIDER=llama_cpp and point LLAMACPP_BASE_URL at :8080 to reuse
+#     the llama_cpp code path — the server protocol is identical.)
 
 # 3. models.yaml: touch ONE knob at a time (§5 table), then:
-python scripts/run_baseline_eval.py --email ... --password ... \
+python scripts/eval/run_baseline_eval.py --email ... --password ... \
   --kb-id <KB_ID> --post-experiment
 # 4. Copy the aggregate row into docs/evaluation/methodology.md. Never hand-edit JSON.
 ```
 
-> History note: superseded tuning advice lives in git (`git log -- docs/`). This guide reflects `models.yaml` v1.15 and the code at HEAD.
+> History note: superseded tuning advice lives in git (`git log -- docs/`). This guide reflects `models.yaml` v1.29 and the code at HEAD.

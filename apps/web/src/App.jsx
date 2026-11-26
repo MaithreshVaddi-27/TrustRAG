@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
-import ErrorBoundary from '@/components/ErrorBoundary'
+import ErrorBoundary from '@/components/app/ErrorBoundary'
+import { ThinkingOrbs } from '@/components/workbench/ThinkingOrbs'
 
 // Public Landing page
 const LandingPage = lazy(() => import('@/pages/LandingPage'))
@@ -15,10 +15,10 @@ const RegisterPage = lazy(() => import('@/pages/RegisterPage'))
 const DashboardPage      = lazy(() => import('@/pages/DashboardPage'))
 const PlaygroundPage     = lazy(() => import('@/pages/PlaygroundPage'))
 const KnowledgeBasesPage = lazy(() => import('@/pages/KnowledgeBasesPage'))
+const DocumentPage       = lazy(() => import('@/pages/DocumentPage'))
 const EvidencePage       = lazy(() => import('@/pages/EvidencePage'))
 const ClaimsPage         = lazy(() => import('@/pages/ClaimsPage'))
 const ConflictsPage      = lazy(() => import('@/pages/ConflictsPage'))
-const ExperimentsPage    = lazy(() => import('@/pages/ExperimentsPage'))
 const SettingsPage       = lazy(() => import('@/pages/SettingsPage'))
 const TracePage          = lazy(() => import('@/pages/TracePage'))
 const NotFoundPage       = lazy(() => import('@/pages/NotFoundPage'))
@@ -27,7 +27,7 @@ function PageLoading() {
   return (
     <div className="min-h-screen supports-[min-height:100dvh]:min-h-dvh bg-surface-950 flex flex-col items-center justify-center">
       <div className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-surface-900 border border-slate-800 shadow-2xl">
-        <Loader2 className="w-5 h-5 text-primary-400 animate-spin" />
+        <ThinkingOrbs size="md" />
         <span className="text-sm font-medium text-slate-300">Loading module...</span>
       </div>
     </div>
@@ -36,7 +36,10 @@ function PageLoading() {
 
 /**
  * RequireAuth — redirects to /login if no token is present.
- * Phase 4 will add server-side token validation (/api/v1/auth/me).
+ *
+ * The token is validated client-side for expiry only; the server
+ * validates the signature on every request, and a 401 clears the session
+ * in the Axios interceptor, which drops the user back here.
  */
 function RequireAuth({ children }) {
   const { isAuthenticated } = useAuthStore()
@@ -58,11 +61,15 @@ function RedirectIfAuth({ children }) {
 }
 
 /**
- * Wraps a route element in an ErrorBoundary so a crash on one page
- * shows a recovery UI instead of unmounting the entire app (FE-H3).
+ * Wraps a route element in an ErrorBoundary + per-route Suspense so a lazy
+ * chunk load replaces only its route — never the whole sidebar/navbar tree.
  */
 function guarded(element) {
-  return <ErrorBoundary>{element}</ErrorBoundary>
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<PageLoading />}>{element}</Suspense>
+    </ErrorBoundary>
+  )
 }
 
 const PATH_TITLES = {
@@ -75,7 +82,6 @@ const PATH_TITLES = {
   '/evidence': 'Evidence Vault — TRUSTRAG',
   '/claims': 'Claim Inspector — TRUSTRAG',
   '/conflicts': 'Source & Claim Conflicts — TRUSTRAG',
-  '/experiments': 'Experiments — TRUSTRAG',
   '/settings': 'Settings — TRUSTRAG',
 }
 
@@ -85,13 +91,14 @@ function TitleSync() {
     const title = PATH_TITLES[pathname]
     if (title) document.title = title
     else if (pathname.startsWith('/traces/')) document.title = 'Execution Trace — TRUSTRAG'
+    else if (pathname.startsWith('/documents/')) document.title = 'Document — TRUSTRAG'
   }, [pathname])
   return null
 }
 
 export default function App() {
   return (
-    <Suspense fallback={<PageLoading />}>
+    <>
       <TitleSync />
       <Routes>
         {/* ── Public ──────────────────────────────────────────── */}
@@ -103,16 +110,16 @@ export default function App() {
         <Route path="/dashboard"       element={guarded(<RequireAuth><DashboardPage /></RequireAuth>)} />
         <Route path="/playground"      element={guarded(<RequireAuth><PlaygroundPage /></RequireAuth>)} />
         <Route path="/knowledge-bases" element={guarded(<RequireAuth><KnowledgeBasesPage /></RequireAuth>)} />
+        <Route path="/documents/:id"  element={guarded(<RequireAuth><DocumentPage /></RequireAuth>)} />
         <Route path="/evidence"        element={guarded(<RequireAuth><EvidencePage /></RequireAuth>)} />
         <Route path="/claims"          element={guarded(<RequireAuth><ClaimsPage /></RequireAuth>)} />
         <Route path="/conflicts"       element={guarded(<RequireAuth><ConflictsPage /></RequireAuth>)} />
-        <Route path="/experiments"     element={guarded(<RequireAuth><ExperimentsPage /></RequireAuth>)} />
         <Route path="/settings"        element={guarded(<RequireAuth><SettingsPage /></RequireAuth>)} />
         <Route path="/traces/:id"      element={guarded(<RequireAuth><TracePage /></RequireAuth>)} />
 
         {/* ── Fallback ────────────────────────────────────────── */}
         <Route path="*" element={guarded(<NotFoundPage />)} />
       </Routes>
-    </Suspense>
+    </>
   )
 }

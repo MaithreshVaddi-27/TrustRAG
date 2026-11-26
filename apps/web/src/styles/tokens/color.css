@@ -1,0 +1,195 @@
+/* ── TrustRAG · Palette ────────────────────────────────────────────────────────
+ * Obsidian Black × Chrome Silver × Laser Crimson.
+ * Strictly dark. There is no light theme; `color-scheme: dark` is locked in
+ * base.css and this file exposes no light-mode values.
+ *
+ * The system is deliberately near-monochrome. Chrome Silver carries the
+ * interface; Laser Crimson is a signal, not a decoration. Crimson appears only
+ * where a claim has failed, a verification seal is stamped, a focal action
+ * needs the eye, or focus lands.
+ *
+ * Source of truth for raw values. Mirrored in tailwind.config.js — change
+ * both, or run the token-drift check in scripts/checks/.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  color-scheme: dark;
+
+  /* ── Obsidian — the substrate ─────────────────────────────────────────────
+   * Page and raised surfaces. Depth on dark comes from these steps, not
+   * from shadows. */
+  --color-obsidian-950: #080808; /* page */
+  --color-obsidian-900: #0c0c0d; /* raised: nav, bars */
+  --color-obsidian-850: #101012; /* panel */
+  --color-obsidian-800: #141416; /* card */
+
+  /* ── Graphite — structure ───────────────────────────────────────────────
+   * Rules, dividers, inactive strokes. */
+  --color-graphite-300: #5a5957;
+  --color-graphite-400: #4a4a49;
+  --color-graphite-500: #3a3a3c;
+  --color-graphite-600: #2e2e33;
+  --color-graphite-700: #232327;
+  --color-graphite-800: #1a1a1d;
+  --color-graphite-900: #141416;
+
+  /* ── Chrome Silver — the voice ───────────────────────────────────────────
+   * Three text roles: silver-050/300 (primary), silver-400 (secondary),
+   * silver-500 (muted). Below silver-600 is decorative only. */
+  --color-silver-050: #f7f7f6; /* on-accent text, highest emphasis */
+  --color-silver-100: #e9e9e7;
+  --color-silver-200: #d8d7d5;
+  --color-silver-300: #cdcbca; /* Chrome Silver — brand neutral */
+  --color-silver-400: #a3a2a0; /* secondary text · 7.6:1 on obsidian */
+  --color-silver-500: #8a8987; /* muted text · 5.6:1 on obsidian */
+  --color-silver-600: #5a5957; /* decorative */
+  --color-silver-700: #3d3d3c;
+
+  /* ── Laser Crimson — the alarm ────────────────────────────────────────────
+   * Contradicted verdicts, verification seals, focus. Never decorative.
+   * crimson-400 is the focus ring (5.5:1). crimson-500 is the brand mark. */
+  --color-crimson-300: #f26a68;
+  --color-crimson-400: #f04a48; /* focus ring · 5.5:1 on obsidian */
+  --color-crimson-500: #d41514; /* Laser Crimson — brand */
+  --color-crimson-600: #a81010;
+  --color-crimson-700: #7a0c0c;
+  --color-crimson-950: #1a0707;
+
+  /* ── Rules — chrome silver at low opacity ────────────────────────────────
+   * The single structural device of the whole interface. */
+  --rule-faint: rgba(205, 203, 202, 0.08);
+  --rule: rgba(205, 203, 202, 0.16);
+  --rule-strong: rgba(205, 203, 202, 0.28);
+
+  /* ── Semantic mapping ────────────────────────────────────────────────────
+   * Verdicts are a monochrome family. A failed claim is the only thing that
+   * gets colour, which is exactly what a reliability product should do. */
+  --verdict-supported: var(--color-silver-200);
+  --verdict-unsupported: var(--color-silver-400);
+  --verdict-contradicted: var(--signal-text);
+  --verdict-unknown: var(--color-silver-500);
+
+  /* ── Accent — the neutral primary action ─────────────────────────────────
+   * Chrome Silver. The default primary button is a silver plate: off-white
+   * fill, obsidian text, deliberate and quiet. This is the colour every
+   * ordinary action in the product wears.
+   *
+   *   obsidian-950 on silver-050   17.8:1  (AAA normal text)
+   *   obsidian-950 on silver-100   15.7:1  (the hover state)
+   */
+  --color-accent: var(--color-silver-050);
+  --color-accent-hover: var(--color-silver-100);
+  --color-on-accent: var(--color-obsidian-950);
+  --color-on-accent-hover: var(--color-obsidian-950);
+
+  /* The action colour is the neutral plate, not a hue. Crimson is reserved
+   * for signals: a caught contradiction, the registration seal, a live
+   * status, focus, and destruction. One focal silver action per view.
+   *
+   *   obsidian-950 on silver-050   17.8:1  (the focal fill)
+   *   obsidian-950 on silver-100   15.7:1  (the hover state)
+   */
+
+  /* The bottom registration hairline on the focal silver plate. */
+  --button-inset-rule: rgba(8, 8, 8, 0.18);
+
+  /* ── Alarm — the destructive one ─────────────────────────────────────────
+   * Deeper than a signal mark on purpose. A destructive confirmation must
+   * not read as the entry action: the focal plate draws the eye, alarm warns
+   * it away.
+   *
+   *   silver-050 on crimson-600      7.0:1  (AAA normal text)
+   */
+  --color-alarm: var(--color-crimson-600);
+  --color-alarm-hover: var(--color-crimson-700);
+  --color-on-alarm: var(--color-silver-050);
+  /* Error text on a dark surface. */
+  --color-alarm-text: var(--color-crimson-300);
+  /* The wash and the hairline an alarm surface is built from. */
+  --color-alarm-wash: rgba(212, 21, 20, 0.09);
+  --color-alarm-rule: rgba(212, 21, 20, 0.34);
+
+  /* Disabled controls do not use opacity: at 0.4 the label fell to 3.59:1.
+   * A solid graphite plate with silver-300 text measures 8.36:1. */
+  --color-disabled-surface: var(--color-graphite-600);
+  --color-disabled-text: var(--color-silver-300);
+
+  /* ── Overlays — the alpha steps built from the three colours above ────────
+   * Raw alpha values belong here and nowhere else. A component declares
+   * `var(--wash-…)`; it never re-spells an rgba literal. The names carry the
+   * decimal so a 0.07 wash is always the same 0.07 everywhere. */
+  --wash-silver-01: rgba(205, 203, 202, 0.018); /* the landing grid */
+  --wash-silver-02: rgba(205, 203, 202, 0.022);
+  --wash-silver-03: rgba(205, 203, 202, 0.03);
+  --wash-silver-04: rgba(205, 203, 202, 0.04);
+  --wash-silver-045: rgba(205, 203, 202, 0.045);
+  --wash-silver-05: rgba(205, 203, 202, 0.05);
+  --wash-silver-07: rgba(205, 203, 202, 0.07);
+  --wash-silver-16: rgba(205, 203, 202, 0.16);
+  --wash-silver-18: rgba(205, 203, 202, 0.18);
+  --wash-silver-20: rgba(205, 203, 202, 0.2);
+  --wash-silver-28: rgba(205, 203, 202, 0.28);
+  --wash-silver-40: rgba(205, 203, 202, 0.4);
+  --wash-silver-42: rgba(205, 203, 202, 0.42);
+  --wash-silver-60: rgba(205, 203, 202, 0.6);
+  --wash-silver-80: rgba(205, 203, 202, 0.8);
+  --wash-glass: rgba(16, 16, 18, 0.82);
+
+  --scrim-35: rgba(8, 8, 8, 0.35);
+  --scrim-45: rgba(8, 8, 8, 0.45);
+  --scrim-50: rgba(8, 8, 8, 0.5);
+  --scrim-72: rgba(8, 8, 8, 0.72);
+  --scrim-90: rgba(8, 8, 8, 0.9);
+  --scrim-96: rgba(8, 8, 8, 0.96);
+  --scrim-98: rgba(8, 8, 8, 0.98);
+
+  /* ── Crimson signal — one token per job ───────────────────────────────────
+   * Components use the job name. The decimal-named tokens below are
+   * deprecated aliases: they keep old call sites working, but every alias
+   * resolves to one of these values, so the palette has one source of truth.
+   */
+  --signal-text: var(--color-crimson-400); /* on obsidian · 5.51:1 */
+  --signal-mark: var(--color-crimson-500); /* seals and fills */
+  --signal-on-plate: var(--color-crimson-600); /* on silver · 7.13:1 */
+  --signal-ring: rgba(212, 21, 20, 0.16);
+  --signal-wash-quiet: rgba(212, 21, 20, 0.07);
+  --signal-wash: rgba(212, 21, 20, 0.14);
+  --signal-wash-strong: rgba(212, 21, 20, 0.24);
+  --signal-rule: rgba(212, 21, 20, 0.42);
+  --signal-rule-strong: rgba(212, 21, 20, 0.5);
+
+  --crimson-ring: var(--signal-ring);
+  --crimson-wash-045: var(--signal-wash-quiet);
+  --crimson-wash-07: var(--signal-wash-quiet);
+  --crimson-wash-08: var(--signal-wash-quiet);
+  --crimson-wash-10: var(--signal-wash-quiet);
+  --crimson-wash-12: var(--signal-wash);
+  --crimson-wash-14: var(--signal-wash);
+  --crimson-wash-24: var(--signal-wash-strong);
+  --crimson-wash-28: var(--signal-wash-strong);
+  --crimson-wash-32: var(--signal-wash-strong);
+  --crimson-wash-38: var(--signal-rule);
+  --crimson-rule-40: var(--signal-rule);
+  --crimson-rule-45: var(--signal-rule);
+  --crimson-rule: var(--signal-rule);
+  --crimson-rule-strong: var(--signal-rule-strong);
+  --crimson-rule-55: var(--signal-rule-strong);
+
+  --shadow-black-90: rgba(0, 0, 0, 0.9);
+  --shadow-black-72: rgba(0, 0, 0, 0.72);
+  --shadow-black-60: rgba(0, 0, 0, 0.6);
+
+  /* High-contrast overrides. White is not a palette colour here: it is the
+   * accessibility escape hatch, so it gets its own tokens. */
+  --hc-rule-faint: rgba(255, 255, 255, 0.42);
+  --hc-rule: rgba(255, 255, 255, 0.6);
+  --hc-rule-strong: rgba(255, 255, 255, 0.8);
+  --hc-silver-500: #8d8c8a;
+  --hc-silver-400: #b4b3b1;
+
+  /* The focus ring on a crimson fill cannot be crimson (1.2:1 against the
+   * button it outlines). A filled crimson button opts out of the global
+   * crimson focus token and uses silver instead; everything else keeps
+   * crimson. */
+  --focus-ring-on-accent: var(--color-silver-050);
+}

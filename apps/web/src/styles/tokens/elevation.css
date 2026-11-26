@@ -1,0 +1,27 @@
+/* ── TrustRAG · Elevation ────────────────────────────────────────────────────
+ * On a dark theme, depth comes from surface steps and hairlines, not from
+ * shadows. Elevation is declared ONCE — a hairline OR a shadow, never both.
+ *
+ * The only shadow in the system belongs to the one element that genuinely
+ * floats above the page: the product preview in the hero. Everything else
+ * separates with a rule.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Surfaces — one step apart, no more. */
+  --surface-page: var(--color-obsidian-950); /* page */
+  --surface-raised: var(--color-obsidian-900); /* nav, bars */
+  --surface-panel: var(--color-obsidian-850); /* panel */
+  --surface-card: var(--color-obsidian-800); /* card */
+  --surface-inset: var(--color-graphite-800); /* inset well */
+
+  /* The single soft shadow, for the floating product preview only. */
+  --shadow-preview: 0 32px 64px -32px rgba(0, 0, 0, 0.9),
+    0 8px 24px -16px rgba(0, 0, 0, 0.6);
+
+  /* Focus — Laser Crimson, because a focus ring is an alarm.
+   * Crimson-400 is 5.51:1 on obsidian but only 3.39:1 on the silver plate;
+   * filled controls use crimson-600 at 7.13:1 instead. */
+  --focus-ring: var(--color-crimson-400);
+  --focus-ring-on-plate: var(--signal-on-plate);
+}

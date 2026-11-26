@@ -32,8 +32,8 @@ def mock_user_doc():
 def mock_kb_doc():
     return {
         "_id": ObjectId("64ee39d09c6292376e191982"),
-        "name": "Refund Policies",
-        "description": "Standard refund schedules",
+        "name": "API Limits",
+        "description": "API limit schedules",
         "user_id": ObjectId("64ee39d09c6292376e191981"),
         "created_at": "2026-08-27T10:00:00Z",
     }
@@ -47,8 +47,8 @@ def setup_dependency_override(mock_user_doc):
     app.dependency_overrides.clear()
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_create_kb(mock_create_indexes, mock_connect):
     # Mock database call
     mock_collection = MagicMock()
@@ -57,22 +57,24 @@ def test_create_kb(mock_create_indexes, mock_connect):
     )
 
     with patch("app.services.kb_service.get_collection", return_value=mock_collection):
-        payload = {"name": "Refund Policies", "description": "Standard refund schedules"}
+        payload = {"name": "API Limits", "description": "API limit schedules"}
         response = client.post("/api/v1/knowledge-bases", json=payload)
 
         assert response.status_code == 201
         data = response.json()
-        assert data["name"] == "Refund Policies"
-        assert data["description"] == "Standard refund schedules"
+        assert data["name"] == "API Limits"
+        assert data["description"] == "API limit schedules"
         assert "id" in data
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_list_kbs(mock_create_indexes, mock_connect, mock_kb_doc):
-    # Mock async cursor for find().sort().to_list()
+    # Mock async cursor for find().sort().skip().limit().to_list()
     mock_cursor = MagicMock()
     mock_cursor.sort = MagicMock(return_value=mock_cursor)
+    mock_cursor.skip = MagicMock(return_value=mock_cursor)
+    mock_cursor.limit = MagicMock(return_value=mock_cursor)
     mock_cursor.to_list = AsyncMock(return_value=[mock_kb_doc])
 
     # Mock aggregation pipeline yielding per-KB document counts
@@ -90,12 +92,12 @@ def test_list_kbs(mock_create_indexes, mock_connect, mock_kb_doc):
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 1
-        assert data[0]["name"] == "Refund Policies"
+        assert data[0]["name"] == "API Limits"
         assert data[0]["document_count"] == 2
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_delete_document_success(mock_create_indexes, mock_connect):
     doc_id = "64ee39d09c6292376e191999"
     kb_id = "64ee39d09c6292376e191982"
@@ -103,12 +105,12 @@ def test_delete_document_success(mock_create_indexes, mock_connect):
     mock_doc = {
         "_id": ObjectId(doc_id),
         "knowledge_base_id": ObjectId(kb_id),
-        "filename": "policy.pdf",
+        "filename": "service-api.md",
     }
     mock_kb = {
         "_id": ObjectId(kb_id),
         "user_id": ObjectId("64ee39d09c6292376e191981"),
-        "name": "Refund Policies",
+        "name": "API Limits",
         "created_at": "2026-08-27T10:00:00Z",
     }
 
@@ -124,14 +126,14 @@ def test_delete_document_success(mock_create_indexes, mock_connect):
     with (
         patch("app.services.kb_service.get_collection", return_value=mock_coll),
         patch("app.services.kb_service.get_qdrant_client", return_value=mock_qdrant),
-        patch("app.db.mongodb.get_collection", return_value=mock_coll),
+        patch("app.persistence.mongodb.get_collection", return_value=mock_coll),
     ):
         response = client.delete(f"/api/v1/documents/{doc_id}")
         assert response.status_code == 204
 
 
-@patch("app.db.mongodb.connect_db")
-@patch("app.db.mongodb.create_indexes")
+@patch("app.persistence.mongodb.connect_db")
+@patch("app.persistence.mongodb.create_indexes")
 def test_multi_tenant_cross_user_access_blocked(mock_create_indexes, mock_connect):
     # KB owned by a DIFFERENT user (User B)
     other_kb = {

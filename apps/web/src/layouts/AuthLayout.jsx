@@ -1,49 +1,54 @@
 import { Link } from 'react-router-dom'
-import { Swords, ArrowLeft } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
+import { TrustRagEmblem } from '@/components/common/TrustRagLogo'
+import VerificationSeal from '@/components/landing/VerificationSeal'
 
 /**
- * AuthLayout — minimal centered layout for Login/Register pages.
+ * AuthLayout — the authentication surface.
+ *
+ * A centred column on obsidian with one hairline card. The card borrows the
+ * ledger's chrome — a mono header strip and the registration seal — so the
+ * credential form reads as another record in the same instrument, not as a
+ * generic sign-in card. No ambient colour wash.
  */
 export default function AuthLayout({ children, title, subtitle }) {
   return (
-    <div className="min-h-screen supports-[min-height:100dvh]:min-h-dvh flex flex-col items-center justify-center bg-surface-950 bg-cyber-grid px-4 relative overflow-hidden">
-      {/* Ambient gradient */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full bg-cyan-500/10 blur-[130px]" />
-      </div>
-
-      <div className="w-full max-w-sm relative z-10 animate-fade-in">
-        {/* Back to Home Link */}
-        <Link
-          to="/"
-          className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-cyan-400 transition-colors mb-6 group"
-        >
-          <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform" />
+    <main id="main-content" className="lx-auth" aria-label="Main content">
+      <div className="lx-auth__column">
+        <Link to="/" className="lx-auth__back">
+          <ArrowLeft size={14} strokeWidth={1.5} aria-hidden="true" />
           <span>Back to overview</span>
         </Link>
 
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-8">
-          <Link to="/" className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-primary-600 to-cyan-500 flex items-center justify-center shadow-xl shadow-primary-950/80 mb-4 border border-cyan-400/20 hover:scale-105 transition-transform group">
-            <Swords size={24} className="text-white" />
+        <div className="lx-auth__brand lx-enter">
+          <Link to="/" aria-label="TrustRAG home">
+            <TrustRagEmblem size={52} framed />
           </Link>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight">
-            TRUST<span className="text-primary-400">RAG</span>
-          </h1>
-          <p className="text-slate-400 text-xs mt-1 text-center font-mono">Autonomous AI Reliability Workbench</p>
+          <div>
+            <p className="lx-auth__wordmark">TRUSTRAG</p>
+            <p className="lx-auth__tagline">Reliability workbench</p>
+          </div>
         </div>
 
-        {/* Card */}
-        <div className="glass-card p-6 shadow-2xl">
+        <div className="lx-auth__card lx-enter">
           {title && (
-            <div className="mb-6">
-              <h2 className="text-lg font-semibold text-white">{title}</h2>
-              {subtitle && <p className="text-slate-400 text-sm mt-1">{subtitle}</p>}
-            </div>
+            <>
+              <div className="lx-auth__card-head">
+                <span className="lx-auth__card-ref">credential check</span>
+                <VerificationSeal size={14} className="lx-auth__seal" />
+              </div>
+              <div className="lx-auth__title-block">
+                {/* The page's heading is its first-level heading. Every other
+                    route opens with one <h1>; the auth surface opened with an
+                    <h2> and had none. */}
+                <h1 className="lx-auth__title">{title}</h1>
+                {subtitle && <p className="lx-auth__subtitle">{subtitle}</p>}
+              </div>
+            </>
           )}
           {children}
         </div>
       </div>
-    </div>
+    </main>
   )
 }

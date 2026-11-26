@@ -8,7 +8,7 @@ import pytest
 
 
 def test_ports_yaml_loads_with_required_keys() -> None:
-    from app.core.config import get_ports
+    from app.config.settings import get_ports
 
     ports = get_ports()
     for key in (
@@ -27,11 +27,13 @@ def test_ports_yaml_loads_with_required_keys() -> None:
 
 
 def test_ports_reserved_allocation() -> None:
-    """8080 belongs to llama-server; the backend must never claim it."""
-    from app.core.config import get_ports
+    """9931 belongs to llama-server, 8080 to MLX; the backend must never claim them."""
+    from app.config.settings import get_ports
 
     ports = get_ports()
-    assert ports["llamacpp"] == 8080
+    assert ports["llamacpp"] == 9931
+    assert ports["mlx"] == 8080
+    assert ports["backend"] != 9931
     assert ports["backend"] != 8080
     assert ports["backend"] == 8000
 
@@ -45,9 +47,9 @@ def test_model_config_urls_honor_ports_yaml(monkeypatch) -> None:
         "LLAMA_CPP_BASE_URL",
     ):
         monkeypatch.delenv(var, raising=False)
-    from app.core.config import get_model_config, get_ports, reload_ports
+    from app.config import get_model_config
+    from app.config.settings import get_ports
 
-    reload_ports()
     cfg = get_model_config()
     ports = get_ports()
     assert cfg.ollama_base_url == f"http://localhost:{ports['ollama']}"
@@ -55,7 +57,7 @@ def test_model_config_urls_honor_ports_yaml(monkeypatch) -> None:
 
 
 def test_llm_discovery_excludes_embedding_models() -> None:
-    from app.core.local_llm import _is_embedding_model_name
+    from app.llm.local_llm import _is_embedding_model_name
 
     assert _is_embedding_model_name("embeddinggemma:300m-qat-q8_0")
     assert _is_embedding_model_name("nomic-embed-text")
@@ -69,7 +71,7 @@ def test_llm_discovery_excludes_embedding_models() -> None:
 @pytest.mark.asyncio
 async def test_ollama_llm_discovery_is_llm_only(monkeypatch) -> None:
     """`ollama list` output must not leak embedding models into the LLM list."""
-    import app.core.local_llm as local_llm
+    import app.llm.local_llm as local_llm
 
     async def fake_discover():
         return ["granite4.2:3b-q4_K_M", "embeddinggemma:300m-qat-q8_0", "qwen3.5:4b"]

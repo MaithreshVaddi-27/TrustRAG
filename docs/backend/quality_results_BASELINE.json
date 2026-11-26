@@ -1,0 +1,52 @@
+{
+  "What is the reciprocal rank fusion constant?": {
+    "n": 3,
+    "recall_at_k": 1.0,
+    "precision_at_k": 0.3333,
+    "mrr": 1.0,
+    "statuses": {
+      "abstained": 3
+    },
+    "mean_score": 0.0,
+    "mean_evidence": 3.0
+  },
+  "How many fused candidates are considered before reranking?": {
+    "n": 3,
+    "recall_at_k": 1.0,
+    "precision_at_k": 0.3333,
+    "mrr": 1.0,
+    "statuses": {
+      "completed": 3
+    },
+    "mean_score": 1.0,
+    "mean_evidence": 3.0
+  },
+  "Which embedding model does dense retrieval use?": {
+    "n": 3,
+    "recall_at_k": 1.0,
+    "precision_at_k": 0.3333,
+    "mrr": 1.0,
+    "statuses": {
+      "completed": 3
+    },
+    "mean_score": 1.0,
+    "mean_evidence": 3.0
+  },
+  "What happens when the evidence does not support an answer?": {
+    "n": 3,
+    "recall_at_k": 1.0,
+    "precision_at_k": 0.3333,
+    "mrr": 1.0,
+    "statuses": {
+      "abstained": 3
+    },
+    "mean_score": 0.0,
+    "mean_evidence": 3.0
+  },
+  "_overall": {
+    "n": 12,
+    "recall_at_k": 1.0,
+    "precision_at_k": 0.3333,
+    "mrr": 1.0
+  }
+}
