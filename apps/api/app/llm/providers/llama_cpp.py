@@ -108,7 +108,7 @@ class ChatLlamaCppClient(BaseChatModel):
             _llama_stops.extend(["<|endoftext|>", "<|eot_id|>", "<|eot|>"])
         if stop:
             _llama_stops.extend(stop)
-        _llama_stops = list(dict.fromkeys(_llama_stops)) or None
+        _final_stops: list[str] | None = list(dict.fromkeys(_llama_stops)) or None
 
         payload: dict[str, Any] = {
             "model": kwargs.get("model", self.model),
@@ -125,7 +125,7 @@ class ChatLlamaCppClient(BaseChatModel):
             "flash_attention": use_flash_attn,
             "min_p": min_p if min_p > 0.0 else None,
             "top_k": top_k if top_k > 0 else None,
-            "stop": _llama_stops,
+            "stop": _final_stops,
         }
         payload = {k: v for k, v in payload.items() if v is not None}
 
@@ -154,7 +154,9 @@ class ChatLlamaCppClient(BaseChatModel):
                 f"llama.cpp generation failed for model '{self.model}'", detail=str(exc)
             ) from exc
 
-    def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:
+    def with_structured_output(  # type: ignore[override]
+        self, schema: type[T], **kwargs: Any
+    ) -> Runnable[Any, T]:
         """Return a Runnable prompting llama.cpp for structured JSON, parsed into Pydantic."""
         from app.llm.llm_utils import build_structured_output_runnable
 

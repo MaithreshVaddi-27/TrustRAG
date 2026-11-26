@@ -21,6 +21,8 @@ import threading
 from collections import OrderedDict
 from typing import Any
 
+from langchain_core.embeddings import Embeddings
+
 from app.config import get_model_config
 from app.rag.embedding.engine import (
     EMBEDDING_MODE_DOCUMENT,
@@ -31,7 +33,7 @@ from app.rag.embedding.engine import (
 __all__ = ["ONNXBGEEmbeddingsWrapper"]
 
 
-class ONNXBGEEmbeddingsWrapper:
+class ONNXBGEEmbeddingsWrapper(Embeddings):
     """
     In-memory LRU cache wrapper for ONNX BGE embeddings.
 

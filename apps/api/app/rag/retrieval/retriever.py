@@ -351,8 +351,17 @@ async def apply_temporal_filtering(
         with contextlib.suppress(InvalidId):
             doc_objs.append(ObjectId(did))
 
-    # Batch fetch all document metadata in parallel
-    docs_cursor = doc_coll.find({"_id": {"$in": doc_objs}})
+    # Batch fetch only the metadata fields needed for temporal & provenance checks
+    docs_cursor = doc_coll.find(
+        {"_id": {"$in": doc_objs}},
+        {
+            "filename": 1,
+            "effective_from": 1,
+            "effective_until": 1,
+            "version": 1,
+            "is_snapshot": 1,
+        },
+    )
     docs_map = {}
     async for d in docs_cursor:
         docs_map[str(d["_id"])] = d

@@ -12,6 +12,7 @@ GET /api/v1/health/detailed
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Response
@@ -50,8 +51,7 @@ async def health() -> dict:
     Always returns 200 so monitoring tools can always receive a response.
     Inspect the `status` field to determine actual health.
     """
-    mongo_ok = await mongo_health_check()
-    qdrant_ok = await qdrant_health_check()
+    mongo_ok, qdrant_ok = await asyncio.gather(mongo_health_check(), qdrant_health_check())
     settings = get_settings()
 
     services = {
@@ -72,8 +72,7 @@ async def health() -> dict:
 @router.get("/health/ready", summary="Readiness probe (503 when degraded)")
 async def health_ready(response: Response) -> dict:
     """Readiness for Docker/K8s: 200 when all deps ok, 503 otherwise."""
-    mongo_ok = await mongo_health_check()
-    qdrant_ok = await qdrant_health_check()
+    mongo_ok, qdrant_ok = await asyncio.gather(mongo_health_check(), qdrant_health_check())
     if not (mongo_ok and qdrant_ok):
         response.status_code = 503
         return {
@@ -99,8 +98,7 @@ async def health_detailed(current_user=Depends(get_current_user)) -> dict:
     Returns full service status, active model configuration, hardware profile,
     and supported formats. For frontend status panel and admin tooling.
     """
-    mongo_ok = await mongo_health_check()
-    qdrant_ok = await qdrant_health_check()
+    mongo_ok, qdrant_ok = await asyncio.gather(mongo_health_check(), qdrant_health_check())
 
     services = {
         "mongodb": "ok" if mongo_ok else "degraded",

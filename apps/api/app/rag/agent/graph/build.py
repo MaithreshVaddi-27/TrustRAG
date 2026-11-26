@@ -92,7 +92,7 @@ async def _execute_with_fallback(
                 }
             )
             enriched["node_errors"] = errors
-            return enriched
+            return cast(AgentState, enriched)
         state["verdict_status"] = "FAIL"
         error_type = type(exc).__name__
         # Detect dead credentials (401/403) as terminal outage

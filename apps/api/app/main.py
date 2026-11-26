@@ -335,23 +335,25 @@ def _register_exception_handlers(app: FastAPI) -> None:
         request: Request, exc: UnsupportedFormatError
     ) -> JSONResponse:
         return _error_response(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "UNSUPPORTED_FORMAT", exc.message
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "UNSUPPORTED_FORMAT", exc.message
         )
 
     @app.exception_handler(FileTooLargeError)
     async def file_too_large_handler(request: Request, exc: FileTooLargeError) -> JSONResponse:
         return _error_response(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "FILE_TOO_LARGE", exc.message
+            status.HTTP_413_CONTENT_TOO_LARGE, "FILE_TOO_LARGE", exc.message
         )
 
     @app.exception_handler(IngestionError)
     async def ingestion_error_handler(request: Request, exc: IngestionError) -> JSONResponse:
-        return _error_response(status.HTTP_422_UNPROCESSABLE_ENTITY, "INGESTION_ERROR", exc.message)
+        return _error_response(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "INGESTION_ERROR", exc.message
+        )
 
     @app.exception_handler(InputValidationError)
     async def input_validation_handler(request: Request, exc: InputValidationError) -> JSONResponse:
         return _error_response(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "VALIDATION_ERROR", exc.message
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "VALIDATION_ERROR", exc.message
         )
 
     @app.exception_handler(LLMUnavailableError)
@@ -438,7 +440,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
         except Exception:
             message = "Request validation failed."
         return _error_response(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             "VALIDATION_ERROR",
             message,
         )

@@ -230,6 +230,8 @@ class EvidenceResponse(BaseModel):
 class TraceEventResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
+    id: str | None = None
+    analysis_id: str | None = None
     event: str
     timestamp: datetime
     data: dict[str, Any] = {}

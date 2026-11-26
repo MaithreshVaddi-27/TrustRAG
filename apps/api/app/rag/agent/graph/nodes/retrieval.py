@@ -180,7 +180,7 @@ async def retrieval_node(state: AgentState) -> AgentState:
 
                 _healed_recently = False
                 try:
-                    _kb_doc = _graph_mod.get_collection(Collections.KNOWLEDGE_BASES).find_one(
+                    _kb_doc = await _graph_mod.get_collection(Collections.KNOWLEDGE_BASES).find_one(
                         {"_id": ObjectId(state["kb_id"])}
                     )
                     _healed_at = (_kb_doc or {}).get("self_healed_at")
@@ -421,8 +421,8 @@ async def retrieval_node(state: AgentState) -> AgentState:
                     # insert_many is not awaitable (e.g. mocked as insert_one);
                     # fall back to per-document inserts.
                     for evt_doc in evidence_docs:
-                        result = await evidence_coll.insert_one(evt_doc)
-                        evidence_ids.append(result.inserted_id)
+                        single_result = await evidence_coll.insert_one(evt_doc)
+                        evidence_ids.append(single_result.inserted_id)
 
         state["chunks"] = verified_chunks
         state["evidence_ids"] = evidence_ids

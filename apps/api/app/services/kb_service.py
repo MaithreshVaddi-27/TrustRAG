@@ -323,26 +323,30 @@ async def create_kb_snapshot(kb_id_str: str, user_id_str: str, version: str = "1
         {"knowledge_base_id": ObjectId(kb_id_str), "is_snapshot": {"$ne": True}}
     ).to_list(10000)
 
+    now_snap = datetime.now(UTC)
+    doc_copies: list[dict[str, Any]] = []
     for existing_doc in existing_docs:
-        # Create a copy of the document with a new ID, linked to the snapshot KB
-        doc_copy = {
-            "user_id": current_kb["user_id"],
-            "knowledge_base_id": ObjectId(result.inserted_id),
-            "filename": existing_doc["filename"],
-            "file_size": existing_doc["file_size"],
-            "content_hash": existing_doc["content_hash"],
-            "ingestion_status": existing_doc.get("ingestion_status", "pending"),
-            "error_message": existing_doc.get("error_message"),
-            "effective_from": existing_doc.get("effective_from"),
-            "effective_until": existing_doc.get("effective_until"),
-            "created_at": datetime.now(UTC),
-            "version": version,
-            "is_snapshot": True,
-        }
-        doc_res = await doc_coll.insert_one(doc_copy)
-        # Map live doc id -> snapshot doc id so chunk + vector references
-        # can be remapped (snapshot docs get fresh ObjectIds).
-        doc_id_map[str(existing_doc["_id"])] = str(doc_res.inserted_id)
+        new_doc_id = ObjectId()
+        doc_id_map[str(existing_doc["_id"])] = str(new_doc_id)
+        doc_copies.append(
+            {
+                "_id": new_doc_id,
+                "user_id": current_kb["user_id"],
+                "knowledge_base_id": ObjectId(result.inserted_id),
+                "filename": existing_doc["filename"],
+                "file_size": existing_doc["file_size"],
+                "content_hash": existing_doc["content_hash"],
+                "ingestion_status": existing_doc.get("ingestion_status", "pending"),
+                "error_message": existing_doc.get("error_message"),
+                "effective_from": existing_doc.get("effective_from"),
+                "effective_until": existing_doc.get("effective_until"),
+                "created_at": now_snap,
+                "version": version,
+                "is_snapshot": True,
+            }
+        )
+    if doc_copies:
+        await doc_coll.insert_many(doc_copies)
 
     # Also copy document chunks
     chunks_coll = get_collection(Collections.DOCUMENT_CHUNKS)
@@ -352,6 +356,7 @@ async def create_kb_snapshot(kb_id_str: str, user_id_str: str, version: str = "1
 
     doc_version_map = {str(d["_id"]): d.get("version", "1.0") for d in existing_docs}
 
+    chunk_copies: list[dict[str, Any]] = []
     for chunk in existing_chunks:
         remapped_doc_id = doc_id_map.get(str(chunk["document_id"]), str(chunk["document_id"]))
         # page-image chain: snapshot owns COPIES of page images (live files may
@@ -362,23 +367,26 @@ async def create_kb_snapshot(kb_id_str: str, user_id_str: str, version: str = "1
             new_image_ref = page_images_mod.copy_page_image(
                 chunk["page_image_ref"], snapshot_id_str, remapped_doc_id
             )
-        chunk_copy = {
-            "document_id": ObjectId(remapped_doc_id),
-            "knowledge_base_id": ObjectId(result.inserted_id),
-            "user_id": current_kb["user_id"],
-            "chunk_index": chunk["chunk_index"],
-            "text": chunk["text"],
-            "page": chunk["page"],
-            "character_offset": chunk["character_offset"],
-            "zone": chunk.get("zone", "body"),
-            "text_hash": chunk.get("text_hash"),
-            "ocr_used": bool(chunk.get("ocr_used", False)),
-            "ocr_confidence": chunk.get("ocr_confidence"),
-            "page_image_ref": new_image_ref,
-            "document_version": doc_version_map.get(str(chunk["document_id"]), version),
-            "is_snapshot": True,
-        }
-        await chunks_coll.insert_one(chunk_copy)
+        chunk_copies.append(
+            {
+                "document_id": ObjectId(remapped_doc_id),
+                "knowledge_base_id": ObjectId(result.inserted_id),
+                "user_id": current_kb["user_id"],
+                "chunk_index": chunk["chunk_index"],
+                "text": chunk["text"],
+                "page": chunk["page"],
+                "character_offset": chunk["character_offset"],
+                "zone": chunk.get("zone", "body"),
+                "text_hash": chunk.get("text_hash"),
+                "ocr_used": bool(chunk.get("ocr_used", False)),
+                "ocr_confidence": chunk.get("ocr_confidence"),
+                "page_image_ref": new_image_ref,
+                "document_version": doc_version_map.get(str(chunk["document_id"]), version),
+                "is_snapshot": True,
+            }
+        )
+    for idx in range(0, len(chunk_copies), 1000):
+        await chunks_coll.insert_many(chunk_copies[idx : idx + 1000])
 
     # Copy Qdrant vectors into the snapshot collection so a later rollback
     # restores searchable state (Mongo copies alone would leave retrieval empty).

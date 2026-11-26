@@ -6,6 +6,7 @@ Aggregated analytics dashboard data and full compliance/audit dossier export.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 __all__ = [
@@ -25,14 +26,16 @@ async def export_analysis_dossier(
     with SHA-256 provenance hashes, and reliability diagnosis.
     """
     from app.services.analysis_service import (
+        _fetch_claims,
+        _fetch_evidence,
         get_analysis,
-        get_analysis_claims,
-        get_analysis_evidence,
     )
 
     analysis = await get_analysis(analysis_id_str, user_id_str)
-    claims = await get_analysis_claims(analysis_id_str, user_id_str)
-    evidence = await get_analysis_evidence(analysis_id_str, user_id_str)
+    claims, evidence = await asyncio.gather(
+        _fetch_claims(analysis_id_str),
+        _fetch_evidence(analysis_id_str),
+    )
 
     created_at_str = (
         analysis.created_at.isoformat()

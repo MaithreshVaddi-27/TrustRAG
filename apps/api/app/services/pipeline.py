@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator, Mapping
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from bson import ObjectId
 from fastapi import BackgroundTasks
@@ -458,7 +458,7 @@ async def create_analysis(
     # tests that patch app.services.analysis_service.run_analysis_pipeline
     # take effect here).
     background_tasks.add_task(
-        _svc_mod.run_analysis_pipeline,
+        svc.run_analysis_pipeline,
         analysis_id_str=str(result.inserted_id),
         kb_id_str=schema.knowledge_base_id,
         query=schema.query.strip(),
@@ -469,7 +469,7 @@ async def create_analysis(
         llm_model=effective_llm_model,
     )
 
-    return svc.serialize_analysis(analysis_doc)
+    return cast(AnalysisResponse, svc.serialize_analysis(analysis_doc))
 
 
 # ─── Reads ───────────────────────────────────────────────────────────────────
@@ -490,7 +490,7 @@ async def get_analysis(analysis_id_str: str, user_id_str: str) -> AnalysisRespon
     if str(analysis["user_id"]) != user_id_str:
         raise AuthorizationError("Access denied", detail="You do not own this analysis record")
 
-    return svc.serialize_analysis(analysis)
+    return cast(AnalysisResponse, svc.serialize_analysis(analysis))
 
 
 async def list_analyses(user_id_str: str, limit: int = 50, skip: int = 0) -> list[AnalysisResponse]:
@@ -508,21 +508,21 @@ async def list_analyses(user_id_str: str, limit: int = 50, skip: int = 0) -> lis
     return results
 
 
-async def _fetch_claims(analysis_id_str: str) -> list[dict[str, Any]]:
+async def _fetch_claims(analysis_id_str: str) -> list[ClaimResponse]:
     """Fetch claims for a single analysis (internal, no ownership check)."""
     from app.services.claims_evidence import list_analysis_claims
 
     return await list_analysis_claims(analysis_id_str)
 
 
-async def _fetch_evidence(analysis_id_str: str) -> list[dict[str, Any]]:
+async def _fetch_evidence(analysis_id_str: str) -> list[EvidenceResponse]:
     """Fetch evidence for a single analysis (internal, no ownership check)."""
     from app.services.claims_evidence import list_analysis_evidence
 
     return await list_analysis_evidence(analysis_id_str)
 
 
-async def _fetch_trace(analysis_id_str: str) -> list[dict[str, Any]]:
+async def _fetch_trace(analysis_id_str: str) -> list[TraceEventResponse]:
     """Fetch trace events for a single analysis."""
     trace_coll = _get_collection(Collections.TRACE_EVENTS)
     cursor = trace_coll.find({"analysis_id": ObjectId(analysis_id_str)}).sort("timestamp", 1)
@@ -603,7 +603,7 @@ async def add_trace_event(
         analysis_id_str, {"event": event, "data": data}
     )
 
-    return svc.serialize_trace(evt_doc)
+    return cast(TraceEventResponse, svc.serialize_trace(evt_doc))
 
 
 async def sse_event_generator(
@@ -756,7 +756,7 @@ async def run_analysis_pipeline(
             abstain_below=cfg.abstain_below,
         )
 
-        verdict = _svc_mod.verdict_from_state(final_state, thresholds)
+        verdict = svc.verdict_from_state(final_state, thresholds)
 
         if verdict.reliability_status == ReliabilityStatus.ABSTAINED:
             # Never store the bare "ABSTAIN" token as the user-facing answer.

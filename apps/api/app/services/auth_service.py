@@ -4,6 +4,7 @@ TRUSTRAG — Authentication business logic service.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -43,10 +44,11 @@ async def register_user(schema: UserRegister) -> UserResponse:
     users_coll = get_collection(Collections.USERS)
     email_clean = schema.email.strip().lower()
 
-    # Document to insert
+    # Document to insert (offload CPU-bound bcrypt hashing off the event loop)
+    hashed_password = await asyncio.to_thread(hash_password, schema.password)
     user_doc = {
         "email": email_clean,
-        "hashed_password": hash_password(schema.password),
+        "hashed_password": hashed_password,
         "full_name": schema.full_name.strip(),
         "is_active": True,
         "created_at": datetime.now(UTC),
@@ -109,7 +111,6 @@ async def _record_failed_login(email: str, client_ip: str | None = None) -> None
         {"_id": key},
         {
             "$inc": {"count": 1},
-            "$push": {"attempts": now_dt},
             "$set": {"window_expires": window_expires, "client_ip": client_ip},
         },
         upsert=True,
@@ -147,11 +148,15 @@ async def authenticate_user(
         # real hashes) so this branch takes as long as the "wrong password" branch below.
         # A malformed dummy hash would make bcrypt fail fast instead of doing the full
         # cost-12 computation, reopening the exact timing side-channel this guards against.
-        verify_password(password, "$2b$12$Fhvxd2NUDtaI9Np/Ct9Tn.jCLcGFUPgwN5oMcPCk8PlX36lOm2iFO")
+        await asyncio.to_thread(
+            verify_password,
+            password,
+            "$2b$12$Fhvxd2NUDtaI9Np/Ct9Tn.jCLcGFUPgwN5oMcPCk8PlX36lOm2iFO",
+        )
         await _record_failed_login(email_clean, client_ip)
         raise AuthenticationError("Authentication failed", detail="Invalid email or password")
 
-    if not verify_password(password, user["hashed_password"]):
+    if not await asyncio.to_thread(verify_password, password, user["hashed_password"]):
         await _record_failed_login(email_clean, client_ip)
         raise AuthenticationError("Authentication failed", detail="Invalid email or password")
 

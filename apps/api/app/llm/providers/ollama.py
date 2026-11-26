@@ -183,7 +183,9 @@ class ChatOllamaClient(BaseChatModel):
                 f"Ollama generation failed for model '{self.model}'", detail=str(exc)
             ) from exc
 
-    def with_structured_output(self, schema: type[T], **kwargs: Any) -> Runnable[Any, T]:
+    def with_structured_output(  # type: ignore[override]
+        self, schema: type[T], **kwargs: Any
+    ) -> Runnable[Any, T]:
         """Prompt for structured JSON and parse into the Pydantic schema."""
         from app.llm.llm_utils import build_structured_output_runnable
 

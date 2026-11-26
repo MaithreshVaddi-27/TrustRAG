@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, field_validator
 
 from app.api.deps import enforce_service_tenant, require_service_permission
@@ -138,9 +138,9 @@ async def internal_ingest_document(
     summary="Internal hybrid search",
 )
 async def internal_search(
-    query: str,
     kb_id: str,
-    top_k: int = 10,
+    query: str = Query(..., min_length=1, max_length=2000, description="Search query"),
+    top_k: int = Query(10, ge=1, le=50, description="Number of chunks to retrieve"),
     current_service: Mapping[str, Any] = Depends(require_service_permission("search:read")),
 ) -> dict[str, Any]:
     """

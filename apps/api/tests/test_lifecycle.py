@@ -228,7 +228,12 @@ async def test_snapshot_chunk_copies_keep_ocr_provenance():
         inserted.append(doc)
         return MagicMock(inserted_id=ObjectId())
 
+    async def capture_insert_many(docs):
+        inserted.extend(docs)
+        return MagicMock(inserted_ids=[d.get("_id", ObjectId()) for d in docs])
+
     mock_collection.insert_one = AsyncMock(side_effect=capture_insert)
+    mock_collection.insert_many = AsyncMock(side_effect=capture_insert_many)
     mock_collection.update_one = AsyncMock()
     mock_qdrant = MagicMock()
     mock_qdrant.collection_exists = AsyncMock(return_value=False)
@@ -334,7 +339,12 @@ async def test_snapshot_copies_page_images_with_remapped_refs():
         inserted.append(doc)
         return MagicMock(inserted_id=ObjectId())
 
+    async def capture_insert_many(docs):
+        inserted.extend(docs)
+        return MagicMock(inserted_ids=[d.get("_id", ObjectId()) for d in docs])
+
     mock_collection.insert_one = AsyncMock(side_effect=capture_insert)
+    mock_collection.insert_many = AsyncMock(side_effect=capture_insert_many)
     mock_collection.update_one = AsyncMock()
     mock_qdrant = MagicMock()
     mock_qdrant.collection_exists = AsyncMock(return_value=False)

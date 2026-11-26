@@ -17,7 +17,6 @@ Existing imports (``from app.llm.local_llm import ...``) continue to work.
 
 from __future__ import annotations
 
-import asyncio
 import threading
 from pathlib import Path
 
@@ -66,16 +65,10 @@ from app.llm.providers.health import (
     probe_cloud_llm,
     probe_local_llm_server,
 )
-from app.observability.logging import get_logger
 
 # Module-level state for discovery (backward-compat: tests patch these)
 _DISCOVERED_LLMS: dict[str, set[str]] = {}
-_DISCOVERED_LLMS_LOCK = asyncio.Lock() if hasattr(asyncio, "Lock") else None
-try:
-    _DISCOVERED_LLMS_LOCK = threading.Lock()
-except Exception as exc:
-    logger = get_logger(__name__)
-    logger.debug("Failed to create threading lock for discovery state", error=str(exc))
+_DISCOVERED_LLMS_LOCK: threading.Lock = threading.Lock()
 _DISCOVERY_SNAPSHOT_PATH = Path(__file__).resolve().parents[2] / "data" / "discovered_models.json"
 
 

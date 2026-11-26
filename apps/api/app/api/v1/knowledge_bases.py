@@ -16,6 +16,7 @@ from fastapi import (
     BackgroundTasks,
     Depends,
     File,
+    Query,
     UploadFile,
     status,
 )
@@ -23,11 +24,14 @@ from fastapi import (
 from app.api.deps import get_current_user
 from app.api.v1.schemas.kb import DocResponse, KBCreate, KBResponse
 from app.config import get_model_config
+from app.observability.logging import get_logger
 from app.rag.ingestion.chunking_strategies import get_chunking_strategy
 from app.rag.ingestion.parser import parse_document
 from app.rag.ingestion.pipeline import index_parsed_chunks
 from app.security.exceptions import FileTooLargeError, UnsupportedFormatError
 from app.services import kb_service
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/knowledge-bases", tags=["knowledge-bases"])
 
@@ -48,13 +52,11 @@ async def create_kb_endpoint(
 @router.get("", response_model=list[KBResponse], summary="List all user knowledge bases")
 async def list_kbs_endpoint(
     current_user: Mapping[str, Any] = Depends(get_current_user),
-    limit: int = 200,
-    skip: int = 0,
+    limit: int = Query(200, ge=1, le=500, description="Max records to return"),
+    skip: int = Query(0, ge=0, description="Records to skip for pagination"),
 ) -> list[KBResponse]:
     """List all knowledge bases owned by the authenticated user."""
-    return await kb_service.list_kbs(
-        str(current_user["_id"]), limit=min(limit, 500), skip=max(skip, 0)
-    )
+    return await kb_service.list_kbs(str(current_user["_id"]), limit=limit, skip=skip)
 
 
 @router.get("/{kb_id}", response_model=KBResponse, summary="Retrieve knowledge base metadata")
@@ -117,12 +119,12 @@ async def rollback_kb_endpoint(
 async def list_documents_endpoint(
     kb_id: str,
     current_user: Mapping[str, Any] = Depends(get_current_user),
-    limit: int = 200,
-    skip: int = 0,
+    limit: int = Query(200, ge=1, le=500, description="Max records to return"),
+    skip: int = Query(0, ge=0, description="Records to skip for pagination"),
 ) -> list[DocResponse]:
     """List all documents registered in this knowledge base."""
     return await kb_service.list_kb_documents(
-        kb_id, str(current_user["_id"]), limit=min(limit, 500), skip=max(skip, 0)
+        kb_id, str(current_user["_id"]), limit=limit, skip=skip
     )
 
 
@@ -185,9 +187,7 @@ async def _ingest_content(
                 },
             )
     except Exception as exc:
-        import logging as _logging
-
-        _logging.getLogger(__name__).debug("OCR stats persist skipped: %s", exc)
+        logger.debug("OCR stats persist skipped", error=str(exc))
 
     # Indexing runs in the background: the client gets a document record back
     # immediately and the knowledge base becomes searchable shortly after.

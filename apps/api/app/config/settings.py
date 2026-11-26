@@ -295,6 +295,28 @@ class Settings(BaseSettings):
         return self.app_env == "development"
 
 
+_resolved_env_files_cache: tuple[str, tuple[str | Path, ...], tuple[str, ...]] | None = None
+
+
+def _get_resolved_env_files() -> tuple[str, ...]:
+    """Return deduplicated absolute paths for Settings.model_config['env_file']."""
+    global _resolved_env_files_cache
+    cwd = os.getcwd()
+    env_files = Settings.model_config.get("env_file") or ()
+    if isinstance(env_files, (str, Path)):
+        env_files_key: tuple[str | Path, ...] = (env_files,)
+    else:
+        env_files_key = tuple(env_files)
+
+    cached = _resolved_env_files_cache
+    if cached is not None and cached[0] == cwd and cached[1] == env_files_key:
+        return cached[2]
+
+    resolved = tuple(dict.fromkeys(os.path.abspath(p) for p in env_files_key))
+    _resolved_env_files_cache = (cwd, env_files_key, resolved)
+    return resolved
+
+
 def _settings_fingerprint() -> int:
     """Fingerprint of every input ``Settings()`` reads.
 
@@ -307,14 +329,8 @@ def _settings_fingerprint() -> int:
     The file paths are resolved against the current working directory, so a
     change of working directory invalidates the cache too.
     """
-    fingerprint = hash(frozenset(os.environ.items()))
-    env_files = Settings.model_config.get("env_file") or ()
-    # Pydantic allows `env_file` to be a single path or a sequence of them.
-    # A single path is not iterable, so it is wrapped before the loop.
-    if isinstance(env_files, (str, Path)):
-        env_files = [env_files]
-    for path in env_files:
-        resolved = os.path.abspath(path)
+    fingerprint = hash(tuple(os.environ.items()))
+    for resolved in _get_resolved_env_files():
         try:
             stat = os.stat(resolved)
             fingerprint = hash((fingerprint, resolved, stat.st_mtime_ns, stat.st_size))

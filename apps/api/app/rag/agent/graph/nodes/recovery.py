@@ -503,7 +503,7 @@ async def recovery_node(state: AgentState) -> AgentState:
     )
 
 
-def _execute_with_fallback(
+async def _execute_with_fallback(
     state: AgentState,
     node_name: str,
     operation: Callable[[], Any],
@@ -513,7 +513,7 @@ def _execute_with_fallback(
     """Execute a node operation with standardized error handling and fallback."""
     import app.rag.agent.graph as _graph_mod
 
-    return _graph_mod._execute_with_fallback(
+    return await _graph_mod._execute_with_fallback(
         state=state,
         node_name=node_name,
         operation=operation,

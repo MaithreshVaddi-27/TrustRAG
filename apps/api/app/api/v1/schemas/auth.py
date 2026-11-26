@@ -41,7 +41,9 @@ class UserRegister(BaseModel):
             "Password must be at least 12 characters with upper, lower, digit, and special char."
         ),
     )
-    full_name: str = Field(..., min_length=1, description="Full name cannot be empty.")
+    full_name: str = Field(
+        ..., min_length=1, max_length=200, description="Full name cannot be empty."
+    )
 
     @field_validator("password")
     @classmethod
@@ -51,7 +53,7 @@ class UserRegister(BaseModel):
 
 class UserLogin(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=1, max_length=256)
 
 
 class UserResponse(BaseModel):

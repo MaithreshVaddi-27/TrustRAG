@@ -33,10 +33,13 @@ async def _subscribe_to_analysis(analysis_id: str) -> asyncio.Queue:
 
 
 async def _unsubscribe_from_analysis(analysis_id: str, queue: asyncio.Queue) -> None:
-    """Unsubscribe from analysis events."""
+    """Unsubscribe from analysis events and prune empty subscriber sets."""
     async with _subscribers_lock:
-        if analysis_id in _analysis_subscribers:
-            _analysis_subscribers[analysis_id].discard(queue)
+        subscribers = _analysis_subscribers.get(analysis_id)
+        if subscribers is not None:
+            subscribers.discard(queue)
+            if not subscribers:
+                del _analysis_subscribers[analysis_id]
 
 
 async def _publish_analysis_event(analysis_id: str, event: dict) -> None:

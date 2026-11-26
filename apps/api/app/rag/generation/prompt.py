@@ -68,36 +68,26 @@ succeed — one verifiable fact per sentence, every fact cited.
 """
 
 
-def _grounding_prompt(provider: str | None, model: str | None) -> str:
-    """Return the grounding system prompt, optionally adapted for the provider."""
-    return GROUNDING_SYSTEM_PROMPT
+_FENCE_TAG_RE = re.compile(
+    r"</?\s*(?:context|premise|hypothesis|query|craft|role|action|format|tone|loop)\b[^>]*>",
+    re.IGNORECASE,
+)
 
 
 def neutralize_prompt_fences(text: str | None) -> str:
     """Strip XML fence tokens from untrusted text before it is wrapped.
 
     Retrieved documents are attacker-reachable (anyone can upload a file). A
-    document containing a literal ``</context>`` would close the block early,
-    so the remainder of that document would sit outside the fence and read as
-    instructions. Removing the token — rather than escaping it — keeps the
-    document's readable text intact while making tag-breakout impossible.
+    document containing a literal ``</context>`` (or whitespace-padded /
+    attribute-carrying variants like ``</premise >``) would close the block
+    early, so the remainder of that document would sit outside the fence and
+    read as instructions. Removing the token — rather than escaping it — keeps
+    the document's readable text intact while making tag-breakout impossible.
 
     Only the fence tokens are affected; ordinary angle brackets and
     code-looking text pass through untouched.
     """
-    cleaned = text or ""
-    for token in (
-        "</context>",
-        "<context>",
-        "</premise>",
-        "<premise>",
-        "</hypothesis>",
-        "<hypothesis>",
-        "</query>",
-        "<query>",
-    ):
-        cleaned = re.sub(re.escape(token), "", cleaned, flags=re.IGNORECASE)
-    return cleaned.strip()
+    return _FENCE_TAG_RE.sub("", text or "").strip()
 
 
 # Compact variant for ≤3B models. Same CRAFT skeleton and the same safety

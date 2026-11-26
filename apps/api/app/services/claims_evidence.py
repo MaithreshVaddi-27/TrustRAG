@@ -6,7 +6,8 @@ Read operations for claims, evidence, and conflicts across analyses.
 
 from __future__ import annotations
 
-from typing import Any
+import asyncio
+from typing import Any, cast
 
 from bson import ObjectId
 
@@ -65,7 +66,7 @@ def _serialize_claim(c: dict[str, Any]) -> ClaimResponse:
     with an evidence reference failed validation and the endpoint answered
     500.
     """
-    return _svc().serialize_claim(c)
+    return cast(ClaimResponse, _svc().serialize_claim(c))
 
 
 async def list_all_user_claims(
@@ -73,9 +74,11 @@ async def list_all_user_claims(
 ) -> list[ClaimResponse]:
     """Fetch all claims for a user across all analyses."""
     analyses_coll = _get_collection(Collections.ANALYSES)
-    user_analyses = await analyses_coll.find(
-        {"user_id": ObjectId(user_id_str)}, {"_id": 1}
-    ).to_list(1000)
+    user_analyses = (
+        await analyses_coll.find({"user_id": ObjectId(user_id_str)}, {"_id": 1})
+        .sort("created_at", -1)
+        .to_list(1000)
+    )
     if not user_analyses:
         return []
     a_ids = [a["_id"] for a in user_analyses]
@@ -122,22 +125,23 @@ async def _fill_document_metadata(rows: list[dict[str, Any]]) -> None:
     if not rows:
         return
 
-    doc_ids: list[ObjectId] = []
-    for row in rows:
-        if row.get("filename"):
-            continue
-        raw_id = row.get("document_id")
-        if not isinstance(raw_id, ObjectId):
-            continue
-        if raw_id not in doc_ids:
-            doc_ids.append(raw_id)
+    doc_ids = list(
+        dict.fromkeys(
+            row["document_id"]
+            for row in rows
+            if not row.get("filename") and isinstance(row.get("document_id"), ObjectId)
+        )
+    )
 
     if not doc_ids:
         return
 
     documents_coll = _get_collection(Collections.DOCUMENTS)
     docs_map: dict[str, dict[str, Any]] = {}
-    async for doc in documents_coll.find({"_id": {"$in": doc_ids}}):
+    async for doc in documents_coll.find(
+        {"_id": {"$in": doc_ids}},
+        {"filename": 1, "effective_from": 1, "effective_until": 1},
+    ):
         docs_map[str(doc["_id"])] = doc
 
     if not docs_map:
@@ -166,7 +170,7 @@ def _serialize_evidence(e: dict[str, Any]) -> EvidenceResponse:
     ObjectId straight to the response model, so every evidence row failed
     validation and the vault answered 500.
     """
-    return _svc().serialize_evidence(e)
+    return cast(EvidenceResponse, _svc().serialize_evidence(e))
 
 
 async def list_all_user_evidence(
@@ -174,9 +178,11 @@ async def list_all_user_evidence(
 ) -> list[EvidenceResponse]:
     """Fetch all evidence for a user across all analyses."""
     analyses_coll = _get_collection(Collections.ANALYSES)
-    user_analyses = await analyses_coll.find(
-        {"user_id": ObjectId(user_id_str)}, {"_id": 1}
-    ).to_list(1000)
+    user_analyses = (
+        await analyses_coll.find({"user_id": ObjectId(user_id_str)}, {"_id": 1})
+        .sort("created_at", -1)
+        .to_list(1000)
+    )
     if not user_analyses:
         return []
     a_ids = [a["_id"] for a in user_analyses]
@@ -198,9 +204,11 @@ async def list_all_user_conflicts(
 ) -> list[dict[str, Any]]:
     """Fetch all detected conflicts across all analyses for this user."""
     analyses_coll = _get_collection(Collections.ANALYSES)
-    user_analyses = await analyses_coll.find(
-        {"user_id": ObjectId(user_id_str)}, {"_id": 1, "query": 1}
-    ).to_list(1000)
+    user_analyses = (
+        await analyses_coll.find({"user_id": ObjectId(user_id_str)}, {"_id": 1, "query": 1})
+        .sort("created_at", -1)
+        .to_list(1000)
+    )
     if not user_analyses:
         return []
 
@@ -210,28 +218,12 @@ async def list_all_user_conflicts(
     claims_coll = _get_collection(Collections.CLAIMS)
     evidence_coll = _get_collection(Collections.EVIDENCE)
 
-    conflicts = []
-
     per_source = min(skip + limit, 100)
     cursor_claims = (
         claims_coll.find({"analysis_id": {"$in": a_ids}, "state": "CONTRADICTED"})
         .sort("created_at", -1)
         .limit(per_source)
     )
-    async for c in cursor_claims:
-        conflicts.append(
-            {
-                "id": str(c["_id"]),
-                "type": "claim_contradiction",
-                "title": "Claim Contradicted by Retrieved Evidence",
-                "claim": c["text"],
-                "explanation": c.get("explanation") or "Evidence contradicts this assertion.",
-                "analysis_id": str(c["analysis_id"]),
-                "query": analysis_map.get(str(c["analysis_id"]), ""),
-                "created_at": c.get("created_at"),
-            }
-        )
-
     cursor_evidence = (
         evidence_coll.find(
             {"analysis_id": {"$in": a_ids}, "integrity_status": {"$nin": ["VERIFIED", None]}}
@@ -239,7 +231,27 @@ async def list_all_user_conflicts(
         .sort("created_at", -1)
         .limit(per_source)
     )
-    async for e in cursor_evidence:
+
+    claim_docs, evidence_docs = await asyncio.gather(
+        cursor_claims.to_list(per_source),
+        cursor_evidence.to_list(per_source),
+    )
+
+    conflicts = [
+        {
+            "id": str(c["_id"]),
+            "type": "claim_contradiction",
+            "title": "Claim Contradicted by Retrieved Evidence",
+            "claim": c["text"],
+            "explanation": c.get("explanation") or "Evidence contradicts this assertion.",
+            "analysis_id": str(c["analysis_id"]),
+            "query": analysis_map.get(str(c["analysis_id"]), ""),
+            "created_at": c.get("created_at"),
+        }
+        for c in claim_docs
+    ]
+
+    for e in evidence_docs:
         conflicts.append(
             {
                 "id": str(e["_id"]),
@@ -251,7 +263,7 @@ async def list_all_user_conflicts(
                 "explanation": f"Integrity check flagged status: {e.get('integrity_status')}",
                 "analysis_id": str(e["analysis_id"]),
                 "query": analysis_map.get(str(e["analysis_id"]), ""),
-                "created_at": c.get("created_at") if c else None,
+                "created_at": e.get("created_at") if e else None,
             }
         )
 
