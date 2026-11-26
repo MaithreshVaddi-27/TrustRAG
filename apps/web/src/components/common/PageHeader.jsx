@@ -21,11 +21,14 @@ export default function PageHeader({
   return (
     <header
       className={clsx(
-        'flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between',
+        'flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between',
         className,
       )}
     >
-      <div className="min-w-0">
+      {/* A flex-basis keeps the title group wide enough for its description.
+          Without it, a wide action group squeezed the copy into a one-word
+          column at tablet widths (measured at 768px on /dashboard). */}
+      <div className="min-w-0 flex-1 sm:basis-[24rem]">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="lx-h1">
             {title}

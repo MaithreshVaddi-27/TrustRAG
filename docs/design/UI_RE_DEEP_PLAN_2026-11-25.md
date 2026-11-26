@@ -202,3 +202,33 @@ Accessibility 100 · Best Practices 100 · SEO 100 · Agentic Browsing 100
 reduced-motion overrides must retain the `nth-child` specificity in `hero.css`;
 new keyframes belong in `animations.css` (imported before component sheets).
 
+---
+
+## Follow-up verification — 26 Nov 2026
+
+Fresh review of the committed build at **1440 / 1280 / 1024 / 768 / 390 / 320**,
+11 routes × 3 newly checked widths (1280 / 768 / 320) = 33 renders, plus a
+scroll-through of every landing section:
+
+- 0 navigation failures, 0 horizontal overflow, 0 console errors;
+- exactly one `h1` and one `main` on every route, including `/does-not-exist`;
+- smallest rendered text 12px on every route;
+- reduced motion: 0 running animations, decorative effects resolve to static;
+- landing at 1440 and 390 visually reviewed: the hero ledger, six-stage loop,
+  simulation tabs and single lead benchmark bar are authored product views,
+  not generic filler.
+
+**One new defect found and fixed:** at 768px the dashboard description collapsed
+into a one-word-per-line column because the `PageHeader` action group was
+`shrink-0`. The header now wraps (`sm:flex-wrap`) and the title group has
+`sm:basis-[24rem]`; the description renders in two 480px lines at 768px, with
+no regression at 1024 or 1280. Verified by rendered screenshots.
+
+Gates after the fix: lint clean, 85/85 tests, `check:tokens` clean, build with
+zero warnings, Impeccable detector `[]`, `ruff check .` clean.
+
+**CI note:** the remaining red job was the compose smoke. The official Qdrant
+slim image ships no `curl` or `wget`, so its HTTP healthcheck could never pass;
+the API image has `curl` but its healthcheck called `wget`. Both are corrected
+in `docker-compose.yml`, which now validates with `docker compose config`.
+
